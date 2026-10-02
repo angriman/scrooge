@@ -1,0 +1,23 @@
+# Sensitive: real statements and derived data. Never commit.
+statements/*
+!statements/.gitkeep
+transactions_*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Internal docs and agent instructions: not committed for now.
+docs/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude/
