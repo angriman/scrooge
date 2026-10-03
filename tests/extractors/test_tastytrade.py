@@ -77,7 +77,7 @@ def test_dates_are_local_trade_dates_and_refs_unique(result: Extraction) -> None
 
 
 def test_rerunning_gives_identical_output(result: Extraction) -> None:
-    assert tastytrade.extract("﻿" + CSV, source_file="transactions.csv") == result
+    assert tastytrade.extract("\ufeff" + CSV, source_file="transactions.csv") == result
 
 
 @pytest.mark.parametrize(

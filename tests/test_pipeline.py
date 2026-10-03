@@ -114,6 +114,12 @@ def test_reconciliation_failure_blocks(folder: Path) -> None:
         pipeline.process(extractions, (), {})
 
 
+def test_file_in_an_old_encoding_is_an_extraction_error(folder: Path) -> None:
+    (folder / "Migros.csv").write_bytes("Data;Saldo\n1;Zürich\n".encode("cp1252"))
+    with pytest.raises(ExtractionError, match=r"Migros\.csv: not UTF-8 text"):
+        pipeline.load_folder(folder)
+
+
 def test_extraction_errors_name_the_file(folder: Path) -> None:
     migros = folder / "Migros.csv"
     migros.write_text(migros.read_text(encoding="utf-8").replace('"-4.40"', '"-4,40"'))

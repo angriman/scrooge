@@ -35,7 +35,7 @@ def test_balances_are_the_ends_of_the_running_balance(result: Extraction) -> Non
 
 
 def test_csv_export_gives_the_same_result(result: Extraction) -> None:
-    assert revolut.extract("﻿" + TSV.replace("\t", ","), source_file="chf.tsv") == result
+    assert revolut.extract("\ufeff" + TSV.replace("\t", ","), source_file="chf.tsv") == result
 
 
 def test_payment_started_last_month_is_booked_on_completion(result: Extraction) -> None:

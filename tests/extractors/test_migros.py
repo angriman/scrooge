@@ -77,7 +77,7 @@ def test_description_and_counterparty(result: Extraction) -> None:
 
 
 def test_bom_is_ignored(result: Extraction) -> None:
-    assert migros.extract("﻿" + CSV, source_file="migros.csv") == result
+    assert migros.extract("\ufeff" + CSV, source_file="migros.csv") == result
 
 
 @pytest.mark.parametrize(

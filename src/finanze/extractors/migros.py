@@ -41,7 +41,7 @@ _TRANSFERS = (
 
 def extract(content: str, source_file: str) -> Extraction:
     """Parse the text of a Migros Bank statement covering one calendar month."""
-    text = content.removeprefix("﻿")
+    text = content.removeprefix("\ufeff")
     start = text.find(_HEADER)
     if start < 0:
         msg = 'Migros: no transaction table (expected a header row starting with "Data")'

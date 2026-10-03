@@ -24,7 +24,7 @@ _IGNORED = re.compile(r"(BUY|SELL|Interest Reinvested|Interest WITHDRAWN|Return 
 
 def extract(content: str, source_file: str) -> Extraction:
     """Parse the text of a Revolut Savings TSV covering one calendar month."""
-    header = content.removeprefix("﻿").partition("\n")[0].split("\t")
+    header = content.removeprefix("\ufeff").partition("\n")[0].split("\t")
     values = [column for column in header if column.startswith("Value, ")]
     if not values:
         msg = "Revolut Savings: no 'Value, <currency>' column"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from finanze.errors import ExtractionError
 from finanze.extractors import ibkr, migros, revolut, revolut_savings, swisscard, tastytrade
 from finanze.models import Extraction
 
@@ -29,7 +30,11 @@ def load(path: Path) -> tuple[str, Extraction] | None:
         return "swisscard", swisscard.extract(swisscard.read_text(path), path.name)
     if suffix not in _TEXT_SUFFIXES:
         return None
-    text = path.read_text(encoding="utf-8").removeprefix("﻿")
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        msg = "not UTF-8 text (an old export format?): export the statement again"
+        raise ExtractionError(msg) from None
     for source, starts, extract in _TEXT_SOURCES:
         if text.startswith(starts):
             return source, extract(text, path.name)

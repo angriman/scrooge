@@ -61,7 +61,7 @@ def test_single_month() -> None:
 
 
 def test_read_table_requires_columns_and_fills_short_rows() -> None:
-    rows = common.read_table("﻿A;B\n1;2\n3\n", ";", {"A", "B"}, "x")
+    rows = common.read_table("\ufeffA;B\n1;2\n3\n", ";", {"A", "B"}, "x")
     assert rows == [{"A": "1", "B": "2"}, {"A": "3", "B": ""}]
     with pytest.raises(ExtractionError, match=r"missing column\(s\) \['C'\]"):
         common.read_table("A;B\n1;2\n", ";", {"A", "C"}, "x")
