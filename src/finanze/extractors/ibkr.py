@@ -3,6 +3,7 @@
 The CSV is a stack of sections, each `<Section>,<Header|Data|SubTotal|Total|Notes>,...`, and a
 section may repeat its header with different columns (Trades does, once per asset class).
 Reconciliation targets come from the Cash Report (trade-date basis, `Total` column).
+Older statements suffix asset categories with " - Held with ... carried by ...".
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import calendar
 import csv
 import io
 import re
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -40,27 +42,42 @@ _PERIOD = re.compile(r"(\w+) (\d{1,2}), (\d{4}) - (\w+) (\d{1,2}), (\d{4})")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_name) if name}
 _OPTION_CATEGORIES = {"Options On Futures", "Equity and Index Options"}
 _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
+_T_BILL_MATURITY = re.compile(r"Treasury Bill Maturity \((\w+),")
 
 
 def extract(content: str, source_file: str) -> Extraction:
     """Parse the text of an IBKR Activity Statement CSV."""
     sections = _read_sections(content.removeprefix("\ufeff"))
     start, end = _period(_fields(sections, "Statement"))
-    parser = _Parser(source_file, start, end)
+    parser = _Parser(
+        source_file,
+        start,
+        end,
+        maturities=_maturities(sections.get("Financial Instrument Information", [])),
+        futures=_futures_positions(sections.get("Mark-to-Market Performance Summary", [])),
+    )
 
     transactions: list[Transaction] = []
     transactions += parser.deposits_withdrawals(sections.get("Deposits & Withdrawals", []))
     transactions += parser.trades(sections.get("Trades", []))
+    transactions += parser.corporate_actions(sections.get("Corporate Actions", []))
+    parser.check_transfers(sections.get("Transfers", []))
     transactions += parser.dividends(sections.get("Dividends", []))
     transactions += parser.cash_items(
-        "Withholding Tax", sections.get("Withholding Tax", []), Kind.TAX, "Ritenute"
+        "Withholding Tax",
+        sections.get("Withholding Tax", []),
+        Kind.TAX,
+        "Ritenute",
+        backdated=True,  # corrections keep the original payment date
     )
     transactions += parser.cash_items(
         "Interest", sections.get("Interest", []), Kind.INTEREST, "Interessi"
     )
-    transactions += parser.cash_items(
-        "Fees", sections.get("Fees", []), Kind.COMMISSION, "Commissioni"
-    )
+    transactions += parser.fees(sections.get("Fees", []))
+    if "GST/VAT Details" in sections:
+        transactions += parser.vat(sections["GST/VAT Details"])
+    else:  # yearly exports itemise no VAT, only the Cash Report total
+        transactions += parser.sales_tax(sections.get("Cash Report", []))
     balances = _balances(sections.get("Cash Report", []))
     return Extraction(month=start, transactions=tuple(transactions), balances=balances)
 
@@ -147,14 +164,48 @@ def _account(currency: str) -> str:
     return f"IBKR {currency}"
 
 
+def _asset_category(row: _Row) -> str:
+    return row["Asset Category"].partition(" - Held with ")[0]
+
+
+def _maturities(rows: list[_Row]) -> dict[str, date]:
+    return {
+        row["Symbol"]: _iso_date(row["Maturity"], "Financial Instrument Information")
+        for row in rows
+        if _asset_category(row) == "Treasury Bills"
+    }
+
+
+def _futures_positions(rows: list[_Row]) -> dict[str, tuple[Decimal, Decimal]]:
+    """Futures symbol -> (prior, current) quantity, from the Mark-to-Market summary."""
+    return {
+        row["Symbol"]: (
+            _decimal(row["Prior Quantity"], "Mark-to-Market prior quantity"),
+            _decimal(row["Current Quantity"], "Mark-to-Market current quantity"),
+        )
+        for row in rows
+        if _asset_category(row) == "Futures"
+    }
+
+
 # ------------------------------------------------------------------ section parsers
 
 
 class _Parser:
-    def __init__(self, source_file: str, start: date, end: date) -> None:
+    def __init__(
+        self,
+        source_file: str,
+        start: date,
+        end: date,
+        *,
+        maturities: dict[str, date],
+        futures: dict[str, tuple[Decimal, Decimal]],
+    ) -> None:
         self._source_file = source_file
         self._start = start
         self._end = end
+        self._maturities = maturities
+        self._futures = futures
 
     def _txn(  # noqa: PLR0913  # builder mirroring the Transaction fields it fills
         self,
@@ -167,9 +218,13 @@ class _Parser:
         category: str,
         ref: str,
         counterparty: str = "",
+        backdated: bool = False,
     ) -> Transaction:
+        booked = self._in_period(day, backdated=backdated)
+        if booked != day:
+            description = f"{description} (dated {day})"
         return Transaction(
-            date=self._in_period(day),
+            date=booked,
             account=_account(currency),
             amount=amount,
             currency=currency,
@@ -181,7 +236,11 @@ class _Parser:
             category=category,
         )
 
-    def _in_period(self, day: date) -> date:
+    def _in_period(self, day: date, *, backdated: bool = False) -> date:
+        # Some rows IBKR books in this period still carry an earlier date: those are booked
+        # on the first day of the period when the caller allows it.
+        if backdated and day < self._start:
+            return self._start
         if not self._start <= day <= self._end:
             msg = f"{day} is outside the statement period {self._start} to {self._end}"
             raise ExtractionError(msg)
@@ -194,18 +253,20 @@ class _Parser:
                 continue
             amount = _decimal(row["Amount"], "Deposits & Withdrawals")
             description = row["Description"]
-            category = ""
+            kind, category = Kind.TRANSFER, ""
             if description.startswith("Electronic Fund Transfer") and amount > 0:
                 category = "Topup IBKR"
             elif description.startswith("Disbursement") and amount < 0:
                 category = "Prelievi"
+            elif description.startswith("Commission Adjustment"):  # e.g. CAT fee refund
+                kind, category = Kind.COMMISSION, "Commissioni"
             out.append(
                 self._txn(
                     day=_iso_date(row["Settle Date"], "Deposits & Withdrawals"),
                     currency=row["Currency"],
                     amount=amount,
                     description=description,
-                    kind=Kind.TRANSFER,
+                    kind=kind,
                     category=category,
                     ref=f"Deposits & Withdrawals:{n}",
                 )
@@ -213,7 +274,13 @@ class _Parser:
         return out
 
     def cash_items(
-        self, section: str, rows: list[_Row], kind: Kind, category: str
+        self,
+        section: str,
+        rows: list[_Row],
+        kind: Kind,
+        category: str,
+        *,
+        backdated: bool = False,
     ) -> list[Transaction]:
         out: list[Transaction] = []
         for n, row in enumerate(rows, start=1):
@@ -231,9 +298,112 @@ class _Parser:
                     category=category,
                     ref=f"{section}:{n}",
                     counterparty=ticker[1] if ticker else "",
+                    backdated=backdated,
                 )
             )
         return out
+
+    def fees(self, rows: list[_Row]) -> list[Transaction]:
+        # Positive rows are fee reversals or waivers (same description as the charge), except
+        # referral bonuses: those are income, left for review.
+        return [
+            replace(txn, kind=Kind.INCOME, category="")
+            if txn.description.startswith("REFERRER CREDIT")
+            else txn
+            for txn in self.cash_items("Fees", rows, Kind.COMMISSION, "Commissioni")
+        ]
+
+    def vat(self, rows: list[_Row]) -> list[Transaction]:
+        # VAT on market data fees; reversals carry the opposite sign. Totals are `Total` rows.
+        out: list[Transaction] = []
+        for n, row in enumerate(rows, start=1):
+            out.append(
+                self._txn(
+                    day=_iso_date(row["Date"], "GST/VAT Details"),
+                    currency=row["Currency"],
+                    amount=_decimal(row["GST/VAT"], "GST/VAT Details"),
+                    description=f"VAT {row['Description'].strip()}",
+                    kind=Kind.COMMISSION,
+                    category="Commissioni",
+                    ref=f"GST/VAT Details:{n}",
+                )
+            )
+        return out
+
+    def sales_tax(self, rows: list[_Row]) -> list[Transaction]:
+        # The Base Currency Summary block labels its Sales Tax line with the base currency, so
+        # only lines inside their own currency's block (after its Starting Cash) count.
+        out: list[Transaction] = []
+        block = ""
+        for row in rows:
+            currency = row["Currency"]
+            if row["Currency Summary"] == "Starting Cash":
+                block = currency
+            elif row["Currency Summary"] == "Sales Tax" and currency == block:
+                out.append(
+                    self._txn(
+                        day=self._end,
+                        currency=currency,
+                        amount=_decimal(row["Total"], "Cash Report Sales Tax"),
+                        description="Sales Tax (VAT on fees)",
+                        kind=Kind.COMMISSION,
+                        category="Commissioni",
+                        ref=f"Cash Report:Sales Tax:{currency}",
+                    )
+                )
+        return out
+
+    def corporate_actions(self, rows: list[_Row]) -> list[Transaction]:
+        out: list[Transaction] = []
+        for n, row in enumerate(rows, start=1):
+            if row.is_total():
+                continue
+            proceeds = _decimal(row["Proceeds"], "Corporate Actions proceeds")
+            if proceeds == 0:  # splits and the like: no cash moves
+                continue
+            description = row["Description"]
+            match = _T_BILL_MATURITY.search(description)
+            if _asset_category(row) != "Treasury Bills" or not match:
+                msg = f"Corporate Actions row {n}: unsupported corporate action {description!r}"
+                raise UnsupportedStatementError(msg)
+            out += self._t_bill_maturity(row, match[1], proceeds, f"Corporate Actions:{n}")
+        return out
+
+    def _t_bill_maturity(
+        self, row: _Row, cusip: str, proceeds: Decimal, ref: str
+    ) -> list[Transaction]:
+        # D13 on IBKR's basis: principal = proceeds - realized P/L (FIFO cost incl. the buy
+        # commission), interest = realized P/L. Dated on the maturity (report) date.
+        interest = _decimal(row["Realized P/L"], "Corporate Actions realized P/L")
+        day = _iso_date(row["Report Date"], "Corporate Actions")
+        legs = (
+            ("principal", proceeds - interest, Kind.INCOME, "Investimenti"),
+            ("interest", interest, Kind.INTEREST, "Interessi"),
+        )
+        return [
+            self._txn(
+                day=day,
+                currency=row["Currency"],
+                amount=amount,
+                description=f"T-bill {cusip} maturity: {leg}",
+                kind=kind,
+                category=category,
+                ref=f"{ref}:{leg}",
+                counterparty=cusip,
+            )
+            for leg, amount, kind, category in legs
+            if amount != 0
+        ]
+
+    def check_transfers(self, rows: list[_Row]) -> None:
+        # Position transfers (e.g. shares moved in from another broker) move no cash here.
+        for n, row in enumerate(rows, start=1):
+            if row.is_total():
+                continue
+            cash = _decimal(row["Cash Amount"], "Transfers cash amount")
+            if cash != 0:
+                msg = f"Transfers row {n}: transfer of {row['Symbol']} moves cash {cash}"
+                raise UnsupportedStatementError(msg)
 
     def dividends(self, rows: list[_Row]) -> list[Transaction]:
         # Payments in lieu of dividends are booked as dividends too.
@@ -245,10 +415,14 @@ class _Parser:
             if row["DataDiscriminator"] != "Order":
                 msg = f"Trades row {n}: unexpected discriminator {row['DataDiscriminator']!r}"
                 raise ExtractionError(msg)
-            category = row["Asset Category"]
+            category = _asset_category(row)
             ref = f"Trades:{n}"
             if category == "Stocks":
-                out.append(self._security_trade(row, ref))
+                out.append(self._security_trade(row, ref, row["Symbol"]))
+            elif category == "Treasury Bills":
+                out.append(self._t_bill_trade(row, ref))
+            elif category == "Futures":
+                out.append(self._futures_trade(row, ref))
             elif category in _OPTION_CATEGORIES:
                 out += self._option_trade(row, ref)
             elif category == "Forex":
@@ -256,10 +430,10 @@ class _Parser:
             else:
                 msg = f"Trades row {n}: unsupported asset category {category!r}"
                 raise UnsupportedStatementError(msg)
-            out += self._commission(row, ref)
+            out += self._commission(row, ref, backdated=category == "Forex")
         return out
 
-    def _commission(self, row: _Row, ref: str) -> list[Transaction]:
+    def _commission(self, row: _Row, ref: str, *, backdated: bool) -> list[Transaction]:
         # Forex rows label the column "Comm in <base ccy>": the fee is charged in that currency.
         column = next((key for key in row if key.startswith("Comm")), None)
         if column is None:
@@ -278,14 +452,25 @@ class _Parser:
                 kind=Kind.COMMISSION,
                 category="Commissioni",
                 ref=f"{ref}:comm",
+                backdated=backdated,
             )
         ]
 
-    def _security_trade(self, row: _Row, ref: str) -> SecurityTrade:
+    def _t_bill_trade(self, row: _Row, ref: str) -> SecurityTrade:
+        # Symbol is "<CUSIP> <yield>%"; quantity is face value, price is % of face.
+        cusip = row["Symbol"].split(maxsplit=1)[0]
+        maturity = self._maturities.get(cusip)
+        if maturity is None:
+            msg = f"Trades {ref}: no maturity for {cusip} in Financial Instrument Information"
+            raise ExtractionError(msg)
+        return self._security_trade(row, ref, cusip, maturity)
+
+    def _security_trade(
+        self, row: _Row, ref: str, symbol: str, maturity: date | None = None
+    ) -> SecurityTrade:
         quantity = _decimal(row["Quantity"], "Trades quantity")
         price = _decimal(row["T. Price"], "Trades price")
         proceeds = _decimal(row["Proceeds"], "Trades proceeds")
-        symbol = row["Symbol"]
         return SecurityTrade(
             date=self._in_period(_iso_date(row["Date/Time"], "Trades")),
             account=_account(row["Currency"]),
@@ -300,6 +485,30 @@ class _Parser:
             quantity=quantity,
             price=price,
             cost=-proceeds,
+            maturity=maturity,
+        )
+
+    def _futures_trade(self, row: _Row, ref: str) -> Transaction:
+        # Futures settle daily (Cash Settling MTM), which the statement doesn't itemise. For a
+        # position flat at both ends of the period the notional values net to that cash.
+        symbol = row["Symbol"]
+        position = self._futures.get(symbol)
+        if position is None:
+            msg = f"Trades {ref}: no Mark-to-Market row for futures {symbol}"
+            raise ExtractionError(msg)
+        if any(position):
+            msg = f"Trades {ref}: futures {symbol} is open across the statement period boundary"
+            raise UnsupportedStatementError(msg)
+        quantity = _decimal(row["Quantity"], "Trades quantity")
+        price = _decimal(row["T. Price"], "Trades price")
+        return self._txn(
+            day=_iso_date(row["Date/Time"], "Trades"),
+            currency=row["Currency"],
+            amount=_decimal(row["Notional Value"], "Trades notional value"),
+            description=_describe(quantity, symbol, price),
+            kind=Kind.TRADING,
+            category="Trading",
+            ref=ref,
         )
 
     def _option_trade(self, row: _Row, ref: str) -> list[Transaction]:
@@ -340,6 +549,7 @@ class _Parser:
                 kind=Kind.FX,
                 category=category,
                 ref=f"{ref}:{leg}",
+                backdated=True,  # executed after IBKR's 17:00 ET roll: next period's trade date
             )
             for leg, currency, amount in (("base", base, quantity), ("quote", quote, proceeds))
         ]
