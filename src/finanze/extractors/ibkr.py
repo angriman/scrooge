@@ -12,7 +12,7 @@ import calendar
 import csv
 import io
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
@@ -43,6 +43,7 @@ _PERIOD = re.compile(r"(\w+) (\d{1,2}), (\d{4}) - (\w+) (\d{1,2}), (\d{4})")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_name) if name}
 _OPTION_CATEGORIES = {"Options On Futures", "Equity and Index Options"}
 _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
+_STOCK_TABS = {"ETF": "ETFs", "COMMON": "Stocks", "ADR": "Stocks", "REIT": "Stocks"}
 _T_BILL_MATURITY = re.compile(r"Treasury Bill Maturity \((\w+),")
 
 
@@ -50,13 +51,12 @@ def extract(content: str, source_file: str) -> Extraction:
     """Parse the text of an IBKR Activity Statement CSV."""
     sections = _read_sections(content.removeprefix("\ufeff"))
     start, end = _period(_fields(sections, "Statement"))
-    parser = _Parser(
-        source_file,
-        start,
-        end,
+    instruments = _Instruments(
         maturities=_maturities(sections.get("Financial Instrument Information", [])),
+        asset_tabs=_asset_tabs(sections.get("Financial Instrument Information", [])),
         futures=_futures_positions(sections.get("Mark-to-Market Performance Summary", [])),
     )
+    parser = _Parser(source_file, start, end, instruments)
 
     transactions: list[Transaction] = []
     transactions += parser.deposits_withdrawals(sections.get("Deposits & Withdrawals", []))
@@ -161,6 +161,20 @@ def _maturities(rows: list[_Row]) -> dict[str, date]:
     }
 
 
+def _asset_tabs(rows: list[_Row]) -> dict[str, str]:
+    """Stock symbol -> asset tab. IBKR files ETFs under "Stocks" but gives the type here (D12).
+
+    A symbol with aliases is listed as "B26A, CEBE". Types other than ETF and COMMON are left
+    out: such trades need an `instruments.yaml` entry.
+    """
+    tabs: dict[str, str] = {}
+    for row in rows:
+        tab = _STOCK_TABS.get(row["Type"]) if _asset_category(row) == "Stocks" else None
+        if tab:
+            tabs.update(dict.fromkeys(row["Symbol"].split(", "), tab))
+    return tabs
+
+
 def _futures_positions(rows: list[_Row]) -> dict[str, tuple[Decimal, Decimal]]:
     """Futures symbol -> (prior, current) quantity, from the Mark-to-Market summary."""
     return {
@@ -176,21 +190,23 @@ def _futures_positions(rows: list[_Row]) -> dict[str, tuple[Decimal, Decimal]]:
 # ------------------------------------------------------------------ section parsers
 
 
+@dataclass(frozen=True, slots=True)
+class _Instruments:
+    """What the statement's reference sections say about the traded instruments."""
+
+    maturities: dict[str, date]
+    asset_tabs: dict[str, str]
+    futures: dict[str, tuple[Decimal, Decimal]]
+
+
 class _Parser:
-    def __init__(
-        self,
-        source_file: str,
-        start: date,
-        end: date,
-        *,
-        maturities: dict[str, date],
-        futures: dict[str, tuple[Decimal, Decimal]],
-    ) -> None:
+    def __init__(self, source_file: str, start: date, end: date, instruments: _Instruments) -> None:
         self._source_file = source_file
         self._start = start
         self._end = end
-        self._maturities = maturities
-        self._futures = futures
+        self._maturities = instruments.maturities
+        self._asset_tabs = instruments.asset_tabs
+        self._futures = instruments.futures
 
     def _txn(  # noqa: PLR0913  # builder mirroring the Transaction fields it fills
         self,
@@ -470,6 +486,7 @@ class _Parser:
             quantity=quantity,
             price=price,
             cost=-proceeds,
+            asset_tab="Bonds" if maturity else self._asset_tabs.get(symbol, ""),
             maturity=maturity,
         )
 

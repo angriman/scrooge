@@ -97,7 +97,8 @@ def test_security_trades_carry_asset_tab_fields(result: Extraction) -> None:
         ("912797ZZ1", date(2026, 9, 9), Decimal(10000), Decimal("98.5"), Decimal(9850), "USD"),
     ]
     assert {t.account for t in trades} == {"IBKR USD"}
-    assert {t.asset_tab for t in trades} == {""}  # resolved later from instruments.yaml (D12)
+    # D12: the tab comes from the instrument's type, not from IBKR's "Stocks" asset class
+    assert [t.asset_tab for t in trades] == ["Stocks", "ETFs", "Bonds"]
     assert {t.category for t in trades} == {"Investimenti"}
 
 
@@ -350,3 +351,14 @@ def test_backdated_rows_in_other_sections_still_raise() -> None:
     content = CSV.replace("2026-09-15, 10:31:07", "2026-08-15, 10:31:07")
     with pytest.raises(ExtractionError, match="outside"):
         ibkr.extract(content, source_file="activity.csv")
+
+
+def test_stock_of_an_unlisted_type_gets_no_asset_tab() -> None:
+    content = CSV.replace("WIDG,ARCA,1,ETF,", "WIDG,ARCA,1,WARRANT,")
+    assert content != CSV
+    trades = [
+        t
+        for t in ibkr.extract(content, source_file="activity.csv").transactions
+        if isinstance(t, SecurityTrade)
+    ]
+    assert [(t.ticker, t.asset_tab) for t in trades[:2]] == [("ACME", "Stocks"), ("WIDG", "")]

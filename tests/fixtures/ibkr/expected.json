@@ -80,7 +80,7 @@
     "quantity": "20",
     "price": "112.4",
     "cost": "2248",
-    "asset_tab": "",
+    "asset_tab": "Stocks",
     "maturity": null
   },
   {
@@ -112,7 +112,7 @@
     "quantity": "-10",
     "price": "54.25",
     "cost": "-542.5",
-    "asset_tab": "",
+    "asset_tab": "ETFs",
     "maturity": null
   },
   {
@@ -339,7 +339,7 @@
     "quantity": "10000",
     "price": "98.5",
     "cost": "9850",
-    "asset_tab": "",
+    "asset_tab": "Bonds",
     "maturity": "2026-12-24"
   },
   {

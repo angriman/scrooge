@@ -55,7 +55,8 @@ class SecurityTrade(Transaction):
     `amount` is the signed cash flow excluding commissions (buys negative). `quantity` is signed
     (sells negative). `cost` is the asset tabs' "total paid": `-amount`, so positive for buys.
     It equals price x quantity for shares, but not for bonds (accrued interest is included).
-    `asset_tab` is resolved later from `instruments.yaml` (D12), so extractors leave it empty.
+    `asset_tab` is what the statement says the instrument is, when it says so; `instruments.yaml`
+    overrides it and must supply it otherwise (D12).
     """
 
     ticker: str

@@ -117,5 +117,6 @@ Interest,Data,USD,2026-09-03,USD Credit Interest for Aug-2026,0.56
 Interest,Data,Total,,,12.9
 Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
 Financial Instrument Information,Data,Stocks,ACME,ACME CORP,1001,US0000000001,ACME,NYSE,1,COMMON,
+Financial Instrument Information,Data,Stocks,"WIDG, WIDX",WIDGET WORLD ETF,1003,US0000000002,WIDG,ARCA,1,ETF,
 Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Maturity,Code
 Financial Instrument Information,Data,Treasury Bills,912797ZZ1,B 12/24/26,1002,US912797ZZ11,BILL,,1,2026-12-24,
