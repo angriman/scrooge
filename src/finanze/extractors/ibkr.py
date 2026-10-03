@@ -14,9 +14,10 @@ import io
 import re
 from dataclasses import replace
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
+from finanze.extractors.common import parse_decimal, parse_iso_date
 from finanze.models import CashBalance, Extraction, Kind, SecurityTrade, Transaction
 
 
@@ -106,22 +107,6 @@ def _fields(sections: _Sections, name: str) -> dict[str, str]:
     return {row["Field Name"]: row["Field Value"] for row in sections.get(name, [])}
 
 
-def _decimal(text: str, what: str) -> Decimal:
-    try:
-        return Decimal(text.replace(",", "").strip())
-    except InvalidOperation:
-        msg = f"cannot read amount {text!r} ({what})"
-        raise ExtractionError(msg) from None
-
-
-def _iso_date(text: str, what: str) -> date:
-    try:
-        return date.fromisoformat(text.split(",", maxsplit=1)[0].strip())
-    except ValueError:
-        msg = f"cannot read date {text!r} ({what})"
-        raise ExtractionError(msg) from None
-
-
 def _period(statement: dict[str, str]) -> tuple[date, date]:
     text = statement.get("Period", "")
     match = _PERIOD.fullmatch(text)
@@ -149,7 +134,7 @@ def _balances(rows: list[_Row]) -> tuple[CashBalance, ...]:
             continue
         target = {"Starting Cash": opening, "Ending Cash": closing}.get(row["Currency Summary"])
         if target is not None:
-            target[currency] = _decimal(row["Total"], f"Cash Report {row['Currency Summary']}")
+            target[currency] = parse_decimal(row["Total"], f"Cash Report {row['Currency Summary']}")
     for label, found in (("Starting Cash", opening), ("Ending Cash", closing)):
         missing = (opening.keys() | closing.keys()) - found.keys()
         if missing:
@@ -170,7 +155,7 @@ def _asset_category(row: _Row) -> str:
 
 def _maturities(rows: list[_Row]) -> dict[str, date]:
     return {
-        row["Symbol"]: _iso_date(row["Maturity"], "Financial Instrument Information")
+        row["Symbol"]: parse_iso_date(row["Maturity"], "Financial Instrument Information")
         for row in rows
         if _asset_category(row) == "Treasury Bills"
     }
@@ -180,8 +165,8 @@ def _futures_positions(rows: list[_Row]) -> dict[str, tuple[Decimal, Decimal]]:
     """Futures symbol -> (prior, current) quantity, from the Mark-to-Market summary."""
     return {
         row["Symbol"]: (
-            _decimal(row["Prior Quantity"], "Mark-to-Market prior quantity"),
-            _decimal(row["Current Quantity"], "Mark-to-Market current quantity"),
+            parse_decimal(row["Prior Quantity"], "Mark-to-Market prior quantity"),
+            parse_decimal(row["Current Quantity"], "Mark-to-Market current quantity"),
         )
         for row in rows
         if _asset_category(row) == "Futures"
@@ -251,7 +236,7 @@ class _Parser:
         for n, row in enumerate(rows, start=1):
             if row.is_total():
                 continue
-            amount = _decimal(row["Amount"], "Deposits & Withdrawals")
+            amount = parse_decimal(row["Amount"], "Deposits & Withdrawals")
             description = row["Description"]
             kind, category = Kind.TRANSFER, ""
             if description.startswith("Electronic Fund Transfer") and amount > 0:
@@ -262,7 +247,7 @@ class _Parser:
                 kind, category = Kind.COMMISSION, "Commissioni"
             out.append(
                 self._txn(
-                    day=_iso_date(row["Settle Date"], "Deposits & Withdrawals"),
+                    day=parse_iso_date(row["Settle Date"], "Deposits & Withdrawals"),
                     currency=row["Currency"],
                     amount=amount,
                     description=description,
@@ -290,9 +275,9 @@ class _Parser:
             ticker = re.match(r"(\S+?)\(", description)
             out.append(
                 self._txn(
-                    day=_iso_date(row["Date"], section),
+                    day=parse_iso_date(row["Date"], section),
                     currency=row["Currency"],
-                    amount=_decimal(row["Amount"], section),
+                    amount=parse_decimal(row["Amount"], section),
                     description=description,
                     kind=kind,
                     category=category,
@@ -319,9 +304,9 @@ class _Parser:
         for n, row in enumerate(rows, start=1):
             out.append(
                 self._txn(
-                    day=_iso_date(row["Date"], "GST/VAT Details"),
+                    day=parse_iso_date(row["Date"], "GST/VAT Details"),
                     currency=row["Currency"],
-                    amount=_decimal(row["GST/VAT"], "GST/VAT Details"),
+                    amount=parse_decimal(row["GST/VAT"], "GST/VAT Details"),
                     description=f"VAT {row['Description'].strip()}",
                     kind=Kind.COMMISSION,
                     category="Commissioni",
@@ -344,7 +329,7 @@ class _Parser:
                     self._txn(
                         day=self._end,
                         currency=currency,
-                        amount=_decimal(row["Total"], "Cash Report Sales Tax"),
+                        amount=parse_decimal(row["Total"], "Cash Report Sales Tax"),
                         description="Sales Tax (VAT on fees)",
                         kind=Kind.COMMISSION,
                         category="Commissioni",
@@ -358,7 +343,7 @@ class _Parser:
         for n, row in enumerate(rows, start=1):
             if row.is_total():
                 continue
-            proceeds = _decimal(row["Proceeds"], "Corporate Actions proceeds")
+            proceeds = parse_decimal(row["Proceeds"], "Corporate Actions proceeds")
             if proceeds == 0:  # splits and the like: no cash moves
                 continue
             description = row["Description"]
@@ -374,8 +359,8 @@ class _Parser:
     ) -> list[Transaction]:
         # D13 on IBKR's basis: principal = proceeds - realized P/L (FIFO cost incl. the buy
         # commission), interest = realized P/L. Dated on the maturity (report) date.
-        interest = _decimal(row["Realized P/L"], "Corporate Actions realized P/L")
-        day = _iso_date(row["Report Date"], "Corporate Actions")
+        interest = parse_decimal(row["Realized P/L"], "Corporate Actions realized P/L")
+        day = parse_iso_date(row["Report Date"], "Corporate Actions")
         legs = (
             ("principal", proceeds - interest, Kind.INCOME, "Investimenti"),
             ("interest", interest, Kind.INTEREST, "Interessi"),
@@ -400,7 +385,7 @@ class _Parser:
         for n, row in enumerate(rows, start=1):
             if row.is_total():
                 continue
-            cash = _decimal(row["Cash Amount"], "Transfers cash amount")
+            cash = parse_decimal(row["Cash Amount"], "Transfers cash amount")
             if cash != 0:
                 msg = f"Transfers row {n}: transfer of {row['Symbol']} moves cash {cash}"
                 raise UnsupportedStatementError(msg)
@@ -440,12 +425,12 @@ class _Parser:
             msg = f"Trades {ref}: no commission column"
             raise ExtractionError(msg)
         currency = column.removeprefix("Comm in ") if column.startswith("Comm in ") else None
-        amount = _decimal(row[column], "commission")
+        amount = parse_decimal(row[column], "commission")
         if amount == 0:
             return []
         return [
             self._txn(
-                day=_iso_date(row["Date/Time"], "Trades"),
+                day=parse_iso_date(row["Date/Time"], "Trades"),
                 currency=currency or row["Currency"],
                 amount=amount,
                 description=f"Commission {row['Symbol']}",
@@ -468,11 +453,11 @@ class _Parser:
     def _security_trade(
         self, row: _Row, ref: str, symbol: str, maturity: date | None = None
     ) -> SecurityTrade:
-        quantity = _decimal(row["Quantity"], "Trades quantity")
-        price = _decimal(row["T. Price"], "Trades price")
-        proceeds = _decimal(row["Proceeds"], "Trades proceeds")
+        quantity = parse_decimal(row["Quantity"], "Trades quantity")
+        price = parse_decimal(row["T. Price"], "Trades price")
+        proceeds = parse_decimal(row["Proceeds"], "Trades proceeds")
         return SecurityTrade(
-            date=self._in_period(_iso_date(row["Date/Time"], "Trades")),
+            date=self._in_period(parse_iso_date(row["Date/Time"], "Trades")),
             account=_account(row["Currency"]),
             amount=proceeds,
             currency=row["Currency"],
@@ -499,12 +484,12 @@ class _Parser:
         if any(position):
             msg = f"Trades {ref}: futures {symbol} is open across the statement period boundary"
             raise UnsupportedStatementError(msg)
-        quantity = _decimal(row["Quantity"], "Trades quantity")
-        price = _decimal(row["T. Price"], "Trades price")
+        quantity = parse_decimal(row["Quantity"], "Trades quantity")
+        price = parse_decimal(row["T. Price"], "Trades price")
         return self._txn(
-            day=_iso_date(row["Date/Time"], "Trades"),
+            day=parse_iso_date(row["Date/Time"], "Trades"),
             currency=row["Currency"],
-            amount=_decimal(row["Notional Value"], "Trades notional value"),
+            amount=parse_decimal(row["Notional Value"], "Trades notional value"),
             description=_describe(quantity, symbol, price),
             kind=Kind.TRADING,
             category="Trading",
@@ -512,14 +497,14 @@ class _Parser:
         )
 
     def _option_trade(self, row: _Row, ref: str) -> list[Transaction]:
-        proceeds = _decimal(row["Proceeds"], "Trades proceeds")
+        proceeds = parse_decimal(row["Proceeds"], "Trades proceeds")
         if proceeds == 0:  # expiry: no cash moves
             return []
-        quantity = _decimal(row["Quantity"], "Trades quantity")
-        price = _decimal(row["T. Price"], "Trades price")
+        quantity = parse_decimal(row["Quantity"], "Trades quantity")
+        price = parse_decimal(row["T. Price"], "Trades price")
         return [
             self._txn(
-                day=_iso_date(row["Date/Time"], "Trades"),
+                day=parse_iso_date(row["Date/Time"], "Trades"),
                 currency=row["Currency"],
                 amount=proceeds,
                 description=_describe(quantity, row["Symbol"], price),
@@ -534,12 +519,13 @@ class _Parser:
         if quote != row["Currency"]:
             msg = f"Trades {ref}: quote currency of {row['Symbol']} is not {row['Currency']}"
             raise ExtractionError(msg)
-        day = _iso_date(row["Date/Time"], "Trades")
-        quantity = _decimal(row["Quantity"], "Trades quantity")
-        proceeds = _decimal(row["Proceeds"], "Trades proceeds")
+        day = parse_iso_date(row["Date/Time"], "Trades")
+        quantity = parse_decimal(row["Quantity"], "Trades quantity")
+        proceeds = parse_decimal(row["Proceeds"], "Trades proceeds")
         bought = base if quantity > 0 else quote
         category = f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
-        description = f"FX {row['Symbol']} @ {format(_decimal(row['T. Price'], 'FX price'), 'f')}"
+        price = parse_decimal(row["T. Price"], "FX price")
+        description = f"FX {row['Symbol']} @ {format(price, 'f')}"
         return [
             self._txn(
                 day=day,

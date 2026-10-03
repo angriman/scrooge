@@ -3,9 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.models import CashBalance, Extraction, Kind, Transaction
+from finanze.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
 from finanze.validation import (
     BalanceMismatchError,
+    ControlTotalMismatchError,
     MissingBalanceError,
     ReconciliationError,
     check_balances,
@@ -90,3 +91,21 @@ def test_each_account_is_checked_independently() -> None:
     with pytest.raises(BalanceMismatchError) as exc:
         check_balances(extraction)
     assert exc.value.account == "IBKR EUR"
+
+
+def test_control_total_must_match_the_sum_of_transactions() -> None:
+    control = ControlTotal("IBKR USD", "USD", Decimal("7.25"))
+    both = (_txn("10.50"), _txn("-3.25"))
+    check_balances(Extraction(month=SEPTEMBER, transactions=both, controls=(control,)))
+    bad = Extraction(month=SEPTEMBER, transactions=(_txn("10.50"),), controls=(control,))
+    with pytest.raises(ControlTotalMismatchError, match=r"off by 3\.25") as exc:
+        check_balances(bad)
+    assert (exc.value.expected, exc.value.actual) == (Decimal("7.25"), Decimal("10.50"))
+    assert isinstance(exc.value, ReconciliationError)
+
+
+def test_unreconciled_accounts_are_allowed_without_a_balance() -> None:
+    extraction = Extraction(month=SEPTEMBER, transactions=(_txn("1"),), unreconciled=("IBKR USD",))
+    check_balances(extraction)
+    with pytest.raises(MissingBalanceError):
+        check_balances(Extraction(month=SEPTEMBER, transactions=(_txn("1"),)))

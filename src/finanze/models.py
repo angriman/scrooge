@@ -19,6 +19,9 @@ class Kind(StrEnum):
     DIVIDEND = "dividend"
     TAX = "tax"
     SECURITY_TRADE = "security_trade"
+    # Moves money inside one sheet account (or is replaced by another source, like the Swisscard
+    # debit on Migros): needed to reconcile the statement, never written to the sheet.
+    INTERNAL = "internal"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,9 +77,24 @@ class CashBalance:
 
 
 @dataclass(frozen=True, slots=True)
+class ControlTotal:
+    """Net cash flow of one account, for statements that print totals but no balances."""
+
+    account: str
+    currency: str
+    total: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class Extraction:
-    """What an extractor returns: transactions plus the balances they must reconcile to."""
+    """What an extractor returns: transactions plus the figures they must reconcile to.
+
+    `unreconciled` names accounts for which the statement prints nothing to check against
+    (Revolut Savings); callers must surface them to the user.
+    """
 
     month: date  # first day of the calendar month the statement covers
     transactions: tuple[Transaction, ...]
-    balances: tuple[CashBalance, ...]
+    balances: tuple[CashBalance, ...] = ()
+    controls: tuple[ControlTotal, ...] = ()
+    unreconciled: tuple[str, ...] = ()
