@@ -43,3 +43,40 @@ class Transaction:
         if not isinstance(amount, Decimal):
             msg = f"amount must be Decimal, got {type(amount).__name__}"
             raise TypeError(msg)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SecurityTrade(Transaction):
+    """A buy/sell of an instrument that also lands in an asset tab (D11).
+
+    `amount` is the signed cash flow excluding commissions (buys negative). `quantity` is signed
+    (sells negative). `cost` is the asset tabs' "total paid": `-amount`, so positive for buys.
+    It equals price x quantity for shares, but not for bonds (accrued interest is included).
+    `asset_tab` is resolved later from `instruments.yaml` (D12), so extractors leave it empty.
+    """
+
+    ticker: str
+    quantity: Decimal
+    price: Decimal
+    cost: Decimal
+    asset_tab: str = ""
+    maturity: date | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CashBalance:
+    """Opening and closing cash of one account, as printed on the statement."""
+
+    account: str
+    currency: str
+    opening: Decimal
+    closing: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class Extraction:
+    """What an extractor returns: transactions plus the balances they must reconcile to."""
+
+    month: date  # first day of the calendar month the statement covers
+    transactions: tuple[Transaction, ...]
+    balances: tuple[CashBalance, ...]
