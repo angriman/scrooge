@@ -30,6 +30,7 @@ _COLUMNS = (
     "Balance",
 )
 _NO_CASH_STATES = {"PENDING", "REVERTED"}
+_CARD_TOPUP = re.compile(r"(Top-up|(Google|Apple) Pay deposit) by \*", re.IGNORECASE)
 _EXCHANGED_TO = re.compile(r"Exchanged? to ([A-Z]{3})")
 _OWN_SAVINGS = re.compile(r"(To|From) ([A-Z]{3} )?Flexible Cash Funds\b")
 _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
@@ -130,7 +131,7 @@ def _classify(row: dict[str, str], amount: Decimal, n: int) -> tuple[Kind, str]:
     kind = _type(row)
     description = row["Description"]
     by_sign = (Kind.EXPENSE if amount < 0 else Kind.INCOME, "")  # category from rules.yaml
-    if kind == "TOPUP" or (kind == "DEPOSIT" and description.lower().startswith("top-up")):
+    if kind == "TOPUP" or (kind == "DEPOSIT" and _CARD_TOPUP.match(description)):
         return Kind.TRANSFER, "Topup Revolut"
     if kind == "EXCHANGE":
         match = _EXCHANGED_TO.search(description)

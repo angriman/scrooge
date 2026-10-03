@@ -33,6 +33,7 @@ _TRANSFERS = (
     ("Interactive Brokers", Kind.TRANSFER, "Topup IBKR"),
     ("Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
     ("Storno, Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
+    ("Storno: Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
     # D3: the card bill is replaced by the individual Swisscard purchases.
     ("Swisscard AECS", Kind.INTERNAL, ""),
 )

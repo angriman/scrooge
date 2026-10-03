@@ -61,7 +61,7 @@ def test_fully_classified_month_aggregates(folder: Path) -> None:
     assert uscite["Revolut Metal", "Revolut CHF"] == Decimal("18.99")
     # Migros 150 + 200 by transfer, plus 100 by credit card (Swisscard)
     assert uscite["Topup Revolut", "Migros"] == Decimal("450.00")
-    assert entrate["Topup Revolut", "Revolut CHF"] == Decimal("200.00")
+    assert entrate["Topup Revolut", "Revolut CHF"] == Decimal("230.00")
     assert entrate["Cashback", "Migros"] == Decimal("67.80")
     assert entrate["Stipendio", "Migros"] == Decimal("7200.00")
     assert BudgetRow("Interessi", "Revolut EUR", Decimal("0.17")) in budget.entrate

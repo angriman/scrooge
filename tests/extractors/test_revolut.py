@@ -29,7 +29,7 @@ def test_matches_golden_file(result: Extraction) -> None:
 def test_balances_are_the_ends_of_the_running_balance(result: Extraction) -> None:
     assert result.month == date(2026, 9, 1)
     assert result.balances == (
-        CashBalance("Revolut CHF", "CHF", Decimal("7.13"), Decimal("158.31")),
+        CashBalance("Revolut CHF", "CHF", Decimal("7.13"), Decimal("188.31")),
     )
     check_balances(result)
 
@@ -43,13 +43,14 @@ def test_payment_started_last_month_is_booked_on_completion(result: Extraction) 
 
 
 def test_pending_reverted_and_savings_mirror_rows_are_skipped(result: Extraction) -> None:
-    assert {"10", "11", "16"}.isdisjoint(t.source_ref for t in result.transactions)
+    assert {"10", "11", "17"}.isdisjoint(t.source_ref for t in result.transactions)
 
 
 def test_deterministic_categories(result: Extraction) -> None:
     day = date(2026, 9, 1)
     assert _row(result, "2") == (day.replace(day=4), Decimal(150), Kind.TRANSFER, "Topup Revolut")
     assert _row(result, "14") == (day.replace(day=21), Decimal(50), Kind.TRANSFER, "Topup Revolut")
+    assert _row(result, "16") == (day.replace(day=23), Decimal(30), Kind.TRANSFER, "Topup Revolut")
     assert _row(result, "4") == (day.replace(day=7), Decimal("-47.5"), Kind.FX, "Acquisto EUR")
     assert _row(result, "15") == (day.replace(day=22), Decimal(-20), Kind.FX, "")  # no GBP category
     assert _row(result, "6") == (day.replace(day=9), Decimal(-40), Kind.TRANSFER, "Prelievi")

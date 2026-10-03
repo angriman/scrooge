@@ -59,6 +59,8 @@ def test_transfers_and_the_card_bill_are_classified(result: Extraction) -> None:
 def test_money_coming_back_from_a_broker_is_left_for_review() -> None:
     back = migros._classify("Interactive Brokers LLC, One Pickwick Plaza", Decimal(3000))
     assert back == (Kind.TRANSFER, "")
+    reversal = migros._classify("Storno: Prelevamento al Bancomat BM Zürich", Decimal(20))
+    assert reversal == (Kind.TRANSFER, "Prelievi")
 
 
 def test_everything_else_is_income_or_expense_for_the_rules(result: Extraction) -> None:
