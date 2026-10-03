@@ -1,0 +1,100 @@
+from collections import defaultdict
+from datetime import date
+from decimal import Decimal
+
+import pytest
+
+from finanze.errors import ExtractionError, UnsupportedStatementError
+from finanze.extractors import tastytrade
+from finanze.models import ControlTotal, Extraction, Kind
+from finanze.validation import check_balances
+from tests.extractors.golden import FIXTURES, assert_matches_golden
+
+CSV = (FIXTURES / "tastytrade" / "transactions.csv").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def result() -> Extraction:
+    return tastytrade.extract(CSV, source_file="transactions.csv")
+
+
+def _by_category(result: Extraction) -> dict[str, Decimal]:
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    for txn in result.transactions:
+        totals[txn.category] += txn.amount
+    return dict(totals)
+
+
+def test_matches_golden_file(result: Extraction) -> None:
+    assert_matches_golden(result, "tastytrade")
+
+
+def test_month_and_account(result: Extraction) -> None:
+    assert result.month == date(2026, 9, 1)
+    assert {(t.account, t.currency) for t in result.transactions} == {("Tastytrade", "USD")}
+
+
+def test_control_total_is_the_sum_of_the_total_column(result: Extraction) -> None:
+    assert result.controls == (ControlTotal("Tastytrade", "USD", Decimal("975.61")),)
+    check_balances(result)
+
+
+def test_category_totals_follow_d1(result: Extraction) -> None:
+    assert _by_category(result) == {
+        # option premiums 234.38 - 125 + 150, futures mark-to-market -2000 and close 1550
+        "Trading": Decimal("-190.62"),
+        # commissions + fees of every row, + 0.01 regulatory fee adjustment
+        "Commissioni": Decimal("-11.26"),
+        # T-bill buy -9851 and maturity 10000, ETF buy -2010.88
+        "Investimenti": Decimal("-1861.88"),
+        "Interessi": Decimal("0.04"),
+        "Dividendi": Decimal("39.33"),
+        "": Decimal("3000.00"),  # wire deposit, left for review
+    }
+
+
+def test_share_trade_amount_comes_from_total_not_the_rounded_value(result: Extraction) -> None:
+    # Value -2,010.89 and Fees -0.02, but Total -2,010.90: the cash is what counts.
+    buy = next(t for t in result.transactions if t.source_ref == "18")
+    assert (buy.amount, buy.kind) == (Decimal("-2010.88"), Kind.SECURITY_TRADE)
+
+
+def test_rows_without_cash_produce_no_transaction(result: Extraction) -> None:
+    assert all(t.amount != 0 for t in result.transactions)
+    assert "3" not in {t.source_ref for t in result.transactions}  # worthless expiration
+    assert {"4:fees", "5:fees", "6:fees"} <= {t.source_ref for t in result.transactions}
+
+
+def test_fund_distribution_booked_as_deposit_is_a_dividend(result: Extraction) -> None:
+    row = next(t for t in result.transactions if t.source_ref == "16")
+    assert (row.kind, row.category, row.counterparty) == (Kind.DIVIDEND, "Dividendi", "WIDG")
+
+
+def test_dates_are_local_trade_dates_and_refs_unique(result: Extraction) -> None:
+    assert result.transactions[0].date == date(2026, 9, 30)
+    refs = [t.source_ref for t in result.transactions]
+    assert len(refs) == len(set(refs))
+
+
+def test_rerunning_gives_identical_output(result: Extraction) -> None:
+    assert tastytrade.extract("﻿" + CSV, source_file="transactions.csv") == result
+
+
+@pytest.mark.parametrize(
+    ("content", "error", "message"),
+    [
+        (CSV.replace("2026-09-04T21", "2026-08-31T21"), ExtractionError, "one calendar month"),
+        (CSV.splitlines()[0] + "\n", ExtractionError, "no rows"),
+        (CSV.replace(",Total,", ",Net,"), ExtractionError, "missing column"),
+        (CSV.replace(",231.97,USD", ",232.97,USD"), ExtractionError, "does not match Total"),
+        (CSV.replace(",0.22,USD", ",abc,USD"), ExtractionError, "amount"),
+        (CSV.replace("2026-09-30T20:42", "30.09.2026 20:42"), ExtractionError, "date"),
+        (CSV.replace(",231.97,USD", ",231.97,EUR"), UnsupportedStatementError, "currency"),
+        (CSV.replace("Balance Adjustment", "ACAT"), UnsupportedStatementError, "ACAT"),
+        (CSV.replace("Trade,Sell,SELL", "Journal,Sell,SELL"), UnsupportedStatementError, "Journal"),
+    ],
+)
+def test_malformed_exports_raise(content: str, error: type[Exception], message: str) -> None:
+    assert content != CSV
+    with pytest.raises(error, match=message):
+        tastytrade.extract(content, source_file="transactions.csv")

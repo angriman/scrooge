@@ -1,0 +1,19 @@
+Date,Type,Sub Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,Commissions,Fees,Multiplier,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put,Order #,Total,Currency
+2026-09-30T20:42:22+0200,Trade,Sell to Open,SELL_TO_OPEN,./ZBZ6 OZBX6 261023C109,Future Option,Sold 1 /ZBZ6 OZBX6 10/23/26 Call 109'00 @ 0.234375,234.38,1,234.38,-1.25,-1.16,1,"./ZBZ6 OZBX6 ",/ZBZ6,10/23/26,109,CALL,900000001,231.97,USD
+2026-09-28T16:10:00+0200,Trade,Buy to Close,BUY_TO_CLOSE,./ESZ6 E3AV6 261002P6000,Future Option,Bought 1 /ESZ6 E3AV6 10/02/26 Put 6000.00 @ 2.5,-125.00,1,-125.00,0.00,-0.87,1,"./ESZ6 E3AV6 ",/ESZ6,10/2/26,6000,PUT,900000002,-125.87,USD
+2026-09-25T23:00:00+0200,Receive Deliver,Expiration,BUY_TO_CLOSE,./ESZ6 E3AU6 260925C7000,Future Option,Removal of option due to expiration,0.00,1,0.00,--,0.00,1,"./ESZ6 E3AU6 ",/ESZ6,9/25/26,7000,CALL,,0.00,USD
+2026-09-25T23:00:00+0200,Receive Deliver,Expiration,SELL_TO_CLOSE,./ZBZ6 OZBV6 260925P108,Future Option,Removal of option due to expiration,0.00,2,0.00,--,-0.20,1,"./ZBZ6 OZBV6 ",/ZBZ6,9/25/26,108,PUT,,-0.20,USD
+2026-09-23T23:00:00+0200,Receive Deliver,Assignment,BUY_TO_CLOSE,./GCZ6 G4TU6 260923P4200,Future Option,Removal of option due to assignment,0.00,1,0.00,--,-0.85,1,"./GCZ6 G4TU6 ",/GCZ6,9/23/26,4200,PUT,,-0.85,USD
+2026-09-23T23:00:00+0200,Receive Deliver,Buy to Open,BUY_TO_OPEN,/GCZ6,Future,Buy to Open 1 /GCZ6 @ 4200.00,0.00,1,0.00,-1.00,-1.82,,,,,,,,-2.82,USD
+2026-09-24T23:00:00+0200,Money Movement,Mark to Market,,/GCZ6,Future,/GCZ6 mark to market at 4180.0 Preliminary settlement price,"-2,000.00",1,"-2,000.00",--,0.00,,,,,,,,"-2,000.00",USD
+2026-09-25T15:40:11+0200,Trade,Sell,SELL,/GCZ6,Future,Sold 1 /GCZ6 @ 4195.5,"1,550.00",1,"1,550.00",-1.00,-1.96,,,,,,,900000003,"1,547.04",USD
+2026-09-18T20:15:00+0200,Trade,Sell to Open,SELL_TO_OPEN,ACME  261016P00100000,Equity Option,Sold 1 ACME 10/16/26 Put 100.00 @ 1.5,150.00,1,150.00,-1.00,-0.14,100,ACME,ACME,10/16/26,100,PUT,900000004,148.86,USD
+2026-09-17T15:58:53+0200,Trade,Buy to Open,BUY_TO_OPEN,912797ZZ1,Fixed Income Security,Bought 10 912797ZZ1 @ 985.10,"-9,851.00",10,-985.10,0.00,0.00,,,,,,,900000005,"-9,851.00",USD
+2026-09-16T15:00:00+0200,Receive Deliver,Maturity,SELL_TO_CLOSE,912797YY2,Fixed Income Security,Maturity 10.0 912797YY2 @ 1000,"10,000.00",10,"1,000.00",--,0.00,,,,,,,,"10,000.00",USD
+2026-09-16T23:00:00+0200,Money Movement,Credit Interest,,,,INTEREST ON CREDIT BALANCE,0.22,0,,--,0.00,,,,,,,,0.22,USD
+2026-09-16T23:00:00+0200,Money Movement,Debit Interest,,,,FROM 08/16 THRU 09/15 @11    %,-0.18,0,,--,0.00,,,,,,,,-0.18,USD
+2026-09-15T23:00:00+0200,Money Movement,Deposit,,,,Wire Funds Received,"3,000.00",0,,--,0.00,,,,,,,,"3,000.00",USD
+2026-09-10T23:00:00+0200,Money Movement,Dividend,,WIDG,Equity,WIDGET SERIES TRUST,34.21,0,,--,0.00,,,,,,,,34.21,USD
+2026-09-09T22:00:00+0200,Money Movement,Deposit,,WIDG,Equity,WIDGET SERIES TRUST,5.12,0,,--,0.00,,,,,,,,5.12,USD
+2026-09-07T19:40:54+0200,Money Movement,Balance Adjustment,,,,Regulatory fee adjustment,0.01,0,,--,0.00,,,,,,,,0.01,USD
+2026-09-04T21:58:02+0200,Trade,Buy to Open,BUY_TO_OPEN,WIDG,Equity,Bought 23 WIDG @ 87.43,"-2,010.89",23,-87.43,0.00,-0.02,,,,,,,900000006,"-2,010.90",USD

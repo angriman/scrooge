@@ -1,10 +1,7 @@
-import json
 from collections import defaultdict
-from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -12,6 +9,7 @@ from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors import ibkr
 from finanze.models import CashBalance, Extraction, Kind, SecurityTrade
 from finanze.validation import check_balances
+from tests.extractors.golden import assert_matches_golden
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "ibkr"
 CSV = (FIXTURES / "activity.csv").read_text(encoding="utf-8")
@@ -30,18 +28,8 @@ def _totals(result: Extraction, kind: Kind) -> dict[str, Decimal]:
     return dict(totals)
 
 
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, Decimal | date):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _jsonable(item) for key, item in value.items()}
-    return value
-
-
 def test_matches_golden_file(result: Extraction) -> None:
-    actual = [_jsonable(asdict(txn)) for txn in result.transactions]
-    expected = json.loads((FIXTURES / "expected.json").read_text(encoding="utf-8"))
-    assert actual == expected
+    assert_matches_golden(result, "ibkr")
 
 
 def test_month_is_the_first_day_of_the_statement_period(result: Extraction) -> None:
