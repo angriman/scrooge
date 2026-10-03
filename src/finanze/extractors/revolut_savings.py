@@ -1,0 +1,77 @@
+"""Revolut Savings (Flexible Cash Funds) statement -> net interest only (D8).
+
+Daily `Return PAID` / `Interest PAID` and `Service Fee Charged` rows are the interest; fund
+BUY/SELL rows mirror transfers already seen on the current account and are ignored. The export
+prints no balance, so the account is reported as unreconciled.
+"""
+
+from __future__ import annotations
+
+import calendar
+import re
+from datetime import date
+
+from finanze.errors import ExtractionError, UnsupportedStatementError
+from finanze.extractors.common import parse_decimal, read_table, single_month
+from finanze.models import Extraction, Kind, Transaction
+
+_DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
+_MONTHS = {name: number for number, name in enumerate(calendar.month_abbr) if name}
+_INTEREST = re.compile(r"(Return PAID|Interest PAID|Service Fee Charged)\b")
+# Fund movements, incl. interest already counted when PAID and later moved to the current account
+_IGNORED = re.compile(r"(BUY|SELL|Interest Reinvested|Interest WITHDRAWN|Return WITHDRAWN)\b")
+
+
+def extract(content: str, source_file: str) -> Extraction:
+    """Parse the text of a Revolut Savings TSV covering one calendar month."""
+    header = content.removeprefix("﻿").partition("\n")[0].split("\t")
+    values = [column for column in header if column.startswith("Value, ")]
+    if not values:
+        msg = "Revolut Savings: no 'Value, <currency>' column"
+        raise ExtractionError(msg)
+    column = values[0]  # the fund's own currency comes first, then the CHF equivalent
+    currency = column.removeprefix("Value, ")
+    account = f"Revolut {currency}"
+
+    transactions: list[Transaction] = []
+    days: list[date] = []
+    rows = read_table(content, "\t", ("Date", "Description", column), "Revolut Savings")
+    for n, row in enumerate(rows, start=1):
+        description = row["Description"]
+        day = _date(row["Date"])
+        days.append(day)
+        if _IGNORED.match(description):
+            continue
+        if not _INTEREST.match(description):
+            msg = f"Revolut Savings row {n}: unsupported row {description!r}"
+            raise UnsupportedStatementError(msg)
+        transactions.append(
+            Transaction(
+                date=day,
+                account=account,
+                amount=parse_decimal(row[column], "Revolut Savings value"),
+                currency=currency,
+                description=description,
+                kind=Kind.INTEREST,
+                source_file=source_file,
+                source_ref=str(n),
+                category="Interessi",
+            )
+        )
+    return Extraction(
+        month=single_month(days, "Revolut Savings statement"),
+        transactions=tuple(transactions),
+        unreconciled=(account,),
+    )
+
+
+def _date(text: str) -> date:
+    """Read the date of `Sep 30, 2026, 2:12:10 AM`."""
+    match = _DATE.match(text)
+    try:
+        if match is None:
+            raise ValueError
+        return date(int(match[3]), _MONTHS[match[1]], int(match[2]))
+    except (KeyError, ValueError):
+        msg = f"cannot read date {text!r} (Revolut Savings)"
+        raise ExtractionError(msg) from None

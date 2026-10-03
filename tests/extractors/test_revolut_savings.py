@@ -1,0 +1,62 @@
+from datetime import date
+from decimal import Decimal
+
+import pytest
+
+from finanze.errors import ExtractionError, UnsupportedStatementError
+from finanze.extractors import revolut_savings
+from finanze.models import Extraction, Kind
+from finanze.validation import check_balances
+from tests.extractors.golden import FIXTURES, assert_matches_golden
+
+TSV = (FIXTURES / "revolut_savings" / "savings.tsv").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def result() -> Extraction:
+    return revolut_savings.extract(TSV, source_file="savings.tsv")
+
+
+def test_matches_golden_file(result: Extraction) -> None:
+    assert_matches_golden(result, "revolut_savings")
+
+
+def test_only_net_interest_is_booked_on_revolut_eur(result: Extraction) -> None:
+    # Return/Interest PAID 0.0812 + 0.0574 + 0.04, Service Fee -0.0050 - 0.0036
+    assert sum(t.amount for t in result.transactions) == Decimal("0.17")
+    assert {(t.account, t.currency, t.kind, t.category) for t in result.transactions} == {
+        ("Revolut EUR", "EUR", Kind.INTEREST, "Interessi")
+    }
+
+
+def test_fund_movements_are_ignored(result: Extraction) -> None:
+    assert [t.source_ref for t in result.transactions] == ["1", "2", "4", "5", "7"]
+
+
+def test_month_and_dates(result: Extraction) -> None:
+    assert result.month == date(2026, 9, 1)
+    assert result.transactions[0].date == date(2026, 9, 30)
+
+
+def test_account_is_reported_as_unreconciled(result: Extraction) -> None:
+    assert result.unreconciled == ("Revolut EUR",)
+    assert result.balances == ()
+    check_balances(result)
+
+
+@pytest.mark.parametrize(
+    ("content", "error", "message"),
+    [
+        (TSV.replace("Value, EUR\tValue, CHF", "EUR\tCHF"), ExtractionError, "Value"),
+        (TSV.replace("Sep 2, 2026", "Aug 2, 2026"), ExtractionError, "one calendar month"),
+        (TSV.replace("Sep 2, 2026", "Sept 2, 2026"), ExtractionError, "date"),
+        (TSV.replace("Sep 2, 2026", "Sep 31, 2026"), ExtractionError, "date"),
+        (TSV.replace("Sep 2, 2026", "Foo 2, 2026"), ExtractionError, "date"),
+        (TSV.replace("\t0.0812\t", "\tn/a\t"), ExtractionError, "amount"),
+        (TSV.replace("Interest PAID", "Bonus PAID"), UnsupportedStatementError, "Bonus PAID"),
+    ],
+)
+def test_malformed_statements_raise(content: str, error: type[Exception], message: str) -> None:
+    assert content != TSV
+    with pytest.raises(error, match=message):
+        revolut_savings.extract(content, source_file="savings.tsv")

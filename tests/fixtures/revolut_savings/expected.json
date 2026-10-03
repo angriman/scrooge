@@ -1,0 +1,67 @@
+[
+  {
+    "date": "2026-09-30",
+    "account": "Revolut EUR",
+    "amount": "-0.0050",
+    "currency": "EUR",
+    "description": "Service Fee Charged EUR Class IE0000000001",
+    "kind": "interest",
+    "source_file": "savings.tsv",
+    "source_ref": "1",
+    "counterparty": "",
+    "category": "Interessi",
+    "confidence": "1"
+  },
+  {
+    "date": "2026-09-30",
+    "account": "Revolut EUR",
+    "amount": "0.0812",
+    "currency": "EUR",
+    "description": "Return PAID EUR Class R IE0000000001",
+    "kind": "interest",
+    "source_file": "savings.tsv",
+    "source_ref": "2",
+    "counterparty": "",
+    "category": "Interessi",
+    "confidence": "1"
+  },
+  {
+    "date": "2026-09-29",
+    "account": "Revolut EUR",
+    "amount": "-0.0036",
+    "currency": "EUR",
+    "description": "Service Fee Charged EUR Class IE0000000001",
+    "kind": "interest",
+    "source_file": "savings.tsv",
+    "source_ref": "4",
+    "counterparty": "",
+    "category": "Interessi",
+    "confidence": "1"
+  },
+  {
+    "date": "2026-09-29",
+    "account": "Revolut EUR",
+    "amount": "0.0574",
+    "currency": "EUR",
+    "description": "Return PAID EUR Class R IE0000000001",
+    "kind": "interest",
+    "source_file": "savings.tsv",
+    "source_ref": "5",
+    "counterparty": "",
+    "category": "Interessi",
+    "confidence": "1"
+  },
+  {
+    "date": "2026-09-02",
+    "account": "Revolut EUR",
+    "amount": "0.04",
+    "currency": "EUR",
+    "description": "Interest PAID EUR Class R IE0000000001",
+    "kind": "interest",
+    "source_file": "savings.tsv",
+    "source_ref": "7",
+    "counterparty": "",
+    "category": "Interessi",
+    "confidence": "1"
+  }
+]

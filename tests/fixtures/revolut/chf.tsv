@@ -1,0 +1,17 @@
+Type	Product	Started Date	Completed Date	Description	Amount	Fee	Currency	State	Balance
+Card Payment	Current	2026-08-31 18:02:11	2026-09-01 9:54:20	Konsum	-20	0	CHF	COMPLETED	-12.87
+Deposit	Current	2026-09-04 17:11:40	2026-09-04 17:11:52	Top-up by *1234	150	0	CHF	COMPLETED	137.13
+Card Payment	Current	2026-09-05 15:39:37	2026-09-06 9:54:20	Listenly	-7.35	0	CHF	COMPLETED	129.78
+Exchange	Current	2026-09-07 10:00:00	2026-09-07 10:00:00	Exchanged to EUR	-47.5	0.48	CHF	COMPLETED	81.80
+Charge	Current	2026-09-08 2:00:00	2026-09-08 2:00:01	Metal plan fee	0	18.99	CHF	COMPLETED	62.81
+ATM	Current	2026-09-09 12:00:00	2026-09-10 8:00:00	Cash withdrawal at Kiosk	-40	0	CHF	COMPLETED	22.81
+Card Refund	Current	2026-09-11 12:00:00	2026-09-12 8:00:00	Modario	15.5	0	CHF	COMPLETED	38.31
+Transfer	Current	2026-09-13 12:00:00	2026-09-13 12:00:01	To Lukas Meier	-10	0	CHF	COMPLETED	28.31
+Transfer	Current	2026-09-14 12:00:00	2026-09-14 12:00:00	To Flexible Cash Funds	-5	0	CHF	COMPLETED	23.31
+Transfer	Deposit	2026-09-14 12:00:00	2026-09-14 12:00:00	To Flexible Cash Funds	5	0	CHF	COMPLETED	5
+Card Payment	Current	2026-09-15 20:00:00		Trenovia	-33	0	CHF	REVERTED	
+Deposit	Current	2026-09-17 18:48:26	2026-09-17 18:48:26	Payment from ACME AG	100	0	CHF	COMPLETED	123.31
+TRANSFER	Current	2026-09-20 9:00:00	2026-09-20 9:00:00	From CHF Flexible Cash Funds	5	0	CHF	COMPLETED	128.31
+TOPUP	Current	2026-09-21 9:00:00	2026-09-21 9:00:05	Top-Up by *1234	50	0	CHF	COMPLETED	178.31
+Exchange	Current	2026-09-22 9:00:00	2026-09-22 9:00:00	Exchanged to GBP	-20	0	CHF	COMPLETED	158.31
+Card Payment	Current	2026-09-30 21:00:00		Tutorly	-17	0	CHF	PENDING	
