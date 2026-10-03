@@ -2,6 +2,9 @@
 statements/*
 !statements/.gitkeep
 transactions_*.csv
+# Personal: merchant rules naming people, account names
+rules.local.yaml
+finanze.yaml
 
 # Python
 __pycache__/
