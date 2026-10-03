@@ -9,13 +9,20 @@ from finanze.extractors import common
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("1,234.50", "1234.50"), ("1'234.50", "1234.50"), (" -12.3 ", "-12.3"), ("0", "0")],
+    [
+        ("1,234.50", "1234.50"),
+        ("1'234.50", "1234.50"),
+        (" -12.3 ", "-12.3"),
+        ("0", "0"),
+        ("-1,234,567", "-1234567"),
+        ("0.10125", "0.10125"),
+    ],
 )
 def test_parse_decimal_drops_thousands_separators(text: str, expected: str) -> None:
     assert common.parse_decimal(text, "t") == Decimal(expected)
 
 
-@pytest.mark.parametrize("text", ["", "--", "abc", "1.2.3"])
+@pytest.mark.parametrize("text", ["", "--", "abc", "1.2.3", "7411,61", "12,5", "1,23,456", "1e3"])
 def test_parse_decimal_rejects_garbage(text: str) -> None:
     with pytest.raises(ExtractionError, match="amount"):
         common.parse_decimal(text, "t")

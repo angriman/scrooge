@@ -8,20 +8,25 @@ import io
 import re
 from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from finanze.errors import ExtractionError
 
+_NUMBER = re.compile(r"[+-]?(\d+|\d{1,3}([,']\d{3})+)(\.\d+)?")
 _SWISS_DATE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 
 
 def parse_decimal(text: str, what: str) -> Decimal:
-    """Read `1,234.50`, `1'234.50` or `-12.3`; thousands separators are dropped."""
-    try:
-        return Decimal(text.replace(",", "").replace("'", "").strip())
-    except InvalidOperation:
+    """Read `1,234.50`, `1'234.50` or `-12.3`.
+
+    `,` and `'` are accepted only as thousands separators: a decimal comma (`12,50`) is
+    rejected rather than read as 1250.
+    """
+    cleaned = text.strip()
+    if not _NUMBER.fullmatch(cleaned):
         msg = f"cannot read amount {text!r} ({what})"
-        raise ExtractionError(msg) from None
+        raise ExtractionError(msg)
+    return Decimal(cleaned.replace(",", "").replace("'", ""))
 
 
 def parse_iso_date(text: str, what: str) -> date:
