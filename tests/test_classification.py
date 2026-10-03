@@ -9,6 +9,7 @@ from finanze.classification import (
     ConfigError,
     Instrument,
     UnknownInstrumentError,
+    append_rule,
     classify,
     load_instruments,
     load_rules,
@@ -173,3 +174,32 @@ def test_malformed_instruments_raise(tmp_path: Path) -> None:
         load_instruments(_rules(tmp_path, "instruments:\n  BTC: {tab: Crypto}\n"))
     with pytest.raises(ConfigError, match="top-level 'instruments' dict"):
         load_instruments(_rules(tmp_path, "instruments: [VT]\n"))
+
+
+def test_rule_can_be_limited_to_a_direction(tmp_path: Path) -> None:
+    text = "rules:\n  - {match: 'rossi', category: Rimborsi, direction: in}\n"
+    rules = load_rules([_rules(tmp_path, text)])
+    out = classify([_txn("TWINT Rossi", "65"), _txn("TWINT Rossi", "-20")], rules)
+    assert [t.category for t in out] == ["Rimborsi", ""]
+    with pytest.raises(ConfigError, match="direction must be 'in' or 'out'"):
+        load_rules([_rules(tmp_path, "rules:\n  - {match: x, category: Spesa, direction: up}\n")])
+
+
+@pytest.mark.parametrize(
+    "existing",
+    [None, "", "# mine\n", "rules: []\n", "rules:\n  - {match: a, category: Spesa}\n"],
+)
+def test_appended_rules_load_and_match_literally(tmp_path: Path, existing: str | None) -> None:
+    path = tmp_path / "rules.local.yaml"
+    if existing is not None:
+        path.write_text(existing, encoding="utf-8")
+    name = 'SUMUP *CAFÉ (1+1) "X"'
+    append_rule(path, name, "out", "Attività/Svago")
+    append_rule(path, "Rossi, Maria", "in", "Rimborsi")
+    rules = load_rules([path])
+    assert [(r.category, r.direction) for r in rules[-2:]] == [
+        ("Attività/Svago", "out"),
+        ("Rimborsi", "in"),
+    ]
+    assert classify([_txn(name)], rules[-2:])[0].category == "Attività/Svago"
+    assert classify([_txn("SUMUP XCAFÉ 111 X")], rules[-2:])[0].category == ""

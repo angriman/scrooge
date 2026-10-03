@@ -7,6 +7,7 @@ and counterparty; the first match wins. Extractors already set the deterministic
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
@@ -34,9 +35,12 @@ class Rule:
     category: str
     kind: Kind | None = None  # overrides the extractor's income/expense guess when set
     account: str = ""  # restricts the rule to one account when set
+    direction: str = ""  # "in" or "out": restricts the rule to money received or spent
 
     def matches(self, txn: Transaction) -> bool:
         if self.account and self.account != txn.account:
+            return False
+        if self.direction and self.direction != direction(txn):
             return False
         return bool(self.pattern.search(f"{txn.description}\n{txn.counterparty}"))
 
@@ -45,6 +49,23 @@ class Rule:
 class Instrument:
     tab: str = ""  # ETFs | Stocks | Bonds; empty keeps what the statement says
     ticker: str = ""  # name used in the sheet when it differs from the broker's symbol
+
+
+def direction(txn: Transaction) -> str:
+    return "in" if txn.amount > 0 else "out"
+
+
+def append_rule(path: Path, counterparty: str, flow: str, category: str) -> None:
+    """Save a reviewed choice as a rule at the end of `path` (created if missing)."""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if "rules:" not in text:
+        text += "rules:\n"
+    text = text.rstrip().removesuffix("[]").rstrip() + "\n"
+    # JSON strings are valid YAML, and quote whatever a merchant name may contain.
+    match = json.dumps(re.escape(counterparty), ensure_ascii=False)
+    name = json.dumps(category, ensure_ascii=False)
+    text += f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
+    path.write_text(text, encoding="utf-8")
 
 
 def _load(path: Path, key: str) -> object:
@@ -80,7 +101,11 @@ def load_rules(paths: Iterable[Path]) -> tuple[Rule, ...]:
             except (re.error, ValueError) as exc:
                 msg = f"{where}: {exc}"
                 raise ConfigError(msg) from None
-            rules.append(Rule(pattern, category, kind, str(entry.get("account", ""))))
+            flow = str(entry.get("direction", ""))
+            if flow not in {"", "in", "out"}:
+                msg = f"{where}: direction must be 'in' or 'out', not {flow!r}"
+                raise ConfigError(msg)
+            rules.append(Rule(pattern, category, kind, str(entry.get("account", "")), flow))
     return tuple(rules)
 
 
