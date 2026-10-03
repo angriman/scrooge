@@ -1,0 +1,85 @@
+Statement,Header,Field Name,Field Value
+Statement,Data,BrokerName,Interactive Brokers (U.K.) Limited
+Statement,Data,Title,Activity Statement
+Statement,Data,Period,"September 1, 2026 - September 30, 2026"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Name,Lukas Meier
+Account Information,Data,Account,U12345678
+Account Information,Data,Base Currency,CHF
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures
+Cash Report,Data,Starting Cash,Base Currency Summary,4688.5,4688.5,0
+Cash Report,Data,Ending Cash,Base Currency Summary,5986.2,5986.2,0
+Cash Report,Data,Starting Cash,CHF,1200,1200,0
+Cash Report,Data,Commissions,CHF,-2,-2,0
+Cash Report,Data,Other Fees,CHF,-1.25,-1.25,0
+Cash Report,Data,Deposits,CHF,3000,3000,0
+Cash Report,Data,Trades (Purchase),CHF,-2500,-2500,0
+Cash Report,Data,Ending Cash,CHF,1696.75,1696.75,0
+Cash Report,Data,Ending Settled Cash,CHF,1696.75,1696.75,0
+Cash Report,Data,Starting Cash,EUR,500,500,0
+Cash Report,Data,Commissions,EUR,-6.8,-6.8,0
+Cash Report,Data,Withdrawals,EUR,-400,-400,0
+Cash Report,Data,Trades (Sales),EUR,412,412,0
+Cash Report,Data,Trades (Purchase),EUR,-256,-256,0
+Cash Report,Data,Ending Cash,EUR,249.2,249.2,0
+Cash Report,Data,Ending Settled Cash,EUR,249.2,249.2,0
+Cash Report,Data,Starting Cash,USD,2500,2500,0
+Cash Report,Data,Commissions,USD,-6.96,-6.96,0
+Cash Report,Data,Deposits,USD,0.1,0.1,0
+Cash Report,Data,Account Transfers,USD,25,25,0
+Cash Report,Data,Dividends,USD,10,10,0
+Cash Report,Data,Broker Interest Paid and Received,USD,12.9,12.9,0
+Cash Report,Data,Trades (Sales),USD,5377.5,5377.5,0
+Cash Report,Data,Trades (Purchase),USD,-3053,-3053,0
+Cash Report,Data,Payment In Lieu of Dividends,USD,4.2,4.2,0
+Cash Report,Data,Withholding Tax,USD,-2.13,-2.13,0
+Cash Report,Data,Ending Cash,USD,4867.61,4867.61,0
+Cash Report,Data,Ending Settled Cash,USD,4867.61,4867.61,0
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,Realized P/L %,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,ACME,"2026-09-15, 10:31:07",20,112.4,112.4,-2248,-1,2249,0,0,0,O
+Trades,SubTotal,,Stocks,USD,ACME,,20,,,-2248,-1,,0,,0,
+Trades,Data,Order,Stocks,USD,WIDG,"2026-09-23, 14:05:52",-10,54.25,54.25,542.5,-1.02,-541.48,0,0,0,C
+Trades,SubTotal,,Stocks,USD,WIDG,,-10,,,542.5,-1.02,,0,,0,
+Trades,Total,,Stocks,USD,,,,,,-1705.5,-2.02,,0,,0,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,Realized P/L %,MTM P/L,Code
+Trades,Data,Order,Options On Futures,USD,NQ 11SEP26 21000 P,"2026-09-11, 17:15:00",1,0,0,0,0,0,0,0,0,C;Ep
+Trades,SubTotal,,Options On Futures,USD,NQ 11SEP26 21000 P,,1,,,0,0,,0,,0,
+Trades,Data,Order,Options On Futures,USD,NQ 16OCT26 22000 P,"2026-09-16, 13:45:10",-1,85.5,85.5,1710,-2.47,-1707.53,0,0,0,O
+Trades,Data,Order,Options On Futures,USD,NQ 16OCT26 22000 P,"2026-09-29, 15:02:44",1,40.25,40.25,-805,-2.47,807.47,0,0,0,C
+Trades,SubTotal,,Options On Futures,USD,NQ 16OCT26 22000 P,,0,,,905,-4.94,,0,,0,
+Trades,Total,,Options On Futures,USD,,,,,,905,-4.94,,0,,0,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,,Proceeds,Comm in CHF,,,,MTM in CHF,Code
+Trades,Data,Order,Forex,USD,CHF.USD,"2026-09-12, 09:42:07","-2,500",1.25,,3125,-2,,,,0,
+Trades,Total,,Forex,USD,,,,,,3125,-2,,,,0,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,Realized P/L %,MTM P/L,Code
+Trades,Data,Order,Equity and Index Options,EUR,DAX 18SEP26 23000 P,"2026-09-18, 17:30:00",2,0,0,0,0,0,0,0,0,C;Ep
+Trades,SubTotal,,Equity and Index Options,EUR,DAX 18SEP26 23000 P,,2,,,0,0,,0,,0,
+Trades,Data,Order,Equity and Index Options,EUR,DAX 16OCT26 22500 P,"2026-09-08, 10:15:00",-2,41.2,41.2,412,-3.4,-408.6,0,0,0,O
+Trades,SubTotal,,Equity and Index Options,EUR,DAX 16OCT26 22500 P,,-2,,,412,-3.4,,0,,0,
+Trades,Data,Order,Equity and Index Options,EUR,DAX 16OCT26 22000 P,"2026-09-08, 10:15:00",2,25.6,25.6,-256,-3.4,259.4,0,0,0,O
+Trades,SubTotal,,Equity and Index Options,EUR,DAX 16OCT26 22000 P,,2,,,-256,-3.4,,0,,0,
+Trades,Total,,Equity and Index Options,EUR,,,,,,156,-6.8,,0,,0,
+Deposits & Withdrawals,Header,Currency,Settle Date,Description,Amount
+Deposits & Withdrawals,Data,CHF,2026-09-10,Electronic Fund Transfer,3000
+Deposits & Withdrawals,Data,EUR,2026-09-28,Disbursement Initiated by Lukas Meier,-400
+Deposits & Withdrawals,Data,USD,2026-09-17,Internal Transfer In From Account U87654321,25
+Deposits & Withdrawals,Data,USD,2026-09-18,Other Adjustment (NFA Fee),0.1
+Deposits & Withdrawals,Data,Total,,,2625.1
+Fees,Header,Subtitle,Currency,Date,Description,Amount
+Fees,Data,Other Fees,CHF,2026-09-02,cancel[CME Level I Non-Professional for Aug 2026,1.25
+Fees,Data,Other Fees,CHF,2026-09-02,CME Level I Non-Professional for Sep 2026,-1.25
+Fees,Data,Other Fees,CHF,2026-09-02,CBOT Level I Non-Professional for Sep 2026,-1.25
+Fees,Data,Total,,,,-1.25
+Fees,Notes,Market data fees are collected on behalf of the data provider.
+Dividends,Header,Currency,Date,Description,Amount
+Dividends,Data,USD,2026-09-25,ACME(US0000000001) Cash Dividend USD 0.50 per Share (Ordinary Dividend),10
+Dividends,Data,USD,2026-09-26,WIDG(US0000000002) Payment in Lieu of Dividend (Ordinary Dividend),4.2
+Dividends,Data,Total,,,14.2
+Withholding Tax,Header,Currency,Date,Description,Amount,Code
+Withholding Tax,Data,USD,2026-09-25,ACME(US0000000001) Cash Dividend USD 0.50 per Share - US Tax,-1.5,
+Withholding Tax,Data,USD,2026-09-26,WIDG(US0000000002) Payment in Lieu of Dividend - US Tax,-0.63,
+Withholding Tax,Data,Total,,,-2.13,
+Interest,Header,Currency,Date,Description,Amount
+Interest,Data,USD,2026-09-03,USD Credit Interest for Aug-2026,12.34
+Interest,Data,USD,2026-09-03,USD Credit Interest for Aug-2026,0.56
+Interest,Data,Total,,,12.9
