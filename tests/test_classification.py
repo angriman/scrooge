@@ -69,7 +69,8 @@ def _rules(tmp_path: Path, text: str, name: str = "rules.yaml") -> Path:
 
 def test_taxonomy_has_no_duplicates_and_keeps_sheet_order() -> None:
     assert len(categories.ORDER) == len(categories.ALL)
-    assert categories.ORDER[:2] == ("Affitto", "Utenze")
+    assert categories.ORDER[:3] == ("Affitto", "Utenze", "Arredamento e casa")
+    assert {"Elettronica", "Voli", "Donazioni", "Tasse", "Sport"} <= categories.ALL
     assert {"Trading", "Commissioni", "Cashback", "Topup IBKR"} <= categories.ALL
 
 

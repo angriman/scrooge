@@ -51,7 +51,17 @@ def _category(description: str) -> str:
         ("BUCHWELT LESELAND AG 10, ZÜRICH", "Libri"),
         ("Rossi Carburanti LNG Metano e GPL", "Carburante"),
         ("Spese per traffico pagamenti", "Commissioni"),
-        ("TECHNIKUM-WARENWELT ONLINE, ZUERICH", ""),  # shopping: no fixed category, user decides
+        ("TECHNIKUM - WARENWELT ONLINE, ZUERICH", "Elettronica"),
+        ("MOBILHAUS, ECUBLENS VD", "Arredamento e casa"),
+        ("Warenpost", "Acquisti vari"),
+        ("FlyBlue", "Voli"),
+        ("AEROSUR, MADRID", "Voli"),
+        ("Parking Esempio Blava", "Parcheggi e pedaggi"),
+        ("Sportivo Sport", "Sport"),
+        ("SCHWEIZ. MUSTER-STI, ZÜRICH", "Donazioni"),
+        ("CONSOLATO ONORARIO, ZURIGO", "Documenti e burocrazia"),
+        ("Stadt Bern, Stadtpolizei, 3001 Bern", "Documenti e burocrazia"),
+        ("ESEMPIO CHOCOLATIER, BERN", ""),  # no obvious category: the user decides
         ("Accredito TWINT Rossi, Maria, +41790000000", ""),
     ],
 )

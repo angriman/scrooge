@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 USCITE: dict[str, tuple[str, ...]] = {
-    "Casa": ("Affitto", "Utenze"),
+    "Casa": ("Affitto", "Utenze", "Arredamento e casa"),
     "Salute": ("Assicurazione sanitaria", "Dentista", "Medico/Farmacia"),
     "Alimentari": ("Spesa",),
     "Ristoranti e bar": ("Ristoranti",),
-    "Trasporti": ("Treni", "Carburante", "Trasporti locali"),
+    "Trasporti": ("Treni", "Carburante", "Trasporti locali", "Voli", "Parcheggi e pedaggi"),
     "Telefonia": ("SIM",),
     "Abbonamenti": ("Abbonamenti digitali", "Revolut Metal"),
     "Cura personale": ("Barbiere",),
     "Abbigliamento": ("Vestiti",),
-    "Viaggi e svago": ("Alloggi", "Attività/Svago"),
+    "Acquisti": ("Elettronica", "Acquisti vari"),
+    "Viaggi e svago": ("Alloggi", "Attività/Svago", "Sport"),
     "Formazione": ("Lezioni di lingua", "Libri"),
-    "Regali": ("Regali",),
+    "Regali": ("Regali", "Donazioni"),
+    "Tasse e burocrazia": ("Tasse", "Documenti e burocrazia"),
     "Banca e broker": ("Commissioni", "Ritenute"),
     "Investimenti": ("Trading", "Investimenti"),
 }
