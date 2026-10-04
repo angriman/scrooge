@@ -218,3 +218,5 @@ def test_appended_rules_load_and_match_literally(tmp_path: Path, existing: str |
     ]
     assert classify([_txn(name)], rules[-2:])[0].category == "Attività/Svago"
     assert classify([_txn("SUMUP XCAFÉ 111 X")], rules[-2:])[0].category == ""
+    # the whole text must match: a reviewed name is not a substring rule
+    assert classify([_txn(f"{name} ZURICH")], rules[-2:])[0].category == ""

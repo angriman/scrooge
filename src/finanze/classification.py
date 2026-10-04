@@ -58,13 +58,17 @@ def direction(txn: Transaction) -> str:
 
 
 def append_rule(path: Path, counterparty: str, flow: str, category: str) -> None:
-    """Save a reviewed choice as a rule at the end of `path` (created if missing)."""
+    """Save a reviewed choice as a rule at the end of `path` (created if missing).
+
+    The rule matches `counterparty` as a whole description or counterparty, not as a substring,
+    so it covers the rows the user was shown and nothing else.
+    """
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if "rules:" not in text:
         text += "rules:\n"
     text = text.rstrip().removesuffix("[]").rstrip() + "\n"
     # JSON strings are valid YAML, and quote whatever a merchant name may contain.
-    match = json.dumps(re.escape(counterparty), ensure_ascii=False)
+    match = json.dumps(f"(?m)^{re.escape(counterparty)}$", ensure_ascii=False)
     name = json.dumps(category, ensure_ascii=False)
     text += f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
     path.write_text(text, encoding="utf-8")
