@@ -54,12 +54,15 @@ def extract(content: str, source_file: str) -> Extraction:
     currency = currencies.pop()
     account = f"Revolut {currency}"
     started = [parse_iso_date(row["Started Date"], "Revolut Started Date") for _, row in rows]
-    month = Counter(month_start(day) for day in started).most_common(1)[0][0]
+    # The balance chain follows completion, and a payment can start the month before: on a
+    # statement with only a few rows the start dates could point to the wrong month.
+    completed = [parse_iso_date(row["Completed Date"], "Revolut Completed Date") for _, row in rows]
+    month = Counter(month_start(day) for day in completed).most_common(1)[0][0]
 
     transactions: list[Transaction] = []
     opening: Decimal | None = None
     balance = Decimal(0)
-    for (n, row), start in zip(rows, started, strict=True):
+    for (n, row), start, end in zip(rows, started, completed, strict=True):
         amount = parse_decimal(row["Amount"], "Revolut Amount")
         fee = parse_decimal(row["Fee"], "Revolut Fee")
         after = parse_decimal(row["Balance"], "Revolut Balance")
@@ -69,7 +72,7 @@ def extract(content: str, source_file: str) -> Extraction:
             msg = f"Revolut row {n}: balance {after} does not follow {balance} {amount:+} -{fee}"
             raise ExtractionError(msg)
         balance = after
-        day = _booking_date(row, start, month, n)
+        day = _booking_date(start, end, month, n)
         for ref, value, (kind, category), description in (
             (str(n), amount, _classify(row, amount, n), row["Description"]),
             (f"{n}:fee", -fee, *_fee(row)),
@@ -111,12 +114,11 @@ def _has_cash(row: dict[str, str], n: int) -> bool:
     raise UnsupportedStatementError(msg)
 
 
-def _booking_date(row: dict[str, str], start: date, month: date, n: int) -> date:
+def _booking_date(start: date, completed: date, month: date, n: int) -> date:
     # D4: the transaction (start) date. A payment started in the previous month but completed in
     # this one is part of this statement's balance, so it is booked on its completion date.
     if month_start(start) == month:
         return start
-    completed = parse_iso_date(row["Completed Date"], "Revolut Completed Date")
     if month_start(completed) != month:
         msg = f"Revolut row {n}: neither started nor completed in {month:%Y-%m}"
         raise ExtractionError(msg)

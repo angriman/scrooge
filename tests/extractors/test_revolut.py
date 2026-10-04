@@ -42,6 +42,13 @@ def test_payment_started_last_month_is_booked_on_completion(result: Extraction) 
     assert _row(result, "1") == (date(2026, 9, 1), Decimal(-20), Kind.EXPENSE, "")
 
 
+def test_month_is_the_completion_month_even_when_every_row_started_earlier() -> None:
+    header, first = TSV.splitlines()[:2]  # started Aug 31, completed Sep 1
+    sparse = revolut.extract(f"{header}\n{first}\n", source_file="usd.tsv")
+    assert sparse.month == date(2026, 9, 1)
+    assert [t.date for t in sparse.transactions] == [date(2026, 9, 1)]
+
+
 def test_pending_reverted_and_savings_mirror_rows_are_skipped(result: Extraction) -> None:
     assert {"10", "11", "17"}.isdisjoint(t.source_ref for t in result.transactions)
 
