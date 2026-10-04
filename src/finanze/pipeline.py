@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -39,6 +39,15 @@ class Month:
     def budget(self) -> Budget:
         """Raises `UncategorizedError` while any row still lacks a category."""
         return aggregate(self.month, self.transactions)
+
+    def renamed(self, names: Mapping[str, str]) -> Month:
+        """Use the destination's own account names (config `accounts`) where they differ."""
+        if not names:
+            return self
+        renamed = tuple(
+            replace(txn, account=names.get(txn.account, txn.account)) for txn in self.transactions
+        )
+        return replace(self, transactions=renamed)
 
 
 def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]:
