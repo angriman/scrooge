@@ -1,4 +1,7 @@
-"""The rules.yaml shipped with the project must load and sort well-known merchants."""
+"""The rules.yaml shipped with the project must load and sort by generic words only.
+
+Rules naming a business or a person stay in the git-ignored rules.local.yaml.
+"""
 
 from datetime import date
 from decimal import Decimal
@@ -30,38 +33,24 @@ def _category(description: str) -> str:
 @pytest.mark.parametrize(
     ("description", "category"),
     [
-        ("ALPENBAHN EASYGO, BERN (05.08.2026)", "Trasporti locali"),
-        ("ALPENBAHN AG, BERN (04.08.2026)", "Treni"),
-        ("Trenovia", "Treni"),
-        ("VELOSHARE AG, BERN", "Trasporti locali"),
-        ("FRISCHMARKT ZENTRUM, ZÜRICH", "Spesa"),
-        ("Acquisto KONSUM-1234 ZUERICH 30.08.2026 12:01 Carta: 0000", "Spesa"),
-        ("FRISCHMARKT RESTAURANT, ZÜRICH", "Ristoranti"),
-        ("FOOD RUN, HTTPS://HELP.", "Ristoranti"),
-        ("HOSHI-RAMEN GMBH, ZÜRICH", "Ristoranti"),
-        ("MARIAS CAFÉ BISTRO, ZÜRICH", "Ristoranti"),
-        ("BROTKORB, ZÜRICH", "Spesa"),
-        ("Listenly", "Abbonamenti digitali"),
-        ("RIDEPASS ONE, AMSTERDAM", "Abbonamenti digitali"),
-        ("Metal plan fee", "Revolut Metal"),
-        ("Telco Mobile SA, Rue de l'Exemple 4, 1000 Lausanne", "SIM"),
-        ("MUSTERKASSE Kranken-Versicherung AG, Beispielstrasse 21", "Assicurazione sanitaria"),
-        ("Elektrizitätswerk der Stadt Bern", "Utenze"),
-        ("Tutorly", "Lezioni di lingua"),
-        ("BUCHWELT LESELAND AG 10, ZÜRICH", "Libri"),
         ("Rossi Carburanti LNG Metano e GPL", "Carburante"),
-        ("Spese per traffico pagamenti", "Commissioni"),
-        ("TECHNIKUM - WARENWELT ONLINE, ZUERICH", "Elettronica"),
-        ("MOBILHAUS, ECUBLENS VD", "Arredamento e casa"),
-        ("Warenpost", "Acquisti vari"),
-        ("FlyBlue", "Voli"),
-        ("AEROSUR, MADRID", "Voli"),
         ("Parking Esempio Blava", "Parcheggi e pedaggi"),
-        ("Sportivo Sport", "Sport"),
-        ("SCHWEIZ. MUSTER-STI, ZÜRICH", "Donazioni"),
-        ("CONSOLATO ONORARIO, ZURIGO", "Documenti e burocrazia"),
-        ("Stadt Bern, Stadtpolizei, 3001 Bern", "Documenti e burocrazia"),
-        ("ESEMPIO CHOCOLATIER, BERN", ""),  # no obvious category: the user decides
+        ("RISTORANTE DA MARIO, LUGANO", "Ristoranti"),
+        ("ESEMPIO-RAMEN GMBH, BERN", "Ristoranti"),
+        ("MARIAS CAFÉ BISTRO, BERN", "Ristoranti"),
+        ("Supermarket Esempio", "Spesa"),
+        ("Elektrizitätswerk der Stadt Bern", "Utenze"),
+        ("Muster Kranken-Versicherung AG, Beispielstrasse 21", "Assicurazione sanitaria"),
+        ("BAHNHOF APOTHEKE, BERN", "Medico/Farmacia"),
+        ("Il Barbiere Di Esempio", "Barbiere"),
+        ("LIBRERIA ESEMPIO, MILANO", "Libri"),
+        ("Esempio Hotels", "Alloggi"),
+        ("MUSEO CIVICO, MILANO", "Attività/Svago"),
+        ("Metal plan fee", "Revolut Metal"),
+        ("Spese per traffico pagamenti", "Commissioni"),
+        ("MUSTER STIFTUNG, BERN", "Donazioni"),
+        ("CONSOLATO ONORARIO, BERNA", "Documenti e burocrazia"),
+        ("ESEMPIO CHOCOLATIER, BERN", ""),  # a name alone says nothing: the user decides
         ("Accredito TWINT Rossi, Maria, +41790000000", ""),
     ],
 )
@@ -70,7 +59,7 @@ def test_shipped_rules(description: str, category: str) -> None:
 
 
 def test_shipped_rules_name_no_people() -> None:
-    # Personal rules belong in the git-ignored rules.local.yaml.
+    # Rules for people and named businesses belong in the git-ignored rules.local.yaml.
     text = (ROOT / "rules.yaml").read_text(encoding="utf-8")
     assert "TWINT" not in text
     assert (ROOT / ".gitignore").read_text(encoding="utf-8").count("rules.local.yaml") == 1
