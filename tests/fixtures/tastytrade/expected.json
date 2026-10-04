@@ -166,7 +166,13 @@
     "source_ref": "10",
     "counterparty": "912797ZZ1",
     "category": "Investimenti",
-    "confidence": "1"
+    "confidence": "1",
+    "ticker": "912797ZZ1",
+    "quantity": "10000",
+    "price": "98.51",
+    "cost": "9851.00",
+    "asset_tab": "Bonds",
+    "maturity": null
   },
   {
     "date": "2026-09-16",
@@ -174,7 +180,7 @@
     "amount": "10000.00",
     "currency": "USD",
     "description": "Maturity 10.0 912797YY2 @ 1000",
-    "kind": "security_trade",
+    "kind": "income",
     "source_file": "transactions.csv",
     "source_ref": "11",
     "counterparty": "912797YY2",
@@ -270,7 +276,13 @@
     "source_ref": "18",
     "counterparty": "WIDG",
     "category": "Investimenti",
-    "confidence": "1"
+    "confidence": "1",
+    "ticker": "WIDG",
+    "quantity": "23",
+    "price": "87.43",
+    "cost": "2010.88",
+    "asset_tab": "",
+    "maturity": null
   },
   {
     "date": "2026-09-04",

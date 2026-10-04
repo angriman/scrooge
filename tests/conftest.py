@@ -1,8 +1,10 @@
 import shutil
+from datetime import date
 from pathlib import Path
 
 import pytest
 
+from finanze.classification import Instrument
 from finanze.extractors import swisscard
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -40,3 +42,11 @@ def write_rules(tmp_path: Path) -> Path:
     path = tmp_path / "rules.yaml"
     path.write_text(RULES, encoding="utf-8")
     return path
+
+
+# Tastytrade's export says neither what WIDG is nor when a bill matures.
+INSTRUMENTS = {
+    "WIDG": Instrument(tab="ETFs"),
+    "912797ZZ1": Instrument(maturity=date(2026, 12, 24)),
+}
+INSTRUMENTS_YAML = "instruments:\n  WIDG: {tab: ETFs}\n  912797ZZ1: {maturity: 2026-12-24}\n"

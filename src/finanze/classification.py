@@ -11,6 +11,7 @@ import json
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -49,6 +50,7 @@ class Rule:
 class Instrument:
     tab: str = ""  # ETFs | Stocks | Bonds; empty keeps what the statement says
     ticker: str = ""  # name used in the sheet when it differs from the broker's symbol
+    maturity: date | None = None  # for bills, when the statement does not give it (Tastytrade)
 
 
 def direction(txn: Transaction) -> str:
@@ -122,7 +124,11 @@ def load_instruments(path: Path) -> dict[str, Instrument]:
         if tab and tab not in ASSET_TABS:
             msg = f"{path}: {symbol}: unknown tab {tab!r}"
             raise ConfigError(msg)
-        instruments[str(symbol)] = Instrument(tab, str((entry or {}).get("ticker", "")))
+        maturity = (entry or {}).get("maturity")
+        if maturity is not None and not isinstance(maturity, date):
+            msg = f"{path}: {symbol}: maturity must be a date like 2026-12-24"
+            raise ConfigError(msg)
+        instruments[str(symbol)] = Instrument(tab, str((entry or {}).get("ticker", "")), maturity)
     return instruments
 
 
@@ -157,7 +163,12 @@ def resolve_instruments(
             if not tab:
                 msg = f"{txn.ticker}: no asset tab; add it to instruments.yaml (ETFs/Stocks/Bonds)"
                 raise UnknownInstrumentError(msg)
-            resolved.append(replace(txn, asset_tab=tab, ticker=override.ticker or txn.ticker))
+            maturity = txn.maturity or override.maturity
+            if tab == "Bonds" and maturity is None:
+                msg = f"{txn.ticker}: no maturity date; add 'maturity' to instruments.yaml"
+                raise UnknownInstrumentError(msg)
+            ticker = override.ticker or txn.ticker
+            resolved.append(replace(txn, asset_tab=tab, ticker=ticker, maturity=maturity))
         else:
             resolved.append(txn)
     return tuple(resolved)

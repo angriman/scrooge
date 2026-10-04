@@ -6,10 +6,11 @@ import pytest
 
 from finanze import pipeline, router
 from finanze.aggregate import BudgetRow, UncategorizedError
-from finanze.classification import load_rules
+from finanze.classification import UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
 from finanze.models import Kind
 from finanze.validation import BalanceMismatchError, CardBillMismatchError, check_card_bill
+from tests.conftest import INSTRUMENTS
 from tests.conftest import write_rules as _rules
 
 
@@ -33,23 +34,31 @@ def test_router_detects_every_source_and_skips_the_rest(folder: Path) -> None:
 
 def test_month_without_rules_reconciles_and_lists_what_needs_review(folder: Path) -> None:
     extractions, skipped = pipeline.load_folder(folder)
-    month = pipeline.process(extractions, (), {}, skipped)
+    month = pipeline.process(extractions, (), INSTRUMENTS, skipped)
     assert month.month == date(2026, 9, 1)
     assert month.unreconciled == ("Revolut EUR",)
     assert [path.name for path in month.skipped] == ["ibkr.pdf", "notes.txt", "other.csv"]
     assert len(month.uncategorized) > 10
-    assert [(t.ticker, t.asset_tab) for t in month.trades] == [
-        ("ACME", "Stocks"),
-        ("WIDG", "ETFs"),
-        ("912797ZZ1", "Bonds"),
+    assert [(t.account, t.ticker, t.asset_tab, t.maturity) for t in month.trades] == [
+        ("IBKR USD", "ACME", "Stocks", None),
+        ("IBKR USD", "WIDG", "ETFs", None),
+        ("IBKR USD", "912797ZZ1", "Bonds", date(2026, 12, 24)),
+        ("Tastytrade", "912797ZZ1", "Bonds", date(2026, 12, 24)),
+        ("Tastytrade", "WIDG", "ETFs", None),
     ]
     with pytest.raises(UncategorizedError):
         month.budget()
 
 
+def test_instrument_the_statements_cannot_place_blocks(folder: Path) -> None:
+    extractions, _ = pipeline.load_folder(folder)
+    with pytest.raises(UnknownInstrumentError, match=r"WIDG|912797ZZ1"):
+        pipeline.process(extractions, (), {})
+
+
 def test_fully_classified_month_aggregates(folder: Path) -> None:
     extractions, _ = pipeline.load_folder(folder)
-    month = pipeline.process(extractions, load_rules([_rules(folder)]), {})
+    month = pipeline.process(extractions, load_rules([_rules(folder)]), INSTRUMENTS)
     assert month.uncategorized == ()
     budget = month.budget()
     uscite = {(r.category, r.account): r.amount for r in budget.uscite}
@@ -82,14 +91,14 @@ def test_card_invoice_must_match_the_bank_debit(folder: Path) -> None:
     )
     extractions, _ = pipeline.load_folder(folder)
     with pytest.raises(CardBillMismatchError, match=r"-1288\.18, but the bank debited -1288\.13"):
-        pipeline.process(extractions, (), {})
+        pipeline.process(extractions, (), INSTRUMENTS)
 
 
 def test_missing_invoice_or_missing_debit_blocks(folder: Path) -> None:
     (folder / "swisscard.pdf").unlink()
     extractions, _ = pipeline.load_folder(folder)
     with pytest.raises(CardBillMismatchError, match="no card invoice"):
-        pipeline.process(extractions, (), {})
+        pipeline.process(extractions, (), INSTRUMENTS)
     with pytest.raises(CardBillMismatchError, match="no card debit"):
         check_card_bill(None, Decimal(-10))
     check_card_bill(None, None)
@@ -100,9 +109,9 @@ def test_statements_of_different_months_block(folder: Path) -> None:
     tasty.write_text(tasty.read_text(encoding="utf-8").replace("2026-09-", "2026-08-"))
     extractions, _ = pipeline.load_folder(folder)
     with pytest.raises(ExtractionError, match="2026-08, 2026-09"):
-        pipeline.process(extractions, (), {})
+        pipeline.process(extractions, (), INSTRUMENTS)
     with pytest.raises(ExtractionError, match="found: none"):
-        pipeline.process([], (), {})
+        pipeline.process([], (), INSTRUMENTS)
 
 
 def test_reconciliation_failure_blocks(folder: Path) -> None:
@@ -111,7 +120,7 @@ def test_reconciliation_failure_blocks(folder: Path) -> None:
     ibkr.write_text(text.replace("Ending Cash,EUR,249.2,", "Ending Cash,EUR,250.2,"))
     extractions, _ = pipeline.load_folder(folder)
     with pytest.raises(BalanceMismatchError, match="IBKR EUR"):
-        pipeline.process(extractions, (), {})
+        pipeline.process(extractions, (), INSTRUMENTS)
 
 
 def test_file_in_an_old_encoding_is_an_extraction_error(folder: Path) -> None:

@@ -163,6 +163,20 @@ def test_instruments_override_the_tab_and_the_sheet_ticker(tmp_path: Path) -> No
     assert out[3] is plain
 
 
+def test_bill_maturity_comes_from_instruments_when_the_statement_lacks_it(
+    tmp_path: Path,
+) -> None:
+    path = _rules(tmp_path, "instruments:\n  912797ZZ1: {maturity: 2026-12-24}\n", "i.yaml")
+    instruments = load_instruments(path)
+    out = resolve_instruments([_trade("912797ZZ1", "Bonds")], instruments)[0]
+    assert isinstance(out, SecurityTrade)
+    assert out.maturity == date(2026, 12, 24)
+    with pytest.raises(UnknownInstrumentError, match="no maturity date"):
+        resolve_instruments([_trade("912797YY2", "Bonds")], instruments)
+    with pytest.raises(ConfigError, match="maturity must be a date"):
+        load_instruments(_rules(tmp_path, "instruments:\n  X: {maturity: soon}\n", "bad.yaml"))
+
+
 def test_trade_without_a_tab_blocks(tmp_path: Path) -> None:
     assert load_instruments(tmp_path / "missing.yaml") == {}
     with pytest.raises(UnknownInstrumentError, match="XYZ"):

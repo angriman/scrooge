@@ -6,7 +6,7 @@ import pytest
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors import tastytrade
-from finanze.models import ControlTotal, Extraction, Kind
+from finanze.models import ControlTotal, Extraction, Kind, SecurityTrade
 from finanze.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
@@ -59,6 +59,42 @@ def test_share_trade_amount_comes_from_total_not_the_rounded_value(result: Extra
     assert (buy.amount, buy.kind) == (Decimal("-2010.88"), Kind.SECURITY_TRADE)
 
 
+def test_shares_and_bills_are_security_trades_for_the_asset_tabs(result: Extraction) -> None:
+    trades = [t for t in result.transactions if isinstance(t, SecurityTrade)]
+    assert [(t.ticker, t.quantity, t.price, t.cost, t.asset_tab) for t in trades] == [
+        # "Bought 10 912797ZZ1 @ 985.10": face 10,000 at 98.51% of face, as IBKR reports bills
+        ("912797ZZ1", Decimal(10000), Decimal("98.51"), Decimal("9851.00"), "Bonds"),
+        # the export does not say WIDG is an ETF: instruments.yaml decides
+        ("WIDG", Decimal(23), Decimal("87.43"), Decimal("2010.88"), ""),
+    ]
+    assert {t.category for t in trades} == {"Investimenti"}
+    assert {t.maturity for t in trades} == {None}  # not in the export either
+
+
+def test_sales_have_negative_quantities() -> None:
+    content = CSV.replace(
+        'Buy to Open,BUY_TO_OPEN,WIDG,Equity,Bought 23 WIDG @ 87.43,"-2,010.89",23,-87.43,'
+        '0.00,-0.02,,,,,,,900000006,"-2,010.90"',
+        'Sell to Close,SELL_TO_CLOSE,WIDG,Equity,Sold 23 WIDG @ 87.43,"2,010.89",23,87.43,'
+        '0.00,-0.02,,,,,,,900000006,"2,010.87"',
+    )
+    assert content != CSV
+    sale = tastytrade.extract(content, source_file="t.csv").transactions[-2]
+    assert isinstance(sale, SecurityTrade)
+    assert (sale.quantity, sale.price, sale.amount, sale.cost) == (
+        Decimal(-23),
+        Decimal("87.43"),
+        Decimal("2010.89"),
+        Decimal("-2010.89"),
+    )
+
+
+def test_bill_maturity_is_investment_income_not_a_trade(result: Extraction) -> None:
+    row = next(t for t in result.transactions if t.source_ref == "11")
+    assert not isinstance(row, SecurityTrade)
+    assert (row.amount, row.kind, row.category) == (Decimal(10000), Kind.INCOME, "Investimenti")
+
+
 def test_rows_without_cash_produce_no_transaction(result: Extraction) -> None:
     assert all(t.amount != 0 for t in result.transactions)
     assert "3" not in {t.source_ref for t in result.transactions}  # worthless expiration
@@ -91,6 +127,7 @@ def test_rerunning_gives_identical_output(result: Extraction) -> None:
         (CSV.replace("2026-09-30T20:42", "30.09.2026 20:42"), ExtractionError, "date"),
         (CSV.replace(",231.97,USD", ",231.97,EUR"), UnsupportedStatementError, "currency"),
         (CSV.replace("Balance Adjustment", "ACAT"), UnsupportedStatementError, "ACAT"),
+        (CSV.replace("BUY_TO_OPEN,WIDG", "JOURNAL,WIDG"), ExtractionError, "buy from sell"),
         (CSV.replace("Trade,Sell,SELL", "Journal,Sell,SELL"), UnsupportedStatementError, "Journal"),
     ],
 )

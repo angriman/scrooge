@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors.common import parse_decimal, parse_iso_date, read_table, single_month
-from finanze.models import ControlTotal, Extraction, Kind, Transaction
+from finanze.models import ControlTotal, Extraction, Kind, SecurityTrade, Transaction
 
 ACCOUNT = "Tastytrade"
 CURRENCY = "USD"
@@ -20,10 +20,13 @@ _COLUMNS = (
     "Date",
     "Type",
     "Sub Type",
+    "Action",
     "Symbol",
     "Instrument Type",
     "Description",
     "Value",
+    "Quantity",
+    "Average Price",
     "Commissions",
     "Fees",
     "Underlying Symbol",
@@ -31,9 +34,9 @@ _COLUMNS = (
     "Currency",
 )
 _ROUNDING = Decimal("0.01")
-# Shares, ETFs and T-bills are investments (D11), not trading P/L. They stay plain transactions:
-# only IBKR trades are appended to the asset tabs.
-_SECURITIES = {"Equity", "Fixed Income Security"}
+# Shares, ETFs and T-bills are investments (D11), not trading P/L, and go to the asset tabs.
+_T_BILL = "Fixed Income Security"
+_SECURITIES = {"Equity", _T_BILL}
 _MONEY_MOVEMENTS = {
     "Mark to Market": (Kind.TRADING, "Trading"),
     "Credit Interest": (Kind.INTEREST, "Interessi"),
@@ -68,20 +71,20 @@ def extract(content: str, source_file: str) -> Extraction:
             (f"{n}:fees", charges, Kind.COMMISSION, "Commissioni"),
         ):
             if amount != 0:  # expirations and futures opens move no cash
-                transactions.append(
-                    Transaction(
-                        date=day,
-                        account=ACCOUNT,
-                        amount=amount,
-                        currency=CURRENCY,
-                        description=row["Description"],
-                        kind=leg_kind,
-                        source_file=source_file,
-                        source_ref=ref,
-                        counterparty=row["Underlying Symbol"] or row["Symbol"],
-                        category=leg_category,
-                    )
+                txn = Transaction(
+                    date=day,
+                    account=ACCOUNT,
+                    amount=amount,
+                    currency=CURRENCY,
+                    description=row["Description"],
+                    kind=leg_kind,
+                    source_file=source_file,
+                    source_ref=ref,
+                    counterparty=row["Underlying Symbol"] or row["Symbol"],
+                    category=leg_category,
                 )
+                is_trade = leg_kind is Kind.SECURITY_TRADE
+                transactions.append(_security_trade(txn, row, n) if is_trade else txn)
     month = single_month(
         (parse_iso_date(row["Date"], "Tastytrade Date") for row in rows), "Tastytrade export"
     )
@@ -96,9 +99,46 @@ def _amount(text: str, what: str) -> Decimal:
     return Decimal(0) if text == "--" else parse_decimal(text, f"Tastytrade {what}")
 
 
+def _security_trade(txn: Transaction, row: dict[str, str], n: int) -> SecurityTrade:
+    """A share, ETF or T-bill trade, in the asset tabs' terms (D11).
+
+    T-bills are quoted per 1000 of face value ("Bought 10 ... @ 985.10"): quantity becomes the
+    face value and price the % of face, as on IBKR. The export has neither the instrument type
+    nor a bill's maturity, so the tab (and maturity) must come from `instruments.yaml`.
+    """
+    action = row["Action"]
+    if not action.startswith(("BUY", "SELL")):
+        msg = f"Tastytrade row {n}: cannot tell buy from sell in action {action!r}"
+        raise ExtractionError(msg)
+    quantity = parse_decimal(row["Quantity"], "Tastytrade Quantity")
+    price = abs(parse_decimal(row["Average Price"], "Tastytrade Average Price"))
+    bill = row["Instrument Type"] == _T_BILL
+    if bill:
+        quantity, price = quantity * 1000, price / 10
+    return SecurityTrade(
+        date=txn.date,
+        account=txn.account,
+        amount=txn.amount,
+        currency=txn.currency,
+        description=txn.description,
+        kind=txn.kind,
+        source_file=txn.source_file,
+        source_ref=txn.source_ref,
+        counterparty=txn.counterparty,
+        category=txn.category,
+        ticker=row["Symbol"],
+        quantity=quantity if action.startswith("BUY") else -quantity,
+        price=price,
+        cost=-txn.amount,
+        asset_tab="Bonds" if bill else "",
+    )
+
+
 def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
     if row["Type"] in {"Trade", "Receive Deliver"}:
         if row["Instrument Type"] in _SECURITIES:
+            if row["Sub Type"] == "Maturity":  # principal back; the export has no cost to split
+                return Kind.INCOME, "Investimenti"
             return Kind.SECURITY_TRADE, "Investimenti"
         return Kind.TRADING, "Trading"
     if row["Type"] == "Money Movement" and row["Sub Type"] in _MONEY_MOVEMENTS:

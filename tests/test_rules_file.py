@@ -67,4 +67,5 @@ def test_shipped_rules_name_no_people() -> None:
 
 
 def test_shipped_instruments_file_loads() -> None:
-    assert load_instruments(ROOT / "instruments.yaml") == {}
+    instruments = load_instruments(ROOT / "instruments.yaml")
+    assert instruments["SGOV"].tab == "ETFs"
