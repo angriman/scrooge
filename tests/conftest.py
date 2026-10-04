@@ -31,7 +31,6 @@ def folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         shutil.copy(FIXTURES / source, tmp_path / name)
     (tmp_path / "ibkr.pdf").write_bytes(b"%PDF")
     (tmp_path / "notes.txt").write_text("not a statement", encoding="utf-8")
-    (tmp_path / "other.csv").write_text("a,b\n1,2\n", encoding="utf-8")
     (tmp_path / ".DS_Store").write_bytes(b"\0")
     (tmp_path / "old").mkdir()
     monkeypatch.setattr(swisscard, "read_text", lambda path: path.read_text(encoding="utf-8"))

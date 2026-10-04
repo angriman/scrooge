@@ -24,7 +24,7 @@ def test_router_detects_every_source_and_skips_the_rest(folder: Path) -> None:
         "swisscard",
         "tastytrade",
     ]
-    assert [path.name for path in skipped] == ["ibkr.pdf", "notes.txt", "other.csv"]
+    assert [path.name for path in skipped] == ["ibkr.pdf", "notes.txt"]
     csv_copy = folder / "Revolut CHF.csv"
     csv_copy.write_text((folder / "Revolut CHF.tsv").read_text().replace("\t", ","))
     loaded = router.load(csv_copy)
@@ -32,12 +32,18 @@ def test_router_detects_every_source_and_skips_the_rest(folder: Path) -> None:
     assert loaded[0] == "revolut"
 
 
+def test_unrecognised_csv_blocks_instead_of_dropping_an_account(folder: Path) -> None:
+    (folder / "other.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    with pytest.raises(ExtractionError, match=r"other\.csv: not a statement format"):
+        pipeline.load_folder(folder)
+
+
 def test_month_without_rules_reconciles_and_lists_what_needs_review(folder: Path) -> None:
     extractions, skipped = pipeline.load_folder(folder)
     month = pipeline.process(extractions, (), INSTRUMENTS, skipped)
     assert month.month == date(2026, 9, 1)
     assert month.unreconciled == ("Revolut EUR",)
-    assert [path.name for path in month.skipped] == ["ibkr.pdf", "notes.txt", "other.csv"]
+    assert [path.name for path in month.skipped] == ["ibkr.pdf", "notes.txt"]
     assert len(month.uncategorized) > 10
     assert [(t.account, t.ticker, t.asset_tab, t.maturity) for t in month.trades] == [
         ("IBKR USD", "ACME", "Stocks", None),

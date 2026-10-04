@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from finanze import records
 from finanze.errors import ExtractionError
 from finanze.extractors import ibkr, migros, revolut, revolut_savings, swisscard, tastytrade
 from finanze.models import Extraction
@@ -19,10 +20,15 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
     ("migros", ('"Estratto conto da:"',), migros.extract),
 )
 _TEXT_SUFFIXES = {".csv", ".tsv"}
+_OWN_DUMP = ",".join(records.FIELDS)  # header of the `--dump` file, saved in the same folder
 
 
 def load(path: Path) -> tuple[str, Extraction] | None:
-    """Extract one statement file. Returns None for files that are not a known statement."""
+    """Extract one statement file. Returns None for files that are not statements.
+
+    A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
+    skipping it would drop a whole account from the month without a word.
+    """
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         if "swisscard" not in path.name.lower():
@@ -38,4 +44,7 @@ def load(path: Path) -> tuple[str, Extraction] | None:
     for source, starts, extract in _TEXT_SOURCES:
         if text.startswith(starts):
             return source, extract(text, path.name)
-    return None
+    if text.startswith(_OWN_DUMP):
+        return None
+    msg = "not a statement format this parser knows: export it again or move it out of the folder"
+    raise ExtractionError(msg)
