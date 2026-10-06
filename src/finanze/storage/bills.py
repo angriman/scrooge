@@ -1,8 +1,9 @@
 """Split what a bill pays back into cost and interest, first in, first out (D13).
 
-Where the statement prints no cost basis (Tastytrade), a maturity or sale is stored whole as
+A bill sold, and at Tastytrade also a bill that matures, comes out of the extractor whole, as
 `Investimenti`. With the purchases in the database the cost of the lots it closes is known:
-the row keeps that cost, and the rest becomes a row of its own under `Interessi`.
+the row keeps that cost, and the rest becomes a row of its own under `Interessi`. (An IBKR
+maturity is not a trade: its extractor splits it from the profit the statement prints.)
 
 The split is derived data. `split` first undoes every earlier split of the owner and then
 redoes them all, so importing an earlier month later corrects the months after it.
@@ -20,8 +21,6 @@ from itertools import groupby
 
 from finanze.validation import MissingLotsError
 
-# Sources whose statements give no cost for a bill that matures or is sold.
-SOURCES = ("tastytrade",)
 _INTEREST = "Interessi"
 
 
@@ -103,17 +102,16 @@ def _undo(conn: sqlite3.Connection, owner: int) -> None:
 
 
 def _bill_trades(conn: sqlite3.Connection, owner: int) -> Sequence[sqlite3.Row]:
-    """Every bill trade of the sources without a cost basis, in the order lots open and close."""
-    marks = ", ".join("?" * len(SOURCES))
+    """Every bill trade of the owner, in the order lots open and close."""
     return conn.execute(
-        "SELECT t.id, a.name AS account, i.symbol, t.date, t.amount_micro, "  # noqa: S608  # only "?" marks are interpolated
+        "SELECT t.id, a.name AS account, i.symbol, t.date, t.amount_micro, "
         "tr.quantity, tr.cost_micro "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
         "JOIN accounts a ON a.id = t.account_id JOIN instruments i ON i.id = tr.instrument_id "
-        f"WHERE a.owner_id = ? AND a.source IN ({marks}) AND i.type = 'bill' "
+        "WHERE a.owner_id = ? AND i.type = 'bill' "
         # on one day, purchases come before disposals
         "ORDER BY a.name, i.symbol, t.date, tr.quantity LIKE '-%', t.id",
-        (owner, *SOURCES),
+        (owner,),
     ).fetchall()
 
 

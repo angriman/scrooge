@@ -38,7 +38,9 @@ _COLUMNS = (
 _DELIMITERS = ("\t", ";", ",")
 _TRADES = {"Buy": 1, "Sell": -1}  # the sign `Number of Shares` must have
 _CASH = {
-    "Deposit": (Kind.TRANSFER, ""),  # money in from the bank: the category is left for review
+    # Money in from the bank. A transfer, so it is not counted as invested twice: what counts
+    # is the purchase of fund units that follows.
+    "Deposit": (Kind.TRANSFER, "Investimenti"),
     "Dividend": (Kind.DIVIDEND, "Dividendi"),
     "Interests": (Kind.INTEREST, "Interessi"),
     "Flat-rate administrative fee": (Kind.COMMISSION, "Commissioni"),

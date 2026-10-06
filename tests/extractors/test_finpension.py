@@ -50,7 +50,7 @@ def test_buys_and_sells_are_fund_trades_by_isin(result: Extraction) -> None:
 
 def test_cash_rows_are_classified(result: Extraction) -> None:
     by_ref = {t.source_ref: t for t in result.transactions}
-    assert (by_ref["1"].kind, by_ref["1"].category) == (Kind.TRANSFER, "")  # deposit: review
+    assert (by_ref["1"].kind, by_ref["1"].category) == (Kind.TRANSFER, "Investimenti")
     assert (by_ref["4"].kind, by_ref["4"].category) == (Kind.COMMISSION, "Commissioni")
     assert (by_ref["5"].kind, by_ref["5"].category) == (Kind.DIVIDEND, "Dividendi")
     assert (by_ref["5"].counterparty, by_ref["5"].amount) == ("CH0000000029", Decimal("12.345678"))

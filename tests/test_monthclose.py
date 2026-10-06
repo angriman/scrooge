@@ -516,13 +516,10 @@ PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
 
 
 def pension_batch(folder: Path) -> Batch:
-    """The pillar 3a fixture (July to September 2026), with its deposit categorized."""
+    """The pillar 3a fixture (July to September 2026)."""
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
-    rules = folder / "rules.yaml"
-    rules.write_text("rules:\n  - {match: Deposit, category: Topup IBKR}\n", encoding="utf-8")
     statements, skipped = pipeline.load_statements(folder)
-    extractions = [(s.source, s.extraction) for s in statements]
-    month = pipeline.process(extractions, classification.load_rules([rules]), {}, skipped)
+    month = pipeline.process([(s.source, s.extraction) for s in statements], (), {}, skipped)
     return Batch(OWNER, statements, month, PEOPLE)
 
 
@@ -696,18 +693,32 @@ def test_a_manual_category_on_the_interest_survives(conn: sqlite3.Connection) ->
     assert kept == [("Dividendi", "manual", 30_000_000)]
 
 
-def test_bills_with_a_cost_on_the_statement_are_left_alone(conn: sqlite3.Connection) -> None:
-    # IBKR prints the realized P/L: its extractor has already split the maturity.
-    sold = trade(
-        "5000",
-        "912797YY2",
-        "-5000",
-        asset_tab="Bonds",
-        maturity=date(2026, 9, 16),
-    )
-    staged = monthclose.stage(conn, batch(statement("ibkr", [sold])), NOW)
+def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> None:
+    ibkr = {"account": "IBKR USD", "source_file": "ibkr.csv"}
+    bought = bill("-4950", "5000", date(2026, 8, 3), **ibkr)
+    monthclose.stage(conn, batch(statement("ibkr", [bought], month=AUGUST), month=AUGUST), NOW)
+    # IBKR's maturity comes already split by the extractor, and is not a trade.
+    matured = {**ibkr, "currency": "USD", "date": date(2026, 9, 16)}
+    september = [
+        bill("2982", "-3000", date(2026, 9, 2), **ibkr),
+        txn("1980", kind=Kind.INCOME, category="Investimenti", description="principal", **matured),
+        txn("20", kind=Kind.INTEREST, category="Interessi", description="interest", **matured),
+    ]
+    staged = monthclose.stage(conn, batch(statement("ibkr", september)), NOW)
     assert staged.gaps == ()
-    assert rows(conn, "SELECT count(*) FROM transactions") == [(1,)]
+    parts = rows(
+        conn,
+        "SELECT t.description, c.name, t.amount_micro FROM transactions t "
+        "JOIN categories c ON c.id = t.category_id WHERE t.booking_date >= ? "
+        "ORDER BY t.date, 3 DESC",
+        FIRST,
+    )
+    assert parts == [
+        ("-3000 912797YY2", "Investimenti", 2_970_000_000),
+        ("-3000 912797YY2 (interest)", "Interessi", 12_000_000),
+        ("principal", "Investimenti", 1_980_000_000),
+        ("interest", "Interessi", 20_000_000),
+    ]
 
 
 # ------------------------------------------------------------------ invariants

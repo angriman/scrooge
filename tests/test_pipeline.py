@@ -152,7 +152,7 @@ def test_a_statement_of_several_months_is_processed_as_one_period(tmp_path: Path
     month = pipeline.process([(s.source, s.extraction) for s in statements], (), {}, skipped)
     assert (month.month, month.end) == (date(2026, 7, 1), date(2026, 9, 30))
     assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
-    assert [t.description for t in month.uncategorized] == ["Deposit"]
+    assert month.uncategorized == ()
     assert {t.asset_tab for t in month.trades} == {"Funds"}
 
 
