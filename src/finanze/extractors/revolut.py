@@ -60,15 +60,19 @@ def extract(content: str, source_file: str) -> Extraction:
     month = Counter(month_start(day) for day in completed).most_common(1)[0][0]
 
     transactions: list[Transaction] = []
-    opening: Decimal | None = None
-    balance = Decimal(0)
+    # The statement has no opening balance: it is what the first row started from.
+    _, first_row = rows[0]
+    opening = (
+        parse_decimal(first_row["Balance"], "Revolut Balance")
+        - parse_decimal(first_row["Amount"], "Revolut Amount")
+        + parse_decimal(first_row["Fee"], "Revolut Fee")
+    )
+    balance = opening
     for (n, row), start, end in zip(rows, started, completed, strict=True):
         amount = parse_decimal(row["Amount"], "Revolut Amount")
         fee = parse_decimal(row["Fee"], "Revolut Fee")
         after = parse_decimal(row["Balance"], "Revolut Balance")
-        if opening is None:
-            opening = after - amount + fee
-        elif balance + amount - fee != after:
+        if balance + amount - fee != after:
             msg = f"Revolut row {n}: balance {after} does not follow {balance} {amount:+} -{fee}"
             raise ExtractionError(msg)
         balance = after
@@ -92,7 +96,6 @@ def extract(content: str, source_file: str) -> Extraction:
                         category=category,
                     )
                 )
-    assert opening is not None  # noqa: S101  # rows is non-empty, see above
     return Extraction(
         month=month,
         transactions=tuple(transactions),

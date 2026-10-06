@@ -59,14 +59,16 @@ def extract(content: str, source_file: str) -> Extraction:
         msg = "Migros statement has no rows, so no balance to reconcile"
         raise ExtractionError(msg)
     transactions: list[Transaction] = []
-    opening: Decimal | None = None
-    balance = Decimal(0)
+    # The statement has no opening balance: it is what the first row started from.
+    first_row = rows[0]
+    opening = parse_decimal(first_row["Saldo"], "Migros Saldo") - parse_decimal(
+        first_row["Importo"], "Migros Importo"
+    )
+    balance = opening
     for n, row in enumerate(rows, start=1):
         amount = parse_decimal(row["Importo"], "Migros Importo")
         after = parse_decimal(row["Saldo"], "Migros Saldo")
-        if opening is None:
-            opening = after - amount
-        elif balance + amount != after:
+        if balance + amount != after:
             msg = f"Migros row {n}: balance {after} does not follow {balance} {amount:+}"
             raise ExtractionError(msg)
         balance = after
@@ -87,7 +89,6 @@ def extract(content: str, source_file: str) -> Extraction:
                 category=category,
             )
         )
-    assert opening is not None  # noqa: S101  # rows is non-empty, see above
     return Extraction(
         month=first,
         transactions=tuple(transactions),
