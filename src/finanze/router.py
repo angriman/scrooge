@@ -20,7 +20,8 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
     ("migros", ('"Estratto conto da:"',), migros.extract),
 )
 _TEXT_SUFFIXES = {".csv", ".tsv"}
-_OWN_DUMP = ",".join(records.FIELDS)  # header of the `--dump` file, saved in the same folder
+# Header of a `--dump` file: older runs saved it next to the statements.
+_OWN_DUMP = ",".join(records.FIELDS)
 
 
 def load(path: Path) -> tuple[str, Extraction] | None:

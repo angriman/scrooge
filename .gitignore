@@ -2,6 +2,8 @@
 statements/*
 !statements/.gitkeep
 transactions_*.csv
+# Generated: files to paste into the sheet, and the transactions behind them
+output/
 # Personal: merchant rules naming people, account names
 rules.local.yaml
 finanze.yaml

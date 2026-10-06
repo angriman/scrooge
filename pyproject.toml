@@ -1,12 +1,15 @@
 [project]
 name = "finanze-parser"
 version = "0.1.0"
-description = "Parse monthly bank/brokerage statements into the Finanze Google Sheet"
+description = "Parse monthly bank/brokerage statements into rows for the Finanze Google Sheet"
 requires-python = ">=3.11"
 dependencies = [
     "pdfplumber>=0.11",
     "pyyaml>=6.0",
 ]
+
+[project.scripts]
+finanze = "finanze.cli:main"
 
 [dependency-groups]
 dev = [
