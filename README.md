@@ -56,6 +56,38 @@ accounts:       # only where the name in Cash!A2:A differs from the parser's
 
 With the wrong locale the sheet takes the pasted amounts for text.
 
+## The database
+
+The same month can be stored in a local SQLite database, one row per transaction:
+
+```
+finanze import <folder>    # reconcile, classify, then stage the month
+finanze commit 2026-09     # make it final; a copy of the database is saved first
+finanze reopen 2026-09     # take it back, to import it again
+```
+
+A month belongs to one person. `finanze import` replaces whatever an earlier import of the same
+statements stored, and refuses a month that is already committed. A commit is refused while
+any transaction lacks a category, or when a statement's balance does not follow from the
+previous statement's balance plus what was booked in between.
+
+Each transaction has two dates: `date`, the day it happened, and `booking_date`, the day it
+counts on for its statement (a card purchase made in August and billed in September has
+both). Amounts are whole millionths of the currency unit (`amount_micro`).
+
+`finanze.yaml` gains:
+
+```yaml
+database: ~/Documents/Finanza/finanze.db
+owner: Lukas                       # whose statements these are; or pass --owner
+owners:                            # how each person appears as a counterparty
+  Lukas: {match: ["LUKAS MEIER"]}
+  Anna: {match: ["ANNA MEIER", "CH00 0000 0000"]}
+```
+
+Income or expenses whose counterparty is the other person are marked, so that a combined
+view can leave them out.
+
 ## Using the transactions elsewhere
 
 The paste files are one consumer of the pipeline; anything else (a database loader, later)

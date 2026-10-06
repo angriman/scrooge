@@ -3,6 +3,9 @@
 Without `--write` nothing is saved: the month is extracted, reconciled, classified and printed.
 With `--write` the rows of `Budget Mensile` and of the asset tabs are saved under `output/`,
 ready to be pasted by hand. Nothing here ever connects to the sheet.
+
+`finanze import`, `finanze commit` and `finanze reopen` work on the database instead: see
+`finanze import --help`.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ from typing import TextIO
 
 import yaml
 
-from finanze import categories, classification, pipeline, records
+from finanze import categories, classification, dbcli, pipeline, records
 from finanze.aggregate import Budget, BudgetRow
 from finanze.classification import ConfigError, UnknownInstrumentError
 from finanze.errors import ExtractionError
@@ -43,7 +46,10 @@ def main(
     out: TextIO = sys.stdout,
     ask: Callable[[str], str] = input,
 ) -> int:
-    args = _parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] in dbcli.COMMANDS:
+        return dbcli.main(arguments, out)
+    args = _parser().parse_args(arguments)
     try:
         return _run(args, out, ask)
     except _ERRORS as exc:
