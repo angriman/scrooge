@@ -91,8 +91,9 @@ def test_bom_is_ignored(result: Extraction) -> None:
     [
         (CSV.replace('"Data";"Testo', '"Datum";"Text'), "no transaction table"),
         (CSV.replace('"Importo";"Saldo";', '"Importo";'), "missing column"),
-        (CSV.replace('"2026-09-30"', '"2026-09-29"'), "one calendar month"),
-        (CSV.replace('"2026-09-01"', '"2026-09-02"'), "one calendar month"),
+        (CSV.replace('"2026-09-30"', '"2026-09-29"'), "covers no whole month"),
+        (CSV.replace('"2026-09-01"', '"2026-09-02"'), "start on the first day"),
+        (CSV.replace('"2026-09-01"', '"2026-10-01"'), "start on the first day"),
         (CSV.replace('"Estratto conto da:";"2026-09-01"\n', ""), "date"),
         (CSV.replace('"Saldo:";"CHF 9000.00"', '"Saldo:";"9000.00"'), "currency"),
         (CSV.replace('"Saldo:";"CHF 9000.00"\n', ""), "currency"),
@@ -107,3 +108,18 @@ def test_malformed_statements_raise(content: str, message: str) -> None:
     assert content != CSV
     with pytest.raises(ExtractionError, match=message):
         migros.extract(content, source_file="migros.csv")
+
+
+def test_a_statement_of_several_months_ends_at_the_last_whole_month() -> None:
+    # Exported from August on the 12th of October: it counts for August and September.
+    longer = CSV.replace('"2026-09-01"', '"2026-08-01"').replace('"2026-09-30"', '"2026-10-12"')
+    result = migros.extract(longer, source_file="m.csv")
+    assert result.period == (date(2026, 8, 1), date(2026, 9, 30))
+    check_balances(result)
+    assert {t.source_ref: t.booking_date for t in result.transactions}["2"] == date(2026, 8, 30)
+
+
+def test_a_row_after_the_last_whole_month_is_refused() -> None:
+    cut = CSV.replace('"2026-09-01"', '"2026-08-01"').replace('"2026-09-30"', '"2026-09-12"')
+    with pytest.raises(ExtractionError, match="export it up to a month end"):
+        migros.extract(cut, source_file="m.csv")

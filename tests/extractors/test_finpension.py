@@ -89,6 +89,21 @@ def test_anything_unexpected_is_refused(
         finpension.extract(content, source_file="t.tsv")
 
 
+def test_cash_rounded_to_six_decimals_still_matches_units_times_price() -> None:
+    line = "\t0.1\tCHF\t1\t1500.5\t-150.05\t1349.95"
+    finer = TSV.replace(line, "\t0.1\tCHF\t1\t1500.500004\t-150.05\t1349.95")
+    assert finer != TSV
+    assert len(finpension.extract(finer, source_file="t.tsv").transactions) == 9
+
+
+def test_a_numbered_download_is_a_portfolio_of_its_own() -> None:
+    second = finpension.extract(TSV, source_file="2022/transaction_report-2.tsv")
+    assert {t.account for t in second.transactions} == {"Finpension 3a 2"}
+    assert second.balances[0].account == "Finpension 3a 2"
+    plain = finpension.extract(TSV, source_file="pillar 3a.tsv")
+    assert plain.balances[0].account == "Finpension 3a"
+
+
 def test_a_report_without_rows_is_refused() -> None:
     with pytest.raises(ExtractionError, match="no rows"):
         finpension.extract(TSV.splitlines()[0] + "\n", source_file="t.tsv")

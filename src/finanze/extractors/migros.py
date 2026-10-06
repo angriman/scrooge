@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from finanze.errors import ExtractionError
@@ -40,7 +40,7 @@ _TRANSFERS = (
 
 
 def extract(content: str, source_file: str) -> Extraction:
-    """Parse the text of a Migros Bank statement covering one calendar month."""
+    """Parse the text of a Migros Bank statement covering whole calendar months."""
     text = content.removeprefix("\ufeff")
     start = text.find(_HEADER)
     if start < 0:
@@ -92,6 +92,7 @@ def extract(content: str, source_file: str) -> Extraction:
         )
     return Extraction(
         month=first,
+        end=last,
         transactions=tuple(transactions),
         balances=(CashBalance(account, currency, opening, balance),),
     )
@@ -105,8 +106,15 @@ def _metadata(block: str) -> dict[str, str]:
 def _period(metadata: dict[str, str]) -> tuple[date, date]:
     first = parse_iso_date(metadata.get("Estratto conto da:", ""), "Migros period start")
     last = parse_iso_date(metadata.get("Estratto conto fino:", ""), "Migros period end")
-    if first.day != 1 or last != month_end(first):
-        msg = f"Migros statement must cover exactly one calendar month, got {first} to {last}"
+    if first.day != 1 or last < first:
+        msg = f"Migros statement must start on the first day of a month, got {first} to {last}"
+        raise ExtractionError(msg)
+    if last != month_end(last):
+        # Exported up to a day inside a month (often the day of the export): the statement
+        # counts up to the month end before it, and a row after that is refused below.
+        last = last.replace(day=1) - timedelta(days=1)
+    if last < first:
+        msg = f"Migros statement covers no whole month ({first} onwards): export a full month"
         raise ExtractionError(msg)
     return first, last
 
@@ -119,7 +127,10 @@ def _booking_date(row: dict[str, str], first: date, last: date, n: int) -> date:
         return value
     booked = parse_swiss_date(row["Data"], "Migros Data")
     if not first <= booked <= last:
-        msg = f"Migros row {n}: {booked} is outside the statement period {first} to {last}"
+        msg = (
+            f"Migros row {n}: {booked} is outside the whole months the statement covers "
+            f"({first} to {last}): export it up to a month end"
+        )
         raise ExtractionError(msg)
     return booked
 

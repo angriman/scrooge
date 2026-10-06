@@ -1,14 +1,18 @@
 """finpension pillar 3a transactions report -> normalized transactions.
 
-One report covers the account from its first deposit on, so the statement usually spans many
-months. `Balance` is the running cash: every row is checked against it. Buys and sells are
+One report covers one portfolio from its first deposit on, so the statement usually spans many
+months. The report does not say which portfolio it is: finpension numbers the downloads
+(`transaction_report-2.tsv`), and that number, when the file name ends in one, names the
+account. `Balance` is the running cash: every row is checked against it. Buys and sells are
 trades in fund units, identified by ISIN, at the price the report gives; `Cash Flow` carries
 up to six decimals and is kept as it is.
 """
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
+from pathlib import PurePath
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors.common import (
@@ -36,6 +40,8 @@ _COLUMNS = (
     "Balance",
 )
 _DELIMITERS = ("\t", ";", ",")
+_ROUNDING = Decimal("0.000001")
+_NUMBERED = re.compile(r"[-_ ](\d+)$")
 _TRADES = {"Buy": 1, "Sell": -1}  # the sign `Number of Shares` must have
 _CASH = {
     # Money in from the bank. A transfer, so it is not counted as invested twice: what counts
@@ -57,6 +63,8 @@ def extract(content: str, source_file: str) -> Extraction:
         msg = "finpension report has no rows, so no balance to reconcile"
         raise ExtractionError(msg)
 
+    numbered = _NUMBERED.search(PurePath(source_file).stem)
+    account = f"{ACCOUNT} {numbered[1]}" if numbered else ACCOUNT
     days = [parse_iso_date(row["Date"], "finpension Date") for row in rows]
     if days != sorted(days):
         msg = "finpension report is not in date order"
@@ -81,7 +89,7 @@ def extract(content: str, source_file: str) -> Extraction:
         kind, category = _CASH.get(what, (Kind.SECURITY_TRADE, "Investimenti"))
         cash = Transaction(
             date=day,
-            account=ACCOUNT,
+            account=account,
             amount=amount,
             currency=CURRENCY,
             description=f"{what}: {fund}" if fund else what,
@@ -95,7 +103,7 @@ def extract(content: str, source_file: str) -> Extraction:
     return Extraction(
         month=month_start(days[0]),
         transactions=tuple(transactions),
-        balances=(CashBalance(ACCOUNT, CURRENCY, opening, balance),),
+        balances=(CashBalance(account, CURRENCY, opening, balance),),
         end=month_end(days[-1]),
     )
 
@@ -114,7 +122,7 @@ def _trade(cash: Transaction, row: dict[str, str], n: int) -> SecurityTrade:
     if quantity * _TRADES[row["Category"]] <= 0:
         msg = f"finpension row {n}: {quantity} units is the wrong sign for a {row['Category']}"
         raise ExtractionError(msg)
-    if quantity * price != -cash.amount:
+    if abs(quantity * price + cash.amount) >= _ROUNDING:  # the cash is rounded to 6 decimals
         msg = f"finpension row {n}: {quantity} x {price} is not the cash flow {cash.amount}"
         raise ExtractionError(msg)
     return SecurityTrade(
