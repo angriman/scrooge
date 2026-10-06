@@ -140,3 +140,33 @@ def test_extraction_errors_name_the_file(folder: Path) -> None:
     migros.write_text(migros.read_text(encoding="utf-8").replace('"-4.40"', '"-4,40"'))
     with pytest.raises(ExtractionError, match=r"Migros\.csv: cannot read amount"):
         pipeline.load_folder(folder)
+
+
+PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
+
+
+def test_a_statement_of_several_months_is_processed_as_one_period(tmp_path: Path) -> None:
+    (tmp_path / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
+    statements, skipped = pipeline.load_statements(tmp_path)
+    assert [(s.source, s.filename) for s in statements] == [("finpension", "pillar 3a.tsv")]
+    month = pipeline.process([(s.source, s.extraction) for s in statements], (), {}, skipped)
+    assert (month.month, month.end) == (date(2026, 7, 1), date(2026, 9, 30))
+    assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
+    assert [t.description for t in month.uncategorized] == ["Deposit"]
+    assert {t.asset_tab for t in month.trades} == {"Funds"}
+
+
+def test_a_garbled_byte_order_mark_does_not_hide_the_format(tmp_path: Path) -> None:
+    # A UTF-8 mark read as Latin-1 and saved again: three stray characters before the header.
+    garbled = "\u00ef\u00bb\u00bf".encode() + PENSION.read_bytes()
+    (tmp_path / "pillar 3a.tsv").write_bytes(garbled)
+    loaded = router.load(tmp_path / "pillar 3a.tsv")
+    assert loaded is not None
+    assert loaded[0] == "finpension"
+
+
+def test_statements_of_different_periods_block(folder: Path) -> None:
+    (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
+    extractions, _ = pipeline.load_folder(folder)
+    with pytest.raises(ExtractionError, match="found: 2026-07 to 2026-09, 2026-09"):
+        pipeline.process(extractions, (), INSTRUMENTS)

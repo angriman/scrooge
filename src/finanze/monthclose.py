@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from itertools import pairwise
 
-from finanze.extractors.common import month_end
+from finanze.extractors.common import month_end, months_between
 from finanze.models import Kind, Transaction
 from finanze.pipeline import Month, Statement
 from finanze.storage import bills, db, store
@@ -26,7 +26,7 @@ from finanze.validation import ChainMismatchError, MissingStatementError, Reconc
 # Sources whose rows are booked on an account that another source's statement reconciles:
 # card purchases on the bank account (D3), savings interest on the Revolut account (D8).
 _BOOKED_ON = {"swisscard": "migros", "revolut_savings": "revolut"}
-_BROKERS = frozenset({"ibkr", "tastytrade"})
+_BROKERS = frozenset({"ibkr", "tastytrade", "finpension"})
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
 
@@ -72,7 +72,7 @@ class Batch:
 class Staged:
     """What `stage` stored."""
 
-    month: date
+    month: date  # the first month, when the statements cover several
     transactions: int
     uncategorized: int
     # What an earlier statement would settle: it blocks the commit, not the import.
@@ -82,13 +82,14 @@ class Staged:
 def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
     """Store the month for its owner, replacing an earlier import of the same statements."""
     owner, statements, month, people = batch.owner, batch.statements, batch.month, batch.people
-    period = (month.month, month_end(month.month))
+    period = month.period
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
-        if store.month_status(conn, owner_id, month.month) == "committed":
-            msg = f"{month.month:%Y-%m} is committed for {owner}: reopen it first"
-            raise MonthCommittedError(msg)
-        store.set_month(conn, owner_id, month.month, "open", None)
+        for covered in months_between(*period):
+            if store.month_status(conn, owner_id, covered) == "committed":
+                msg = f"{covered:%Y-%m} is committed for {owner}: reopen it first"
+                raise MonthCommittedError(msg)
+            store.set_month(conn, owner_id, covered, "open", None)
         store.seed_categories(conn)
         others = {
             store.ensure_owner(conn, name): patterns

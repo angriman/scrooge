@@ -180,6 +180,47 @@ def test_review_asks_nothing_when_every_row_has_a_category(run: Run) -> None:
     assert run.questions == []
 
 
+PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
+
+
+def load_pension(run: Run) -> int:
+    folder = run.folder / "old" / "pension"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
+    return run.load(folder=folder)
+
+
+def test_a_statement_of_several_months_is_committed_as_a_range(run: Run) -> None:
+    assert load_pension(run) == dbcli.OK
+    assert "July 2026 to September 2026 for Lukas: 1 statements reconciled, 9 trans" in run.output
+    assert run.output.endswith("Next: finanze commit 2026-07 2026-09\n")
+
+    assert run("commit", "2026-07", "2026-09") == dbcli.OK
+    assert "July 2026 to September 2026 committed for Lukas. Copy from before: " in run.output
+    assert run.count("committed_transactions") == 9
+    assert run("commit", "2026-07", "2026-09") == dbcli.OK
+    assert run.output == "July 2026 to September 2026 was already committed for Lukas.\n"
+
+    assert run("reopen", "2026-08", "2026-09") == dbcli.OK
+    assert run.output == "August 2026 to September 2026 is open again for Lukas.\n"
+    assert run.count("committed_transactions") == 4  # July: deposit, two buys, the fee
+
+
+def test_a_range_stops_at_the_first_month_that_cannot_be_committed(run: Run) -> None:
+    load_pension(run)
+    assert run("commit", "2026-07", "2026-10") == dbcli.FAILED
+    assert run.output == (
+        "July 2026 to September 2026 committed for Lukas, then:\n"
+        "error: nothing is staged for Lukas in 2026-10\n"
+    )
+    assert len(list((run.database.parent / "backups").iterdir())) == 1
+
+
+def test_a_range_must_run_forwards(run: Run) -> None:
+    assert run("commit", "2026-09", "2026-07") == dbcli.FAILED
+    assert run.output == "error: 2026-07 is before 2026-09\n"
+
+
 def test_a_month_that_is_not_staged_cannot_be_committed(run: Run) -> None:
     assert run("commit", "2026-08") == dbcli.FAILED
     assert run.output == "error: nothing is staged for Lukas in 2026-08\n"

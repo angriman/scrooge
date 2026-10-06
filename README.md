@@ -66,6 +66,11 @@ finanze commit 2026-09     # make it final; a copy of the database is saved firs
 finanze reopen 2026-09     # take it back, to import it again
 ```
 
+`finanze import --review` asks for the category of unmatched rows, as `finanze --review` does.
+A statement may cover several months (the pillar 3a report covers the account's whole
+history): keep it in a folder of its own, and give `commit` and `reopen` the first and the
+last month, e.g. `finanze commit 2022-09 2026-07`.
+
 A month belongs to one person. `finanze import` replaces whatever an earlier import of the same
 statements stored, and refuses a month that is already committed. A commit is refused while
 any transaction lacks a category, or when a statement's balance does not follow from the

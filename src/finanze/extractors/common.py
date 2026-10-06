@@ -7,7 +7,7 @@ import csv
 import io
 import re
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from finanze.errors import ExtractionError
@@ -56,6 +56,14 @@ def month_start(day: date) -> date:
 
 def month_end(day: date) -> date:
     return day.replace(day=calendar.monthrange(day.year, day.month)[1])
+
+
+def months_between(first: date, last: date) -> list[date]:
+    """The first day of every calendar month from `first`'s to `last`'s."""
+    months = [month_start(first)]
+    while months[-1] < month_start(last):
+        months.append(month_start(month_end(months[-1]) + timedelta(days=1)))
+    return months
 
 
 def single_month(days: Iterable[date], what: str) -> date:

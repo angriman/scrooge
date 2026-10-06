@@ -52,6 +52,16 @@ def test_month_bounds() -> None:
     assert common.month_end(date(2024, 2, 17)) == date(2024, 2, 29)
 
 
+def test_months_between() -> None:
+    assert common.months_between(date(2025, 11, 17), date(2026, 2, 3)) == [
+        date(2025, 11, 1),
+        date(2025, 12, 1),
+        date(2026, 1, 1),
+        date(2026, 2, 1),
+    ]
+    assert common.months_between(date(2026, 9, 30), date(2026, 9, 1)) == [date(2026, 9, 1)]
+
+
 def test_single_month() -> None:
     assert common.single_month([date(2026, 9, 3), date(2026, 9, 30)], "x") == date(2026, 9, 1)
     with pytest.raises(ExtractionError, match="2026-09, 2026-10"):

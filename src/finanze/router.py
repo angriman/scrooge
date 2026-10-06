@@ -7,7 +7,15 @@ from pathlib import Path
 
 from finanze import records
 from finanze.errors import ExtractionError
-from finanze.extractors import ibkr, migros, revolut, revolut_savings, swisscard, tastytrade
+from finanze.extractors import (
+    finpension,
+    ibkr,
+    migros,
+    revolut,
+    revolut_savings,
+    swisscard,
+    tastytrade,
+)
 from finanze.models import Extraction
 
 _Extractor = Callable[[str, str], Extraction]
@@ -18,7 +26,14 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
     ("revolut", ("Type\tProduct\t", "Type,Product,"), revolut.extract),
     ("revolut_savings", ("Date\tDescription\tValue, ",), revolut_savings.extract),
     ("migros", ('"Estratto conto da:"',), migros.extract),
+    (
+        "finpension",
+        ("Date\tCategory\tAsset Name\t", "Date;Category;Asset Name;", "Date,Category,Asset Name,"),
+        finpension.extract,
+    ),
 )
+# A UTF-8 byte-order mark that was read as Latin-1 and saved again (seen on re-saved exports).
+_GARBLED_MARK = "\u00ef\u00bb\u00bf"
 _TEXT_SUFFIXES = {".csv", ".tsv"}
 # Header of a `--dump` file: older runs saved it next to the statements.
 _OWN_DUMP = ",".join(records.FIELDS)
@@ -42,6 +57,7 @@ def load(path: Path) -> tuple[str, Extraction] | None:
     except UnicodeDecodeError:
         msg = "not UTF-8 text (an old export format?): export the statement again"
         raise ExtractionError(msg) from None
+    text = text.removeprefix(_GARBLED_MARK)
     for source, starts, extract in _TEXT_SOURCES:
         if text.startswith(starts):
             return source, extract(text, path.name)

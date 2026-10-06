@@ -13,6 +13,7 @@ from finanze import classification, router
 from finanze.aggregate import Budget, aggregate
 from finanze.classification import Instrument, Rule
 from finanze.errors import ExtractionError
+from finanze.extractors.common import month_end
 from finanze.models import Extraction, Kind, SecurityTrade, Transaction
 from finanze.validation import check_balances, check_card_bill
 
@@ -28,6 +29,12 @@ class Month:
     transactions: tuple[Transaction, ...]
     unreconciled: tuple[str, ...]  # accounts the statements give no figure to check against
     skipped: tuple[Path, ...]  # files in the folder that are not statements
+    # Last day covered when the statements cover more than one month (database imports only).
+    end: date | None = None
+
+    @property
+    def period(self) -> tuple[date, date]:
+        return self.month, self.end or month_end(self.month)
 
     @property
     def uncategorized(self) -> tuple[Transaction, ...]:
@@ -97,11 +104,12 @@ def process(
     skipped: Iterable[Path] = (),
 ) -> Month:
     """Reconcile every statement, then classify. Any reconciliation failure raises."""
-    months = sorted({extraction.month for _, extraction in extractions})
-    if len(months) != 1:
-        found = ", ".join(f"{m:%Y-%m}" for m in months) or "none"
+    periods = sorted({extraction.period for _, extraction in extractions})
+    if len(periods) != 1:
+        found = ", ".join(_describe(period) for period in periods) or "none"
         msg = f"statements must all cover the same month, found: {found}"
         raise ExtractionError(msg)
+    first, last = periods[0]
     for _, extraction in extractions:
         check_balances(extraction)
 
@@ -124,7 +132,13 @@ def process(
         classification.classify(everything, rules), instruments
     )
     unreconciled = sorted({name for _, e in extractions for name in e.unreconciled})
-    return Month(months[0], transactions, tuple(unreconciled), tuple(skipped))
+    end = None if last == month_end(first) else last
+    return Month(first, transactions, tuple(unreconciled), tuple(skipped), end)
+
+
+def _describe(period: tuple[date, date]) -> str:
+    first, last = period
+    return f"{first:%Y-%m}" if last == month_end(first) else f"{first:%Y-%m} to {last:%Y-%m}"
 
 
 def _total(amounts: list[Decimal]) -> Decimal | None:

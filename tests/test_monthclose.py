@@ -509,6 +509,93 @@ def test_accounts_are_chained_one_by_one(conn: sqlite3.Connection) -> None:
     assert rows(conn, "SELECT count(*) FROM balances") == [(4,)]
 
 
+# ------------------------------------------------------------------ several months at once
+
+JULY = date(2026, 7, 1)
+PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
+
+
+def pension_batch(folder: Path) -> Batch:
+    """The pillar 3a fixture (July to September 2026), with its deposit categorized."""
+    (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
+    rules = folder / "rules.yaml"
+    rules.write_text("rules:\n  - {match: Deposit, category: Topup IBKR}\n", encoding="utf-8")
+    statements, skipped = pipeline.load_statements(folder)
+    extractions = [(s.source, s.extraction) for s in statements]
+    month = pipeline.process(extractions, classification.load_rules([rules]), {}, skipped)
+    return Batch(OWNER, statements, month, PEOPLE)
+
+
+def test_a_statement_of_several_months_opens_each_of_them(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    staged = monthclose.stage(conn, pension_batch(tmp_path), NOW)
+    assert (staged.month, staged.transactions, staged.uncategorized) == (JULY, 9, 0)
+    assert rows(conn, "SELECT month, status FROM months ORDER BY 1") == [
+        ("2026-07-01", "open"),
+        ("2026-08-01", "open"),
+        ("2026-09-01", "open"),
+    ]
+    assert rows(conn, "SELECT period_start, period_end FROM statement_files") == [
+        ("2026-07-01", "2026-09-30")
+    ]
+    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+        ("2026-06-30", 0),
+        ("2026-09-30", 13_671_078),
+    ]
+    funds = rows(
+        conn,
+        "SELECT i.symbol, i.type, a.kind, sum(CAST(tr.quantity AS TEXT) <> '') "
+        "FROM trades tr JOIN instruments i ON i.id = tr.instrument_id "
+        "JOIN transactions t ON t.id = tr.transaction_id JOIN accounts a ON a.id = t.account_id "
+        "GROUP BY 1 ORDER BY 1",
+    )
+    assert funds == [
+        ("CH0000000011", "fund", "broker_cash", 2),
+        ("CH0000000029", "fund", "broker_cash", 2),
+    ]
+
+
+def test_months_of_one_statement_are_committed_one_by_one(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    monthclose.stage(conn, pension_batch(tmp_path), NOW)
+    assert monthclose.commit(conn, owner=OWNER, month=date(2026, 8, 1), now=NOW)
+    visible = rows(conn, "SELECT DISTINCT substr(booking_date, 1, 7) FROM committed_transactions")
+    assert visible == [("2026-08",)]
+
+    before = dump(conn)
+    with pytest.raises(monthclose.MonthCommittedError, match="2026-08 is committed"):
+        monthclose.stage(conn, pension_batch(tmp_path), LATER)
+    assert dump(conn) == before  # July was not left half reopened
+
+    monthclose.reopen(conn, owner=OWNER, month=date(2026, 8, 1))
+    monthclose.stage(conn, pension_batch(tmp_path), LATER)
+    monthclose.commit(conn, owner=OWNER, month=date(2026, 8, 1), now=NOW)
+    assert dump(conn) == before
+
+
+def test_a_longer_export_replaces_a_shorter_one(conn: sqlite3.Connection) -> None:
+    july = migros("100", "-10", "-5", month=JULY)
+    monthclose.stage(conn, batch(july, month=JULY), NOW)
+    longer_rows = [
+        txn("-10", date=date(2026, 7, 10), source_ref="1"),
+        txn("-5", date=date(2026, 7, 10), source_ref="2"),
+        txn("-20", date=date(2026, 8, 10), source_ref="3"),
+    ]
+    balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(65))
+    august_end = date(2026, 8, 31)
+    longer = statement("migros", longer_rows, [balance], month=JULY, end=august_end, content="2")
+    monthclose.stage(conn, batch(longer, month=JULY, end=august_end), LATER)
+    assert rows(conn, "SELECT count(*), sum(amount_micro) FROM transactions") == [(3, -35_000_000)]
+    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+        ("2026-06-30", 100_000_000),
+        ("2026-07-31", 85_000_000),
+        ("2026-08-31", 65_000_000),
+    ]
+    assert rows(conn, "SELECT count(*) FROM statement_files") == [(2,)]
+
+
 # ------------------------------------------------------------------ the interest on bills
 
 

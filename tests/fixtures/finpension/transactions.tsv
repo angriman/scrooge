@@ -1,0 +1,10 @@
+Date	Category	Asset Name	ISIN	Number of Shares	Asset Currency	Currency Rate	Asset Price in CHF	Cash Flow	Balance
+2026-07-06	Deposit				CHF	1		1500	1500
+2026-07-07	Buy	ALPHA (CH) Index Fund - Equities Switzerland I-acc	CH0000000011	0.1	CHF	1	1500.5	-150.05	1349.95
+2026-07-07	Buy	ALPHA (CH) Index Fund - Equities World ex CH I-acc	CH0000000029	1	CHF	1	1300.25	-1300.25	49.7
+2026-07-08	Flat-rate administrative fee				CHF	1		-0.6846	49.0154
+2026-08-12	Dividend	ALPHA (CH) Index Fund - Equities World ex CH I-acc	CH0000000029		CHF	1		12.345678	61.361078
+2026-08-12	Dividend	ALPHA (CH) Index Fund - Equities Switzerland I-acc	CH0000000011		CHF	1		1.5	62.861078
+2026-09-01	Interests				CHF	1		0.11	62.971078
+2026-09-15	Sell	ALPHA (CH) Index Fund - Equities World ex CH I-acc	CH0000000029	-0.02	CHF	1	1310	26.2	89.171078
+2026-09-16	Buy	ALPHA (CH) Index Fund - Equities Switzerland I-acc	CH0000000011	0.05	CHF	1	1510	-75.5	13.671078

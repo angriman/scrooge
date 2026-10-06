@@ -63,10 +63,13 @@ def statement(
     *,
     filename: str = "",
     month: date = SEPTEMBER,
+    end: date | None = None,
     content: str = "",
 ) -> Statement:
     name = filename or (rows[0].source_file if rows else f"{source}.csv")
-    extraction = Extraction(month=month, transactions=tuple(rows), balances=tuple(balances))
+    extraction = Extraction(
+        month=month, transactions=tuple(rows), balances=tuple(balances), end=end
+    )
     digest = hashlib.sha256(f"{name}{month}{content}".encode()).hexdigest()
     return Statement(source, name, digest, extraction)
 
@@ -90,9 +93,14 @@ def tastytrade(*rows: SecurityTrade, month: date = SEPTEMBER) -> Batch:
     return batch(statement("tastytrade", rows, month=month), month=month)
 
 
-def batch(*statements: Statement, owner: str = OWNER, month: date = SEPTEMBER) -> Batch:
+def batch(
+    *statements: Statement,
+    owner: str = OWNER,
+    month: date = SEPTEMBER,
+    end: date | None = None,
+) -> Batch:
     rows = tuple(row for s in statements for row in s.extraction.transactions)
-    return Batch(owner, statements, Month(month, rows, (), ()), PEOPLE)
+    return Batch(owner, statements, Month(month, rows, (), (), end), PEOPLE)
 
 
 def migros(opening: str, *amounts: str, month: date = SEPTEMBER, **fields: Any) -> Statement:

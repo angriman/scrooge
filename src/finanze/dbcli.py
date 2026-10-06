@@ -4,6 +4,8 @@
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
 
+`commit` and `reopen` take a second month to cover every month from the first to it.
+
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 """
@@ -24,6 +26,7 @@ import yaml
 from finanze import classification, monthclose, pipeline, review
 from finanze.classification import ConfigError, UnknownInstrumentError
 from finanze.errors import ExtractionError
+from finanze.extractors.common import month_end, months_between
 from finanze.monthclose import Batch, MonthCloseError, People
 from finanze.storage import db, store
 from finanze.storage.db import MigrationError
@@ -96,6 +99,9 @@ def _parser() -> argparse.ArgumentParser:
     for name, text in (("commit", "commit a staged month"), ("reopen", "reopen a committed month")):
         command = commands.add_parser(name, parents=[shared], help=text)
         command.add_argument("month", type=_month, help="the month, as YYYY-MM")
+        command.add_argument(
+            "through", type=_month, nargs="?", help="the last month, to cover several"
+        )
     return parser
 
 
@@ -168,10 +174,16 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         session = _Session(conn, path, owner, people, console, now)
         if args.command == "import":
             return _import(session, args)
+        last = args.through or args.month
+        if last < args.month:
+            msg = f"{last:%Y-%m} is before {args.month:%Y-%m}"
+            raise ConfigError(msg)
+        months = months_between(args.month, last)
         if args.command == "commit":
-            return _commit(session, args.month)
-        monthclose.reopen(conn, owner=owner, month=args.month)
-        out.write(f"{args.month:%B %Y} is open again for {owner}.\n")
+            return _commit(session, months)
+        for month in months:
+            monthclose.reopen(conn, owner=owner, month=month)
+        out.write(f"{_span(months[0], months[-1])} is open again for {owner}.\n")
         return OK
     finally:
         conn.close()
@@ -194,8 +206,9 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         month = process()
     batch = Batch(session.owner, statements, month, session.people)
     staged = monthclose.stage(session.conn, batch, session.now)
+    first, last = month.period
     out.write(
-        f"{month.month:%B %Y} for {session.owner}: {len(statements)} statements reconciled, "
+        f"{_span(first, last)} for {session.owner}: {len(statements)} statements reconciled, "
         f"{staged.transactions} transactions staged.\n"
     )
     out.writelines(f"  skipped {path.name} (not a statement)\n" for path in month.skipped)
@@ -210,23 +223,38 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
             "import again with --review, or add rules by hand.\n"
         )
         return NEEDS_REVIEW
-    out.write(f"Next: finanze commit {month.month:%Y-%m}\n")
+    through = "" if month.end is None else f" {last:%Y-%m}"
+    out.write(f"Next: finanze commit {first:%Y-%m}{through}\n")
     return OK
 
 
-def _commit(session: _Session, month: date) -> int:
+def _span(first: date, last: date) -> str:
+    """`September 2026`, or `September 2022 to July 2026` for several months."""
+    if last <= month_end(first):
+        return f"{first:%B %Y}"
+    return f"{first:%B %Y} to {last:%B %Y}"
+
+
+def _commit(session: _Session, months: Sequence[date]) -> int:
     """Commit after saving a copy of the database; the copy is dropped if nothing changed."""
-    path, owner, now = session.path, session.owner, session.now
+    path, owner, now, out = session.path, session.owner, session.now, session.console.out
     copy = path.parent / "backups" / f"{path.stem}-{now:%Y%m%dT%H%M%S}.db"
     db.backup(session.conn, copy)
+    done: list[date] = []
     try:
-        changed = monthclose.commit(session.conn, owner=owner, month=month, now=now)
+        for month in months:
+            if monthclose.commit(session.conn, owner=owner, month=month, now=now):
+                done.append(month)
     except BaseException:
-        copy.unlink()
+        if done:  # each month is its own transaction: those before the failure stay committed
+            out.write(f"{_span(done[0], done[-1])} committed for {owner}, then:\n")
+        else:
+            copy.unlink()
         raise
-    if not changed:
+    span = _span(months[0], months[-1])
+    if not done:
         copy.unlink()
-        session.console.out.write(f"{month:%B %Y} was already committed for {owner}.\n")
+        out.write(f"{span} was already committed for {owner}.\n")
         return OK
-    session.console.out.write(f"{month:%B %Y} committed for {owner}. Copy from before: {copy}\n")
+    out.write(f"{span} committed for {owner}. Copy from before: {copy}\n")
     return OK

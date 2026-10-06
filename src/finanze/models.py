@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -108,8 +109,16 @@ class Extraction:
     (Revolut Savings); callers must surface them to the user.
     """
 
-    month: date  # first day of the calendar month the statement covers
+    month: date  # first day of the (first) calendar month the statement covers
     transactions: tuple[Transaction, ...]
     balances: tuple[CashBalance, ...] = ()
     controls: tuple[ControlTotal, ...] = ()
     unreconciled: tuple[str, ...] = ()
+    # Last day covered, for a statement that covers more than one month; always a month end.
+    end: _Date | None = None
+
+    @property
+    def period(self) -> tuple[_Date, _Date]:
+        """First and last day the statement covers: whole calendar months."""
+        last = calendar.monthrange(self.month.year, self.month.month)[1]
+        return self.month, self.end or self.month.replace(day=last)

@@ -116,6 +116,12 @@ def _run(args: argparse.Namespace, out: TextIO, ask: Callable[[str], str]) -> in
         return pipeline.process(extractions, rules, instruments, skipped)
 
     month = process()
+    if month.end is not None:
+        msg = (
+            f"the statements cover {month.month:%Y-%m} to {month.end:%Y-%m}: the files to paste "
+            "are for one month; use 'finanze import' for longer statements"
+        )
+        raise ExtractionError(msg)
     if args.review and month.uncategorized:
         review.ask_categories(month.uncategorized, rule_files[0], out, ask)
         month = process()

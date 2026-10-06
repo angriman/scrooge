@@ -245,3 +245,14 @@ def test_unplaceable_instrument_is_an_error(run: Run) -> None:
     out = io.StringIO()
     assert cli.main(argv, out=out, ask=run._ask) == cli.FAILED
     assert "to instruments.yaml" in out.getvalue()
+
+
+def test_a_statement_of_several_months_has_no_paste_files(tmp_path: Path) -> None:
+    source = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
+    (tmp_path / "pillar 3a.tsv").write_bytes(source.read_bytes())
+    out = io.StringIO()
+    argv = [str(tmp_path), "--rules", str(tmp_path / "no.yaml"), "--output", str(tmp_path / "o")]
+    assert cli.main(argv, out=out) == cli.FAILED
+    assert "cover 2026-07 to 2026-09" in out.getvalue()
+    assert "use 'finanze import'" in out.getvalue()
+    assert not (tmp_path / "o").exists()

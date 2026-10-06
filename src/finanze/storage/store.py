@@ -16,7 +16,7 @@ from finanze.models import SecurityTrade, Transaction
 from finanze.storage.money import to_micro, to_text
 
 _CURRENCY_DECIMALS = 2
-_INSTRUMENT_TYPES = {"ETFs": "etf", "Stocks": "stock", "Bonds": "bill"}
+_INSTRUMENT_TYPES = {"ETFs": "etf", "Stocks": "stock", "Bonds": "bill", "Funds": "fund"}
 _SIDES = ("uscite", "entrate")
 
 
