@@ -24,11 +24,12 @@ class UnknownTabError(Exception):
 
 
 def _etf_row(trade: SecurityTrade) -> Row:
-    return [trade.ticker, trade.date, trade.quantity, trade.price, trade.cost, trade.currency]
+    day = trade.booking_date
+    return [trade.ticker, day, trade.quantity, trade.price, trade.cost, trade.currency]
 
 
 def _stock_row(trade: SecurityTrade) -> Row:  # the Stocks log has no price column
-    return [trade.ticker, trade.date, trade.quantity, trade.currency]
+    return [trade.ticker, trade.booking_date, trade.quantity, trade.currency]
 
 
 def bond_name(maturity: date) -> str:
@@ -45,7 +46,7 @@ def _bond_row(trade: SecurityTrade) -> Row:
         trade.price,  # % of face
         trade.quantity / _THOUSAND,  # face value / 1000
         trade.cost,
-        trade.date,
+        trade.booking_date,
         trade.maturity,
     ]
 
@@ -82,7 +83,7 @@ def logs(trades: Iterable[SecurityTrade]) -> tuple[Log, ...]:
         Log(
             tab,
             layout.first_row,
-            tuple(layout.row(trade) for trade in sorted(by_tab[tab], key=lambda t: t.date)),
+            tuple(layout.row(trade) for trade in sorted(by_tab[tab], key=lambda t: t.booking_date)),
         )
         for tab, layout in _LAYOUTS.items()
         if tab in by_tab

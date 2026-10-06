@@ -19,7 +19,7 @@ def result() -> Extraction:
 
 def _row(result: Extraction, ref: str) -> tuple[date, Decimal, Kind, str]:
     txn = next(t for t in result.transactions if t.source_ref == ref)
-    return txn.date, txn.amount, txn.kind, txn.category
+    return txn.booking_date, txn.amount, txn.kind, txn.category
 
 
 def test_matches_golden_file(result: Extraction) -> None:
@@ -45,6 +45,12 @@ def test_other_currencies_get_their_own_account() -> None:
 def test_value_date_is_used_unless_it_falls_outside_the_period(result: Extraction) -> None:
     assert _row(result, "3")[0] == date(2026, 9, 4)  # booked 07.09, value 04.09
     assert _row(result, "2")[0] == date(2026, 9, 1)  # value 30.08: booking date instead
+
+
+def test_the_real_date_is_always_the_value_date(result: Extraction) -> None:
+    dates = {t.source_ref: t.date for t in result.transactions}
+    assert dates["3"] == date(2026, 9, 4)
+    assert dates["2"] == date(2026, 8, 30)  # D19: kept even though it is outside the period
 
 
 def test_transfers_and_the_card_bill_are_classified(result: Extraction) -> None:

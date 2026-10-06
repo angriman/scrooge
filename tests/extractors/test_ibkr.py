@@ -343,7 +343,8 @@ def test_backdated_fx_and_withholding_tax_are_booked_on_the_first_day(
     shifted = ibkr.extract(content, source_file="activity.csv")
     check_balances(shifted)
     row = next(t for t in shifted.transactions if t.source_ref == ref)
-    assert row.date == date(2026, 9, 1)
+    assert row.booking_date == date(2026, 9, 1)
+    assert row.date == date.fromisoformat(original)  # D19: the day IBKR prints
     assert row.description.endswith(f"(dated {original})")
 
 

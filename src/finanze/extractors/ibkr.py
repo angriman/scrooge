@@ -225,7 +225,7 @@ class _Parser:
         if booked != day:
             description = f"{description} (dated {day})"
         return Transaction(
-            date=booked,
+            date=day,
             account=_account(currency),
             amount=amount,
             currency=currency,
@@ -235,6 +235,7 @@ class _Parser:
             source_ref=ref,
             counterparty=counterparty,
             category=category,
+            booking_date=booked,
         )
 
     def _in_period(self, day: date, *, backdated: bool = False) -> date:

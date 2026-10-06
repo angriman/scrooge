@@ -1,6 +1,6 @@
 [
   {
-    "date": "2026-09-01",
+    "date": "2026-08-31",
     "account": "Revolut CHF",
     "amount": "-20",
     "currency": "CHF",
@@ -10,7 +10,8 @@
     "source_ref": "1",
     "counterparty": "Konsum",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-01"
   },
   {
     "date": "2026-09-04",
@@ -23,7 +24,8 @@
     "source_ref": "2",
     "counterparty": "Top-up by *1234",
     "category": "Topup Revolut",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
     "date": "2026-09-05",
@@ -36,7 +38,8 @@
     "source_ref": "3",
     "counterparty": "Listenly",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-05"
   },
   {
     "date": "2026-09-07",
@@ -49,7 +52,8 @@
     "source_ref": "4",
     "counterparty": "Exchanged to EUR",
     "category": "Acquisto EUR",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-07"
   },
   {
     "date": "2026-09-07",
@@ -62,7 +66,8 @@
     "source_ref": "4:fee",
     "counterparty": "Exchanged to EUR",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-07"
   },
   {
     "date": "2026-09-08",
@@ -75,7 +80,8 @@
     "source_ref": "5:fee",
     "counterparty": "Metal plan fee",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-09",
@@ -88,7 +94,8 @@
     "source_ref": "6",
     "counterparty": "Cash withdrawal at Kiosk",
     "category": "Prelievi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-09"
   },
   {
     "date": "2026-09-11",
@@ -101,7 +108,8 @@
     "source_ref": "7",
     "counterparty": "Modario",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-11"
   },
   {
     "date": "2026-09-13",
@@ -114,7 +122,8 @@
     "source_ref": "8",
     "counterparty": "To Lukas Meier",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-13"
   },
   {
     "date": "2026-09-14",
@@ -127,7 +136,8 @@
     "source_ref": "9",
     "counterparty": "To Flexible Cash Funds",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-14"
   },
   {
     "date": "2026-09-17",
@@ -140,7 +150,8 @@
     "source_ref": "12",
     "counterparty": "Payment from ACME AG",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-17"
   },
   {
     "date": "2026-09-20",
@@ -153,7 +164,8 @@
     "source_ref": "13",
     "counterparty": "From CHF Flexible Cash Funds",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-20"
   },
   {
     "date": "2026-09-21",
@@ -166,7 +178,8 @@
     "source_ref": "14",
     "counterparty": "Top-Up by *1234",
     "category": "Topup Revolut",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-21"
   },
   {
     "date": "2026-09-22",
@@ -179,7 +192,8 @@
     "source_ref": "15",
     "counterparty": "Exchanged to GBP",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-22"
   },
   {
     "date": "2026-09-23",
@@ -192,6 +206,7 @@
     "source_ref": "16",
     "counterparty": "Google Pay deposit by *1234",
     "category": "Topup Revolut",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-23"
   }
 ]

@@ -43,8 +43,8 @@ def extract(content: str, source_file: str) -> Extraction:
     if invoice is None:
         msg = "Swisscard: no invoice date (is there a text layer?)"
         raise ExtractionError(msg)
-    # D4: every purchase is dated to the invoice, i.e. the month the bill is paid from Migros.
-    day = parse_swiss_date(invoice[1], "Swisscard invoice date")
+    # D4: every purchase is booked on the invoice, i.e. the month the bill is paid from Migros.
+    invoiced = parse_swiss_date(invoice[1], "Swisscard invoice date")
     lines = [line.strip() for line in content.splitlines()]
     compact = [line.replace(" ", "") for line in lines]
     if _START not in compact:
@@ -58,7 +58,7 @@ def extract(content: str, source_file: str) -> Extraction:
         if _INVOICE_TOTAL.fullmatch(line):
             _check(total, line, "the invoice total")
             return Extraction(
-                month=month_start(day),
+                month=month_start(invoiced),
                 transactions=tuple(transactions),
                 controls=(ControlTotal(ACCOUNT, CURRENCY, -total),),
             )
@@ -77,7 +77,7 @@ def extract(content: str, source_file: str) -> Extraction:
             kind, category = _classify(match[2], billed, section)
             transactions.append(
                 Transaction(
-                    date=day,
+                    date=parse_swiss_date(match[1], "Swisscard transaction date"),
                     account=ACCOUNT,
                     amount=-billed,
                     currency=CURRENCY,
@@ -87,6 +87,7 @@ def extract(content: str, source_file: str) -> Extraction:
                     source_ref=f"{section}:{n}",
                     counterparty=match[2].rpartition(",")[0] or match[2],
                     category=category,
+                    booking_date=invoiced,
                 )
             )
     msg = 'Swisscard: no "Totale nuove transazioni" line'

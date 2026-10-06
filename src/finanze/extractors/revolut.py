@@ -84,7 +84,7 @@ def extract(content: str, source_file: str) -> Extraction:
             if value != 0:
                 transactions.append(
                     Transaction(
-                        date=day,
+                        date=start,
                         account=account,
                         amount=value,
                         currency=currency,
@@ -94,6 +94,7 @@ def extract(content: str, source_file: str) -> Extraction:
                         source_ref=ref,
                         counterparty=row["Description"],
                         category=category,
+                        booking_date=day,
                     )
                 )
     return Extraction(

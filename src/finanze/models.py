@@ -24,9 +24,20 @@ class Kind(StrEnum):
     INTERNAL = "internal"
 
 
+# Stands for "same as `date`" until `__post_init__` fills it in.
+_SAME_DAY = date.min
+# Inside `Transaction`, `date` names the field: later annotations need another name for the type.
+_Date = date
+
+
 @dataclass(frozen=True, slots=True)
 class Transaction:
-    """One normalized transaction. `amount` is signed, in the native currency."""
+    """One normalized transaction. `amount` is signed, in the native currency.
+
+    D19: `date` is the day it really happened (viewing, querying); `booking_date` is the day
+    it counts on for its statement, always inside the statement period (reconciliation, paste
+    files). They differ only where an extractor says so, e.g. card purchases billed later.
+    """
 
     date: date
     account: str
@@ -39,8 +50,11 @@ class Transaction:
     counterparty: str = ""
     category: str = ""
     confidence: Decimal = Decimal(1)
+    booking_date: _Date = _SAME_DAY
 
     def __post_init__(self) -> None:
+        if self.booking_date == _SAME_DAY:
+            object.__setattr__(self, "booking_date", self.date)  # frozen: the only way to default
         # Runtime guard for untyped inputs (e.g. pdfplumber): annotations can't stop a float.
         amount: object = self.amount
         if not isinstance(amount, Decimal):

@@ -19,7 +19,7 @@ def result() -> Extraction:
 
 def _row(result: Extraction, ref: str) -> tuple[date, Decimal, Kind, str]:
     txn = next(t for t in result.transactions if t.source_ref == ref)
-    return txn.date, txn.amount, txn.kind, txn.category
+    return txn.booking_date, txn.amount, txn.kind, txn.category
 
 
 def test_matches_golden_file(result: Extraction) -> None:
@@ -40,13 +40,15 @@ def test_csv_export_gives_the_same_result(result: Extraction) -> None:
 
 def test_payment_started_last_month_is_booked_on_completion(result: Extraction) -> None:
     assert _row(result, "1") == (date(2026, 9, 1), Decimal(-20), Kind.EXPENSE, "")
+    started = next(t.date for t in result.transactions if t.source_ref == "1")
+    assert started == date(2026, 8, 31)  # D19: the real date stays the day it started
 
 
 def test_month_is_the_completion_month_even_when_every_row_started_earlier() -> None:
     header, first = TSV.splitlines()[:2]  # started Aug 31, completed Sep 1
     sparse = revolut.extract(f"{header}\n{first}\n", source_file="usd.tsv")
     assert sparse.month == date(2026, 9, 1)
-    assert [t.date for t in sparse.transactions] == [date(2026, 9, 1)]
+    assert [t.booking_date for t in sparse.transactions] == [date(2026, 9, 1)]
 
 
 def test_pending_reverted_and_savings_mirror_rows_are_skipped(result: Extraction) -> None:

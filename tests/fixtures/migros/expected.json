@@ -10,10 +10,11 @@
     "source_ref": "1",
     "counterparty": "Hans Muster",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-01"
   },
   {
-    "date": "2026-09-01",
+    "date": "2026-08-30",
     "account": "Migros",
     "amount": "-25.40",
     "currency": "CHF",
@@ -23,7 +24,8 @@
     "source_ref": "2",
     "counterparty": "KONSUM-1234 ZUERICH",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-01"
   },
   {
     "date": "2026-09-04",
@@ -36,7 +38,8 @@
     "source_ref": "3",
     "counterparty": "Revolut**1234*",
     "category": "Topup Revolut",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
     "date": "2026-09-08",
@@ -49,7 +52,8 @@
     "source_ref": "4",
     "counterparty": "Swisscard AECS GmbH",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-08",
@@ -62,7 +66,8 @@
     "source_ref": "5",
     "counterparty": "Accredito TWINT Rossi",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-12",
@@ -75,7 +80,8 @@
     "source_ref": "6",
     "counterparty": "Prelevamento al Bancomat BM Zürich 12.09.2026 10:15 Carta: 000000******0000",
     "category": "Prelievi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-12"
   },
   {
     "date": "2026-09-15",
@@ -88,7 +94,8 @@
     "source_ref": "7",
     "counterparty": "Storno",
     "category": "Prelievi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-15"
   },
   {
     "date": "2026-09-18",
@@ -101,7 +108,8 @@
     "source_ref": "8",
     "counterparty": "Interactive Brokers LLC",
     "category": "Topup IBKR",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-18"
   },
   {
     "date": "2026-09-21",
@@ -114,7 +122,8 @@
     "source_ref": "9",
     "counterparty": "REVOLUT LTD",
     "category": "Topup Revolut",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-21"
   },
   {
     "date": "2026-09-25",
@@ -127,7 +136,8 @@
     "source_ref": "10",
     "counterparty": "ACME SWITZERLAND GMBH",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-25"
   },
   {
     "date": "2026-09-30",
@@ -140,6 +150,7 @@
     "source_ref": "11",
     "counterparty": "Spese per traffico pagamenti",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-30"
   }
 ]

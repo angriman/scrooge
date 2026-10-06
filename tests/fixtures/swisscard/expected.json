@@ -1,6 +1,6 @@
 [
   {
-    "date": "2026-09-04",
+    "date": "2026-08-04",
     "account": "Migros",
     "amount": "-64.00",
     "currency": "CHF",
@@ -10,10 +10,11 @@
     "source_ref": "0001:2",
     "counterparty": "ALPENBAHN AG",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-07",
     "account": "Migros",
     "amount": "-41.85",
     "currency": "CHF",
@@ -23,10 +24,11 @@
     "source_ref": "0001:3",
     "counterparty": "FRISCHMARKT ZENTRUM",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-18",
     "account": "Migros",
     "amount": "-2.40",
     "currency": "CHF",
@@ -36,10 +38,11 @@
     "source_ref": "0001:4",
     "counterparty": "VELOSHARE AG",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-24",
     "account": "Migros",
     "amount": "2.40",
     "currency": "CHF",
@@ -49,10 +52,11 @@
     "source_ref": "0001:5",
     "counterparty": "VELOSHARE AG",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-25",
     "account": "Migros",
     "amount": "-249.00",
     "currency": "CHF",
@@ -62,10 +66,11 @@
     "source_ref": "0001:9",
     "counterparty": "TECHNIKUM-WARENWELT ONLINE",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-30",
     "account": "Migros",
     "amount": "-31.50",
     "currency": "CHF",
@@ -75,10 +80,11 @@
     "source_ref": "0001:10",
     "counterparty": "FOOD RUN",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-31",
     "account": "Migros",
     "amount": "-405.98",
     "currency": "CHF",
@@ -88,10 +94,11 @@
     "source_ref": "0001:11",
     "counterparty": "AEROSUR",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-09",
     "account": "Migros",
     "amount": "-189.90",
     "currency": "CHF",
@@ -101,10 +108,11 @@
     "source_ref": "0002:19",
     "counterparty": "MOBILHAUS",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-12",
     "account": "Migros",
     "amount": "-100.00",
     "currency": "CHF",
@@ -114,10 +122,11 @@
     "source_ref": "0002:20",
     "counterparty": "REVOLUT**1234*",
     "category": "Topup Revolut",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-26",
     "account": "Migros",
     "amount": "-46.50",
     "currency": "CHF",
@@ -127,10 +136,11 @@
     "source_ref": "0002:21",
     "counterparty": "HOSHI-RAMEN GMBH",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-08-30",
     "account": "Migros",
     "amount": "-12.00",
     "currency": "CHF",
@@ -140,10 +150,11 @@
     "source_ref": "0002:22",
     "counterparty": "MARIAS CAFÉ BISTRO",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-09-01",
     "account": "Migros",
     "amount": "-215.25",
     "currency": "CHF",
@@ -153,7 +164,8 @@
     "source_ref": "0002:28",
     "counterparty": "KASSA BILLING ONLINE",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   },
   {
     "date": "2026-09-04",
@@ -166,6 +178,7 @@
     "source_ref": "Varie:31",
     "counterparty": "CASHBACK",
     "category": "Cashback",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-04"
   }
 ]

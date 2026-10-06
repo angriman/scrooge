@@ -10,7 +10,8 @@
     "source_ref": "1",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-30"
   },
   {
     "date": "2026-09-30",
@@ -23,7 +24,8 @@
     "source_ref": "2",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-30"
   },
   {
     "date": "2026-09-29",
@@ -36,7 +38,8 @@
     "source_ref": "4",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-29"
   },
   {
     "date": "2026-09-29",
@@ -49,7 +52,8 @@
     "source_ref": "5",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-29"
   },
   {
     "date": "2026-09-02",
@@ -62,6 +66,7 @@
     "source_ref": "7",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   }
 ]

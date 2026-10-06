@@ -34,9 +34,10 @@ def test_known_september_totals(result: Extraction) -> None:
 
 def test_everything_is_booked_on_migros_in_the_invoice_month(result: Extraction) -> None:
     assert result.month == date(2026, 9, 1)
-    assert {(t.account, t.currency, t.date) for t in result.transactions} == {
+    assert {(t.account, t.currency, t.booking_date) for t in result.transactions} == {
         ("Migros", "CHF", date(2026, 9, 4))  # D4: the invoice date, not the purchase date
     }
+    assert result.transactions[0].date == date(2026, 8, 4)  # D19: the day of the purchase
     assert result.transactions[0].description == "ALPENBAHN AG, BERN (04.08.2026)"
     assert result.transactions[0].counterparty == "ALPENBAHN AG"
 

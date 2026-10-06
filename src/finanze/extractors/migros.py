@@ -77,7 +77,7 @@ def extract(content: str, source_file: str) -> Extraction:
         note = row["Comunicazione"]
         transactions.append(
             Transaction(
-                date=_booking_date(row, first, last, n),
+                date=parse_swiss_date(row["Valuta"], "Migros Valuta"),
                 account=account,
                 amount=amount,
                 currency=currency,
@@ -87,6 +87,7 @@ def extract(content: str, source_file: str) -> Extraction:
                 source_ref=str(n),
                 counterparty=_counterparty(text_),
                 category=category,
+                booking_date=_booking_date(row, first, last, n),
             )
         )
     return Extraction(

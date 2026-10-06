@@ -10,7 +10,8 @@
     "source_ref": "Deposits & Withdrawals:1",
     "counterparty": "",
     "category": "Topup IBKR",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-10"
   },
   {
     "date": "2026-09-28",
@@ -23,7 +24,8 @@
     "source_ref": "Deposits & Withdrawals:2",
     "counterparty": "",
     "category": "Prelievi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-28"
   },
   {
     "date": "2026-09-17",
@@ -36,7 +38,8 @@
     "source_ref": "Deposits & Withdrawals:3",
     "counterparty": "",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-17"
   },
   {
     "date": "2026-09-18",
@@ -49,7 +52,8 @@
     "source_ref": "Deposits & Withdrawals:4",
     "counterparty": "",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-18"
   },
   {
     "date": "2026-09-24",
@@ -62,7 +66,8 @@
     "source_ref": "Deposits & Withdrawals:5",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-24"
   },
   {
     "date": "2026-09-15",
@@ -76,6 +81,7 @@
     "counterparty": "",
     "category": "Investimenti",
     "confidence": "1",
+    "booking_date": "2026-09-15",
     "ticker": "ACME",
     "quantity": "20",
     "price": "112.4",
@@ -94,7 +100,8 @@
     "source_ref": "Trades:1:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-15"
   },
   {
     "date": "2026-09-23",
@@ -108,6 +115,7 @@
     "counterparty": "",
     "category": "Investimenti",
     "confidence": "1",
+    "booking_date": "2026-09-23",
     "ticker": "WIDG",
     "quantity": "-10",
     "price": "54.25",
@@ -126,7 +134,8 @@
     "source_ref": "Trades:2:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-23"
   },
   {
     "date": "2026-09-16",
@@ -139,7 +148,8 @@
     "source_ref": "Trades:4",
     "counterparty": "",
     "category": "Trading",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-16"
   },
   {
     "date": "2026-09-16",
@@ -152,7 +162,8 @@
     "source_ref": "Trades:4:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-16"
   },
   {
     "date": "2026-09-29",
@@ -165,7 +176,8 @@
     "source_ref": "Trades:5",
     "counterparty": "",
     "category": "Trading",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-29"
   },
   {
     "date": "2026-09-29",
@@ -178,7 +190,8 @@
     "source_ref": "Trades:5:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-29"
   },
   {
     "date": "2026-09-12",
@@ -191,7 +204,8 @@
     "source_ref": "Trades:6:base",
     "counterparty": "",
     "category": "Acquisto USD",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-12"
   },
   {
     "date": "2026-09-12",
@@ -204,7 +218,8 @@
     "source_ref": "Trades:6:quote",
     "counterparty": "",
     "category": "Acquisto USD",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-12"
   },
   {
     "date": "2026-09-12",
@@ -217,7 +232,8 @@
     "source_ref": "Trades:6:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-12"
   },
   {
     "date": "2026-09-08",
@@ -230,7 +246,8 @@
     "source_ref": "Trades:8",
     "counterparty": "",
     "category": "Trading",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-08",
@@ -243,7 +260,8 @@
     "source_ref": "Trades:8:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-08",
@@ -256,7 +274,8 @@
     "source_ref": "Trades:9",
     "counterparty": "",
     "category": "Trading",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-08",
@@ -269,7 +288,8 @@
     "source_ref": "Trades:9:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-08"
   },
   {
     "date": "2026-09-21",
@@ -282,7 +302,8 @@
     "source_ref": "Trades:10",
     "counterparty": "",
     "category": "Trading",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-21"
   },
   {
     "date": "2026-09-21",
@@ -295,7 +316,8 @@
     "source_ref": "Trades:10:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-21"
   },
   {
     "date": "2026-09-22",
@@ -308,7 +330,8 @@
     "source_ref": "Trades:11",
     "counterparty": "",
     "category": "Trading",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-22"
   },
   {
     "date": "2026-09-22",
@@ -321,7 +344,8 @@
     "source_ref": "Trades:11:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-22"
   },
   {
     "date": "2026-09-09",
@@ -335,6 +359,7 @@
     "counterparty": "",
     "category": "Investimenti",
     "confidence": "1",
+    "booking_date": "2026-09-09",
     "ticker": "912797ZZ1",
     "quantity": "10000",
     "price": "98.5",
@@ -353,7 +378,8 @@
     "source_ref": "Trades:12:comm",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-09"
   },
   {
     "date": "2026-09-17",
@@ -366,7 +392,8 @@
     "source_ref": "Corporate Actions:1:principal",
     "counterparty": "912797YY2",
     "category": "Investimenti",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-17"
   },
   {
     "date": "2026-09-17",
@@ -379,7 +406,8 @@
     "source_ref": "Corporate Actions:1:interest",
     "counterparty": "912797YY2",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-17"
   },
   {
     "date": "2026-09-25",
@@ -392,7 +420,8 @@
     "source_ref": "Dividends:1",
     "counterparty": "ACME",
     "category": "Dividendi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-25"
   },
   {
     "date": "2026-09-26",
@@ -405,7 +434,8 @@
     "source_ref": "Dividends:2",
     "counterparty": "WIDG",
     "category": "Dividendi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-26"
   },
   {
     "date": "2026-09-25",
@@ -418,7 +448,8 @@
     "source_ref": "Withholding Tax:1",
     "counterparty": "ACME",
     "category": "Ritenute",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-25"
   },
   {
     "date": "2026-09-26",
@@ -431,7 +462,8 @@
     "source_ref": "Withholding Tax:2",
     "counterparty": "WIDG",
     "category": "Ritenute",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-26"
   },
   {
     "date": "2026-09-03",
@@ -444,7 +476,8 @@
     "source_ref": "Interest:1",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-03"
   },
   {
     "date": "2026-09-03",
@@ -457,7 +490,8 @@
     "source_ref": "Interest:2",
     "counterparty": "",
     "category": "Interessi",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-03"
   },
   {
     "date": "2026-09-02",
@@ -470,7 +504,8 @@
     "source_ref": "Fees:1",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   },
   {
     "date": "2026-09-02",
@@ -483,7 +518,8 @@
     "source_ref": "Fees:2",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   },
   {
     "date": "2026-09-02",
@@ -496,7 +532,8 @@
     "source_ref": "Fees:3",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   },
   {
     "date": "2026-09-11",
@@ -509,7 +546,8 @@
     "source_ref": "Fees:4",
     "counterparty": "",
     "category": "",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-11"
   },
   {
     "date": "2026-09-02",
@@ -522,7 +560,8 @@
     "source_ref": "GST/VAT Details:1",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   },
   {
     "date": "2026-09-02",
@@ -535,7 +574,8 @@
     "source_ref": "GST/VAT Details:2",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   },
   {
     "date": "2026-09-02",
@@ -548,6 +588,7 @@
     "source_ref": "GST/VAT Details:3",
     "counterparty": "",
     "category": "Commissioni",
-    "confidence": "1"
+    "confidence": "1",
+    "booking_date": "2026-09-02"
   }
 ]

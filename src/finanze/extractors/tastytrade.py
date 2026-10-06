@@ -126,6 +126,7 @@ def _security_trade(txn: Transaction, row: dict[str, str], n: int) -> SecurityTr
         source_ref=txn.source_ref,
         counterparty=txn.counterparty,
         category=txn.category,
+        booking_date=txn.booking_date,
         ticker=row["Symbol"],
         quantity=quantity if action.startswith("BUY") else -quantity,
         price=price,

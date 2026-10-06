@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -24,6 +25,12 @@ def test_transaction_keeps_decimal_amount() -> None:
     txn = _make(Decimal("-12.50"))
     assert txn.amount == Decimal("-12.50")
     assert txn.confidence == Decimal(1)
+
+
+def test_booking_date_defaults_to_the_date_and_can_differ() -> None:
+    assert _make(Decimal(1)).booking_date == date(2026, 9, 1)
+    later = replace(_make(Decimal(1)), booking_date=date(2026, 10, 4))
+    assert (later.date, later.booking_date) == (date(2026, 9, 1), date(2026, 10, 4))
 
 
 def test_transaction_rejects_float_amount() -> None:
