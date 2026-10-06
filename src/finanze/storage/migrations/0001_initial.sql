@@ -144,6 +144,9 @@ CREATE TABLE transactions (
     statement_file_id     INTEGER REFERENCES statement_files (id),  -- NULL: typed by hand
     source_ref            TEXT    NOT NULL DEFAULT '',              -- row or line in that file
     confidence            TEXT    NOT NULL DEFAULT '1',
+    -- Set on the interest part split off a bill maturity or sale (D13): the row it was taken
+    -- from, which keeps the cost of the lots. The two add up to what the statement says.
+    split_of              TEXT    REFERENCES transactions (id) ON DELETE CASCADE,
     CHECK ((category_id IS NULL) = (category_source IS NULL))
 ) STRICT;
 CREATE INDEX transactions_date         ON transactions (date);
@@ -151,6 +154,7 @@ CREATE INDEX transactions_booking_date ON transactions (booking_date);
 CREATE INDEX transactions_account      ON transactions (account_id, date);
 CREATE INDEX transactions_category     ON transactions (category_id, date);
 CREATE INDEX transactions_file         ON transactions (statement_file_id);
+CREATE INDEX transactions_split        ON transactions (split_of);
 
 -- The security side of a transaction: a buy or sell (kind 'security_trade'), or an in-kind
 -- move between accounts (kind 'transfer', amount 0, quantity signed). Positions on any day

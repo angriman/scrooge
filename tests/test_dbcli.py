@@ -17,6 +17,17 @@ owners:
 """
 
 
+MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
+AUGUST_PURCHASE = (
+    "Date,Type,Sub Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,"
+    "Commissions,Fees,Multiplier,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,"
+    "Call or Put,Order #,Total,Currency\n"
+    "2026-08-20T15:58:53+0200,Trade,Buy to Open,BUY_TO_OPEN,912797YY2,Fixed Income Security,"
+    'Bought 10 912797YY2 @ 992.00,"-9,920.00",10,-992.00,0.00,0.00,,,,,,,900000001,'
+    '"-9,920.00",USD\n'
+)
+
+
 class Run:
     """Runs a database command on the fixture folder and records what it printed."""
 
@@ -27,7 +38,7 @@ class Run:
         self.config.write_text(CONFIG.format(database=self.database), encoding="utf-8")
         self.rules = write_rules(folder)
         self.instruments = folder / "instruments.yaml"
-        self.instruments.write_text(INSTRUMENTS_YAML, encoding="utf-8")
+        self.instruments.write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
         self.output = ""
 
     def __call__(self, command: str, *args: str) -> int:
@@ -37,9 +48,16 @@ class Run:
         self.output = out.getvalue()
         return code
 
-    def load(self, *args: str) -> int:
+    def load(self, *args: str, folder: Path | None = None) -> int:
         paths = ["--rules", str(self.rules), "--instruments", str(self.instruments)]
-        return self("import", str(self.folder), *paths, *args)
+        return self("import", str(folder or self.folder), *paths, *args)
+
+    def load_august(self) -> int:
+        """The month before the fixtures: just the purchase of the bill that matures in them."""
+        august = self.folder / "old" / "august"
+        august.mkdir(parents=True, exist_ok=True)
+        (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
+        return self.load(folder=august)
 
     def count(self, table: str) -> int:
         conn = db.connect(self.database)
@@ -65,8 +83,9 @@ def test_import_stages_the_month_and_says_what_is_next(run: Run) -> None:
 
 
 def test_commit_saves_a_copy_first_and_reopen_undoes_it(run: Run) -> None:
+    assert run.load_august() == dbcli.OK
     run.load()
-    staged = run.count("transactions")
+    staged = run.count("transactions") - 1  # all but the August purchase
     assert run("commit", "2026-09") == dbcli.OK
     copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
     assert f"September 2026 committed for Lukas. Copy from before: {copy}" in run.output
@@ -115,6 +134,15 @@ def test_a_missing_statement_is_shown_on_import_and_blocks_the_commit(run: Run) 
     assert run("commit", "2026-09") == dbcli.FAILED
     assert "error: " in run.output
     assert "no statement covers" in run.output
+
+
+def test_a_bill_without_its_purchase_is_shown_on_import_and_blocks_the_commit(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    assert "  missing: Tastytrade: 912797YY2 matured or was sold on 2026-09-16" in run.output
+    assert run("commit", "2026-09") == dbcli.FAILED
+    assert "its purchases are not all stored" in run.output
+    assert run.load_august() == dbcli.OK
+    assert run("commit", "2026-09") == dbcli.OK
 
 
 def test_a_month_that_is_not_staged_cannot_be_committed(run: Run) -> None:

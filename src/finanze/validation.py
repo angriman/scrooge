@@ -86,6 +86,19 @@ class MissingStatementError(ReconciliationError):
         )
 
 
+class MissingLotsError(ReconciliationError):
+    """A bill matured or was sold, but its purchases are not all stored: no cost to split."""
+
+    def __init__(self, account: str, symbol: str, day: date) -> None:
+        self.account = account
+        self.symbol = symbol
+        self.day = day
+        super().__init__(
+            f"{account}: {symbol} matured or was sold on {day}, but its purchases are not all "
+            "stored (import the earlier statements): the interest cannot be split from the cost"
+        )
+
+
 class MissingBalanceError(ReconciliationError):
     """Transactions exist for an account whose balance the statement never printed."""
 

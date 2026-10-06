@@ -12,6 +12,7 @@ from finanze.models import CashBalance, Extraction, Kind, SecurityTrade, Transac
 from finanze.monthclose import Batch
 from finanze.pipeline import Month, Statement
 
+AUGUST = date(2026, 8, 1)
 SEPTEMBER = date(2026, 9, 1)
 OCTOBER = date(2026, 10, 1)
 OWNER = "Lukas"
@@ -68,6 +69,25 @@ def statement(
     extraction = Extraction(month=month, transactions=tuple(rows), balances=tuple(balances))
     digest = hashlib.sha256(f"{name}{month}{content}".encode()).hexdigest()
     return Statement(source, name, digest, extraction)
+
+
+def bill(amount: str, quantity: str, day: date, **fields: Any) -> SecurityTrade:
+    """A Tastytrade trade in the bill that matures in the fixture month (face 10,000)."""
+    defaults: dict[str, Any] = {
+        "account": "Tastytrade",
+        "date": day,
+        "source_file": f"tastytrade {day:%Y-%m}.csv",
+        "source_ref": f"{day}",
+        "price": Decimal(99),
+        "asset_tab": "Bonds",
+        "maturity": date(2026, 9, 16),
+    }
+    return trade(amount, "912797YY2", quantity, **(defaults | fields))
+
+
+def tastytrade(*rows: SecurityTrade, month: date = SEPTEMBER) -> Batch:
+    """A month with just a Tastytrade statement."""
+    return batch(statement("tastytrade", rows, month=month), month=month)
 
 
 def batch(*statements: Statement, owner: str = OWNER, month: date = SEPTEMBER) -> Batch:

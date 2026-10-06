@@ -14,19 +14,22 @@ from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
 from finanze.storage import db, store
 from finanze.storage.money import PrecisionError, from_micro
-from finanze.validation import ChainMismatchError, MissingStatementError
+from finanze.validation import ChainMismatchError, MissingLotsError, MissingStatementError
 from tests.conftest import INSTRUMENTS, write_rules
 from tests.storage.helpers import (
+    AUGUST,
     OCTOBER,
     OWNER,
     PARTNER,
     PEOPLE,
     SEPTEMBER,
     batch,
+    bill,
     dump,
     migros,
     rows,
     statement,
+    tastytrade,
     trade,
     txn,
 )
@@ -65,14 +68,27 @@ def fixture_batch(folder: Path, rules: Path | None = None) -> Batch:
     return Batch(OWNER, statements, month, PEOPLE)
 
 
+def stage_september(
+    conn: sqlite3.Connection, folder: Path, rules: Path | None = None, now: datetime = NOW
+) -> monthclose.Staged:
+    """The fixture month, after the August purchase of the bill that matures in it."""
+    bought = bill("-9920", "10000", date(2026, 8, 20), price=Decimal("99.2"))
+    monthclose.stage(conn, tastytrade(bought, month=AUGUST), now)
+    return monthclose.stage(conn, fixture_batch(folder, rules), now)
+
+
+FIRST = "2026-09-01"  # for queries that look at September only
+
 # ------------------------------------------------------------------ the fixture month
 
 
 def test_every_transaction_of_the_month_is_stored(conn: sqlite3.Connection, folder: Path) -> None:
     september = fixture_batch(folder)
-    staged = monthclose.stage(conn, september, NOW)
+    staged = stage_september(conn, folder)
     assert staged == monthclose.Staged(SEPTEMBER, len(september.month.transactions), 0)
-    assert rows(conn, "SELECT count(*) FROM transactions") == [(staged.transactions,)]
+    # one row more than the statements have: the interest split off the matured bill
+    stored_rows = rows(conn, "SELECT count(*) FROM transactions WHERE booking_date >= ?", FIRST)
+    assert stored_rows == [(staged.transactions + 1,)]
 
     expected: dict[tuple[str, str], Decimal] = {}
     for row in september.month.transactions:
@@ -81,7 +97,8 @@ def test_every_transaction_of_the_month_is_stored(conn: sqlite3.Connection, fold
     stored = rows(
         conn,
         "SELECT a.name, t.currency, sum(t.amount_micro) FROM transactions t "
-        "JOIN accounts a ON a.id = t.account_id GROUP BY 1, 2",
+        "JOIN accounts a ON a.id = t.account_id WHERE t.booking_date >= ? GROUP BY 1, 2",
+        FIRST,
     )
     assert {(name, currency): from_micro(total) for name, currency, total in stored} == expected
 
@@ -124,19 +141,21 @@ def test_accounts_trades_and_statement_files_are_stored(
 def test_importing_the_same_month_again_changes_nothing(
     conn: sqlite3.Connection, folder: Path
 ) -> None:
-    monthclose.stage(conn, fixture_batch(folder), NOW)
+    stage_september(conn, folder)
     before = dump(conn)
-    monthclose.stage(conn, fixture_batch(folder), LATER)
+    stage_september(conn, folder, now=LATER)
     assert dump(conn) == before
 
 
 def test_a_month_is_invisible_until_committed(conn: sqlite3.Connection, folder: Path) -> None:
-    staged = monthclose.stage(conn, fixture_batch(folder), NOW)
+    staged = stage_september(conn, folder)
     assert rows(conn, "SELECT count(*) FROM committed_transactions") == [(0,)]
     assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=LATER) is True
-    assert rows(conn, "SELECT count(*) FROM committed_transactions") == [(staged.transactions,)]
-    assert rows(conn, "SELECT status, committed_at FROM months") == [
-        ("committed", "2026-10-07T09:30:00+00:00")
+    visible = rows(conn, "SELECT count(*), min(booking_date) FROM committed_transactions")
+    assert visible == [(staged.transactions + 1, "2026-09-01")]  # August is still open
+    assert rows(conn, "SELECT status, committed_at FROM months ORDER BY month") == [
+        ("open", None),
+        ("committed", "2026-10-07T09:30:00+00:00"),
     ]
     sample = rows(
         conn,
@@ -147,7 +166,7 @@ def test_a_month_is_invisible_until_committed(conn: sqlite3.Connection, folder: 
 
 
 def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> None:
-    monthclose.stage(conn, fixture_batch(folder), NOW)
+    stage_september(conn, folder)
     monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     before = dump(conn)
     assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=LATER) is False
@@ -157,7 +176,7 @@ def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> 
 def test_a_committed_month_must_be_reopened_before_importing_again(
     conn: sqlite3.Connection, folder: Path
 ) -> None:
-    monthclose.stage(conn, fixture_batch(folder), NOW)
+    stage_september(conn, folder)
     monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     before = dump(conn)
     with pytest.raises(monthclose.MonthCommittedError, match="2026-09 is committed for Lukas"):
@@ -165,7 +184,7 @@ def test_a_committed_month_must_be_reopened_before_importing_again(
     assert dump(conn) == before
 
     monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
-    assert rows(conn, "SELECT status, committed_at FROM months") == [("open", None)]
+    assert rows(conn, "SELECT DISTINCT status, committed_at FROM months") == [("open", None)]
     monthclose.stage(conn, fixture_batch(folder), LATER)
     monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     assert dump(conn) == before
@@ -174,11 +193,11 @@ def test_a_committed_month_must_be_reopened_before_importing_again(
 def test_uncategorized_rows_block_the_commit(conn: sqlite3.Connection, folder: Path) -> None:
     rules = folder / "few.yaml"
     rules.write_text("rules:\n  - {match: 'Hans Muster', category: Affitto}\n", encoding="utf-8")
-    staged = monthclose.stage(conn, fixture_batch(folder, rules), NOW)
+    staged = stage_september(conn, folder, rules)
     assert staged.uncategorized > 0
     with pytest.raises(monthclose.UncategorizedRowsError, match=f"{staged.uncategorized} trans"):
         monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
-    assert rows(conn, "SELECT status FROM months") == [("open",)]
+    assert rows(conn, "SELECT DISTINCT status FROM months") == [("open",)]
 
 
 # ------------------------------------------------------------------ months by hand
@@ -488,6 +507,120 @@ def test_accounts_are_chained_one_by_one(conn: sqlite3.Connection) -> None:
     )
     monthclose.stage(conn, batch(migros("1000", "-200"), euro), NOW)
     assert rows(conn, "SELECT count(*) FROM balances") == [(4,)]
+
+
+# ------------------------------------------------------------------ the interest on bills
+
+
+def test_the_fixture_bill_is_split_into_cost_and_interest(
+    conn: sqlite3.Connection, folder: Path
+) -> None:
+    stage_september(conn, folder)
+    parts = rows(
+        conn,
+        "SELECT t.description, t.amount_micro, t.kind, c.name, t.split_of IS NOT NULL "
+        "FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE t.description LIKE 'Maturity%' ORDER BY t.amount_micro DESC",
+    )
+    assert parts == [
+        ("Maturity 10.0 912797YY2 @ 1000", 9_920_000_000, "income", "Investimenti", 0),
+        ("Maturity 10.0 912797YY2 @ 1000 (interest)", 80_000_000, "interest", "Interessi", 1),
+    ]
+
+
+def test_a_bill_whose_purchase_is_not_stored_blocks_the_commit(
+    conn: sqlite3.Connection, folder: Path
+) -> None:
+    staged = monthclose.stage(conn, fixture_batch(folder), NOW)
+    assert staged.gaps == (
+        "Tastytrade: 912797YY2 matured or was sold on 2026-09-16, but its purchases are not all "
+        "stored (import the earlier statements): the interest cannot be split from the cost",
+    )
+    whole = rows(conn, "SELECT amount_micro FROM transactions WHERE description LIKE 'Maturity%'")
+    assert whole == [(10_000_000_000,)]
+    with pytest.raises(MissingLotsError, match="912797YY2 matured or was sold on 2026-09-16"):
+        monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+    # The purchase arrives later: the month already staged is corrected.
+    bought = bill("-9920", "10000", date(2026, 8, 20), price=Decimal("99.2"))
+    assert monthclose.stage(conn, tastytrade(bought, month=AUGUST), NOW).gaps == ()
+    split = rows(
+        conn,
+        "SELECT amount_micro FROM transactions WHERE description LIKE 'Maturity%' ORDER BY 1",
+    )
+    assert split == [(80_000_000,), (9_920_000_000,)]
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+def test_lots_are_closed_first_in_first_out(conn: sqlite3.Connection) -> None:
+    august = tastytrade(
+        bill("-4950", "5000", date(2026, 8, 3)),
+        bill("-4960", "5000", date(2026, 8, 17), source_ref="2"),
+        month=AUGUST,
+    )
+    monthclose.stage(conn, august, NOW)
+    september = tastytrade(
+        bill("2982", "-3000", date(2026, 9, 2)),  # from the first lot: cost 2970
+        bill("7000", "-7000", date(2026, 9, 16), kind=Kind.INCOME, source_ref="m"),
+    )
+    assert monthclose.stage(conn, september, NOW).gaps == ()
+    parts = rows(
+        conn,
+        "SELECT t.date, t.kind, c.name, t.amount_micro FROM transactions t "
+        "JOIN categories c ON c.id = t.category_id WHERE t.booking_date >= ? ORDER BY 1, 4 DESC",
+        FIRST,
+    )
+    assert parts == [
+        ("2026-09-02", "security_trade", "Investimenti", 2_970_000_000),
+        ("2026-09-02", "interest", "Interessi", 12_000_000),
+        ("2026-09-16", "income", "Investimenti", 6_940_000_000),  # 1980 + 4960
+        ("2026-09-16", "interest", "Interessi", 60_000_000),
+    ]
+    # the statement's figures are untouched in total, and the split is stable
+    total = rows(conn, "SELECT sum(amount_micro) FROM transactions WHERE booking_date >= ?", FIRST)
+    assert total == [(9_982_000_000,)]
+    before = dump(conn)
+    monthclose.stage(conn, september, LATER)
+    assert dump(conn) == before
+
+
+def test_a_bill_sold_at_its_cost_has_no_interest_row(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, tastytrade(bill("-4950", "5000", date(2026, 8, 3)), month=AUGUST), NOW)
+    monthclose.stage(conn, tastytrade(bill("4950", "-5000", date(2026, 9, 2))), NOW)
+    assert rows(conn, "SELECT count(*) FROM transactions WHERE split_of IS NOT NULL") == [(0,)]
+
+
+def test_a_manual_category_on_the_interest_survives(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, tastytrade(bill("-4950", "5000", date(2026, 8, 3)), month=AUGUST), NOW)
+    sale = tastytrade(bill("4980", "-5000", date(2026, 9, 2)))
+    monthclose.stage(conn, sale, NOW)
+    (dividends,) = rows(conn, "SELECT id FROM categories WHERE name = 'Dividendi'")[0]
+    conn.execute(
+        "INSERT INTO overrides (transaction_id, category_id, created_at) "
+        "SELECT id, ?, 'x' FROM transactions WHERE split_of IS NOT NULL",
+        (dividends,),
+    )
+    monthclose.stage(conn, sale, LATER)
+    kept = rows(
+        conn,
+        "SELECT c.name, t.category_source, t.amount_micro FROM transactions t "
+        "JOIN categories c ON c.id = t.category_id WHERE t.split_of IS NOT NULL",
+    )
+    assert kept == [("Dividendi", "manual", 30_000_000)]
+
+
+def test_bills_with_a_cost_on_the_statement_are_left_alone(conn: sqlite3.Connection) -> None:
+    # IBKR prints the realized P/L: its extractor has already split the maturity.
+    sold = trade(
+        "5000",
+        "912797YY2",
+        "-5000",
+        asset_tab="Bonds",
+        maturity=date(2026, 9, 16),
+    )
+    staged = monthclose.stage(conn, batch(statement("ibkr", [sold])), NOW)
+    assert staged.gaps == ()
+    assert rows(conn, "SELECT count(*) FROM transactions") == [(1,)]
 
 
 # ------------------------------------------------------------------ invariants

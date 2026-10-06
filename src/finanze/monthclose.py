@@ -18,10 +18,10 @@ from itertools import pairwise
 from finanze.extractors.common import month_end
 from finanze.models import Kind, Transaction
 from finanze.pipeline import Month, Statement
-from finanze.storage import db, store
+from finanze.storage import bills, db, store
 from finanze.storage.ids import transaction_ids
 from finanze.storage.money import from_micro
-from finanze.validation import ChainMismatchError, MissingStatementError
+from finanze.validation import ChainMismatchError, MissingStatementError, ReconciliationError
 
 # Sources whose rows are booked on an account that another source's statement reconciles:
 # card purchases on the bank account (D3), savings interest on the Revolut account (D8).
@@ -75,7 +75,8 @@ class Staged:
     month: date
     transactions: int
     uncategorized: int
-    gaps: tuple[str, ...] = ()  # periods without a statement: they block the commit, not this
+    # What an earlier statement would settle: it blocks the commit, not the import.
+    gaps: tuple[str, ...] = ()
 
 
 def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
@@ -141,9 +142,9 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 store.set_closing_balance(conn, account, period[1], balance.closing, file_id)
                 store.set_opening_balance(conn, account, before, balance.opening, file_id)
 
-        store.apply_overrides(conn)
         store.drop_unused_files(conn, replaced - set(files.values()))
-        gaps = tuple(str(gap) for gap in check_chain(conn, owner_id))
+        gaps = tuple(str(gap) for gap in _unsettled(conn, owner_id))
+        store.apply_overrides(conn)
         pending = store.uncategorized(conn, owner_id, period)
         return Staged(month.month, len(rows), pending, gaps)
 
@@ -158,7 +159,7 @@ def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) 
         if pending:
             msg = f"{pending} transactions of {month:%Y-%m} still need a category"
             raise UncategorizedRowsError(msg)
-        for gap in check_chain(conn, owner_id):
+        for gap in _unsettled(conn, owner_id):
             raise gap
         store.set_month(conn, owner_id, month, "committed", db.timestamp(now))
         return True
@@ -169,6 +170,11 @@ def reopen(conn: sqlite3.Connection, *, owner: str, month: date) -> None:
     with db.transaction(conn):
         owner_id, _ = _month(conn, owner, month)
         store.set_month(conn, owner_id, month, "open", None)
+
+
+def _unsettled(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:
+    """Bring the derived rows up to date; returns what only an earlier statement can settle."""
+    return [*check_chain(conn, owner_id), *bills.split(conn, owner_id)]
 
 
 def check_chain(conn: sqlite3.Connection, owner_id: int) -> list[MissingStatementError]:
