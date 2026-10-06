@@ -1,0 +1,488 @@
+import sqlite3
+from collections.abc import Iterator
+from dataclasses import replace
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from finanze import classification, monthclose, pipeline
+from finanze.models import CashBalance, Kind
+from finanze.monthclose import Batch
+from finanze.storage import db, store
+from finanze.storage.money import PrecisionError, from_micro
+from finanze.validation import ChainMismatchError
+from tests.conftest import INSTRUMENTS, write_rules
+from tests.storage.helpers import (
+    OCTOBER,
+    OWNER,
+    PARTNER,
+    PEOPLE,
+    SEPTEMBER,
+    batch,
+    dump,
+    migros,
+    rows,
+    statement,
+    trade,
+    txn,
+)
+
+NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+LATER = datetime(2026, 10, 7, 9, 30, tzinfo=UTC)
+
+
+def new_database() -> sqlite3.Connection:
+    conn = db.connect(":memory:")
+    db.migrate(conn, NOW)
+    return conn
+
+
+@pytest.fixture
+def conn() -> Iterator[sqlite3.Connection]:
+    connection = new_database()
+    yield connection
+    connection.close()
+
+
+def fixture_batch(folder: Path, rules: Path | None = None) -> Batch:
+    """September 2026 from the redacted fixtures, through the real pipeline."""
+    statements, skipped = pipeline.load_statements(folder)
+    month = pipeline.process(
+        [(s.source, s.extraction) for s in statements],
+        classification.load_rules([rules or write_rules(folder)]),
+        INSTRUMENTS,
+        skipped,
+    )
+    return Batch(OWNER, statements, month, PEOPLE)
+
+
+# ------------------------------------------------------------------ the fixture month
+
+
+def test_every_transaction_of_the_month_is_stored(conn: sqlite3.Connection, folder: Path) -> None:
+    september = fixture_batch(folder)
+    staged = monthclose.stage(conn, september, NOW)
+    assert staged == monthclose.Staged(SEPTEMBER, len(september.month.transactions), 0)
+    assert rows(conn, "SELECT count(*) FROM transactions") == [(staged.transactions,)]
+
+    expected: dict[tuple[str, str], Decimal] = {}
+    for row in september.month.transactions:
+        key = (row.account, row.currency)
+        expected[key] = expected.get(key, Decimal(0)) + row.amount
+    stored = rows(
+        conn,
+        "SELECT a.name, t.currency, sum(t.amount_micro) FROM transactions t "
+        "JOIN accounts a ON a.id = t.account_id GROUP BY 1, 2",
+    )
+    assert {(name, currency): from_micro(total) for name, currency, total in stored} == expected
+
+
+def test_both_dates_are_stored(conn: sqlite3.Connection, folder: Path) -> None:
+    monthclose.stage(conn, fixture_batch(folder), NOW)
+    card = rows(
+        conn,
+        "SELECT date, booking_date FROM transactions WHERE description LIKE 'ALPENBAHN%'",
+    )
+    assert card == [("2026-08-04", "2026-09-04")]  # bought in August, billed in September
+    outside = rows(
+        conn,
+        "SELECT count(*) FROM transactions WHERE booking_date NOT BETWEEN ? AND ?",
+        "2026-09-01",
+        "2026-09-30",
+    )
+    assert outside == [(0,)]
+
+
+def test_accounts_trades_and_statement_files_are_stored(
+    conn: sqlite3.Connection, folder: Path
+) -> None:
+    monthclose.stage(conn, fixture_batch(folder), NOW)
+    accounts = dict(rows(conn, "SELECT name, kind || ':' || source FROM accounts"))
+    assert accounts["Migros"] == "bank:migros"  # the card's rows land here too (D3)
+    assert accounts["IBKR USD"] == "broker_cash:ibkr"
+    assert accounts["Tastytrade"] == "broker_cash:tastytrade"
+    files = dict(rows(conn, "SELECT source, reconciled FROM statement_files"))
+    assert files["migros"] == "yes"
+    assert files["revolut_savings"] == "nothing_to_check"
+    assert set(files) == {"ibkr", "migros", "revolut", "revolut_savings", "swisscard", "tastytrade"}
+    trades = rows(conn, "SELECT count(*) FROM trades")
+    assert trades == [(len(fixture_batch(folder).month.trades),)]
+    bills = rows(conn, "SELECT symbol, maturity FROM instruments WHERE type = 'bill' ORDER BY 1")
+    assert ("912797ZZ1", "2026-12-24") in bills
+
+
+def test_importing_the_same_month_again_changes_nothing(
+    conn: sqlite3.Connection, folder: Path
+) -> None:
+    monthclose.stage(conn, fixture_batch(folder), NOW)
+    before = dump(conn)
+    monthclose.stage(conn, fixture_batch(folder), LATER)
+    assert dump(conn) == before
+
+
+def test_a_month_is_invisible_until_committed(conn: sqlite3.Connection, folder: Path) -> None:
+    staged = monthclose.stage(conn, fixture_batch(folder), NOW)
+    assert rows(conn, "SELECT count(*) FROM committed_transactions") == [(0,)]
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=LATER) is True
+    assert rows(conn, "SELECT count(*) FROM committed_transactions") == [(staged.transactions,)]
+    assert rows(conn, "SELECT status, committed_at FROM months") == [
+        ("committed", "2026-10-07T09:30:00+00:00")
+    ]
+    sample = rows(
+        conn,
+        "SELECT owner, account, category, category_parent, category_side "
+        "FROM committed_transactions WHERE description LIKE 'FRISCHMARKT%' LIMIT 1",
+    )
+    assert sample == [(OWNER, "Migros", "Spesa", "Alimentari", "uscite")]
+
+
+def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> None:
+    monthclose.stage(conn, fixture_batch(folder), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    before = dump(conn)
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=LATER) is False
+    assert dump(conn) == before
+
+
+def test_a_committed_month_must_be_reopened_before_importing_again(
+    conn: sqlite3.Connection, folder: Path
+) -> None:
+    monthclose.stage(conn, fixture_batch(folder), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    before = dump(conn)
+    with pytest.raises(monthclose.MonthCommittedError, match="2026-09 is committed for Lukas"):
+        monthclose.stage(conn, fixture_batch(folder), LATER)
+    assert dump(conn) == before
+
+    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
+    assert rows(conn, "SELECT status, committed_at FROM months") == [("open", None)]
+    monthclose.stage(conn, fixture_batch(folder), LATER)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    assert dump(conn) == before
+
+
+def test_uncategorized_rows_block_the_commit(conn: sqlite3.Connection, folder: Path) -> None:
+    rules = folder / "few.yaml"
+    rules.write_text("rules:\n  - {match: 'Hans Muster', category: Affitto}\n", encoding="utf-8")
+    staged = monthclose.stage(conn, fixture_batch(folder, rules), NOW)
+    assert staged.uncategorized > 0
+    with pytest.raises(monthclose.UncategorizedRowsError, match=f"{staged.uncategorized} trans"):
+        monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    assert rows(conn, "SELECT status FROM months") == [("open",)]
+
+
+# ------------------------------------------------------------------ months by hand
+
+
+def test_internal_rows_need_no_category(conn: sqlite3.Connection) -> None:
+    bill = migros("1000", "-200", kind=Kind.INTERNAL, category="", description="Swisscard")
+    assert monthclose.stage(conn, batch(bill), NOW).uncategorized == 0
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+@pytest.mark.parametrize("owner", [OWNER, "Nobody"])
+def test_a_month_that_was_never_staged_cannot_be_committed_or_reopened(
+    conn: sqlite3.Connection, owner: str
+) -> None:
+    monthclose.stage(conn, batch(migros("0", "-1")), NOW)
+    with pytest.raises(monthclose.NothingStagedError, match=f"for {owner} in 2026-10"):
+        monthclose.commit(conn, owner=owner, month=OCTOBER, now=NOW)
+    with pytest.raises(monthclose.NothingStagedError):
+        monthclose.reopen(conn, owner=owner, month=OCTOBER)
+
+
+def test_categories_follow_the_sign_and_fall_back_to_the_other_side(
+    conn: sqlite3.Connection,
+) -> None:
+    amounts = {
+        "expense": txn("-50", description="expense", category="Trading"),
+        "income": txn("70", description="income", category="Trading"),
+        "refund": txn("5", description="refund", category="Spesa"),
+        "clawback": txn("-9", description="clawback", category="Stipendio"),
+        "transfer": txn("-100", description="transfer", category="Topup Revolut"),
+    }
+    monthclose.stage(conn, batch(statement("migros", list(amounts.values()))), NOW)
+    sides = dict(
+        rows(
+            conn,
+            "SELECT t.description, c.side || '/' || c.name FROM transactions t "
+            "JOIN categories c ON c.id = t.category_id",
+        )
+    )
+    assert sides == {
+        "expense": "uscite/Trading",
+        "income": "entrate/Trading",
+        "refund": "uscite/Spesa",
+        "clawback": "entrate/Stipendio",
+        "transfer": "transfer/Topup Revolut",
+    }
+    assert rows(conn, "SELECT DISTINCT category_source FROM transactions") == [("rule",)]
+
+
+def test_an_unknown_category_stops_the_import(conn: sqlite3.Connection) -> None:
+    with pytest.raises(store.UnknownCategoryError, match="'Unicorni'"):
+        monthclose.stage(conn, batch(migros("0", "-1", category="Unicorni")), NOW)
+    assert rows(conn, "SELECT count(*) FROM owners") == [(0,)]  # nothing was kept
+
+
+def test_the_taxonomy_is_seeded_once(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("0", "-1")), NOW)
+    before = rows(conn, "SELECT * FROM categories ORDER BY id")
+    monthclose.stage(conn, batch(migros("0", "-1")), NOW)
+    assert rows(conn, "SELECT * FROM categories ORDER BY id") == before
+    tree = rows(
+        conn,
+        "SELECT c.name, p.name FROM categories c JOIN categories p ON p.id = c.parent_id "
+        "WHERE c.name IN ('Regali', 'Voli') ORDER BY 1",
+    )
+    assert tree == [("Regali", "Regali"), ("Voli", "Trasporti")]
+
+
+def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None:
+    lines = [
+        txn("-40", description="TWINT Anna Meier", category="Ristoranti"),
+        txn("25", description="Bonifico", counterparty="ANNA MEIER", category="Rimborsi"),
+        txn("-12", description="KONSUM"),
+        txn("-500", description="ANNA MEIER", kind=Kind.TRANSFER, category="Topup Revolut"),
+        txn("-3", description="LUKAS MEIER"),  # the owner is not their own counterparty
+    ]
+    monthclose.stage(conn, batch(statement("migros", lines)), NOW)
+    marked = rows(
+        conn,
+        "SELECT t.amount_micro, o.name FROM transactions t "
+        "LEFT JOIN owners o ON o.id = t.counterparty_owner_id ORDER BY t.amount_micro",
+    )
+    assert marked == [
+        (-500_000_000, None),
+        (-40_000_000, PARTNER),
+        (-12_000_000, None),
+        (-3_000_000, None),
+        (25_000_000, PARTNER),
+    ]
+
+
+def test_each_person_has_their_own_accounts_and_months(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("100", "-1")), NOW)
+    monthclose.stage(conn, batch(migros("900", "-2"), owner=PARTNER), NOW)
+    monthclose.commit(conn, owner=PARTNER, month=SEPTEMBER, now=NOW)
+    months = "SELECT o.name, m.status FROM months m JOIN owners o ON o.id = m.owner_id"
+    assert rows(conn, months) == [(OWNER, "open"), (PARTNER, "committed")]
+    assert rows(conn, "SELECT owner, account, amount_micro FROM committed_transactions") == [
+        (PARTNER, "Migros", -2_000_000)
+    ]
+    assert rows(conn, "SELECT count(*) FROM accounts WHERE name = 'Migros'") == [(2,)]
+
+
+def test_trades_and_instruments(conn: sqlite3.Connection) -> None:
+    buys = [
+        trade("-2025", "WIDG", "20"),
+        trade(
+            "-9851",
+            "912797ZZ1",
+            "10000",
+            price=Decimal("98.51"),
+            asset_tab="Bonds",
+            maturity=date(2026, 12, 24),
+            source_ref="Trades:2",
+        ),
+    ]
+    monthclose.stage(conn, batch(statement("ibkr", buys)), NOW)
+    stored = rows(
+        conn,
+        "SELECT i.symbol, i.type, i.currency, i.maturity, t.quantity, t.price, t.cost_micro "
+        "FROM trades t JOIN instruments i ON i.id = t.instrument_id ORDER BY 1",
+    )
+    assert stored == [
+        ("912797ZZ1", "bill", "USD", "2026-12-24", "10000", "98.51", 9_851_000_000),
+        ("WIDG", "etf", "USD", None, "20", "101.25", 2_025_000_000),
+    ]
+    monthclose.stage(conn, batch(statement("ibkr", [replace(buys[1], maturity=None)])), NOW)
+    assert rows(conn, "SELECT maturity FROM instruments WHERE type = 'bill'") == [("2026-12-24",)]
+    assert rows(conn, "SELECT count(*) FROM trades") == [(1,)]  # WIDG went with its transaction
+
+
+def test_a_manual_category_survives_a_new_import(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("0", "-30", "-8")), NOW)
+    (txn_id,) = rows(conn, "SELECT id FROM transactions WHERE amount_micro = -30000000")[0]
+    (flights,) = rows(conn, "SELECT id FROM categories WHERE name = 'Voli'")[0]
+    conn.execute(
+        "INSERT INTO overrides (transaction_id, category_id, created_at) VALUES (?, ?, 'x')",
+        (txn_id, flights),
+    )
+    (other,) = rows(conn, "SELECT id FROM transactions WHERE amount_micro = -8000000")[0]
+    conn.execute(
+        "INSERT INTO overrides (transaction_id, kind, created_at) VALUES (?, 'transfer', 'x')",
+        (other,),
+    )
+    monthclose.stage(conn, batch(migros("0", "-30", "-8")), LATER)
+    kept = rows(
+        conn,
+        "SELECT t.amount_micro, c.name, t.category_source, t.kind FROM transactions t "
+        "JOIN categories c ON c.id = t.category_id ORDER BY 1",
+    )
+    assert kept == [
+        (-30_000_000, "Voli", "manual", "expense"),
+        (-8_000_000, "Spesa", "rule", "transfer"),
+    ]
+
+
+def test_a_re_exported_statement_replaces_the_old_one(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("0", "-30", "-8")), NOW)
+    corrected = replace(migros("0", "-30", "-8", "-2"), sha256="another export")
+    monthclose.stage(conn, batch(corrected), LATER)
+    assert rows(conn, "SELECT sha256, imported_at FROM statement_files") == [
+        ("another export", "2026-10-07T09:30:00+00:00")
+    ]
+    assert rows(conn, "SELECT count(*), sum(amount_micro) FROM transactions") == [(3, -40_000_000)]
+    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+        ("2026-08-31", 0),
+        ("2026-09-30", -40_000_000),
+    ]
+
+
+def test_a_file_that_still_has_rows_is_kept(conn: sqlite3.Connection) -> None:
+    both = [
+        txn("-1", account="Revolut CHF", source_file="all.tsv"),
+        txn("-2", account="Revolut EUR", currency="EUR", source_file="all.tsv"),
+    ]
+    monthclose.stage(conn, batch(statement("revolut", both)), NOW)
+    only_chf = [txn("-1", account="Revolut CHF", source_file="chf.tsv")]
+    monthclose.stage(conn, batch(statement("revolut", only_chf)), LATER)
+    assert rows(conn, "SELECT filename FROM statement_files ORDER BY 1") == [
+        ("all.tsv",),
+        ("chf.tsv",),
+    ]
+    assert rows(
+        conn,
+        "SELECT a.name, f.filename FROM transactions t JOIN accounts a ON a.id = t.account_id "
+        "JOIN statement_files f ON f.id = t.statement_file_id ORDER BY 1",
+    ) == [("Revolut CHF", "chf.tsv"), ("Revolut EUR", "all.tsv")]
+
+
+def test_two_statements_of_one_account_are_refused(conn: sqlite3.Connection) -> None:
+    first = statement("revolut", [txn("-1", account="Revolut CHF", source_file="a.tsv")])
+    second = statement("revolut", [txn("-1", account="Revolut CHF", source_file="b.tsv")])
+    with pytest.raises(monthclose.DuplicateStatementError, match=r"a\.tsv and b\.tsv are both"):
+        monthclose.stage(conn, batch(first, second), NOW)
+    assert rows(conn, "SELECT count(*) FROM transactions") == [(0,)]
+
+
+def test_one_name_cannot_be_two_accounts(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("0", "-1")), NOW)
+    euros = statement("migros", [txn("-1", currency="EUR")])
+    with pytest.raises(store.AccountMismatchError, match="'Migros' is in CHF"):
+        monthclose.stage(conn, batch(euros), NOW)
+
+
+def test_an_amount_that_does_not_fit_is_refused_and_nothing_is_kept(
+    conn: sqlite3.Connection,
+) -> None:
+    with pytest.raises(PrecisionError):
+        monthclose.stage(conn, batch(statement("migros", [txn("-0.0000001")])), NOW)
+    assert rows(conn, "SELECT count(*) FROM months") == [(0,)]
+
+
+# ------------------------------------------------------------------ the chain of balances
+
+
+def test_statement_balances_are_stored_at_both_ends(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("1000", "-200", "50")), NOW)
+    assert rows(conn, "SELECT date, amount_micro, source FROM balances ORDER BY 1") == [
+        ("2026-08-31", 1_000_000_000, "statement"),
+        ("2026-09-30", 850_000_000, "statement"),
+    ]
+
+
+def test_the_next_month_must_open_where_this_one_closed(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
+    before = dump(conn)
+    wrong = batch(migros("790", "-90", month=OCTOBER), month=OCTOBER)
+    with pytest.raises(ChainMismatchError) as caught:
+        monthclose.stage(conn, wrong, NOW)
+    assert (caught.value.expected, caught.value.actual) == (Decimal(700), Decimal(710))
+    assert caught.value.span == (date(2026, 9, 30), date(2026, 10, 31))
+    assert "Migros (CHF): balance 700 on 2026-10-31" in str(caught.value)
+    assert dump(conn) == before
+
+    monthclose.stage(conn, batch(migros("800", "-90", month=OCTOBER), month=OCTOBER), NOW)
+    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+        ("2026-08-31", 1_000_000_000),
+        ("2026-09-30", 800_000_000),
+        ("2026-10-31", 710_000_000),
+    ]
+
+
+def test_an_earlier_month_imported_later_is_checked_too(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("800", "-90", month=OCTOBER), month=OCTOBER), NOW)
+    with pytest.raises(ChainMismatchError, match="2026-10-31"):
+        monthclose.stage(conn, batch(migros("1000", "-150")), NOW)  # closes on 850, not 800
+    monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+def test_a_commit_checks_the_chain_again(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
+    conn.execute("UPDATE transactions SET amount_micro = amount_micro - 1")
+    with pytest.raises(ChainMismatchError):
+        monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    assert rows(conn, "SELECT status FROM months") == [("open",)]
+
+
+def test_rows_another_source_books_on_the_account_stay_out_of_its_balance(
+    conn: sqlite3.Connection,
+) -> None:
+    # D3: the bank statement has one card debit; the card invoice has the purchases behind it.
+    bank = migros("1000", "-64", kind=Kind.INTERNAL, category="", description="Swisscard")
+    card = statement(
+        "swisscard", [txn("-64", source_file="card.pdf", description="ALPENBAHN", category="Treni")]
+    )
+    monthclose.stage(conn, batch(bank, card), NOW)
+    assert rows(conn, "SELECT sum(amount_micro) FROM transactions") == [(-128_000_000,)]
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+def test_accounts_are_chained_one_by_one(conn: sqlite3.Connection) -> None:
+    euro = statement(
+        "revolut",
+        [txn("-5", account="Revolut EUR", currency="EUR", source_file="eur.tsv")],
+        [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(15))],
+    )
+    monthclose.stage(conn, batch(migros("1000", "-200"), euro), NOW)
+    assert rows(conn, "SELECT count(*) FROM balances") == [(4,)]
+
+
+# ------------------------------------------------------------------ invariants
+
+AMOUNTS = st.lists(
+    st.decimals(min_value=-100_000, max_value=100_000, places=2).map(str), min_size=1, max_size=12
+)
+
+
+@given(AMOUNTS)
+def test_what_is_stored_adds_up_to_what_was_imported(amounts: list[str]) -> None:
+    conn = new_database()
+    month = batch(migros("500", *amounts))
+    monthclose.stage(conn, month, NOW)
+    total = sum((row.amount for row in month.month.transactions), Decimal(0))
+    (stored,) = rows(conn, "SELECT sum(amount_micro) FROM transactions")[0]
+    assert from_micro(stored) == total
+    (closing,) = rows(conn, "SELECT amount_micro FROM balances WHERE date = '2026-09-30'")[0]
+    assert from_micro(closing) == Decimal(500) + total
+    conn.close()
+
+
+@given(AMOUNTS)
+def test_running_a_month_again_yields_the_same_database(amounts: list[str]) -> None:
+    conn = new_database()
+    monthclose.stage(conn, batch(migros("500", *amounts)), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    before = dump(conn)
+    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
+    monthclose.stage(conn, batch(migros("500", *amounts)), LATER)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    assert dump(conn) == before
+    conn.close()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
@@ -50,9 +51,25 @@ class Month:
         return replace(self, transactions=renamed)
 
 
+@dataclass(frozen=True, slots=True)
+class Statement:
+    """One statement file and what was extracted from it."""
+
+    source: str
+    filename: str
+    sha256: str
+    extraction: Extraction
+
+
 def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]:
     """Extract every statement in `folder`; returns them plus the files that were skipped."""
-    extractions: list[tuple[str, Extraction]] = []
+    statements, skipped = load_statements(folder)
+    return [(s.source, s.extraction) for s in statements], skipped
+
+
+def load_statements(folder: Path) -> tuple[list[Statement], list[Path]]:
+    """Like `load_folder`, keeping for each statement the file it came from."""
+    statements: list[Statement] = []
     skipped: list[Path] = []
     for path in sorted(p for p in folder.iterdir() if p.is_file() and not p.name.startswith(".")):
         try:
@@ -63,8 +80,9 @@ def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]
         if loaded is None:
             skipped.append(path)
         else:
-            extractions.append(loaded)
-    return extractions, skipped
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            statements.append(Statement(loaded[0], path.name, digest, loaded[1]))
+    return statements, skipped
 
 
 def process(

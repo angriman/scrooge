@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 
 from finanze.models import Extraction
@@ -37,6 +38,31 @@ class ControlTotalMismatchError(ReconciliationError):
         super().__init__(
             f"{account} ({currency}): statement total {expected}, "
             f"but transactions sum to {actual} (off by {actual - expected})"
+        )
+
+
+class ChainMismatchError(ReconciliationError):
+    """A statement balance does not follow from the previous one plus what was booked between.
+
+    Either the statements of two periods disagree, or a period in between has no statement.
+    """
+
+    def __init__(
+        self,
+        account: str,
+        currency: str,
+        span: tuple[date, date],
+        expected: Decimal,
+        actual: Decimal,
+    ) -> None:
+        self.account = account
+        self.currency = currency
+        self.span = span
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"{account} ({currency}): balance {expected} on {span[1]}, but the balance of "
+            f"{span[0]} + transactions since = {actual} (off by {actual - expected})"
         )
 
 
