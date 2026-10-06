@@ -1,9 +1,9 @@
-"""Month close: stage a reconciled month in the database, then commit it (D16, D17).
+"""Month close: stage reconciled statements in the database, then commit their months (D16, D17).
 
-`stage` stores what the pipeline produced for one person and one month, replacing whatever an
-earlier import of the same statements stored. The month stays `open`, and the dashboards do
-not see it, until `commit`. Both run in one database transaction: any failure leaves the
-database as it was.
+`stage` stores what the pipeline produced for one person, replacing whatever an earlier import
+stored for the same accounts and days. Each statement covers its own period, of one month or
+many. The months they cover stay `open`, and the dashboards do not see them, until `commit`.
+Both run in one database transaction: any failure leaves the database as it was.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class UncategorizedRowsError(MonthCloseError):
 
 
 class DuplicateStatementError(MonthCloseError):
-    """Two statements of one source cover the same account: one would be counted twice."""
+    """Two statements of one source cover the same days of an account: counted twice."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,10 +82,10 @@ class Staged:
 def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
     """Store the month for its owner, replacing an earlier import of the same statements."""
     owner, statements, month, people = batch.owner, batch.statements, batch.month, batch.people
-    period = month.period
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
-        for covered in months_between(*period):
+        months = {m for s in statements for m in months_between(*s.extraction.period)}
+        for covered in sorted(months):
             if store.month_status(conn, owner_id, covered) == "committed":
                 msg = f"{covered:%Y-%m} is committed for {owner}: reopen it first"
                 raise MonthCommittedError(msg)
@@ -108,6 +108,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
         replaced: set[int] = set()
         for statement in statements:
             ids = accounts[statement.filename].values()
+            period = statement.extraction.period
             replaced |= store.delete_statement_rows(conn, statement.source, ids, period)
         files = {
             s.filename: store.upsert_statement_file(
@@ -116,7 +117,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 source=s.source,
                 filename=s.filename,
                 sha256=s.sha256,
-                period=period,
+                period=s.extraction.period,
                 reconciled="yes" if _has_figures(s) else "nothing_to_check",
                 imported_at=db.timestamp(now),
             )
@@ -136,17 +137,18 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 statement_file=files[txn.source_file],
             )
         for statement in statements:
+            first, last = statement.extraction.period
             for balance in statement.extraction.balances:
                 account = accounts[statement.filename][balance.account]
                 file_id = files[statement.filename]
-                before = period[0] - timedelta(days=1)
-                store.set_closing_balance(conn, account, period[1], balance.closing, file_id)
+                before = first - timedelta(days=1)
+                store.set_closing_balance(conn, account, last, balance.closing, file_id)
                 store.set_opening_balance(conn, account, before, balance.opening, file_id)
 
         store.drop_unused_files(conn, replaced - set(files.values()))
         gaps = tuple(str(gap) for gap in _unsettled(conn, owner_id))
         store.apply_overrides(conn)
-        pending = store.uncategorized(conn, owner_id, period)
+        pending = store.uncategorized(conn, owner_id, month.period)
         return Staged(month.month, len(rows), pending, gaps)
 
 
@@ -234,14 +236,18 @@ def _accounts(
 def _refuse_duplicates(
     statements: Sequence[Statement], accounts: Mapping[str, Mapping[str, int]]
 ) -> None:
-    seen: dict[tuple[str, str], str] = {}
+    seen: dict[tuple[str, str], list[Statement]] = {}
     for statement in statements:
+        first, last = statement.extraction.period
         for account in accounts[statement.filename]:
-            first = seen.setdefault((statement.source, account), statement.filename)
-            if first != statement.filename:
-                both = f"{first} and {statement.filename}"
-                msg = f"{both} are both {statement.source} statements of {account}"
-                raise DuplicateStatementError(msg)
+            others = seen.setdefault((statement.source, account), [])
+            for other in others:
+                start, end = other.extraction.period
+                if first <= end and start <= last:
+                    both = f"{other.filename} and {statement.filename}"
+                    msg = f"{both} are both {statement.source} statements of {account}"
+                    raise DuplicateStatementError(msg)
+            others.append(statement)
 
 
 def _counterparty_owner(txn: Transaction, others: Mapping[int, Patterns]) -> int | None:

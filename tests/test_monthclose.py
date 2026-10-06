@@ -572,6 +572,37 @@ def test_months_of_one_statement_are_committed_one_by_one(
     assert dump(conn) == before
 
 
+def test_statements_of_one_account_for_different_periods_go_in_together(
+    conn: sqlite3.Connection,
+) -> None:
+    july = migros("100", "-10", month=JULY)
+    august = migros("90", "-20", month=AUGUST)
+    july = replace(july, filename="july.csv")  # same account, same source, another period
+    both = Batch(
+        OWNER,
+        (august, july),
+        pipeline.Month(JULY, (), (), (), date(2026, 8, 31)),
+        PEOPLE,
+    )
+    rows_of = [replace(t, source_file="july.csv") for t in july.extraction.transactions]
+    both = replace(
+        both,
+        month=replace(both.month, transactions=(*august.extraction.transactions, *rows_of)),
+    )
+    staged = monthclose.stage(conn, both, NOW)
+    assert (staged.transactions, staged.gaps) == (2, ())
+    assert rows(conn, "SELECT month FROM months ORDER BY 1") == [("2026-07-01",), ("2026-08-01",)]
+    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+        ("2026-06-30", 100_000_000),
+        ("2026-07-31", 90_000_000),
+        ("2026-08-31", 70_000_000),
+    ]
+    assert rows(conn, "SELECT filename, period_start FROM statement_files ORDER BY 2") == [
+        ("july.csv", "2026-07-01"),
+        ("migros.csv", "2026-08-01"),
+    ]
+
+
 def test_a_longer_export_replaces_a_shorter_one(conn: sqlite3.Connection) -> None:
     july = migros("100", "-10", "-5", month=JULY)
     monthclose.stage(conn, batch(july, month=JULY), NOW)

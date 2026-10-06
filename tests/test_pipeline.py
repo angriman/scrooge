@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -6,12 +7,16 @@ import pytest
 
 from finanze import pipeline, router
 from finanze.aggregate import BudgetRow, UncategorizedError
-from finanze.classification import UnknownInstrumentError, load_rules
+from finanze.classification import Rule, UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
-from finanze.models import Kind
+from finanze.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
 from finanze.validation import BalanceMismatchError, CardBillMismatchError, check_card_bill
 from tests.conftest import INSTRUMENTS
 from tests.conftest import write_rules as _rules
+
+
+def _rules_of(folder: Path) -> tuple[Rule, ...]:
+    return load_rules([_rules(folder)])
 
 
 def test_router_detects_every_source_and_skips_the_rest(folder: Path) -> None:
@@ -170,3 +175,60 @@ def test_statements_of_different_periods_block(folder: Path) -> None:
     extractions, _ = pipeline.load_folder(folder)
     with pytest.raises(ExtractionError, match="found: 2026-07 to 2026-09, 2026-09"):
         pipeline.process(extractions, (), INSTRUMENTS)
+
+
+def test_files_from_several_folders_get_names_that_tell_them_apart(folder: Path) -> None:
+    other = folder / "old"
+    (other / "Migros.csv").write_bytes((folder / "Migros.csv").read_bytes())
+    bank = folder / "Migros.csv"  # given twice: counted once
+    files = [bank, other / "Migros.csv", folder / "IBKR.csv", bank, folder / "notes.txt"]
+    statements, skipped = pipeline.load_files(files)
+    assert [s.filename for s in statements] == [
+        "IBKR.csv",
+        f"{folder.name}/Migros.csv",
+        "old/Migros.csv",
+    ]
+    assert [path.name for path in skipped] == ["notes.txt"]
+    sources = {t.source_file for s in statements for t in s.extraction.transactions}
+    assert sources == {s.filename for s in statements}
+
+
+def test_statements_of_different_periods_can_be_processed_together(folder: Path) -> None:
+    (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
+    extractions, skipped = pipeline.load_folder(folder)
+    month = pipeline.process(extractions, _rules_of(folder), INSTRUMENTS, skipped, one_period=False)
+    assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
+    assert {t.account for t in month.transactions} >= {"Finpension 3a", "Migros", "IBKR USD"}
+
+
+def test_card_invoices_are_checked_against_the_debit_of_their_own_month() -> None:
+    def debit(day: date) -> Transaction:
+        return Transaction(
+            date=day,
+            account="Migros",
+            amount=Decimal(-50),
+            currency="CHF",
+            description="card bill",
+            kind=Kind.INTERNAL,
+            source_file="bank.csv",
+            source_ref=str(day),
+        )
+
+    balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(0))
+    bank = Extraction(
+        month=date(2026, 8, 1),
+        transactions=(debit(date(2026, 8, 26)), debit(date(2026, 9, 26))),
+        balances=(balance,),
+        end=date(2026, 9, 30),
+    )
+    invoice = ControlTotal("Migros", "CHF", Decimal(-50))
+    bought = replace(debit(date(2026, 9, 4)), kind=Kind.EXPENSE, category="Spesa")
+    september = Extraction(month=date(2026, 9, 1), transactions=(bought,), controls=(invoice,))
+    both = [("migros", bank), ("swisscard", september)]
+    with pytest.raises(CardBillMismatchError, match="2026-08: the bank statement has a card debit"):
+        pipeline.process(both, (), {}, one_period=False)
+
+    earlier = replace(bought, date=date(2026, 8, 4), booking_date=date(2026, 8, 4))
+    august = Extraction(month=date(2026, 8, 1), transactions=(earlier,), controls=(invoice,))
+    month = pipeline.process([*both, ("swisscard", august)], (), {}, one_period=False)
+    assert month.period == (date(2026, 8, 1), date(2026, 9, 30))

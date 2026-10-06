@@ -39,17 +39,20 @@ _TEXT_SUFFIXES = {".csv", ".tsv"}
 _OWN_DUMP = ",".join(records.FIELDS)
 
 
-def load(path: Path) -> tuple[str, Extraction] | None:
+def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
     """Extract one statement file. Returns None for files that are not statements.
+
+    `name` is what the transactions call their source file: the file's own name unless given.
 
     A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
     skipping it would drop a whole account from the month without a word.
     """
+    name = name or path.name
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         if "swisscard" not in path.name.lower():
             return None  # e.g. the PDF copy of the IBKR statement
-        return "swisscard", swisscard.extract(swisscard.read_text(path), path.name)
+        return "swisscard", swisscard.extract(swisscard.read_text(path), name)
     if suffix not in _TEXT_SUFFIXES:
         return None
     try:
@@ -60,7 +63,7 @@ def load(path: Path) -> tuple[str, Extraction] | None:
     text = text.removeprefix(_GARBLED_MARK)
     for source, starts, extract in _TEXT_SOURCES:
         if text.startswith(starts):
-            return source, extract(text, path.name)
+            return source, extract(text, name)
     if text.startswith(_OWN_DUMP):
         return None
     msg = "not a statement format this parser knows: export it again or move it out of the folder"

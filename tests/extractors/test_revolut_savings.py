@@ -48,7 +48,6 @@ def test_account_is_reported_as_unreconciled(result: Extraction) -> None:
     ("content", "error", "message"),
     [
         (TSV.replace("Value, EUR\tValue, CHF", "EUR\tCHF"), ExtractionError, "Value"),
-        (TSV.replace("Sep 2, 2026", "Aug 2, 2026"), ExtractionError, "one calendar month"),
         (TSV.replace("Sep 2, 2026", "Sept 2, 2026"), ExtractionError, "date"),
         (TSV.replace("Sep 2, 2026", "Sep 31, 2026"), ExtractionError, "date"),
         (TSV.replace("Sep 2, 2026", "Foo 2, 2026"), ExtractionError, "date"),
@@ -60,3 +59,13 @@ def test_malformed_statements_raise(content: str, error: type[Exception], messag
     assert content != TSV
     with pytest.raises(error, match=message):
         revolut_savings.extract(content, source_file="savings.tsv")
+
+
+def test_a_statement_of_several_months_and_reinvested_returns() -> None:
+    cells = ["Aug 2, 2026, 2:10:47 AM", "Return Reinvested Class R EUR IE0000000001"]
+    reinvested = "\t".join([*cells, "0.04", "0.03", "0.95", "1", "0.04"]) + "\n"
+    longer = revolut_savings.extract(TSV + reinvested, source_file="year.tsv")
+    assert longer.period == (date(2026, 8, 1), date(2026, 9, 30))
+    assert len(longer.transactions) == len(
+        revolut_savings.extract(TSV, source_file="s.tsv").transactions
+    )

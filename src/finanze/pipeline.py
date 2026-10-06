@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
@@ -13,9 +14,9 @@ from finanze import classification, router
 from finanze.aggregate import Budget, aggregate
 from finanze.classification import Instrument, Rule
 from finanze.errors import ExtractionError
-from finanze.extractors.common import month_end
+from finanze.extractors.common import month_end, month_start
 from finanze.models import Extraction, Kind, SecurityTrade, Transaction
-from finanze.validation import check_balances, check_card_bill
+from finanze.validation import CardBillMismatchError, check_balances, check_card_bill
 
 CARD_SOURCE = "swisscard"
 CARD_ACCOUNT = "Migros"
@@ -81,20 +82,42 @@ def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]
 
 def load_statements(folder: Path) -> tuple[list[Statement], list[Path]]:
     """Like `load_folder`, keeping for each statement the file it came from."""
+    return load_files(p for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
+
+
+def load_files(paths: Iterable[Path]) -> tuple[list[Statement], list[Path]]:
+    """Extract each of `paths`; returns the statements plus the files that are not statements.
+
+    Every statement gets a name of its own: the file's name, with as many of its folders in
+    front as it takes to tell it from the others (monthly invoices are all `swisscard.pdf`).
+    """
     statements: list[Statement] = []
     skipped: list[Path] = []
-    for path in sorted(p for p in folder.iterdir() if p.is_file() and not p.name.startswith(".")):
+    for path, name in sorted(_names(paths).items()):
         try:
-            loaded = router.load(path)
+            loaded = router.load(path, name)
         except ExtractionError as exc:
-            msg = f"{path.name}: {exc}"
+            msg = f"{name}: {exc}"
             raise type(exc)(msg) from exc
         if loaded is None:
             skipped.append(path)
         else:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            statements.append(Statement(loaded[0], path.name, digest, loaded[1]))
+            statements.append(Statement(loaded[0], name, digest, loaded[1]))
     return statements, skipped
+
+
+def _names(paths: Iterable[Path]) -> dict[Path, str]:
+    names = {path: path.name for path in paths}  # a path given twice counts once
+    depth = 1
+    while len(set(names.values())) < len(names):  # two paths always differ somewhere
+        depth += 1
+        counts = Counter(names.values())
+        for path, name in names.items():
+            parts = path.parts[-depth:]
+            if counts[name] > 1 and len(parts) == depth:
+                names[path] = "/".join(parts)
+    return names
 
 
 def process(
@@ -102,38 +125,51 @@ def process(
     rules: Sequence[Rule],
     instruments: dict[str, Instrument],
     skipped: Iterable[Path] = (),
+    *,
+    one_period: bool = True,
 ) -> Month:
-    """Reconcile every statement, then classify. Any reconciliation failure raises."""
+    """Reconcile every statement, then classify. Any reconciliation failure raises.
+
+    The statements must all cover the same period, as the files to paste need. With
+    `one_period=False` each may cover its own, and the result spans from the first day any of
+    them covers to the last.
+    """
     periods = sorted({extraction.period for _, extraction in extractions})
-    if len(periods) != 1:
+    if not periods or (one_period and len(periods) != 1):
         found = ", ".join(_describe(period) for period in periods) or "none"
         msg = f"statements must all cover the same month, found: {found}"
         raise ExtractionError(msg)
-    first, last = periods[0]
+    first, last = periods[0][0], max(end for _, end in periods)
     for _, extraction in extractions:
         check_balances(extraction)
+    _check_card_bills(extractions)
 
     everything = [txn for _, extraction in extractions for txn in extraction.transactions]
-    debits = [
-        txn.amount
-        for source, extraction in extractions
-        for txn in extraction.transactions
-        if source != CARD_SOURCE and txn.kind is Kind.INTERNAL and txn.account == CARD_ACCOUNT
-    ]
-    invoices = [
-        control.total
-        for source, extraction in extractions
-        if source == CARD_SOURCE
-        for control in extraction.controls
-    ]
-    check_card_bill(_total(debits), _total(invoices))
-
     transactions = classification.resolve_instruments(
         classification.classify(everything, rules), instruments
     )
     unreconciled = sorted({name for _, e in extractions for name in e.unreconciled})
     end = None if last == month_end(first) else last
     return Month(first, transactions, tuple(unreconciled), tuple(skipped), end)
+
+
+def _check_card_bills(extractions: Sequence[tuple[str, Extraction]]) -> None:
+    """D3, month by month: each card invoice against the bank's card debit of its month."""
+    debits: dict[date, list[Decimal]] = defaultdict(list)
+    invoices: dict[date, list[Decimal]] = defaultdict(list)
+    for source, extraction in extractions:
+        if source == CARD_SOURCE:
+            invoices[extraction.month] += [control.total for control in extraction.controls]
+            continue
+        for txn in extraction.transactions:
+            if txn.kind is Kind.INTERNAL and txn.account == CARD_ACCOUNT:
+                debits[month_start(txn.booking_date)].append(txn.amount)
+    for month in sorted({*debits, *invoices}):
+        try:
+            check_card_bill(_total(debits[month]), _total(invoices[month]))
+        except CardBillMismatchError as exc:
+            msg = f"{month:%Y-%m}: {exc}"
+            raise CardBillMismatchError(msg) from None
 
 
 def _describe(period: tuple[date, date]) -> str:

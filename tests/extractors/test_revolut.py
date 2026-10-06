@@ -44,6 +44,17 @@ def test_payment_started_last_month_is_booked_on_completion(result: Extraction) 
     assert started == date(2026, 8, 31)  # D19: the real date stays the day it started
 
 
+def test_a_statement_of_several_months_covers_the_months_rows_completed_in() -> None:
+    longer = revolut.extract(
+        TSV.replace("2026-08-31 18:02:11\t2026-09-01", "2026-08-30 18:02:11\t2026-08-31"),
+        source_file="year.tsv",
+    )
+    assert longer.period == (date(2026, 8, 1), date(2026, 9, 30))
+    first = longer.transactions[0]
+    assert (first.date, first.booking_date) == (date(2026, 8, 30), date(2026, 8, 30))
+    check_balances(longer)
+
+
 def test_month_is_the_completion_month_even_when_every_row_started_earlier() -> None:
     header, first = TSV.splitlines()[:2]  # started Aug 31, completed Sep 1
     sparse = revolut.extract(f"{header}\n{first}\n", source_file="usd.tsv")
@@ -88,11 +99,6 @@ def test_fees_are_separate_rows(result: Extraction) -> None:
         (TSV.replace("\tBalance\n", "\tSaldo\n"), ExtractionError, "missing column"),
         (TSV.replace("COMPLETED", "PENDING"), ExtractionError, "no completed rows"),
         (TSV.replace("-7.35\t0\tCHF", "-7.35\t0\tEUR"), ExtractionError, "mixes currencies"),
-        (
-            TSV.replace("2026-08-31 18:02:11\t2026-09-01", "2026-08-30 18:02:11\t2026-08-31"),
-            ExtractionError,
-            "neither started nor completed",
-        ),
         (TSV.replace("Card Refund", "Cashback"), UnsupportedStatementError, "Cashback"),
         (TSV.replace("REVERTED", "DECLINED"), UnsupportedStatementError, "DECLINED"),
         (TSV.replace("Transfer\tDeposit", "Transfer\tPocket"), UnsupportedStatementError, "Pocket"),

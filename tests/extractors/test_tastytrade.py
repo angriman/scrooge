@@ -128,10 +128,19 @@ def test_rerunning_gives_identical_output(result: Extraction) -> None:
     assert tastytrade.extract("\ufeff" + CSV, source_file="transactions.csv") == result
 
 
+def test_an_export_of_several_months_covers_them_all(result: Extraction) -> None:
+    assert result.period == (date(2026, 9, 1), date(2026, 9, 30))
+    longer = tastytrade.extract(
+        CSV.replace("2026-09-04T21", "2026-07-31T21"), source_file="year.csv"
+    )
+    assert longer.period == (date(2026, 7, 1), date(2026, 9, 30))
+    assert longer.controls == result.controls
+    check_balances(longer)
+
+
 @pytest.mark.parametrize(
     ("content", "error", "message"),
     [
-        (CSV.replace("2026-09-04T21", "2026-08-31T21"), ExtractionError, "one calendar month"),
         (CSV.splitlines()[0] + "\n", ExtractionError, "no rows"),
         (CSV.replace(",Total,", ",Net,"), ExtractionError, "missing column"),
         (CSV.replace(",231.97,USD", ",232.97,USD"), ExtractionError, "does not match Total"),

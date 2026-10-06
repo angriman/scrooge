@@ -216,6 +216,23 @@ def test_a_range_stops_at_the_first_month_that_cannot_be_committed(run: Run) -> 
     assert len(list((run.database.parent / "backups").iterdir())) == 1
 
 
+def test_files_and_folders_can_be_given_together(run: Run) -> None:
+    run.load_august()
+    pension = run.folder / "old" / "pension"
+    pension.mkdir(parents=True)
+    report = pension / "pillar 3a.tsv"
+    report.write_bytes(PENSION.read_bytes())
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(run.folder), str(report), *paths) == dbcli.OK
+    assert "July 2026 to September 2026 for Lukas: 7 statements reconciled" in run.output
+    assert run("commit", "2026-07", "2026-09") == dbcli.OK
+
+
+def test_a_path_that_does_not_exist_is_reported(run: Run) -> None:
+    assert run("import", str(run.folder / "nowhere")) == dbcli.FAILED
+    assert run.output == f"error: {run.folder / 'nowhere'}: no such file or folder\n"
+
+
 def test_a_range_must_run_forwards(run: Run) -> None:
     assert run("commit", "2026-09", "2026-07") == dbcli.FAILED
     assert run.output == "error: 2026-07 is before 2026-09\n"

@@ -80,7 +80,7 @@ def extract(content: str, source_file: str) -> Extraction:
     else:  # yearly exports itemise no VAT, only the Cash Report total
         transactions += parser.sales_tax(sections.get("Cash Report", []))
     balances = _balances(sections.get("Cash Report", []))
-    return Extraction(month=start, transactions=tuple(transactions), balances=balances)
+    return Extraction(month=start, transactions=tuple(transactions), balances=balances, end=end)
 
 
 # ------------------------------------------------------------------ CSV plumbing
@@ -115,9 +115,8 @@ def _period(statement: dict[str, str]) -> tuple[date, date]:
         raise ExtractionError(msg)
     start = date(int(match[3]), _MONTHS[match[1]], int(match[2]))
     end = date(int(match[6]), _MONTHS[match[4]], int(match[5]))
-    last_day = calendar.monthrange(start.year, start.month)[1]
-    if start.day != 1 or end != date(start.year, start.month, last_day):
-        msg = f"statement must cover exactly one calendar month, got {text!r}"
+    if start.day != 1 or end.day != calendar.monthrange(end.year, end.month)[1] or end < start:
+        msg = f"statement must cover whole calendar months, got {text!r}"
         raise ExtractionError(msg)
     return start, end
 

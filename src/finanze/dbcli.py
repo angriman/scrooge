@@ -1,6 +1,6 @@
 """`finanze import | commit | reopen`: one person's month in the database.
 
-    finanze import <folder>   reconcile and classify the statements, then stage the month
+    finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
 
@@ -83,7 +83,13 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     load = commands.add_parser("import", parents=[shared], help="stage a month of statements")
-    load.add_argument("folder", type=Path, help="folder holding one month of statements")
+    load.add_argument(
+        "paths",
+        type=Path,
+        nargs="+",
+        metavar="path",
+        help="statement files, or folders holding them (subfolders are not searched)",
+    )
     load.add_argument(
         "--rules",
         type=Path,
@@ -191,14 +197,14 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
-    statements, skipped = pipeline.load_statements(args.folder)
+    statements, skipped = pipeline.load_files(_files(args.paths))
     rule_files = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
     instruments = classification.load_instruments(args.instruments)
 
     def process() -> pipeline.Month:
         rules = classification.load_rules(rule_files)
         extractions = [(s.source, s.extraction) for s in statements]
-        return pipeline.process(extractions, rules, instruments, skipped)
+        return pipeline.process(extractions, rules, instruments, skipped, one_period=False)
 
     month = process()
     if args.review and month.uncategorized:
@@ -226,6 +232,20 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
     through = "" if month.end is None else f" {last:%Y-%m}"
     out.write(f"Next: finanze commit {first:%Y-%m}{through}\n")
     return OK
+
+
+def _files(paths: Sequence[Path]) -> list[Path]:
+    """The files named, and the files directly inside the folders named."""
+    files: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            files += [p for p in path.iterdir() if p.is_file() and not p.name.startswith(".")]
+        elif path.is_file():
+            files.append(path)
+        else:
+            msg = f"{path}: no such file or folder"
+            raise ConfigError(msg)
+    return files
 
 
 def _span(first: date, last: date) -> str:

@@ -9,12 +9,10 @@ Savings are held under the same sheet account, so transfers to and from them are
 from __future__ import annotations
 
 import re
-from collections import Counter
-from datetime import date
 from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import month_start, parse_decimal, parse_iso_date, read_table
+from finanze.extractors.common import parse_decimal, parse_iso_date, read_table, whole_months
 from finanze.models import CashBalance, Extraction, Kind, Transaction
 
 _COLUMNS = (
@@ -37,7 +35,7 @@ _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
 
 
 def extract(content: str, source_file: str) -> Extraction:
-    """Parse the text of one Revolut statement covering one calendar month."""
+    """Parse the text of one Revolut statement, whatever period it covers."""
     delimiter = "\t" if "\t" in content.partition("\n")[0] else ","
     rows = [
         (n, row)
@@ -54,10 +52,10 @@ def extract(content: str, source_file: str) -> Extraction:
     currency = currencies.pop()
     account = f"Revolut {currency}"
     started = [parse_iso_date(row["Started Date"], "Revolut Started Date") for _, row in rows]
-    # The balance chain follows completion, and a payment can start the month before: on a
-    # statement with only a few rows the start dates could point to the wrong month.
+    # The balance chain follows completion, and a payment can start before the statement does:
+    # the period is the months in which rows were completed.
     completed = [parse_iso_date(row["Completed Date"], "Revolut Completed Date") for _, row in rows]
-    month = Counter(month_start(day) for day in completed).most_common(1)[0][0]
+    first, last = whole_months(completed, "Revolut statement")
 
     transactions: list[Transaction] = []
     # The statement has no opening balance: it is what the first row started from.
@@ -76,7 +74,9 @@ def extract(content: str, source_file: str) -> Extraction:
             msg = f"Revolut row {n}: balance {after} does not follow {balance} {amount:+} -{fee}"
             raise ExtractionError(msg)
         balance = after
-        day = _booking_date(start, end, month, n)
+        # D4: the transaction (start) date, unless the payment started before the statement:
+        # it is part of this statement's balance, so it is booked on its completion date.
+        day = start if first <= start <= last else end
         for ref, value, (kind, category), description in (
             (str(n), amount, _classify(row, amount, n), row["Description"]),
             (f"{n}:fee", -fee, *_fee(row)),
@@ -98,9 +98,10 @@ def extract(content: str, source_file: str) -> Extraction:
                     )
                 )
     return Extraction(
-        month=month,
+        month=first,
         transactions=tuple(transactions),
         balances=(CashBalance(account, currency, opening, balance),),
+        end=last,
     )
 
 
@@ -116,17 +117,6 @@ def _has_cash(row: dict[str, str], n: int) -> bool:
         return False
     msg = f"Revolut row {n}: unsupported state {row['State']!r}"
     raise UnsupportedStatementError(msg)
-
-
-def _booking_date(start: date, completed: date, month: date, n: int) -> date:
-    # D4: the transaction (start) date. A payment started in the previous month but completed in
-    # this one is part of this statement's balance, so it is booked on its completion date.
-    if month_start(start) == month:
-        return start
-    if month_start(completed) != month:
-        msg = f"Revolut row {n}: neither started nor completed in {month:%Y-%m}"
-        raise ExtractionError(msg)
-    return completed
 
 
 def _type(row: dict[str, str]) -> str:

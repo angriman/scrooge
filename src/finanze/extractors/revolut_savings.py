@@ -12,18 +12,20 @@ import re
 from datetime import date
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import parse_decimal, read_table, single_month
+from finanze.extractors.common import parse_decimal, read_table, whole_months
 from finanze.models import Extraction, Kind, Transaction
 
 _DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_abbr) if name}
 _INTEREST = re.compile(r"(Return PAID|Interest PAID|Service Fee Charged)\b")
 # Fund movements, incl. interest already counted when PAID and later moved to the current account
-_IGNORED = re.compile(r"(BUY|SELL|Interest Reinvested|Interest WITHDRAWN|Return WITHDRAWN)\b")
+_IGNORED = re.compile(
+    r"(BUY|SELL|Interest Reinvested|Interest WITHDRAWN|Return Reinvested|Return WITHDRAWN)\b"
+)
 
 
 def extract(content: str, source_file: str) -> Extraction:
-    """Parse the text of a Revolut Savings TSV covering one calendar month."""
+    """Parse the text of a Revolut Savings TSV, whatever period it covers."""
     header = content.removeprefix("\ufeff").partition("\n")[0].split("\t")
     values = [column for column in header if column.startswith("Value, ")]
     if not values:
@@ -58,10 +60,9 @@ def extract(content: str, source_file: str) -> Extraction:
                 category="Interessi",
             )
         )
+    first, last = whole_months(days, "Revolut Savings statement")
     return Extraction(
-        month=single_month(days, "Revolut Savings statement"),
-        transactions=tuple(transactions),
-        unreconciled=(account,),
+        month=first, transactions=tuple(transactions), unreconciled=(account,), end=last
     )
 
 

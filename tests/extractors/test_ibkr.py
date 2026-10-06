@@ -32,6 +32,12 @@ def test_matches_golden_file(result: Extraction) -> None:
     assert_matches_golden(result, "ibkr")
 
 
+def test_a_statement_of_several_months_covers_them_all() -> None:
+    longer = ibkr.extract(CSV.replace("September 1, 2026 -", "July 1, 2026 -"), "year.csv")
+    assert longer.period == (date(2026, 7, 1), date(2026, 9, 30))
+    check_balances(longer)
+
+
 def test_month_is_the_first_day_of_the_statement_period(result: Extraction) -> None:
     assert result.month == date(2026, 9, 1)
 

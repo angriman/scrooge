@@ -10,7 +10,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import parse_decimal, parse_iso_date, read_table, single_month
+from finanze.extractors.common import parse_decimal, parse_iso_date, read_table, whole_months
 from finanze.models import ControlTotal, Extraction, Kind, SecurityTrade, Transaction
 
 ACCOUNT = "Tastytrade"
@@ -49,7 +49,7 @@ _MONEY_MOVEMENTS = {
 
 
 def extract(content: str, source_file: str) -> Extraction:
-    """Parse the text of a Tastytrade Transactions CSV covering one calendar month."""
+    """Parse the text of a Tastytrade Transactions CSV, whatever period it covers."""
     rows = read_table(content, ",", _COLUMNS, "Tastytrade")
     transactions: list[Transaction] = []
     total = Decimal(0)
@@ -89,13 +89,14 @@ def extract(content: str, source_file: str) -> Extraction:
                     leg_kind is Kind.INCOME and _is_maturity(row)
                 )
                 transactions.append(_security_trade(txn, row, n) if is_trade else txn)
-    month = single_month(
+    first, last = whole_months(
         (parse_iso_date(row["Date"], "Tastytrade Date") for row in rows), "Tastytrade export"
     )
     return Extraction(
-        month=month,
+        month=first,
         transactions=tuple(transactions),
         controls=(ControlTotal(ACCOUNT, CURRENCY, total),),
+        end=last,
     )
 
 

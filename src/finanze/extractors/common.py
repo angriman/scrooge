@@ -66,6 +66,15 @@ def months_between(first: date, last: date) -> list[date]:
     return months
 
 
+def whole_months(days: Iterable[date], what: str) -> tuple[date, date]:
+    """First day of the first month and last day of the last month that `days` fall in."""
+    found = sorted(days)
+    if not found:
+        msg = f"{what} has no rows"
+        raise ExtractionError(msg)
+    return month_start(found[0]), month_end(found[-1])
+
+
 def single_month(days: Iterable[date], what: str) -> date:
     """First day of the one calendar month all `days` fall in."""
     months = sorted({month_start(day) for day in days})
