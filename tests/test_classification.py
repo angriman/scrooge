@@ -220,3 +220,6 @@ def test_appended_rules_load_and_match_literally(tmp_path: Path, existing: str |
     assert classify([_txn("SUMUP XCAFÉ 111 X")], rules[-2:])[0].category == ""
     # the whole text must match: a reviewed name is not a substring rule
     assert classify([_txn(f"{name} ZURICH")], rules[-2:])[0].category == ""
+    # ...but spaces the statement pads the text with do not count
+    padded = _txn(f"{name}   ", counterparty=f" {name}  ")
+    assert classify([padded], rules[-2:])[0].category == "Attività/Svago"

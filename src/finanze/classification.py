@@ -43,7 +43,9 @@ class Rule:
             return False
         if self.direction and self.direction != direction(txn):
             return False
-        return bool(self.pattern.search(f"{txn.description}\n{txn.counterparty}"))
+        # Stripped: statements pad some texts with spaces, and --review saves the name stripped
+        # as a whole-text rule, which would otherwise never match the row it was made for.
+        return bool(self.pattern.search(f"{txn.description.strip()}\n{txn.counterparty.strip()}"))
 
 
 @dataclass(frozen=True, slots=True)
