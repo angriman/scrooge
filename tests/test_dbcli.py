@@ -40,13 +40,19 @@ class Run:
         self.instruments = folder / "instruments.yaml"
         self.instruments.write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
         self.output = ""
+        self.answers: list[str] = []
+        self.questions: list[str] = []
 
     def __call__(self, command: str, *args: str) -> int:
         argv = [command, *args, "--config", str(self.config)]
         out = io.StringIO()
-        code = dbcli.main(argv, out, now=lambda: NOW)
+        code = dbcli.main(argv, out, ask=self._ask, now=lambda: NOW)
         self.output = out.getvalue()
         return code
+
+    def _ask(self, question: str) -> str:
+        self.questions.append(question)
+        return self.answers.pop(0) if self.answers else ""
 
     def load(self, *args: str, folder: Path | None = None) -> int:
         paths = ["--rules", str(self.rules), "--instruments", str(self.instruments)]
@@ -58,6 +64,14 @@ class Run:
         august.mkdir(parents=True, exist_ok=True)
         (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
         return self.load(folder=august)
+
+    def pending(self) -> int:
+        conn = db.connect(self.database)
+        try:
+            query = "SELECT count(*) FROM transactions WHERE category_id IS NULL AND kind <> ?"
+            return int(conn.execute(query, ("internal",)).fetchone()[0])
+        finally:
+            conn.close()
 
     def count(self, table: str) -> int:
         conn = db.connect(self.database)
@@ -108,7 +122,7 @@ def test_commit_saves_a_copy_first_and_reopen_undoes_it(run: Run) -> None:
 def test_uncategorized_rows_are_reported_and_block_the_commit(run: Run) -> None:
     run.rules.write_text("rules: []\n", encoding="utf-8")
     assert run.load() == dbcli.NEEDS_REVIEW
-    assert "transactions need a category: add rules" in run.output
+    assert "transactions need a category: import again with --review" in run.output
     assert run("commit", "2026-09") == dbcli.FAILED
     assert "still need a category" in run.output
     assert not list((run.database.parent / "backups").iterdir())
@@ -143,6 +157,27 @@ def test_a_bill_without_its_purchase_is_shown_on_import_and_blocks_the_commit(ru
     assert "its purchases are not all stored" in run.output
     assert run.load_august() == dbcli.OK
     assert run("commit", "2026-09") == dbcli.OK
+
+
+def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> None:
+    run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
+    assert run.load() == dbcli.NEEDS_REVIEW
+    before = run.pending()
+    run.answers = ["Spesa", "q"]
+    assert run.load("--review") == dbcli.NEEDS_REVIEW
+    assert len(run.questions) == 2
+    assert f"saved to {run.rules}" in run.output
+    assert 'category: "Spesa"' in run.rules.read_text(encoding="utf-8")
+    assert 0 < run.pending() < before
+
+    run.questions.clear()
+    assert run.load("--review") == dbcli.NEEDS_REVIEW  # nothing answered: still pending
+    assert run.questions
+
+
+def test_review_asks_nothing_when_every_row_has_a_category(run: Run) -> None:
+    assert run.load("--review") == dbcli.OK
+    assert run.questions == []
 
 
 def test_a_month_that_is_not_staged_cannot_be_committed(run: Run) -> None:

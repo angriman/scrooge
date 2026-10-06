@@ -21,7 +21,7 @@ from typing import TextIO
 
 import yaml
 
-from finanze import classification, monthclose, pipeline
+from finanze import classification, monthclose, pipeline, review
 from finanze.classification import ConfigError, UnknownInstrumentError
 from finanze.errors import ExtractionError
 from finanze.monthclose import Batch, MonthCloseError, People
@@ -49,10 +49,15 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def main(argv: Sequence[str], out: TextIO, now: Callable[[], datetime] = _utc_now) -> int:
+def main(
+    argv: Sequence[str],
+    out: TextIO,
+    ask: Callable[[str], str] = input,
+    now: Callable[[], datetime] = _utc_now,
+) -> int:
     args = _parser().parse_args(argv)
     try:
-        return _run(args, out, now())
+        return _run(args, _Console(out, ask), now())
     except _ERRORS as exc:
         out.write(f"error: {exc}\n")
         return FAILED
@@ -83,6 +88,11 @@ def _parser() -> argparse.ArgumentParser:
         help="rules file(s), first wins (default: rules.local.yaml, then rules.yaml)",
     )
     load.add_argument("--instruments", type=Path, default=Path("instruments.yaml"))
+    load.add_argument(
+        "--review",
+        action="store_true",
+        help="ask for the category of unmatched rows and save the answers as rules",
+    )
     for name, text in (("commit", "commit a staged month"), ("reopen", "reopen a committed month")):
         command = commands.add_parser(name, parents=[shared], help=text)
         command.add_argument("month", type=_month, help="the month, as YYYY-MM")
@@ -128,6 +138,12 @@ def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key
 
 
 @dataclass(frozen=True, slots=True)
+class _Console:
+    out: TextIO
+    ask: Callable[[str], str]
+
+
+@dataclass(frozen=True, slots=True)
 class _Session:
     """What every command needs once the command line and the config are resolved."""
 
@@ -135,11 +151,12 @@ class _Session:
     path: Path
     owner: str
     people: People
-    out: TextIO
+    console: _Console
     now: datetime
 
 
-def _run(args: argparse.Namespace, out: TextIO, now: datetime) -> int:
+def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
+    out = console.out
     config = _config(args.config)
     owner = _setting(args, config, "owner", "owner")
     path = Path(_setting(args, config, "db", "database")).expanduser()
@@ -148,7 +165,7 @@ def _run(args: argparse.Namespace, out: TextIO, now: datetime) -> int:
     conn = db.connect(path)
     try:
         db.migrate(conn, now)
-        session = _Session(conn, path, owner, people, out, now)
+        session = _Session(conn, path, owner, people, console, now)
         if args.command == "import":
             return _import(session, args)
         if args.command == "commit":
@@ -161,15 +178,20 @@ def _run(args: argparse.Namespace, out: TextIO, now: datetime) -> int:
 
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
-    out = session.out
+    out = session.console.out
     statements, skipped = pipeline.load_statements(args.folder)
     rule_files = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
-    month = pipeline.process(
-        [(s.source, s.extraction) for s in statements],
-        classification.load_rules(rule_files),
-        classification.load_instruments(args.instruments),
-        skipped,
-    )
+    instruments = classification.load_instruments(args.instruments)
+
+    def process() -> pipeline.Month:
+        rules = classification.load_rules(rule_files)
+        extractions = [(s.source, s.extraction) for s in statements]
+        return pipeline.process(extractions, rules, instruments, skipped)
+
+    month = process()
+    if args.review and month.uncategorized:
+        review.ask_categories(month.uncategorized, rule_files[0], out, session.console.ask)
+        month = process()
     batch = Batch(session.owner, statements, month, session.people)
     staged = monthclose.stage(session.conn, batch, session.now)
     out.write(
@@ -184,8 +206,8 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
     out.writelines(f"  missing: {gap}\n" for gap in staged.gaps)
     if staged.uncategorized:
         out.write(
-            f"{staged.uncategorized} transactions need a category: add rules "
-            f"(finanze {args.folder} --review) and import again.\n"
+            f"{staged.uncategorized} transactions need a category: "
+            "import again with --review, or add rules by hand.\n"
         )
         return NEEDS_REVIEW
     out.write(f"Next: finanze commit {month.month:%Y-%m}\n")
@@ -204,7 +226,7 @@ def _commit(session: _Session, month: date) -> int:
         raise
     if not changed:
         copy.unlink()
-        session.out.write(f"{month:%B %Y} was already committed for {owner}.\n")
+        session.console.out.write(f"{month:%B %Y} was already committed for {owner}.\n")
         return OK
-    session.out.write(f"{month:%B %Y} committed for {owner}. Copy from before: {copy}\n")
+    session.console.out.write(f"{month:%B %Y} committed for {owner}. Copy from before: {copy}\n")
     return OK

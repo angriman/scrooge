@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from finanze import cli, records
+from finanze import cli, records, review
 from finanze.models import Kind, Transaction
 from tests.conftest import INSTRUMENTS_YAML, write_rules
 
@@ -233,7 +233,7 @@ def test_review_never_saves_a_rule_for_rows_without_text(tmp_path: Path) -> None
         asked.append(question)
         return "Regali"
 
-    cli._review([blank, replace(blank, description=" ")], rules, out, ask)
+    review.ask_categories([blank, replace(blank, description=" ")], rules, out, ask)
     assert asked == []
     assert not rules.exists()
     assert "2 rows have no text to match" in out.getvalue()
