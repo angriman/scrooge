@@ -199,7 +199,13 @@
     "counterparty": "912797YY2",
     "category": "Investimenti",
     "confidence": "1",
-    "booking_date": "2026-09-16"
+    "booking_date": "2026-09-16",
+    "ticker": "912797YY2",
+    "quantity": "-10000",
+    "price": "100.00",
+    "cost": "-10000.00",
+    "asset_tab": "Bonds",
+    "maturity": "2026-09-16"
   },
   {
     "date": "2026-09-16",

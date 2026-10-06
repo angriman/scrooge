@@ -83,7 +83,11 @@ def extract(content: str, source_file: str) -> Extraction:
                     counterparty=row["Underlying Symbol"] or row["Symbol"],
                     category=leg_category,
                 )
-                is_trade = leg_kind is Kind.SECURITY_TRADE
+                # A maturity is income, not a trade for the asset tabs, but it does end the
+                # holding: it carries the bill and the quantity like a sale.
+                is_trade = leg_kind is Kind.SECURITY_TRADE or (
+                    leg_kind is Kind.INCOME and _is_maturity(row)
+                )
                 transactions.append(_security_trade(txn, row, n) if is_trade else txn)
     month = single_month(
         (parse_iso_date(row["Date"], "Tastytrade Date") for row in rows), "Tastytrade export"
@@ -132,13 +136,20 @@ def _security_trade(txn: Transaction, row: dict[str, str], n: int) -> SecurityTr
         price=price,
         cost=-txn.amount,
         asset_tab="Bonds" if bill else "",
+        maturity=txn.date if _is_maturity(row) else None,
     )
+
+
+def _is_maturity(row: dict[str, str]) -> bool:
+    return row["Instrument Type"] == _T_BILL and row["Sub Type"] == "Maturity"
 
 
 def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
     if row["Type"] in {"Trade", "Receive Deliver"}:
         if row["Instrument Type"] in _SECURITIES:
-            if row["Sub Type"] == "Maturity":  # principal back; the export has no cost to split
+            # Principal back. The export has no cost to split the interest out (D13): the
+            # database does it from the stored purchases, the paste files book it whole.
+            if row["Sub Type"] == "Maturity":
                 return Kind.INCOME, "Investimenti"
             return Kind.SECURITY_TRADE, "Investimenti"
         return Kind.TRADING, "Trading"

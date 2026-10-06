@@ -35,7 +35,12 @@ class Month:
 
     @property
     def trades(self) -> tuple[SecurityTrade, ...]:
-        return tuple(t for t in self.transactions if isinstance(t, SecurityTrade))
+        """Buys and sells, for the asset tabs. A bill maturity is income and is not listed."""
+        return tuple(
+            t
+            for t in self.transactions
+            if isinstance(t, SecurityTrade) and t.kind is Kind.SECURITY_TRADE
+        )
 
     def budget(self) -> Budget:
         """Raises `UncategorizedError` while any row still lacks a category."""

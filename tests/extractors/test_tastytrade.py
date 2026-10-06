@@ -60,7 +60,11 @@ def test_share_trade_amount_comes_from_total_not_the_rounded_value(result: Extra
 
 
 def test_shares_and_bills_are_security_trades_for_the_asset_tabs(result: Extraction) -> None:
-    trades = [t for t in result.transactions if isinstance(t, SecurityTrade)]
+    trades = [
+        t
+        for t in result.transactions
+        if isinstance(t, SecurityTrade) and t.kind is Kind.SECURITY_TRADE
+    ]
     assert [(t.ticker, t.quantity, t.price, t.cost, t.asset_tab) for t in trades] == [
         # "Bought 10 912797ZZ1 @ 985.10": face 10,000 at 98.51% of face, as IBKR reports bills
         ("912797ZZ1", Decimal(10000), Decimal("98.51"), Decimal("9851.00"), "Bonds"),
@@ -89,10 +93,18 @@ def test_sales_have_negative_quantities() -> None:
     )
 
 
-def test_bill_maturity_is_investment_income_not_a_trade(result: Extraction) -> None:
+def test_bill_maturity_is_investment_income_that_ends_the_holding(result: Extraction) -> None:
     row = next(t for t in result.transactions if t.source_ref == "11")
-    assert not isinstance(row, SecurityTrade)
     assert (row.amount, row.kind, row.category) == (Decimal(10000), Kind.INCOME, "Investimenti")
+    # "Maturity 10.0 912797YY2 @ 1000": the whole face value leaves at 100%, on that day
+    assert isinstance(row, SecurityTrade)
+    assert (row.ticker, row.quantity, row.price, row.asset_tab, row.maturity) == (
+        "912797YY2",
+        Decimal(-10000),
+        Decimal(100),
+        "Bonds",
+        date(2026, 9, 16),
+    )
 
 
 def test_rows_without_cash_produce_no_transaction(result: Extraction) -> None:
