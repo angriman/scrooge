@@ -14,7 +14,7 @@ from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
 from finanze.storage import db, store
 from finanze.storage.money import PrecisionError, from_micro
-from finanze.validation import ChainMismatchError
+from finanze.validation import ChainMismatchError, MissingStatementError
 from tests.conftest import INSTRUMENTS, write_rules
 from tests.storage.helpers import (
     OCTOBER,
@@ -46,6 +46,11 @@ def conn() -> Iterator[sqlite3.Connection]:
     connection = new_database()
     yield connection
     connection.close()
+
+
+def month_of(month: date, opening: str, *amounts: str) -> Batch:
+    """A month with just a Migros statement."""
+    return batch(migros(opening, *amounts, month=month), month=month)
 
 
 def fixture_batch(folder: Path, rules: Path | None = None) -> Batch:
@@ -400,7 +405,7 @@ def test_statement_balances_are_stored_at_both_ends(conn: sqlite3.Connection) ->
 def test_the_next_month_must_open_where_this_one_closed(conn: sqlite3.Connection) -> None:
     monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
     before = dump(conn)
-    wrong = batch(migros("790", "-90", month=OCTOBER), month=OCTOBER)
+    wrong = month_of(OCTOBER, "790", "-90")
     with pytest.raises(ChainMismatchError) as caught:
         monthclose.stage(conn, wrong, NOW)
     assert (caught.value.expected, caught.value.actual) == (Decimal(700), Decimal(710))
@@ -408,7 +413,7 @@ def test_the_next_month_must_open_where_this_one_closed(conn: sqlite3.Connection
     assert "Migros (CHF): balance 700 on 2026-10-31" in str(caught.value)
     assert dump(conn) == before
 
-    monthclose.stage(conn, batch(migros("800", "-90", month=OCTOBER), month=OCTOBER), NOW)
+    monthclose.stage(conn, month_of(OCTOBER, "800", "-90"), NOW)
     assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
         ("2026-08-31", 1_000_000_000),
         ("2026-09-30", 800_000_000),
@@ -417,11 +422,40 @@ def test_the_next_month_must_open_where_this_one_closed(conn: sqlite3.Connection
 
 
 def test_an_earlier_month_imported_later_is_checked_too(conn: sqlite3.Connection) -> None:
-    monthclose.stage(conn, batch(migros("800", "-90", month=OCTOBER), month=OCTOBER), NOW)
+    monthclose.stage(conn, month_of(OCTOBER, "800", "-90"), NOW)
     with pytest.raises(ChainMismatchError, match="2026-10-31"):
         monthclose.stage(conn, batch(migros("1000", "-150")), NOW)  # closes on 850, not 800
     monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
     assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+def test_a_month_without_a_statement_is_reported_and_blocks_the_commit(
+    conn: sqlite3.Connection,
+) -> None:
+    november = date(2026, 11, 1)
+    monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
+    staged = monthclose.stage(conn, month_of(november, "650", "-50"), NOW)
+    assert staged.gaps == (
+        "Migros (CHF): no statement covers the days after 2026-09-30 up to 2026-10-31, "
+        "yet the balance went from 800 to 650",
+    )
+    with pytest.raises(MissingStatementError, match="no statement covers") as caught:
+        monthclose.commit(conn, owner=OWNER, month=november, now=NOW)
+    assert caught.value.span == (date(2026, 9, 30), date(2026, 10, 31))
+    assert caught.value.balances == (Decimal(800), Decimal(650))
+    assert rows(conn, "SELECT status FROM months ORDER BY month") == [("open",), ("open",)]
+
+    filled = monthclose.stage(conn, month_of(OCTOBER, "800", "-150"), NOW)
+    assert filled.gaps == ()
+    assert monthclose.commit(conn, owner=OWNER, month=november, now=NOW)
+
+
+def test_a_quiet_month_without_a_statement_is_no_gap(conn: sqlite3.Connection) -> None:
+    november = date(2026, 11, 1)
+    monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
+    staged = monthclose.stage(conn, month_of(november, "800", "-50"), NOW)
+    assert staged.gaps == ()
+    assert monthclose.commit(conn, owner=OWNER, month=november, now=NOW)
 
 
 def test_a_commit_checks_the_chain_again(conn: sqlite3.Connection) -> None:

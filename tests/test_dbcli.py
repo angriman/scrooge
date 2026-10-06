@@ -95,6 +95,28 @@ def test_uncategorized_rows_are_reported_and_block_the_commit(run: Run) -> None:
     assert not list((run.database.parent / "backups").iterdir())
 
 
+def test_a_missing_statement_is_shown_on_import_and_blocks_the_commit(run: Run) -> None:
+    run.load()
+    conn = db.connect(run.database)
+    # As if July had been imported and August had not: Migros closed July on another balance.
+    conn.execute(
+        "INSERT INTO statement_files (owner_id, source, filename, sha256, period_start, "
+        "period_end, reconciled, imported_at) "
+        "VALUES (1, 'migros', 'july.csv', 'x', '2026-07-01', '2026-07-31', 'yes', 'x')"
+    )
+    conn.execute(
+        "INSERT INTO balances SELECT account_id, '2026-07-31', amount_micro + 1, 'statement', "
+        "last_insert_rowid() FROM balances b JOIN accounts a ON a.id = b.account_id "
+        "WHERE a.name = 'Migros' AND b.date = '2026-08-31'"
+    )
+    conn.close()
+    assert run.load() == dbcli.OK
+    assert "  missing: Migros (CHF): no statement covers the days after 2026-07-31" in run.output
+    assert run("commit", "2026-09") == dbcli.FAILED
+    assert "error: " in run.output
+    assert "no statement covers" in run.output
+
+
 def test_a_month_that_is_not_staged_cannot_be_committed(run: Run) -> None:
     assert run("commit", "2026-08") == dbcli.FAILED
     assert run.output == "error: nothing is staged for Lukas in 2026-08\n"

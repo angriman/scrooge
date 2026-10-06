@@ -37,6 +37,7 @@ class Anchor:
     currency: str
     day: date
     amount_micro: int
+    opening: bool  # only known as what the next statement started from: nothing covers `day`
 
 
 def ensure_owner(conn: sqlite3.Connection, name: str) -> int:
@@ -298,13 +299,15 @@ def set_opening_balance(
 def anchors(conn: sqlite3.Connection, owner: int) -> list[Anchor]:
     """Every statement balance of the owner's accounts, by account and then by day."""
     rows = conn.execute(
-        "SELECT b.account_id, a.name, a.currency, b.date, b.amount_micro "
+        "SELECT b.account_id, a.name, a.currency, b.date, b.amount_micro, f.period_start > b.date "
         "FROM balances b JOIN accounts a ON a.id = b.account_id "
+        "JOIN statement_files f ON f.id = b.statement_file_id "
         "WHERE a.owner_id = ? AND b.source = 'statement' ORDER BY b.account_id, b.date",
         (owner,),
     ).fetchall()
     return [
-        Anchor(int(r[0]), str(r[1]), str(r[2]), date.fromisoformat(r[3]), int(r[4])) for r in rows
+        Anchor(int(r[0]), str(r[1]), str(r[2]), date.fromisoformat(r[3]), int(r[4]), bool(r[5]))
+        for r in rows
     ]
 
 

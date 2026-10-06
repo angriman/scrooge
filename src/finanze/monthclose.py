@@ -21,7 +21,7 @@ from finanze.pipeline import Month, Statement
 from finanze.storage import db, store
 from finanze.storage.ids import transaction_ids
 from finanze.storage.money import from_micro
-from finanze.validation import ChainMismatchError
+from finanze.validation import ChainMismatchError, MissingStatementError
 
 # Sources whose rows are booked on an account that another source's statement reconciles:
 # card purchases on the bank account (D3), savings interest on the Revolut account (D8).
@@ -75,6 +75,7 @@ class Staged:
     month: date
     transactions: int
     uncategorized: int
+    gaps: tuple[str, ...] = ()  # periods without a statement: they block the commit, not this
 
 
 def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
@@ -142,8 +143,9 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
 
         store.apply_overrides(conn)
         store.drop_unused_files(conn, replaced - set(files.values()))
-        check_chain(conn, owner_id)
-        return Staged(month.month, len(rows), store.uncategorized(conn, owner_id, period))
+        gaps = tuple(str(gap) for gap in check_chain(conn, owner_id))
+        pending = store.uncategorized(conn, owner_id, period)
+        return Staged(month.month, len(rows), pending, gaps)
 
 
 def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) -> bool:
@@ -156,7 +158,8 @@ def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) 
         if pending:
             msg = f"{pending} transactions of {month:%Y-%m} still need a category"
             raise UncategorizedRowsError(msg)
-        check_chain(conn, owner_id)
+        for gap in check_chain(conn, owner_id):
+            raise gap
         store.set_month(conn, owner_id, month, "committed", db.timestamp(now))
         return True
 
@@ -168,25 +171,26 @@ def reopen(conn: sqlite3.Connection, *, owner: str, month: date) -> None:
         store.set_month(conn, owner_id, month, "open", None)
 
 
-def check_chain(conn: sqlite3.Connection, owner_id: int) -> None:
+def check_chain(conn: sqlite3.Connection, owner_id: int) -> list[MissingStatementError]:
     """Every statement balance must follow from the one before it plus what was booked between.
 
-    This is what ties months together: the closing balance of one statement is the opening
-    balance of the next, and a month with activity but no statement shows up as a gap.
+    This is what ties months together. Two statements that disagree raise at once. A balance
+    that changed over days no statement covers is a missing statement: those are returned,
+    since the statement may simply not be imported yet, and it is the commit that refuses them.
     """
-    anchors = store.anchors(conn, owner_id)
-    for earlier, later in pairwise(anchors):
+    gaps: list[MissingStatementError] = []
+    for earlier, later in pairwise(store.anchors(conn, owner_id)):
         if earlier.account_id != later.account_id:
             continue
-        flow = store.own_flow(conn, later.account_id, earlier.day, later.day)
-        if earlier.amount_micro + flow != later.amount_micro:
-            raise ChainMismatchError(
-                later.account,
-                later.currency,
-                (earlier.day, later.day),
-                from_micro(later.amount_micro),
-                from_micro(earlier.amount_micro + flow),
-            )
+        span = (earlier.day, later.day)
+        reached = earlier.amount_micro + store.own_flow(conn, later.account_id, *span)
+        if reached == later.amount_micro:
+            continue
+        expected, actual = from_micro(later.amount_micro), from_micro(reached)
+        if not later.opening:
+            raise ChainMismatchError(later.account, later.currency, span, expected, actual)
+        gaps.append(MissingStatementError(later.account, later.currency, span, (actual, expected)))
+    return gaps
 
 
 def _has_figures(statement: Statement) -> bool:

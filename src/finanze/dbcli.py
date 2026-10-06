@@ -181,6 +181,7 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         f"  note: {account} includes rows with no balance to check against\n"
         for account in month.unreconciled
     )
+    out.writelines(f"  missing: {gap}\n" for gap in staged.gaps)
     if staged.uncategorized:
         out.write(
             f"{staged.uncategorized} transactions need a category: add rules "

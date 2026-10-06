@@ -66,6 +66,26 @@ class ChainMismatchError(ReconciliationError):
         )
 
 
+class MissingStatementError(ReconciliationError):
+    """An account's balance changed over a period that no statement covers."""
+
+    def __init__(
+        self,
+        account: str,
+        currency: str,
+        span: tuple[date, date],
+        balances: tuple[Decimal, Decimal],
+    ) -> None:
+        self.account = account
+        self.currency = currency
+        self.span = span
+        self.balances = balances
+        super().__init__(
+            f"{account} ({currency}): no statement covers the days after {span[0]} up to "
+            f"{span[1]}, yet the balance went from {balances[0]} to {balances[1]}"
+        )
+
+
 class MissingBalanceError(ReconciliationError):
     """Transactions exist for an account whose balance the statement never printed."""
 
