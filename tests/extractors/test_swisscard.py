@@ -7,7 +7,7 @@ import pytest
 
 from finanze.errors import ExtractionError
 from finanze.extractors import swisscard
-from finanze.models import ControlTotal, Extraction, Kind
+from finanze.models import CashBalance, ControlTotal, Extraction, Kind
 from finanze.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
@@ -126,3 +126,60 @@ def test_read_text_joins_the_pages_of_the_pdf(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("pdfplumber.open", fake_open)
     assert swisscard.read_text(Path("bill.pdf")) == "page one\n\npage three"
     assert opened == [Path("bill.pdf")]
+
+
+# ------------------------------------------------------------------ the card as an account
+
+
+@pytest.fixture(scope="module")
+def card() -> Extraction:
+    return swisscard.extract_account(TEXT, source_file="statement.txt")
+
+
+def test_as_an_account_the_invoice_reconciles_on_its_own_balances(card: Extraction) -> None:
+    assert card.month == date(2026, 9, 1)
+    assert card.controls == ()
+    assert card.balances == (
+        CashBalance("Swisscard", "CHF", Decimal("-1142.60"), Decimal("-1288.18")),
+    )
+    check_balances(card)
+    assert {t.account for t in card.transactions} == {"Swisscard"}
+
+
+def test_as_an_account_purchases_keep_their_day_and_are_booked_on_the_invoice(
+    card: Extraction, result: Extraction
+) -> None:
+    purchases = [t for t in card.transactions if t.kind is not Kind.INTERNAL]
+    assert len(purchases) == len(result.transactions)
+    first = purchases[0]
+    assert (first.date, first.booking_date) == (date(2026, 8, 4), date(2026, 9, 4))
+    assert (first.amount, first.counterparty) == (Decimal("-64.00"), "ALPENBAHN AG")
+    same = [(t.amount, t.kind, t.category, t.description) for t in purchases]
+    assert same == [(t.amount, t.kind, t.category, t.description) for t in result.transactions]
+
+
+def test_as_an_account_the_payment_received_is_the_other_side_of_the_bank_debit(
+    card: Extraction,
+) -> None:
+    payments = [t for t in card.transactions if t.kind is Kind.INTERNAL]
+    assert [(t.date, t.booking_date, t.amount, t.category) for t in payments] == [
+        (date(2026, 8, 26), date(2026, 9, 4), Decimal("1142.60"), "")
+    ]
+    assert payments[0].description.startswith("IL SUO PAGAMENTO")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        # the payment line, the header's payments, and its new balance, each off by a cent
+        ("GRAZIE 1'142.60", "GRAZIE 1'142.61", "payments 1142.61"),
+        ("CHF 1'142.60 CHF 1'142.60 CHF 1'288.18", "CHF 1'142.60 CHF 1'142.61 CHF 1'288.18", "="),
+        ("CHF 1'288.18 CHF 1'288.18 CHF 40.00", "CHF 1'288.18 CHF 1'288.19 CHF 40.00", "= 1288.19"),
+        ("CHF 1'288.18 CHF 1'288.18 CHF 40.00", "CHF 1'288.19 CHF 1'288.19 CHF 40.00", "1288.18"),
+        ("CHF 1'142.60 CHF 1'142.60 CHF", "CHF 1'142.60 1'142.60 CHF", "cannot read the balances"),
+    ],
+)
+def test_as_an_account_the_invoice_must_add_up(old: str, new: str, message: str) -> None:
+    assert old in TEXT
+    with pytest.raises(ExtractionError, match=message):
+        swisscard.extract_account(TEXT.replace(old, new, 1), source_file="statement.txt")

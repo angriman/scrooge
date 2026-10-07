@@ -39,10 +39,12 @@ _TEXT_SUFFIXES = {".csv", ".tsv"}
 _OWN_DUMP = ",".join(records.FIELDS)
 
 
-def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
+def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Extraction] | None:
     """Extract one statement file. Returns None for files that are not statements.
 
     `name` is what the transactions call their source file: the file's own name unless given.
+    For the `database`, a card invoice is a statement of the card's own account; for the
+    files to paste, its purchases are booked on the bank account (D3).
 
     A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
     skipping it would drop a whole account from the month without a word.
@@ -52,7 +54,8 @@ def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
     if suffix == ".pdf":
         if "swisscard" not in path.name.lower():
             return None  # e.g. the PDF copy of the IBKR statement
-        return "swisscard", swisscard.extract(swisscard.read_text(path), name)
+        read = swisscard.extract_account if database else swisscard.extract
+        return "swisscard", read(swisscard.read_text(path), name)
     if suffix not in _TEXT_SUFFIXES:
         return None
     try:

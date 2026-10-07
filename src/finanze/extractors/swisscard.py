@@ -9,6 +9,8 @@ misread is caught by the printed totals: each card's "Totale transazioni" and th
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -16,9 +18,10 @@ import pdfplumber
 
 from finanze.errors import ExtractionError
 from finanze.extractors.common import month_start, parse_decimal, parse_swiss_date
-from finanze.models import ControlTotal, Extraction, Kind, Transaction
+from finanze.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
 
-ACCOUNT = "Migros"
+ACCOUNT = "Migros"  # the bank account that pays the card, where D3 books the purchases
+CARD_ACCOUNT = "Swisscard"
 CURRENCY = "CHF"
 
 _AMOUNT = r"(-?\d[\d']*\.\d{2})"
@@ -28,6 +31,8 @@ _CARD = re.compile(r"[\dX ]*X[\dX ]*?(\d{4}) [A-Z]")  # "0000 00XXXX X0001 NAME 
 _CARD_TOTAL = re.compile(rf"Totale ?transazioni.* {_AMOUNT}")
 _INVOICE_TOTAL = re.compile(rf"Totale ?nuove ?transazioni {_AMOUNT}")
 _START = "Nuovetransazioni"
+# Under "Saldo ultima fattura / I Suoi pagamenti / Totale nuove transazioni / Nuovo saldo".
+_FIGURES = re.compile(" ".join([rf"CHF {_AMOUNT}"] * 4))
 _MISCELLANEOUS = "Varie"
 
 
@@ -37,31 +42,128 @@ def read_text(path: Path) -> str:
         return "\n".join(page.extract_text(x_tolerance=1.5) or "" for page in pdf.pages)
 
 
+@dataclass(frozen=True, slots=True)
+class _Line:
+    """One dated line of the invoice: a purchase, a refund, the cashback or a payment."""
+
+    ref: str
+    day: date
+    text: str
+    amount: Decimal  # as printed: what is owed is positive
+
+
+@dataclass(frozen=True, slots=True)
+class _Invoice:
+    day: date
+    payments: tuple[_Line, ...]
+    purchases: tuple[_Line, ...]
+    total: Decimal  # "Totale nuove transazioni"
+    figures: tuple[Decimal, ...]  # previous balance, payments, new transactions, new balance
+
+
 def extract(content: str, source_file: str) -> Extraction:
-    """Parse the text of one Swisscard invoice."""
-    invoice = _INVOICE_DATE.search(content)
-    if invoice is None:
+    """Parse the text of one Swisscard invoice, booked on the bank account that pays it (D3)."""
+    invoice = _read(content)
+    # D4: every purchase is booked on the invoice, i.e. the month the bill is paid from Migros.
+    transactions = tuple(
+        _purchase(line, ACCOUNT, invoice.day, source_file) for line in invoice.purchases
+    )
+    return Extraction(
+        month=month_start(invoice.day),
+        transactions=transactions,
+        controls=(ControlTotal(ACCOUNT, CURRENCY, -invoice.total),),
+    )
+
+
+def extract_account(content: str, source_file: str) -> Extraction:
+    """Parse the text of one Swisscard invoice as a statement of the card's own account.
+
+    For the database: the card owes what the invoice says, purchases keep their own dates, and
+    the payments received are the card's side of the transfers from the bank. The invoice
+    prints its balances, so it reconciles like a bank statement and invoices chain.
+    """
+    invoice = _read(content)
+    if len(invoice.figures) != 4:
+        msg = "Swisscard: cannot read the balances of the invoice"
+        raise ExtractionError(msg)
+    previous, paid, new, balance = invoice.figures
+    received = sum((line.amount for line in invoice.payments), Decimal(0))
+    if received != paid or new != invoice.total or previous - paid + new != balance:
+        msg = (
+            f"Swisscard: the invoice says {previous} - {paid} + {new} = {balance}, "
+            f"but its lines give payments {received} and transactions {invoice.total}"
+        )
+        raise ExtractionError(msg)
+    payments = tuple(
+        Transaction(
+            date=line.day,
+            account=CARD_ACCOUNT,
+            amount=line.amount,
+            currency=CURRENCY,
+            description=line.text,
+            kind=Kind.INTERNAL,  # the other side of the bank's card debit
+            source_file=source_file,
+            source_ref=line.ref,
+            booking_date=invoice.day,
+        )
+        for line in invoice.payments
+    )
+    purchases = tuple(
+        _purchase(line, CARD_ACCOUNT, invoice.day, source_file) for line in invoice.purchases
+    )
+    return Extraction(
+        month=month_start(invoice.day),
+        transactions=(*payments, *purchases),
+        balances=(CashBalance(CARD_ACCOUNT, CURRENCY, -previous, -balance),),
+    )
+
+
+def _purchase(line: _Line, account: str, booked: date, source_file: str) -> Transaction:
+    section = line.ref.partition(":")[0]
+    kind, category = _classify(line.text, line.amount, section)
+    return Transaction(
+        date=line.day,
+        account=account,
+        amount=-line.amount,
+        currency=CURRENCY,
+        description=f"{line.text} ({line.day:%d.%m.%Y})",
+        kind=kind,
+        source_file=source_file,
+        source_ref=line.ref,
+        counterparty=line.text.rpartition(",")[0] or line.text,
+        category=category,
+        booking_date=booked,
+    )
+
+
+def _read(content: str) -> _Invoice:
+    dated = _INVOICE_DATE.search(content)
+    if dated is None:
         msg = "Swisscard: no invoice date (is there a text layer?)"
         raise ExtractionError(msg)
-    # D4: every purchase is booked on the invoice, i.e. the month the bill is paid from Migros.
-    invoiced = parse_swiss_date(invoice[1], "Swisscard invoice date")
+    day = parse_swiss_date(dated[1], "Swisscard invoice date")
     lines = [line.strip() for line in content.splitlines()]
     compact = [line.replace(" ", "") for line in lines]
     if _START not in compact:
         msg = 'Swisscard: no "Nuove transazioni" section'
         raise ExtractionError(msg)
+    start = compact.index(_START)
+    figures = _FIGURES.search(content)
+    payments = tuple(
+        _line(f"payment:{n}", match)
+        for n, line in enumerate(lines[:start], start=1)
+        if (match := _TRANSACTION.fullmatch(line))
+    )
 
-    transactions: list[Transaction] = []
+    purchases: list[_Line] = []
     section = ""  # last four digits of the current card, or "Varie"
     subtotal = total = Decimal(0)
-    for n, line in enumerate(lines[compact.index(_START) + 1 :], start=1):
+    for n, line in enumerate(lines[start + 1 :], start=1):
         if _INVOICE_TOTAL.fullmatch(line):
             _check(total, line, "the invoice total")
-            return Extraction(
-                month=month_start(invoiced),
-                transactions=tuple(transactions),
-                controls=(ControlTotal(ACCOUNT, CURRENCY, -total),),
-            )
+            found = figures.groups() if figures else ()
+            amounts = tuple(parse_decimal(f, "Swisscard balance") for f in found)
+            return _Invoice(day, payments, tuple(purchases), total, amounts)
         card = _CARD.match(line)
         if card or line == _MISCELLANEOUS:
             section, subtotal = (card[1] if card else _MISCELLANEOUS), Decimal(0)
@@ -71,27 +173,17 @@ def extract(content: str, source_file: str) -> Extraction:
             if not section:
                 msg = f"Swisscard line {n}: transaction before any card heading: {line!r}"
                 raise ExtractionError(msg)
-            billed = parse_decimal(match[3], "Swisscard amount")
-            subtotal += billed
-            total += billed
-            kind, category = _classify(match[2], billed, section)
-            transactions.append(
-                Transaction(
-                    date=parse_swiss_date(match[1], "Swisscard transaction date"),
-                    account=ACCOUNT,
-                    amount=-billed,
-                    currency=CURRENCY,
-                    description=f"{match[2]} ({match[1]})",
-                    kind=kind,
-                    source_file=source_file,
-                    source_ref=f"{section}:{n}",
-                    counterparty=match[2].rpartition(",")[0] or match[2],
-                    category=category,
-                    booking_date=invoiced,
-                )
-            )
+            bought = _line(f"{section}:{n}", match)
+            subtotal += bought.amount
+            total += bought.amount
+            purchases.append(bought)
     msg = 'Swisscard: no "Totale nuove transazioni" line'
     raise ExtractionError(msg)
+
+
+def _line(ref: str, match: re.Match[str]) -> _Line:
+    day = parse_swiss_date(match[1], "Swisscard transaction date")
+    return _Line(ref, day, match[2], parse_decimal(match[3], "Swisscard amount"))
 
 
 def _check(actual: Decimal, line: str, what: str) -> None:

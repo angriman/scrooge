@@ -24,9 +24,10 @@ from finanze.storage.money import from_micro
 from finanze.validation import ChainMismatchError, MissingStatementError, ReconciliationError
 
 # Sources whose rows are booked on an account that another source's statement reconciles:
-# card purchases on the bank account (D3), savings interest on the Revolut account (D8).
-_BOOKED_ON = {"swisscard": "migros", "revolut_savings": "revolut"}
-_BROKERS = frozenset({"ibkr", "tastytrade", "finpension"})
+# savings interest on the Revolut account (D8).
+_BOOKED_ON = {"revolut_savings": "revolut"}
+_KINDS = {"ibkr": "broker_cash", "tastytrade": "broker_cash", "finpension": "broker_cash"}
+_KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
 
@@ -224,7 +225,7 @@ def _accounts(
     named |= {(b.account, b.currency) for b in extraction.balances}
     named |= {(c.account, c.currency) for c in extraction.controls}
     source = _BOOKED_ON.get(statement.source, statement.source)
-    kind = "broker_cash" if source in _BROKERS else "bank"
+    kind = _KINDS.get(source, "bank")
     return {
         name: store.ensure_account(
             conn, owner_id, name=name, kind=kind, currency=currency, source=source

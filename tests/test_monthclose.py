@@ -58,12 +58,13 @@ def month_of(month: date, opening: str, *amounts: str) -> Batch:
 
 def fixture_batch(folder: Path, rules: Path | None = None) -> Batch:
     """September 2026 from the redacted fixtures, through the real pipeline."""
-    statements, skipped = pipeline.load_statements(folder)
+    statements, skipped = pipeline.load_statements(folder, database=True)
     month = pipeline.process(
         [(s.source, s.extraction) for s in statements],
         classification.load_rules([rules or write_rules(folder)]),
         INSTRUMENTS,
         skipped,
+        database=True,
     )
     return Batch(OWNER, statements, month, PEOPLE)
 
@@ -124,7 +125,8 @@ def test_accounts_trades_and_statement_files_are_stored(
 ) -> None:
     monthclose.stage(conn, fixture_batch(folder), NOW)
     accounts = dict(rows(conn, "SELECT name, kind || ':' || source FROM accounts"))
-    assert accounts["Migros"] == "bank:migros"  # the card's rows land here too (D3)
+    assert accounts["Migros"] == "bank:migros"
+    assert accounts["Swisscard"] == "card:swisscard"  # an account of its own
     assert accounts["IBKR USD"] == "broker_cash:ibkr"
     assert accounts["Tastytrade"] == "broker_cash:tastytrade"
     files = dict(rows(conn, "SELECT source, reconciled FROM statement_files"))
@@ -162,7 +164,7 @@ def test_a_month_is_invisible_until_committed(conn: sqlite3.Connection, folder: 
         "SELECT owner, account, category, category_parent, category_side "
         "FROM committed_transactions WHERE description LIKE 'FRISCHMARKT%' LIMIT 1",
     )
-    assert sample == [(OWNER, "Migros", "Spesa", "Alimentari", "uscite")]
+    assert sample == [(OWNER, "Swisscard", "Spesa", "Alimentari", "uscite")]
 
 
 def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> None:
@@ -489,14 +491,40 @@ def test_a_commit_checks_the_chain_again(conn: sqlite3.Connection) -> None:
 def test_rows_another_source_books_on_the_account_stay_out_of_its_balance(
     conn: sqlite3.Connection,
 ) -> None:
-    # D3: the bank statement has one card debit; the card invoice has the purchases behind it.
-    bank = migros("1000", "-64", kind=Kind.INTERNAL, category="", description="Swisscard")
-    card = statement(
-        "swisscard", [txn("-64", source_file="card.pdf", description="ALPENBAHN", category="Treni")]
+    # D8: savings interest is booked on the Revolut account, whose statement does not show it.
+    euro = {"account": "Revolut EUR", "currency": "EUR"}
+    current = statement(
+        "revolut",
+        [txn("-5", source_file="eur.tsv", **euro)],
+        [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(15))],
     )
-    monthclose.stage(conn, batch(bank, card), NOW)
-    assert rows(conn, "SELECT sum(amount_micro) FROM transactions") == [(-128_000_000,)]
+    paid = {"source_file": "savings.tsv", "kind": Kind.INTEREST, "category": "Interessi"}
+    interest = txn("0.08", **paid, **euro)
+    monthclose.stage(conn, batch(current, statement("revolut_savings", [interest])), NOW)
+    assert rows(conn, "SELECT sum(amount_micro) FROM transactions") == [(-4_920_000,)]
     assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+def test_the_card_is_an_account_whose_invoices_chain(
+    conn: sqlite3.Connection, folder: Path
+) -> None:
+    stage_september(conn, folder)
+    card = rows(
+        conn,
+        "SELECT b.date, b.amount_micro FROM balances b JOIN accounts a ON a.id = b.account_id "
+        "WHERE a.name = 'Swisscard' ORDER BY 1",
+    )
+    assert card == [("2026-08-31", -1_142_600_000), ("2026-09-30", -1_288_180_000)]
+    legs = rows(
+        conn,
+        "SELECT a.name, t.date, t.amount_micro FROM transactions t "
+        "JOIN accounts a ON a.id = t.account_id "
+        "WHERE t.kind = 'internal' AND a.name IN ('Migros', 'Swisscard') ORDER BY t.date",
+    )
+    assert legs == [
+        ("Swisscard", "2026-08-26", 1_142_600_000),  # August's payment, as the invoice lists it
+        ("Migros", "2026-09-08", -1_288_180_000),  # September's, as the bank debits it
+    ]
 
 
 def test_accounts_are_chained_one_by_one(conn: sqlite3.Connection) -> None:
@@ -518,8 +546,9 @@ PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
 def pension_batch(folder: Path) -> Batch:
     """The pillar 3a fixture (July to September 2026)."""
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
-    statements, skipped = pipeline.load_statements(folder)
-    month = pipeline.process([(s.source, s.extraction) for s in statements], (), {}, skipped)
+    statements, skipped = pipeline.load_statements(folder, database=True)
+    extractions = [(s.source, s.extraction) for s in statements]
+    month = pipeline.process(extractions, (), {}, skipped, database=True)
     return Batch(OWNER, statements, month, PEOPLE)
 
 

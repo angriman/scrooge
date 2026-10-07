@@ -6,7 +6,7 @@ import hashlib
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,7 +19,8 @@ from finanze.models import Extraction, Kind, SecurityTrade, Transaction
 from finanze.validation import CardBillMismatchError, check_balances, check_card_bill
 
 CARD_SOURCE = "swisscard"
-CARD_ACCOUNT = "Migros"
+CARD_ACCOUNT = "Migros"  # the bank account the card is paid from
+_SLACK = timedelta(days=7)  # between the bank's debit and the day the card books the payment
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,13 +81,19 @@ def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]
     return [(s.source, s.extraction) for s in statements], skipped
 
 
-def load_statements(folder: Path) -> tuple[list[Statement], list[Path]]:
+def load_statements(folder: Path, *, database: bool = False) -> tuple[list[Statement], list[Path]]:
     """Like `load_folder`, keeping for each statement the file it came from."""
-    return load_files(p for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
+    files = (p for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
+    return load_files(files, database=database)
 
 
-def load_files(paths: Iterable[Path]) -> tuple[list[Statement], list[Path]]:
+def load_files(
+    paths: Iterable[Path], *, database: bool = False
+) -> tuple[list[Statement], list[Path]]:
     """Extract each of `paths`; returns the statements plus the files that are not statements.
+
+    `database` selects how sources that differ between the two destinations are read: see
+    `router.load`.
 
     Every statement gets a name of its own: the file's name, with as many of its folders in
     front as it takes to tell it from the others (monthly invoices are all `swisscard.pdf`).
@@ -95,7 +102,7 @@ def load_files(paths: Iterable[Path]) -> tuple[list[Statement], list[Path]]:
     skipped: list[Path] = []
     for path, name in sorted(_names(paths).items()):
         try:
-            loaded = router.load(path, name)
+            loaded = router.load(path, name, database=database)
         except ExtractionError as exc:
             msg = f"{name}: {exc}"
             raise type(exc)(msg) from exc
@@ -126,23 +133,27 @@ def process(
     instruments: dict[str, Instrument],
     skipped: Iterable[Path] = (),
     *,
-    one_period: bool = True,
+    database: bool = False,
 ) -> Month:
     """Reconcile every statement, then classify. Any reconciliation failure raises.
 
-    The statements must all cover the same period, as the files to paste need. With
-    `one_period=False` each may cover its own, and the result spans from the first day any of
-    them covers to the last.
+    For the files to paste, the statements must all cover the same period and each card
+    invoice must equal the bank's card debit of its month (D3). For the `database` each
+    statement may cover its own period, the result spans from the first day any of them
+    covers to the last, and the card is an account: its payments are matched to the bank's.
     """
     periods = sorted({extraction.period for _, extraction in extractions})
-    if not periods or (one_period and len(periods) != 1):
+    if not periods or (not database and len(periods) != 1):
         found = ", ".join(_describe(period) for period in periods) or "none"
         msg = f"statements must all cover the same month, found: {found}"
         raise ExtractionError(msg)
     first, last = periods[0][0], max(end for _, end in periods)
     for _, extraction in extractions:
         check_balances(extraction)
-    _check_card_bills(extractions)
+    if database:
+        _match_card_payments(extractions)
+    else:
+        _check_card_bills(extractions)
 
     everything = [txn for _, extraction in extractions for txn in extraction.transactions]
     transactions = classification.resolve_instruments(
@@ -170,6 +181,47 @@ def _check_card_bills(extractions: Sequence[tuple[str, Extraction]]) -> None:
         except CardBillMismatchError as exc:
             msg = f"{month:%Y-%m}: {exc}"
             raise CardBillMismatchError(msg) from None
+
+
+def _match_card_payments(extractions: Sequence[tuple[str, Extraction]]) -> None:
+    """Every payment a card invoice lists must be a card debit on the bank, and the reverse.
+
+    The two are a few days apart at most. A payment from before the bank statements start, or
+    a debit no invoice can list yet, has nothing to be matched with and is left alone.
+    """
+    debits: list[Transaction] = []
+    payments: list[Transaction] = []
+    covered: list[tuple[date, date]] = []  # by the bank statements
+    invoiced = date.min  # the month of the latest invoice
+    for source, extraction in extractions:
+        internal = [t for t in extraction.transactions if t.kind is Kind.INTERNAL]
+        if source == CARD_SOURCE:
+            payments += internal
+            invoiced = max(invoiced, extraction.month)
+        else:
+            debits += [t for t in internal if t.account == CARD_ACCOUNT]
+            covered += [extraction.period for b in extraction.balances if b.account == CARD_ACCOUNT]
+    for payment in sorted(payments, key=lambda t: t.date):
+        near = [
+            debit
+            for debit in debits
+            if debit.amount == -payment.amount and abs(debit.booking_date - payment.date) <= _SLACK
+        ]
+        if near:
+            debits.remove(min(near, key=lambda t: abs(t.booking_date - payment.date)))
+        elif any(first <= payment.date <= last for first, last in covered):
+            msg = (
+                f"a card invoice lists a payment of {payment.amount} on {payment.date}, "
+                "but the bank statement has no such card debit"
+            )
+            raise CardBillMismatchError(msg)
+    for debit in debits:
+        if month_start(debit.booking_date) < invoiced:
+            msg = (
+                f"the bank debited {-debit.amount} for the card on {debit.booking_date}, "
+                "but no card invoice lists that payment"
+            )
+            raise CardBillMismatchError(msg)
 
 
 def _describe(period: tuple[date, date]) -> str:

@@ -1,4 +1,3 @@
-from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -9,7 +8,7 @@ from finanze import pipeline, router
 from finanze.aggregate import BudgetRow, UncategorizedError
 from finanze.classification import Rule, UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
-from finanze.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
+from finanze.models import CashBalance, Extraction, Kind, Transaction
 from finanze.validation import BalanceMismatchError, CardBillMismatchError, check_card_bill
 from tests.conftest import INSTRUMENTS
 from tests.conftest import write_rules as _rules
@@ -196,39 +195,86 @@ def test_files_from_several_folders_get_names_that_tell_them_apart(folder: Path)
 def test_statements_of_different_periods_can_be_processed_together(folder: Path) -> None:
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
     extractions, skipped = pipeline.load_folder(folder)
-    month = pipeline.process(extractions, _rules_of(folder), INSTRUMENTS, skipped, one_period=False)
+    month = pipeline.process(extractions, _rules_of(folder), INSTRUMENTS, skipped, database=True)
     assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
     assert {t.account for t in month.transactions} >= {"Finpension 3a", "Migros", "IBKR USD"}
 
 
-def test_card_invoices_are_checked_against_the_debit_of_their_own_month() -> None:
-    def debit(day: date) -> Transaction:
-        return Transaction(
+def _bank(*debits: tuple[date, str], months: tuple[date, date]) -> Extraction:
+    rows = tuple(
+        Transaction(
             date=day,
             account="Migros",
-            amount=Decimal(-50),
+            amount=Decimal(amount),
             currency="CHF",
             description="card bill",
             kind=Kind.INTERNAL,
             source_file="bank.csv",
             source_ref=str(day),
         )
-
-    balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(0))
-    bank = Extraction(
-        month=date(2026, 8, 1),
-        transactions=(debit(date(2026, 8, 26)), debit(date(2026, 9, 26))),
-        balances=(balance,),
-        end=date(2026, 9, 30),
+        for day, amount in debits
     )
-    invoice = ControlTotal("Migros", "CHF", Decimal(-50))
-    bought = replace(debit(date(2026, 9, 4)), kind=Kind.EXPENSE, category="Spesa")
-    september = Extraction(month=date(2026, 9, 1), transactions=(bought,), controls=(invoice,))
-    both = [("migros", bank), ("swisscard", september)]
-    with pytest.raises(CardBillMismatchError, match="2026-08: the bank statement has a card debit"):
-        pipeline.process(both, (), {}, one_period=False)
+    total = sum((row.amount for row in rows), Decimal(0))
+    balance = CashBalance("Migros", "CHF", Decimal(1000), Decimal(1000) + total)
+    return Extraction(month=months[0], transactions=rows, balances=(balance,), end=months[1])
 
-    earlier = replace(bought, date=date(2026, 8, 4), booking_date=date(2026, 8, 4))
-    august = Extraction(month=date(2026, 8, 1), transactions=(earlier,), controls=(invoice,))
-    month = pipeline.process([*both, ("swisscard", august)], (), {}, one_period=False)
-    assert month.period == (date(2026, 8, 1), date(2026, 9, 30))
+
+def _invoice(month: date, *payments: tuple[date, str]) -> Extraction:
+    rows = tuple(
+        Transaction(
+            date=day,
+            account="Swisscard",
+            amount=Decimal(amount),
+            currency="CHF",
+            description="payment",
+            kind=Kind.INTERNAL,
+            source_file="card.pdf",
+            source_ref=str(day),
+            booking_date=month.replace(day=4),
+        )
+        for day, amount in payments
+    )
+    total = sum((row.amount for row in rows), Decimal(0))
+    balance = CashBalance("Swisscard", "CHF", -total, Decimal(0))
+    return Extraction(month=month, transactions=rows, balances=(balance,))
+
+
+AUTUMN = (date(2026, 8, 1), date(2026, 9, 30))
+
+
+def test_card_payments_are_matched_to_the_bank_debits_a_few_days_apart() -> None:
+    bank = _bank((date(2026, 8, 5), "-50"), (date(2026, 9, 26), "-80"), months=AUTUMN)
+    # The card books the August payment two days later; September's is not invoiced yet.
+    september = _invoice(date(2026, 9, 1), (date(2026, 8, 7), "50"))
+    both = [("migros", bank), ("swisscard", september)]
+    month = pipeline.process(both, (), {}, database=True)
+    assert month.period == AUTUMN
+
+
+def test_a_payment_from_before_the_bank_statements_is_left_alone() -> None:
+    bank = _bank(months=AUTUMN)
+    august = _invoice(date(2026, 8, 1), (date(2026, 7, 26), "50"))
+    pipeline.process([("migros", bank), ("swisscard", august)], (), {}, database=True)
+
+
+def test_a_card_payment_the_bank_never_made_blocks() -> None:
+    bank = _bank((date(2026, 8, 5), "-50"), months=AUTUMN)
+    september = _invoice(date(2026, 9, 1), (date(2026, 8, 20), "50"))  # 15 days apart
+    with pytest.raises(CardBillMismatchError, match="lists a payment of 50 on 2026-08-20"):
+        pipeline.process([("migros", bank), ("swisscard", september)], (), {}, database=True)
+
+
+def test_a_bank_debit_no_invoice_lists_blocks() -> None:
+    bank = _bank((date(2026, 8, 5), "-50"), months=AUTUMN)
+    september = _invoice(date(2026, 9, 1))
+    with pytest.raises(CardBillMismatchError, match="debited 50 for the card on 2026-08-05"):
+        pipeline.process([("migros", bank), ("swisscard", september)], (), {}, database=True)
+
+
+def test_two_equal_payments_are_matched_one_to_one() -> None:
+    bank = _bank((date(2026, 8, 5), "-50"), (date(2026, 8, 6), "-50"), months=AUTUMN)
+    september = _invoice(date(2026, 9, 1), (date(2026, 8, 5), "50"), (date(2026, 8, 6), "50"))
+    pipeline.process([("migros", bank), ("swisscard", september)], (), {}, database=True)
+    once = _invoice(date(2026, 9, 1), (date(2026, 8, 5), "50"))
+    with pytest.raises(CardBillMismatchError, match="no card invoice lists"):
+        pipeline.process([("migros", bank), ("swisscard", once)], (), {}, database=True)

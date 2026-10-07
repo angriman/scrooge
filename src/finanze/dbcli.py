@@ -197,14 +197,14 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
-    statements, skipped = pipeline.load_files(_files(args.paths))
+    statements, skipped = pipeline.load_files(_files(args.paths), database=True)
     rule_files = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
     instruments = classification.load_instruments(args.instruments)
 
     def process() -> pipeline.Month:
         rules = classification.load_rules(rule_files)
         extractions = [(s.source, s.extraction) for s in statements]
-        return pipeline.process(extractions, rules, instruments, skipped, one_period=False)
+        return pipeline.process(extractions, rules, instruments, skipped, database=True)
 
     month = process()
     if args.review and month.uncategorized:

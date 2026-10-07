@@ -34,7 +34,7 @@ CREATE TABLE accounts (
     id          INTEGER PRIMARY KEY,
     owner_id    INTEGER NOT NULL REFERENCES owners (id),
     name        TEXT    NOT NULL,            -- 'Migros', 'IBKR USD', 'Pillar 3a'
-    kind        TEXT    NOT NULL CHECK (kind IN ('bank', 'broker_cash', 'broker_securities', 'manual')),
+    kind        TEXT    NOT NULL CHECK (kind IN ('bank', 'card', 'broker_cash', 'broker_securities', 'manual')),
     -- NULL only for a securities account, whose instruments carry their own currency.
     currency    TEXT    REFERENCES currencies (code),
     source      TEXT,                        -- extractor that feeds it; NULL for typed accounts
