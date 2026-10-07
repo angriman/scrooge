@@ -116,6 +116,8 @@ class Extraction:
     unreconciled: tuple[str, ...] = ()
     # Last day covered, for a statement that covers more than one month; always a month end.
     end: _Date | None = None
+    # The institution's own number for the account, where one person may have several there.
+    account_id: str = ""
 
     @property
     def period(self) -> tuple[_Date, _Date]:

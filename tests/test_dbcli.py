@@ -228,6 +228,21 @@ def test_files_and_folders_can_be_given_together(run: Run) -> None:
     assert run("commit", "2026-07", "2026-09") == dbcli.OK
 
 
+def test_a_second_broker_account_is_named_by_its_number(run: Run) -> None:
+    run.load_august()
+    with run.config.open("a", encoding="utf-8") as config:
+        config.write("account_labels: {U12345678: IBKR 2}\n")
+    assert run.load() == dbcli.OK
+    conn = db.connect(run.database)
+    names = [row[0] for row in conn.execute("SELECT name FROM accounts WHERE source = 'ibkr'")]
+    conn.close()
+    assert sorted(names) == ["IBKR 2 CHF", "IBKR 2 EUR", "IBKR 2 USD"]
+
+    run.config.write_text(f"database: {run.database}\nowner: L\naccount_labels: [x]\n")
+    assert run.load() == dbcli.FAILED
+    assert "'account_labels' must map account numbers to names" in run.output
+
+
 def test_a_path_that_does_not_exist_is_reported(run: Run) -> None:
     assert run("import", str(run.folder / "nowhere")) == dbcli.FAILED
     assert run.output == f"error: {run.folder / 'nowhere'}: no such file or folder\n"

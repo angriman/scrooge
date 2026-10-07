@@ -9,7 +9,12 @@ from finanze.aggregate import BudgetRow, UncategorizedError
 from finanze.classification import Rule, UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
 from finanze.models import CashBalance, Extraction, Kind, Transaction
-from finanze.validation import BalanceMismatchError, CardBillMismatchError, check_card_bill
+from finanze.validation import (
+    BalanceMismatchError,
+    CardBillMismatchError,
+    check_balances,
+    check_card_bill,
+)
 from tests.conftest import INSTRUMENTS
 from tests.conftest import write_rules as _rules
 
@@ -278,3 +283,26 @@ def test_two_equal_payments_are_matched_one_to_one() -> None:
     once = _invoice(date(2026, 9, 1), (date(2026, 8, 5), "50"))
     with pytest.raises(CardBillMismatchError, match="no card invoice lists"):
         pipeline.process([("migros", bank), ("swisscard", once)], (), {}, database=True)
+
+
+def test_the_older_migros_layout_is_recognised(tmp_path: Path) -> None:
+    older = Path(__file__).parent / "fixtures" / "migros" / "older.csv"
+    (tmp_path / "migros.csv").write_bytes(older.read_bytes())
+    loaded = router.load(tmp_path / "migros.csv")
+    assert loaded is not None
+    assert (loaded[0], loaded[1].month) == ("migros", date(2023, 5, 1))
+
+
+def test_a_second_account_at_a_broker_gets_names_of_its_own(folder: Path) -> None:
+    statements, _ = pipeline.load_statements(folder)
+    renamed = pipeline.relabel(statements, {"U12345678": "IBKR 2", "U0": "unused"})
+    accounts = {(s.source, t.account) for s in renamed for t in s.extraction.transactions}
+    assert {name for source, name in accounts if source == "ibkr"} == {
+        "IBKR 2 CHF",
+        "IBKR 2 EUR",
+        "IBKR 2 USD",
+    }
+    assert ("migros", "Migros") in accounts  # the others are left alone
+    broker = next(s.extraction for s in renamed if s.source == "ibkr")
+    assert {b.account for b in broker.balances} == {"IBKR 2 CHF", "IBKR 2 EUR", "IBKR 2 USD"}
+    check_balances(broker)

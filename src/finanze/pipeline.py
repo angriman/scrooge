@@ -75,6 +75,35 @@ class Statement:
     extraction: Extraction
 
 
+def relabel(statements: Sequence[Statement], labels: Mapping[str, str]) -> list[Statement]:
+    """Rename the accounts of statements whose `account_id` has a label of its own.
+
+    A second account at one broker would otherwise share the names of the first:
+    `{"U7654321": "IBKR 2"}` turns that account's `IBKR USD` into `IBKR 2 USD`.
+    """
+    renamed: list[Statement] = []
+    for statement in statements:
+        extraction = statement.extraction
+        label = labels.get(extraction.account_id)
+        if label is None:
+            renamed.append(statement)
+            continue
+
+        def name(account: str, label: str = label) -> str:
+            return f"{label} {account.rpartition(' ')[2]}"
+
+        rows = extraction.transactions
+        relabelled = replace(
+            extraction,
+            transactions=tuple(replace(t, account=name(t.account)) for t in rows),
+            balances=tuple(replace(b, account=name(b.account)) for b in extraction.balances),
+            controls=tuple(replace(c, account=name(c.account)) for c in extraction.controls),
+            unreconciled=tuple(name(account) for account in extraction.unreconciled),
+        )
+        renamed.append(replace(statement, extraction=relabelled))
+    return renamed
+
+
 def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]:
     """Extract every statement in `folder`; returns them plus the files that were skipped."""
     statements, skipped = load_statements(folder)

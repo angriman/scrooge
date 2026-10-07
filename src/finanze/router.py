@@ -25,7 +25,7 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
     ("tastytrade", ("Date,Type,Sub Type,",), tastytrade.extract),
     ("revolut", ("Type\tProduct\t", "Type,Product,"), revolut.extract),
     ("revolut_savings", ("Date\tDescription\tValue, ",), revolut_savings.extract),
-    ("migros", ('"Estratto conto da:"',), migros.extract),
+    ("migros", ('"Estratto conto da:"', "Estratto conto da:;"), migros.extract),
     (
         "finpension",
         ("Date\tCategory\tAsset Name\t", "Date;Category;Asset Name;", "Date,Category,Asset Name,"),

@@ -80,7 +80,13 @@ def extract(content: str, source_file: str) -> Extraction:
     else:  # yearly exports itemise no VAT, only the Cash Report total
         transactions += parser.sales_tax(sections.get("Cash Report", []))
     balances = _balances(sections.get("Cash Report", []))
-    return Extraction(month=start, transactions=tuple(transactions), balances=balances, end=end)
+    return Extraction(
+        month=start,
+        transactions=tuple(transactions),
+        balances=balances,
+        end=end,
+        account_id=_fields(sections, "Account Information").get("Account", ""),
+    )
 
 
 # ------------------------------------------------------------------ CSV plumbing

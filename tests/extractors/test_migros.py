@@ -144,6 +144,15 @@ def test_the_older_layout_is_read_and_put_back_in_balance_order() -> None:
     assert by_ref["1"].counterparty == "Hans Muster"
 
 
+def test_rows_that_only_lead_to_each_other_are_refused() -> None:
+    loop = OLDER.replace("-1000.00;1657.65", "100.00;200.00").replace(
+        "-80.00;2657.65", "-100.00;100.00"
+    )
+    loop = loop.replace("6500.00;8157.65", "5420.00;8157.65")  # follows row 2 directly
+    with pytest.raises(ExtractionError, match=r"row 3: balance 200\.00 does not follow"):
+        migros.extract(loop, source_file="migros.csv")
+
+
 @pytest.mark.parametrize(
     ("old", "new"),
     [

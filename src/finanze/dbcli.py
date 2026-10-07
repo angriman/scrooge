@@ -8,6 +8,7 @@
 
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
+`account_labels` there names a further account at a broker by its account number.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -141,6 +142,15 @@ def _people(config: dict[str, object], path: Path) -> People:
     return people
 
 
+def _labels(config: dict[str, object], path: Path) -> dict[str, str]:
+    """`account_labels: {<account number>: <name>}`."""
+    labels = config.get("account_labels", {})
+    if not isinstance(labels, dict):
+        msg = f"{path}: 'account_labels' must map account numbers to names"
+        raise ConfigError(msg)
+    return {str(number): str(label) for number, label in labels.items()}
+
+
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
     value = getattr(args, flag) or config.get(key)
     if not value:
@@ -163,6 +173,7 @@ class _Session:
     path: Path
     owner: str
     people: People
+    labels: Mapping[str, str]
     console: _Console
     now: datetime
 
@@ -177,7 +188,8 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     conn = db.connect(path)
     try:
         db.migrate(conn, now)
-        session = _Session(conn, path, owner, people, console, now)
+        labels = _labels(config, args.config)
+        session = _Session(conn, path, owner, people, labels, console, now)
         if args.command == "import":
             return _import(session, args)
         last = args.through or args.month
@@ -198,6 +210,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
     statements, skipped = pipeline.load_files(_files(args.paths), database=True)
+    statements = pipeline.relabel(statements, session.labels)
     rule_files = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
     instruments = classification.load_instruments(args.instruments)
 
