@@ -8,6 +8,7 @@ from finanze import pipeline, router
 from finanze.aggregate import BudgetRow, UncategorizedError
 from finanze.classification import Rule, UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
+from finanze.extractors import swisscard
 from finanze.models import CashBalance, Extraction, Kind, Transaction
 from finanze.validation import (
     BalanceMismatchError,
@@ -306,3 +307,27 @@ def test_a_second_account_at_a_broker_gets_names_of_its_own(folder: Path) -> Non
     broker = next(s.extraction for s in renamed if s.source == "ibkr")
     assert {b.account for b in broker.balances} == {"IBKR 2 CHF", "IBKR 2 EUR", "IBKR 2 USD"}
     check_balances(broker)
+
+
+def test_a_pdf_saved_without_its_extension_is_still_read(
+    folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = (folder / "swisscard.pdf").read_text(encoding="utf-8")
+    monkeypatch.setattr(swisscard, "read_text", lambda path: text)
+    bare = folder / "swisscard"
+    bare.write_bytes(b"%PDF-1.7 ...")
+    loaded = router.load(bare)
+    assert loaded is not None
+    assert loaded[0] == "swisscard"
+    (folder / "notes").write_text("no extension, not a PDF", encoding="utf-8")
+    assert router.load(folder / "notes") is None
+
+
+def test_a_bill_gets_its_maturity_from_another_row_of_the_same_bill(folder: Path) -> None:
+    # Tastytrade buys 912797ZZ1 without a maturity; IBKR's statement has it for the same bill.
+    extractions, skipped = pipeline.load_folder(folder)
+    without = {"WIDG": INSTRUMENTS["WIDG"]}
+    month = pipeline.process(extractions, (), without, skipped)
+    bought = [t for t in month.trades if t.ticker == "912797ZZ1"]
+    assert {t.account for t in bought} == {"IBKR USD", "Tastytrade"}
+    assert {t.maturity for t in bought} == {date(2026, 12, 24)}

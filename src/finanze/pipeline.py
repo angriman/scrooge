@@ -184,7 +184,9 @@ def process(
     else:
         _check_card_bills(extractions)
 
-    everything = [txn for _, extraction in extractions for txn in extraction.transactions]
+    everything = _with_known_maturities(
+        txn for _, extraction in extractions for txn in extraction.transactions
+    )
     transactions = classification.resolve_instruments(
         classification.classify(everything, rules), instruments
     )
@@ -251,6 +253,26 @@ def _match_card_payments(extractions: Sequence[tuple[str, Extraction]]) -> None:
                 "but no card invoice lists that payment"
             )
             raise CardBillMismatchError(msg)
+
+
+def _with_known_maturities(transactions: Iterable[Transaction]) -> list[Transaction]:
+    """Give a bill bought without a maturity date the one another row has for it.
+
+    Tastytrade's export says when a bill matures only on the maturity row itself, and IBKR
+    says it for every bill: either one settles it for the same bill's other trades.
+    """
+    rows = list(transactions)
+    known = {
+        row.ticker: row.maturity
+        for row in rows
+        if isinstance(row, SecurityTrade) and row.maturity is not None
+    }
+    return [
+        replace(row, maturity=known[row.ticker])
+        if isinstance(row, SecurityTrade) and row.maturity is None and row.ticker in known
+        else row
+        for row in rows
+    ]
 
 
 def _describe(period: tuple[date, date]) -> str:

@@ -39,6 +39,11 @@ _TEXT_SUFFIXES = {".csv", ".tsv"}
 _OWN_DUMP = ",".join(records.FIELDS)
 
 
+def _is_pdf(path: Path) -> bool:
+    with path.open("rb") as file:
+        return file.read(5) == b"%PDF-"
+
+
 def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Extraction] | None:
     """Extract one statement file. Returns None for files that are not statements.
 
@@ -51,7 +56,7 @@ def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Ex
     """
     name = name or path.name
     suffix = path.suffix.lower()
-    if suffix == ".pdf":
+    if suffix == ".pdf" or (not suffix and _is_pdf(path)):  # a PDF saved without its extension
         if "swisscard" not in path.name.lower():
             return None  # e.g. the PDF copy of the IBKR statement
         read = swisscard.extract_account if database else swisscard.extract
