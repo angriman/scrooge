@@ -13,6 +13,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from itertools import pairwise
 
 from finanze.extractors.common import month_end, months_between
@@ -167,6 +168,22 @@ def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) 
             raise gap
         store.set_month(conn, owner_id, month, "committed", db.timestamp(now))
         return True
+
+
+def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how much
+    conn: sqlite3.Connection, *, owner: str, account: str, day: date, amount: Decimal, currency: str
+) -> None:
+    """Record what an account without statements held at the end of `day`.
+
+    For accounts that are only ever typed (a closed bank, a pension fund certificate): the
+    account is created on first use, and can never also be fed from statements.
+    """
+    with db.transaction(conn):
+        owner_id = store.ensure_owner(conn, owner)
+        account_id = store.ensure_account(
+            conn, owner_id, name=account, kind="manual", currency=currency, source=None
+        )
+        store.set_typed_balance(conn, account_id, day, amount)
 
 
 def reopen(conn: sqlite3.Connection, *, owner: str, month: date) -> None:

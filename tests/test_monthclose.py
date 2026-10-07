@@ -538,6 +538,48 @@ def test_accounts_are_chained_one_by_one(conn: sqlite3.Connection) -> None:
     assert rows(conn, "SELECT count(*) FROM balances") == [(4,)]
 
 
+# ------------------------------------------------------------------ typed balances
+
+
+def test_an_account_without_statements_gets_typed_balances(conn: sqlite3.Connection) -> None:
+    def typed(day: date, amount: str, currency: str = "EUR") -> None:
+        monthclose.type_balance(
+            conn, owner=OWNER, account="Kasse", day=day, amount=Decimal(amount), currency=currency
+        )
+
+    typed(date(2023, 1, 31), "5000.10")
+    typed(date(2023, 2, 28), "1200")
+    typed(date(2023, 1, 31), "5000.20")  # corrected
+    stored = rows(
+        conn,
+        "SELECT a.name, a.kind, a.source, b.date, b.amount_nano, b.source FROM balances b "
+        "JOIN accounts a ON a.id = b.account_id ORDER BY b.date",
+    )
+    assert stored == [
+        ("Kasse", "manual", None, "2023-01-31", 5_000_200_000_000, "manual"),
+        ("Kasse", "manual", None, "2023-02-28", 1_200_000_000_000, "manual"),
+    ]
+    with pytest.raises(store.AccountMismatchError, match="'Kasse' is in EUR, not CHF"):
+        typed(date(2023, 3, 31), "1", "CHF")
+    # Typed balances are no statement: nothing is chained through them.
+    monthclose.stage(conn, batch(migros("0", "-1")), NOW)
+    assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+
+def test_an_account_is_fed_by_statements_or_typed_never_both(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("0", "-1")), NOW)
+    with pytest.raises(store.AccountMismatchError, match="both statements and typed balances"):
+        monthclose.type_balance(
+            conn,
+            owner=OWNER,
+            account="Migros",
+            day=date(2026, 9, 30),
+            amount=Decimal(5),
+            currency="CHF",
+        )
+    assert rows(conn, "SELECT count(*) FROM balances WHERE source = 'manual'") == [(0,)]
+
+
 # ------------------------------------------------------------------ several months at once
 
 JULY = date(2026, 7, 1)

@@ -3,6 +3,8 @@
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
+    finanze balance <account> <YYYY-MM-DD> <amount> <currency>
+                              type what an account without statements held on a day
 
 `commit` and `reopen` take a second month to cover every month from the first to it.
 
@@ -19,6 +21,7 @@ import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TextIO
 
@@ -34,7 +37,7 @@ from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
 
-COMMANDS = ("import", "commit", "reopen")
+COMMANDS = ("import", "commit", "reopen", "balance")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _ERRORS = (
     ExtractionError,
@@ -109,7 +112,20 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument(
             "through", type=_month, nargs="?", help="the last month, to cover several"
         )
+    typed = commands.add_parser("balance", parents=[shared], help="type an account's balance")
+    typed.add_argument("account", help="name of an account that has no statements")
+    typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
+    typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
+    typed.add_argument("currency", help="CHF, EUR, ...")
     return parser
+
+
+def _amount(text: str) -> Decimal:
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        msg = f"{text!r} is not an amount like 1234.56"
+        raise argparse.ArgumentTypeError(msg) from None
 
 
 def _config(path: Path) -> dict[str, object]:
@@ -192,6 +208,18 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         session = _Session(conn, path, owner, people, labels, console, now)
         if args.command == "import":
             return _import(session, args)
+        if args.command == "balance":
+            currency = args.currency.upper()
+            monthclose.type_balance(
+                conn,
+                owner=owner,
+                account=args.account,
+                day=args.day,
+                amount=args.amount,
+                currency=currency,
+            )
+            out.write(f"{args.account} of {owner}: {args.amount} {currency} on {args.day}.\n")
+            return OK
         last = args.through or args.month
         if last < args.month:
             msg = f"{last:%Y-%m} is before {args.month:%Y-%m}"

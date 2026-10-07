@@ -243,6 +243,19 @@ def test_a_second_broker_account_is_named_by_its_number(run: Run) -> None:
     assert "'account_labels' must map account numbers to names" in run.output
 
 
+def test_a_balance_can_be_typed_for_an_account_without_statements(
+    run: Run, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run("balance", "Kasse", "2023-01-31", "5000.10", "eur") == dbcli.OK
+    assert run.output == "Kasse of Lukas: 5000.10 EUR on 2023-01-31.\n"
+    assert run.count("balances") == 1
+    assert run("balance", "Kasse", "2023-02-28", "1", "CHF") == dbcli.FAILED
+    assert "'Kasse' is in EUR, not CHF" in run.output
+    with pytest.raises(SystemExit):
+        run("balance", "Kasse", "2023-02-28", "1,5", "EUR")
+    assert "'1,5' is not an amount like 1234.56" in capsys.readouterr().err
+
+
 def test_a_path_that_does_not_exist_is_reported(run: Run) -> None:
     assert run("import", str(run.folder / "nowhere")) == dbcli.FAILED
     assert run.output == f"error: {run.folder / 'nowhere'}: no such file or folder\n"

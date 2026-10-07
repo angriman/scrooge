@@ -25,7 +25,7 @@ class UnknownCategoryError(Exception):
 
 
 class AccountMismatchError(Exception):
-    """An account already exists with another currency: two different accounts share a name."""
+    """An account already exists with another currency, or is fed another way, under this name."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,8 +51,15 @@ def owner_id(conn: sqlite3.Connection, name: str) -> int | None:
 
 
 def ensure_account(  # noqa: PLR0913  # one argument per column
-    conn: sqlite3.Connection, owner: int, *, name: str, kind: str, currency: str, source: str
+    conn: sqlite3.Connection,
+    owner: int,
+    *,
+    name: str,
+    kind: str,
+    currency: str,
+    source: str | None,
 ) -> int:
+    """The account's id, creating it on first sight. `source` is None for a typed account."""
     conn.execute(
         "INSERT OR IGNORE INTO currencies (code, decimals) VALUES (?, ?)",
         (currency, _CURRENCY_DECIMALS),
@@ -63,10 +70,13 @@ def ensure_account(  # noqa: PLR0913  # one argument per column
         (owner, name, kind, currency, source),
     )
     row = conn.execute(
-        "SELECT id, currency FROM accounts WHERE owner_id = ? AND name = ?", (owner, name)
+        "SELECT id, currency, source FROM accounts WHERE owner_id = ? AND name = ?", (owner, name)
     ).fetchone()
     if row["currency"] != currency:
-        msg = f"account {name!r} is in {row['currency']}, but a statement uses it for {currency}"
+        msg = f"account {name!r} is in {row['currency']}, not {currency}"
+        raise AccountMismatchError(msg)
+    if (row["source"] is None) != (source is None):
+        msg = f"account {name!r} cannot have both statements and typed balances"
         raise AccountMismatchError(msg)
     return int(row["id"])
 
@@ -293,6 +303,15 @@ def set_opening_balance(
         "INSERT OR IGNORE INTO balances (account_id, date, amount_nano, source, "
         "statement_file_id) VALUES (?, ?, ?, 'statement', ?)",
         (account, day.isoformat(), to_nano(amount), statement_file),
+    )
+
+
+def set_typed_balance(conn: sqlite3.Connection, account: int, day: date, amount: Decimal) -> None:
+    """What a typed account held at the end of `day`, replacing an earlier figure for that day."""
+    conn.execute(
+        "INSERT OR REPLACE INTO balances (account_id, date, amount_nano, source) "
+        "VALUES (?, ?, ?, 'manual')",
+        (account, day.isoformat(), to_nano(amount)),
     )
 
 
