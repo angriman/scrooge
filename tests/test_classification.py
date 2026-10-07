@@ -249,3 +249,13 @@ def test_a_transfer_category_makes_the_row_a_transfer(tmp_path: Path) -> None:
         ("Prelievi", Kind.EXPENSE),
         ("Spesa", Kind.EXPENSE),
     ]
+
+
+def test_an_appended_rule_loads_whatever_characters_the_name_holds(tmp_path: Path) -> None:
+    path = tmp_path / "rules.local.yaml"
+    # A name encoded twice in the statement holds characters YAML refuses raw.
+    name = "B\u00c3\x96R \x7f\ufffe"
+    append_rule(path, name, "out", "Treni")
+    rules = load_rules([path])
+    assert classify([_txn(name)], rules)[0].category == "Treni"
+    assert classify([_txn("B\u00c3R")], rules)[0].category == ""

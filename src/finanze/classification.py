@@ -56,6 +56,11 @@ class Instrument:
     maturity: date | None = None  # for bills, when the statement does not give it (Tastytrade)
 
 
+# Characters YAML refuses even inside quotes; JSON leaves them as they are. Some statements hold
+# them (a name encoded twice), and one would make the whole rules file unreadable.
+_UNREADABLE = re.compile("[\x7f-\x84\x86-\x9f\ufffe\uffff]")
+
+
 def direction(txn: Transaction) -> str:
     return "in" if txn.amount > 0 else "out"
 
@@ -71,7 +76,10 @@ def append_rule(path: Path, counterparty: str, flow: str, category: str) -> None
         text += "rules:\n"
     text = text.rstrip().removesuffix("[]").rstrip() + "\n"
     # JSON strings are valid YAML, and quote whatever a merchant name may contain.
-    match = json.dumps(f"(?m)^{re.escape(counterparty)}$", ensure_ascii=False)
+    match = _UNREADABLE.sub(
+        lambda found: f"\\u{ord(found[0]):04x}",
+        json.dumps(f"(?m)^{re.escape(counterparty)}$", ensure_ascii=False),
+    )
     name = json.dumps(category, ensure_ascii=False)
     text += f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
     path.write_text(text, encoding="utf-8")
