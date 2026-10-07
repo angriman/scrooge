@@ -19,10 +19,10 @@ from typing import TextIO
 
 import yaml
 
-from finanze import classification, dbcli, pipeline, records, review
+from finanze import categories, classification, dbcli, pipeline, records, review
 from finanze.aggregate import Budget, BudgetRow
-from finanze.classification import ConfigError, UnknownInstrumentError
-from finanze.errors import ExtractionError
+from finanze.classification import UnknownInstrumentError
+from finanze.errors import ConfigError, ExtractionError
 from finanze.models import SecurityTrade
 from finanze.pipeline import Month
 from finanze.records import DuplicateRecordError
@@ -111,8 +111,11 @@ def _run(args: argparse.Namespace, out: TextIO, ask: Callable[[str], str]) -> in
     instruments = classification.load_instruments(args.instruments)
     extractions, skipped = pipeline.load_folder(args.folder)
 
+    categories_file = rule_files[0].with_name(categories.FILE)
+
     def process() -> Month:
-        rules = classification.load_rules(rule_files)
+        known = categories.names(categories.load(categories_file))
+        rules = classification.load_rules(rule_files, known)
         return pipeline.process(extractions, rules, instruments, skipped)
 
     month = process()
@@ -123,7 +126,7 @@ def _run(args: argparse.Namespace, out: TextIO, ask: Callable[[str], str]) -> in
         )
         raise ExtractionError(msg)
     if args.review and month.uncategorized:
-        review.ask_categories(month.uncategorized, rule_files[0], out, ask)
+        review.ask_categories(month.uncategorized, rule_files[0], categories_file, out, ask)
         month = process()
     month = month.renamed(_names(config))
 

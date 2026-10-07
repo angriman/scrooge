@@ -6,7 +6,6 @@ import pytest
 
 from finanze import categories
 from finanze.classification import (
-    ConfigError,
     Instrument,
     UnknownInstrumentError,
     append_rule,
@@ -16,6 +15,7 @@ from finanze.classification import (
     resolve_instruments,
     uncategorized,
 )
+from finanze.errors import ConfigError
 from finanze.models import Kind, SecurityTrade, Transaction
 
 

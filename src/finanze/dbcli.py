@@ -27,9 +27,9 @@ from typing import TextIO
 
 import yaml
 
-from finanze import classification, monthclose, pipeline, review
-from finanze.classification import ConfigError, UnknownInstrumentError
-from finanze.errors import ExtractionError
+from finanze import categories, classification, monthclose, pipeline, review
+from finanze.classification import UnknownInstrumentError
+from finanze.errors import ConfigError, ExtractionError
 from finanze.extractors.common import month_end, months_between
 from finanze.monthclose import Batch, MonthCloseError, People
 from finanze.storage import db, store
@@ -104,7 +104,8 @@ def _parser() -> argparse.ArgumentParser:
     load.add_argument(
         "--review",
         action="store_true",
-        help="ask for the category of unmatched rows and save the answers as rules",
+        help="ask for the category of unmatched rows and save the answers as rules; new "
+        "categories go in categories.yaml, next to the first rules file",
     )
     for name, text in (("commit", "commit a staged month"), ("reopen", "reopen a committed month")):
         command = commands.add_parser(name, parents=[shared], help=text)
@@ -242,16 +243,21 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
     rule_files = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
     instruments = classification.load_instruments(args.instruments)
 
+    categories_file = rule_files[0].with_name(categories.FILE)
+
     def process() -> pipeline.Month:
-        rules = classification.load_rules(rule_files)
+        known = categories.names(categories.load(categories_file))
+        rules = classification.load_rules(rule_files, known)
         extractions = [(s.source, s.extraction) for s in statements]
         return pipeline.process(extractions, rules, instruments, skipped, database=True)
 
     month = process()
     if args.review and month.uncategorized:
-        review.ask_categories(month.uncategorized, rule_files[0], out, session.console.ask)
+        ask = session.console.ask
+        review.ask_categories(month.uncategorized, rule_files[0], categories_file, out, ask)
         month = process()
-    batch = Batch(session.owner, statements, month, session.people)
+    added = categories.load(categories_file)
+    batch = Batch(session.owner, statements, month, session.people, added)
     staged = monthclose.stage(session.conn, batch, session.now)
     first, last = month.period
     out.write(

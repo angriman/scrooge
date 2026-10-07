@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from finanze import cli, dbcli
+from finanze import categories, cli, dbcli
 from finanze.storage import db
 from tests.conftest import INSTRUMENTS_YAML, write_rules
 
@@ -173,6 +173,23 @@ def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> N
     run.questions.clear()
     assert run.load("--review") == dbcli.NEEDS_REVIEW  # nothing answered: still pending
     assert run.questions
+
+
+def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
+    run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
+    run.answers = ["+Prestiti", "q"]
+    assert run.load("--review") == dbcli.NEEDS_REVIEW
+    added = run.rules.with_name("categories.yaml")
+    assert f"new category {len(categories.ORDER) + 1}=Prestiti" in run.output
+    assert "Prestiti" in added.read_text(encoding="utf-8")
+    conn = db.connect(run.database)
+    query = (
+        "SELECT count(*) FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE c.name = 'Prestiti'"
+    )
+    assert conn.execute(query).fetchone()[0] > 0
+    conn.close()
+    assert run.load() == dbcli.NEEDS_REVIEW  # the saved rule and category are read again
 
 
 def test_review_asks_nothing_when_every_row_has_a_category(run: Run) -> None:

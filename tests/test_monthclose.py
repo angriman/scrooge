@@ -10,6 +10,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from finanze import classification, monthclose, pipeline
+from finanze.categories import Extra
 from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
 from finanze.storage import db, store
@@ -267,6 +268,29 @@ def test_the_taxonomy_is_seeded_once(conn: sqlite3.Connection) -> None:
         "WHERE c.name IN ('Regali', 'Voli') ORDER BY 1",
     )
     assert tree == [("Regali", "Regali"), ("Voli", "Trasporti")]
+
+
+def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection) -> None:
+    added = (
+        Extra("Prestiti", "uscite", "Prestiti"),
+        Extra("Giardino", "uscite", "Casa"),
+        Extra("Prestiti", "entrate"),
+    )
+    lent = batch(migros("0", "-1", category="Prestiti"))
+    monthclose.stage(conn, replace(lent, categories=added), NOW)
+    tree = rows(
+        conn,
+        "SELECT c.name, c.side, p.name FROM categories c LEFT JOIN categories p "
+        "ON p.id = c.parent_id WHERE c.name IN ('Prestiti', 'Giardino') ORDER BY c.id",
+    )
+    assert tree == [
+        ("Giardino", "uscite", "Casa"),
+        ("Prestiti", "uscite", None),
+        ("Prestiti", "uscite", "Prestiti"),
+        ("Prestiti", "entrate", None),
+    ]
+    used = "SELECT c.side, p.name FROM transactions t JOIN categories c ON c.id = t.category_id "
+    assert rows(conn, used + "JOIN categories p ON p.id = c.parent_id") == [("uscite", "Prestiti")]
 
 
 def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None:

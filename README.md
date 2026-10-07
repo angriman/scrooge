@@ -43,6 +43,7 @@ and an account name that is not in `Cash!A2:A` only shows when you archive.
 |---|---|---|
 | `rules.yaml` | yes | generic word → category rules ("ristorante", "apotheke"); names no business |
 | `rules.local.yaml` | no | your own rules (shops, chains, people, employer); read first; `--review` appends here |
+| `categories.yaml` | yes | categories added to the built-in taxonomy; `--review` appends here on `+Name`; read from the folder of the first rules file |
 | `instruments.yaml` | yes | asset tab for Tastytrade tickers, maturity of T-bills bought there, overrides |
 | `finanze.yaml` | no | sheet locale, account names |
 
@@ -67,6 +68,10 @@ finanze reopen 2026-09     # take it back, to import it again
 ```
 
 `finanze import --review` asks for the category of unmatched rows, as `finanze --review` does.
+Answer `+Prestiti` to create a category that does not exist yet and use it (`+Casa:Giardino`
+puts an expense under the top-level category `Casa`; money received goes to the Entrate, which
+have no groups). It is saved in `categories.yaml`. The sheet knows nothing about it: add it to
+the sheet's own category list before pasting files that use it.
 A statement may cover several months (the pillar 3a report covers the account's whole
 history): keep it in a folder of its own, and give `commit` and `reopen` the first and the
 last month, e.g. `finanze commit 2022-09 2026-07`.

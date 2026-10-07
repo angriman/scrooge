@@ -1,4 +1,4 @@
-"""Errors shared by all extractors."""
+"""Errors shared by all extractors, and by the files the user edits."""
 
 
 class ExtractionError(Exception):
@@ -7,3 +7,7 @@ class ExtractionError(Exception):
 
 class UnsupportedStatementError(ExtractionError):
     """The statement contains something no extractor rule covers yet (fail loudly, don't guess)."""
+
+
+class ConfigError(Exception):
+    """rules.yaml, categories.yaml or instruments.yaml is malformed."""

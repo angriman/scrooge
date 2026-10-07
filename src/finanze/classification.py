@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -17,13 +17,10 @@ from pathlib import Path
 import yaml
 
 from finanze import categories
+from finanze.errors import ConfigError
 from finanze.models import Kind, SecurityTrade, Transaction
 
 ASSET_TABS = frozenset({"ETFs", "Stocks", "Bonds"})
-
-
-class ConfigError(Exception):
-    """rules.yaml or instruments.yaml is malformed."""
 
 
 class UnknownInstrumentError(Exception):
@@ -84,8 +81,11 @@ def _load(path: Path, key: str) -> object:
     return data.get(key)
 
 
-def load_rules(paths: Iterable[Path]) -> tuple[Rule, ...]:
-    """Read rules from each existing file, in order: earlier files take precedence."""
+def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -> tuple[Rule, ...]:
+    """Read rules from each existing file, in order: earlier files take precedence.
+
+    `known` is every category a rule may name: the taxonomy plus what `categories.yaml` adds.
+    """
     rules: list[Rule] = []
     for path in paths:
         if not path.exists():
@@ -100,7 +100,7 @@ def load_rules(paths: Iterable[Path]) -> tuple[Rule, ...]:
                 msg = f"{where}: needs 'match' and 'category'"
                 raise ConfigError(msg)
             category = str(entry["category"])
-            if category not in categories.ALL:
+            if category not in known:
                 msg = f"{where}: unknown category {category!r}"
                 raise ConfigError(msg)
             try:

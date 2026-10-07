@@ -6,7 +6,7 @@ Nothing here begins or commits a transaction, and nothing decides anything: call
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -81,13 +81,20 @@ def ensure_account(  # noqa: PLR0913  # one argument per column
     return int(row["id"])
 
 
-def seed_categories(conn: sqlite3.Connection) -> None:
-    """Make sure the agreed taxonomy (D6) is in the database. Existing rows are left alone."""
+def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra] = ()) -> None:
+    """Make sure the agreed taxonomy (D6) and what `categories.yaml` adds are in the database.
+
+    Existing rows are left alone.
+    """
     insert = (
         "INSERT OR IGNORE INTO categories (name, parent_id, side, sort_order) VALUES (?, ?, ?, ?)"
     )
+    uscite = {parent: list(leaves) for parent, leaves in categories.USCITE.items()}
+    for extra in extras:
+        if extra.side == "uscite":
+            uscite.setdefault(extra.group, []).append(extra.name)
     order = 0
-    for parent, leaves in categories.USCITE.items():
+    for parent, leaves in uscite.items():
         conn.execute(insert, (parent, None, "uscite", order))
         parent_id = conn.execute(
             "SELECT id FROM categories WHERE side = 'uscite' AND parent_id IS NULL AND name = ?",
@@ -97,7 +104,8 @@ def seed_categories(conn: sqlite3.Connection) -> None:
             order += 1
             conn.execute(insert, (leaf, parent_id, "uscite", order))
         order += 1
-    for side, names in (("entrate", categories.ENTRATE), ("transfer", categories.TRANSFERS)):
+    entrate = (*categories.ENTRATE, *(e.name for e in extras if e.side == "entrate"))
+    for side, names in (("entrate", entrate), ("transfer", categories.TRANSFERS)):
         for name in names:
             order += 1
             conn.execute(insert, (name, None, side, order))

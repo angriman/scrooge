@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from itertools import pairwise
 
+from finanze.categories import Extra
 from finanze.extractors.common import month_end, months_between
 from finanze.models import Kind, Transaction
 from finanze.pipeline import Month, Statement
@@ -68,6 +69,7 @@ class Batch:
     statements: Sequence[Statement]
     month: Month
     people: People
+    categories: Sequence[Extra] = ()  # what `categories.yaml` adds to the taxonomy
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +94,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 msg = f"{covered:%Y-%m} is committed for {owner}: reopen it first"
                 raise MonthCommittedError(msg)
             store.set_month(conn, owner_id, covered, "open", None)
-        store.seed_categories(conn)
+        store.seed_categories(conn, batch.categories)
         others = {
             store.ensure_owner(conn, name): patterns
             for name, patterns in people.items()

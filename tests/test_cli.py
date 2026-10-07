@@ -233,7 +233,9 @@ def test_review_never_saves_a_rule_for_rows_without_text(tmp_path: Path) -> None
         asked.append(question)
         return "Regali"
 
-    review.ask_categories([blank, replace(blank, description=" ")], rules, out, ask)
+    review.ask_categories(
+        [blank, replace(blank, description=" ")], rules, tmp_path / "categories.yaml", out, ask
+    )
     assert asked == []
     assert not rules.exists()
     assert "2 rows have no text to match" in out.getvalue()
