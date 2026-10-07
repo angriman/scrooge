@@ -189,7 +189,7 @@ def test_review_saves_answers_as_rules_and_then_proceeds(run: Run) -> None:
     argv += ["--config", str(run.folder / "no")]
     assert cli.main(argv, out=out, ask=ask) == cli.NEEDS_REVIEW
     text = out.getvalue()
-    assert "Categories: 1=Affitto  2=Utenze" in text
+    assert "  Casa                1 Affitto   2 Utenze   3 Arredamento e casa\n" in text
     assert "unknown category 'nonsense'" in asked[2]
     assert len(asked) == 5  # two answered (one retried), one skipped, then q
     saved = rules.read_text(encoding="utf-8").splitlines()[-2:]

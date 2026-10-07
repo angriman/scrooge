@@ -68,6 +68,8 @@ finanze reopen 2026-09     # take it back, to import it again
 ```
 
 `finanze import --review` asks for the category of unmatched rows, as `finanze --review` does.
+Answer with a category's number, its name or a part of it (`rist` is enough for `Ristoranti`;
+when several match you are asked which one); `?` lists the categories again.
 Answer `+Prestiti` to create a category that does not exist yet and use it (`+Casa:Giardino`
 puts an expense under the top-level category `Casa`; money received goes to the Entrate, which
 have no groups). It is saved in `categories.yaml`. The sheet knows nothing about it: add it to

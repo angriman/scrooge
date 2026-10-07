@@ -97,7 +97,7 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     out = io.StringIO()
     review.ask_categories(pending, rules, added, out, ask)
     text = out.getvalue()
-    assert "A new category: +Name, or +Group:Name" in text
+    assert "+Name        a new category; +Group:Name puts an expense under" in text
     assert "unknown category '+'" in asked[1]
     assert "unknown category '+ casa:'" in asked[2]
     number = len(categories.ORDER) + 1
@@ -121,4 +121,64 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     # the menu of the next session lists them
     out = io.StringIO()
     review.ask_categories([replace(LENT, description="New")], rules, added, out, lambda _: "q")
-    assert f"{number}=Prestiti  {number + 1}=Giardino\n" in out.getvalue()
+    listed = out.getvalue()
+    assert f"   3 Arredamento e casa   {number + 1} Giardino\n" in listed
+    assert f"\n  Prestiti            {number} Prestiti\nEntrate\n" in listed
+    assert f"   {number} Prestiti\nTrasferimenti\n" in listed  # the same number on both sides
+
+
+def review_one(tmp_path: Path, *answers: str) -> tuple[str, list[str], str]:
+    """Answer the question about one row: what was printed, what was asked, the rules saved."""
+    rules = tmp_path / "rules.local.yaml"
+    left = iter(answers)
+    asked: list[str] = []
+
+    def ask(question: str) -> str:
+        asked.append(question)
+        return next(left)
+
+    out = io.StringIO()
+    review.ask_categories([LENT], rules, tmp_path / "categories.yaml", out, ask)
+    return out.getvalue(), asked, rules.read_text("utf-8") if rules.exists() else ""
+
+
+def test_review_takes_a_part_of_a_name_when_only_one_category_has_it(tmp_path: Path) -> None:
+    text, asked, saved = review_one(tmp_path, "rist")
+    assert len(asked) == 1
+    assert "To Jonas Example -> Ristoranti" in text
+    assert 'category: "Ristoranti"' in saved
+
+
+def test_review_ignores_case_and_accents(tmp_path: Path) -> None:
+    assert 'category: "Attività/Svago"' in review_one(tmp_path, "ATTIVITA")[2]
+
+
+def test_review_prefers_the_whole_name_to_a_part(tmp_path: Path) -> None:
+    assert 'category: "Regali"' in review_one(tmp_path, "regali")[2]  # not Regali ricevuti
+
+
+def test_review_asks_which_one_when_several_categories_match(tmp_path: Path) -> None:
+    text, asked, saved = review_one(tmp_path, "topup", "ibkr")
+    first = categories.ORDER.index("Topup Revolut") + 1
+    assert f"  'topup' could be: {first} Topup Revolut   {first + 1} Topup IBKR\n" in text
+    assert asked[1] == "  which one -> "
+    assert 'category: "Topup IBKR"' in saved
+
+
+def test_review_lists_the_categories_again_on_a_question_mark(tmp_path: Path) -> None:
+    text, asked, saved = review_one(tmp_path, "?", "999", "q")
+    assert text.count("  Casa                1 Affitto   2 Utenze   3 Arredamento e casa\n") == 2
+    assert text.count("  ?            list the categories again\n") == 2
+    assert asked[0] == asked[1]  # the same row is asked again
+    assert asked[2] == "  unknown category '999', try again (? lists them) -> "
+    assert saved == ""
+
+
+def test_the_list_of_categories_fits_the_screen() -> None:
+    lines = review.menu(()).splitlines()
+    assert max(map(len, lines)) <= 100
+    assert lines[0] == "Uscite"
+    assert "Entrate" in lines
+    assert "Trasferimenti" in lines
+    for n, name in enumerate(categories.ORDER, start=1):
+        assert any(f" {n} {name}" in line for line in lines)

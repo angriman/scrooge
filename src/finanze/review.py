@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import textwrap
+import unicodedata
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
@@ -11,9 +13,14 @@ from finanze.categories import Extra
 from finanze.models import Transaction
 
 _HELP = (
-    "Enter a number or name, nothing to skip, q to stop.\n"
-    "A new category: +Name, or +Group:Name to put an expense under a top-level category.\n"
+    "Answer with a number, a name or a part of one (rist -> Ristoranti).\n"
+    "  ?            list the categories again\n"
+    "  +Name        a new category; +Group:Name puts an expense under a top-level category\n"
+    "  (nothing)    skip these rows\n"
+    "  q            stop\n"
 )
+_WIDTH = 100
+_STOP = "q"
 
 
 def ask_categories(
@@ -37,26 +44,23 @@ def ask_categories(
         groups.setdefault((name, classification.direction(txn)), []).append(txn)
     if unnamed:
         out.write(f"\n{unnamed} rows have no text to match: they need a rule written by hand.\n")
-    extras = categories.load(categories_file)
-    menu = "  ".join(f"{n}={name}" for n, name in enumerate(categories.names(extras), start=1))
-    out.write(f"\nCategories: {menu}\n{_HELP}")
-    for (counterparty, flow), rows in groups.items():
+    out.write(f"\n{menu(categories.load(categories_file))}\n{_HELP}")
+    for n, ((counterparty, flow), rows) in enumerate(groups.items(), start=1):
         total = sum(txn.amount for txn in rows)
-        out.write(f"\n{rows[0].account}: {rows[0].description}\n")
-        answer = ask(f"  {counterparty} ({len(rows)} rows, {total}) -> ").strip()
-        while answer and answer != "q" and not _understood(answer, extras):
-            answer = ask(f"  unknown category {answer!r}, try again -> ").strip()
-        if answer == "q":
+        out.write(f"\n[{n}/{len(groups)}] {rows[0].account}: {rows[0].description}\n")
+        question = f"  {counterparty} ({len(rows)} rows, {total}) -> "
+        answer = _answer(question, categories_file, out, ask)
+        if answer == _STOP:
             return
         if not answer:
             continue
-        chosen = _category(answer, extras)
-        if chosen is None:
+        extras = categories.load(categories_file)
+        chosen = answer
+        if answer.startswith("+"):
             new = _new(answer, flow, extras)
             categories.add(categories_file, new)
-            extras = categories.load(categories_file)
             chosen = new.name
-            number = categories.names(extras).index(chosen) + 1
+            number = categories.names(categories.load(categories_file)).index(chosen) + 1
             under = f" under {new.group}" if new.group else ""
             where = f"{new.side}{under}"
             out.write(f"  new category {number}={chosen} ({where}) in {categories_file}\n")
@@ -64,18 +68,70 @@ def ask_categories(
         out.write(f"  saved to {rules_file}: {counterparty} -> {chosen}\n")
 
 
-def _understood(answer: str, extras: tuple[Extra, ...]) -> bool:
-    if answer.startswith("+"):
-        return bool(answer[1:].rpartition(":")[2].strip())
-    return _category(answer, extras) is not None
+def menu(extras: tuple[Extra, ...]) -> str:
+    """Every category with its number, one line per top-level category of the Uscite."""
+    number = {name: n for n, name in enumerate(categories.names(extras), start=1)}
+    uscite = {group: list(leaves) for group, leaves in categories.USCITE.items()}
+    for extra in extras:
+        if extra.side == "uscite":
+            uscite.setdefault(extra.group, []).append(extra.name)
+    entrate = (*categories.ENTRATE, *(e.name for e in extras if e.side == "entrate"))
+    margin = max(map(len, uscite)) + 4
+    lines = ["Uscite"]
+    lines += [_line(f"  {group}", leaves, number, margin) for group, leaves in uscite.items()]
+    lines += ["Entrate", _line("", entrate, number, 2)]
+    lines += ["Trasferimenti", _line("", categories.TRANSFERS, number, 2)]
+    return "\n".join(lines)
 
 
-def _category(answer: str, extras: tuple[Extra, ...]) -> str | None:
-    known = categories.names(extras)
-    if answer.isdigit() and 1 <= int(answer) <= len(known):
-        return known[int(answer) - 1]
-    matches = [name for name in known if name.lower() == answer.lower()]
-    return matches[0] if matches else None
+def _line(label: str, names: Sequence[str], number: dict[str, int], margin: int) -> str:
+    text = "   ".join(f"{number[name]} {name}".replace(" ", "\xa0") for name in names)
+    wrapped = textwrap.fill(
+        text, _WIDTH, initial_indent=label.ljust(margin), subsequent_indent=" " * margin
+    )
+    return wrapped.replace("\xa0", " ")
+
+
+def _answer(question: str, categories_file: Path, out: TextIO, ask: Callable[[str], str]) -> str:
+    """A category that exists, `+...` for a new one, nothing to skip or `q` to stop."""
+    while True:
+        answer = ask(question).strip()
+        extras = categories.load(categories_file)
+        if answer == "?":
+            out.write(f"{menu(extras)}\n{_HELP}")
+            continue
+        if answer in {"", _STOP}:
+            return answer
+        if answer.startswith("+"):
+            if answer[1:].rpartition(":")[2].strip():
+                return answer
+            found: list[str] = []
+        else:
+            found = _find(answer, categories.names(extras))
+            if len(found) == 1:
+                return found[0]
+        if found:
+            known = categories.names(extras)
+            choices = "   ".join(f"{known.index(name) + 1} {name}" for name in found)
+            out.write(f"  {answer!r} could be: {choices}\n")
+            question = "  which one -> "
+        else:
+            question = f"  unknown category {answer!r}, try again (? lists them) -> "
+
+
+def _find(answer: str, known: Sequence[str]) -> list[str]:
+    """The categories `answer` can mean: its number, its name, else every name containing it."""
+    if answer.isdigit():
+        return [known[int(answer) - 1]] if 1 <= int(answer) <= len(known) else []
+    wanted = _plain(answer)
+    exact = [name for name in known if _plain(name) == wanted]
+    return exact or [name for name in known if wanted in _plain(name)]
+
+
+def _plain(text: str) -> str:
+    """Lower case, without accents: `attivita` finds `Attività/Svago`."""
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
 def _new(answer: str, flow: str, extras: tuple[Extra, ...]) -> Extra:
