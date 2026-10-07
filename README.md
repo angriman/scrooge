@@ -93,6 +93,17 @@ owners:                            # how each person appears as a counterparty
 Income or expenses whose counterparty is the other person are marked, so that a combined
 view can leave them out.
 
+More for the database:
+
+- `finanze import` takes any number of files and folders, each statement with its own period:
+  yearly broker files next to monthly card invoices.
+- The credit card is an account of its own there. Each invoice reconciles on its balances, and
+  every payment it lists must be a card debit on the bank within a week.
+- `account_labels: {U7654321: "IBKR 2"}` in `finanze.yaml` names a second account at a broker
+  by its account number (`IBKR 2 USD`).
+- `finanze balance Sparkasse 2023-01-31 1234.56 EUR` types what an account without statements
+  held on a day.
+
 ## Using the transactions elsewhere
 
 The paste files are one consumer of the pipeline; anything else (a database loader, later)
