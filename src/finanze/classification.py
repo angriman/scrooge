@@ -3,6 +3,10 @@
 Rules are regular expressions matched, case-insensitively, against a transaction's description
 and counterparty; the first match wins. Extractors already set the deterministic categories
 (Trading, Commissioni, top-ups...), so rules only apply to rows still without one.
+
+A rule that gives a transfer category (Topup Revolut, Giroconto...) to a row the extractor took
+for income or an expense also makes it a transfer, which is never income or an expense: the
+answers of `--review` need no `kind`.
 """
 
 from __future__ import annotations
@@ -148,8 +152,15 @@ def _classify(txn: Transaction, rules: Sequence[Rule]) -> Transaction:
         return txn
     for rule in rules:
         if rule.matches(txn):
-            return replace(txn, category=rule.category, kind=rule.kind or txn.kind)
+            return replace(txn, category=rule.category, kind=rule.kind or _kind(txn, rule))
     return txn
+
+
+def _kind(txn: Transaction, rule: Rule) -> Kind:
+    """The extractor's kind, unless the category says its income or expense is a transfer."""
+    if rule.category in categories.TRANSFERS and txn.kind in {Kind.EXPENSE, Kind.INCOME}:
+        return Kind.TRANSFER
+    return txn.kind
 
 
 def uncategorized(transactions: Iterable[Transaction]) -> tuple[Transaction, ...]:

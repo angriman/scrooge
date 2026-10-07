@@ -223,3 +223,29 @@ def test_appended_rules_load_and_match_literally(tmp_path: Path, existing: str |
     # ...but spaces the statement pads the text with do not count
     padded = _txn(f"{name}   ", counterparty=f" {name}  ")
     assert classify([padded], rules[-2:])[0].category == "Attività/Svago"
+
+
+def test_a_transfer_category_makes_the_row_a_transfer(tmp_path: Path) -> None:
+    path = tmp_path / "rules.yaml"
+    path.write_text(
+        "rules:\n"
+        "  - {match: 'own account', category: Giroconto}\n"
+        "  - {match: 'cash machine', category: Prelievi, kind: expense}\n"
+        "  - {match: 'shop', category: Spesa}\n",
+        encoding="utf-8",
+    )
+    rules = load_rules([path])
+    rows = [
+        _txn("to my own account", "-500", kind=Kind.EXPENSE),
+        _txn("from my own account", "500", kind=Kind.INCOME),
+        _txn("own account, exchanged", "-3", kind=Kind.FX),  # only income and expense change
+        _txn("cash machine", "-100", kind=Kind.EXPENSE),  # what the rule says wins
+        _txn("shop", "-20", kind=Kind.EXPENSE),
+    ]
+    assert [(t.category, t.kind) for t in classify(rows, rules)] == [
+        ("Giroconto", Kind.TRANSFER),
+        ("Giroconto", Kind.TRANSFER),
+        ("Giroconto", Kind.FX),
+        ("Prelievi", Kind.EXPENSE),
+        ("Spesa", Kind.EXPENSE),
+    ]

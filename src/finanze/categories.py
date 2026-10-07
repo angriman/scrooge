@@ -53,6 +53,7 @@ TRANSFERS: tuple[str, ...] = (
     "Acquisto EUR",
     "Acquisto USD",
     "Prelievi",
+    "Giroconto",  # between my own accounts, when none of the above says it better
 )
 
 # Every leaf category, in the order rows are written to the sheet.
