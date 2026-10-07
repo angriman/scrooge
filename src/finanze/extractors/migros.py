@@ -31,6 +31,8 @@ from finanze.models import CashBalance, Extraction, Kind, Transaction
 _COLUMNS = ("Data", "Testo di registrazione", "Importo", "Saldo", "Valuta")
 _HEADER = re.compile(r'^"?Data"?;', re.MULTILINE)
 _Row = tuple[int, dict[str, str]]  # line number in the table, cells
+# "Addebito TWINT Surname, First, +41790000000 <reference>", or a shop's name and the reference
+_TWINT = re.compile(r"((?:Addebito|Accredito) TWINT) (.*?)(?: \d{16})?$")
 _CARD_PURCHASE = re.compile(r"Acquisto (.+?) \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Carta:")
 # Transfers the sheet tracks as their own categories (D2), by what the booking text starts with.
 _TRANSFERS = (
@@ -185,4 +187,9 @@ def _counterparty(text: str) -> str:
     purchase = _CARD_PURCHASE.match(text)
     if purchase:
         return purchase[1]
+    twint = _TWINT.match(text)
+    if twint and twint[2].startswith(","):  # a person without a surname: ", First, +41..."
+        return f"{twint[1]} {twint[2].lstrip(', ')}"
+    if twint and "," not in twint[2]:  # a shop
+        return f"{twint[1]} {twint[2]}"
     return text.partition(",")[0]

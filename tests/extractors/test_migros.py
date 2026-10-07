@@ -82,6 +82,25 @@ def test_description_and_counterparty(result: Extraction) -> None:
     assert by_ref["11"].counterparty == "Spese per traffico pagamenti"
 
 
+@pytest.mark.parametrize(
+    ("party", "counterparty"),
+    [
+        ("Rossi, Maria, +41790000000 0400000000000001", "Accredito TWINT Rossi"),
+        # no surname: the first name and the number tell people apart
+        (", Maria, +41790000000 0400000000000001", "Accredito TWINT Maria, +41790000000"),
+        (", Piero, +41790000009 0400000000000001", "Accredito TWINT Piero, +41790000009"),
+        # a shop: the same whatever the reference of the payment
+        ("Kiosk Nr. 10 0400000000000001", "Accredito TWINT Kiosk Nr. 10"),
+        ("Kiosk Nr. 10", "Accredito TWINT Kiosk Nr. 10"),
+    ],
+)
+def test_twint_counterparties(party: str, counterparty: str) -> None:
+    paid = "Accredito TWINT Rossi, Maria, +41790000000 0400000000000001"
+    assert paid in CSV
+    result = migros.extract(CSV.replace(paid, f"Accredito TWINT {party}"), source_file="m.csv")
+    assert counterparty in {t.counterparty for t in result.transactions}
+
+
 def test_bom_is_ignored(result: Extraction) -> None:
     assert migros.extract("\ufeff" + CSV, source_file="migros.csv") == result
 
