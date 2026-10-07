@@ -1,0 +1,19 @@
+Estratto conto da:;2023-05-01
+Estratto conto fino:;2023-06-01
+;
+Contratto:;EB00000000
+Numero di conto / IBAN:;00.000.000 / CH00 0000 0000 0000 0000 0
+Denominazione:;Conto privato
+Saldo:;CHF 9000.00
+;
+Meier Lukas
+Musterstrasse 1
+8000 Zürich
+;
+;
+Data;Testo di registrazione;Importo;Saldo;Valuta
+02.05.2023;Hans Muster, Beispielweg 8, 5000 Aarau;-1850.00;3150.00;02.05.2023
+05.05.2023;Swisscard AECS GmbH, 8810 Horgen;-412.35;2737.65;05.05.2023
+12.05.2023;Interactive Brokers LLC, One Pickwick Plaza, 06830 Greenwich, Connecticut;-1000.00;1657.65;12.05.2023
+12.05.2023;Addebito TWINT Konsum, Filiale, +41000000000 0000000000000000;-80.00;2657.65;12.05.2023
+25.05.2023;ACME SWITZERLAND GMBH;6500.00;8157.65;25.05.2023

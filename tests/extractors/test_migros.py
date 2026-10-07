@@ -123,3 +123,36 @@ def test_a_row_after_the_last_whole_month_is_refused() -> None:
     cut = CSV.replace('"2026-09-01"', '"2026-08-01"').replace('"2026-09-30"', '"2026-09-12"')
     with pytest.raises(ExtractionError, match="export it up to a month end"):
         migros.extract(cut, source_file="m.csv")
+
+
+OLDER = (FIXTURES / "migros" / "older.csv").read_text(encoding="utf-8")
+
+
+def test_the_older_layout_is_read_and_put_back_in_balance_order() -> None:
+    result = migros.extract(OLDER, source_file="migros.csv")
+    assert result.period == (date(2023, 5, 1), date(2023, 5, 31))  # exported on 1 June
+    assert result.balances == (
+        CashBalance("Migros", "CHF", Decimal("5000.00"), Decimal("8157.65")),
+    )
+    check_balances(result)
+    # Rows 3 and 4 share a day and are listed the other way round.
+    assert [t.source_ref for t in result.transactions] == ["1", "2", "4", "3", "5"]
+    by_ref = {t.source_ref: t for t in result.transactions}
+    assert (by_ref["2"].kind, by_ref["2"].category) == (Kind.INTERNAL, "")
+    assert (by_ref["3"].kind, by_ref["3"].category) == (Kind.TRANSFER, "Topup IBKR")
+    assert by_ref["1"].description == "Hans Muster, Beispielweg 8, 5000 Aarau"
+    assert by_ref["1"].counterparty == "Hans Muster"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("-80.00;2657.65", "-80.00;2657.66"),  # a balance no row leads to
+        ("-1000.00;1657.65", "-1000.00;8157.65"),  # two rows end on the same balance
+        ("25.05.2023;ACME SWITZERLAND GMBH;6500.00;8157.65", "25.05.2023;X;10.00;10.00"),
+    ],
+)
+def test_rows_that_cannot_be_put_in_order_are_refused(old: str, new: str) -> None:
+    assert old in OLDER
+    with pytest.raises(ExtractionError, match="does not follow"):
+        migros.extract(OLDER.replace(old, new), source_file="migros.csv")
