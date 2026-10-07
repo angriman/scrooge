@@ -30,7 +30,8 @@ _COLUMNS = (
 _NO_CASH_STATES = {"PENDING", "REVERTED"}
 _CARD_TOPUP = re.compile(r"(Top-up|(Google|Apple) Pay deposit) by \*", re.IGNORECASE)
 _EXCHANGED_TO = re.compile(r"Exchanged? to ([A-Z]{3})")
-_OWN_SAVINGS = re.compile(r"(To|From) ([A-Z]{3} )?Flexible Cash Funds\b")
+# "Savings Vault topup" is what the first deposit was called when the savings were opened
+_OWN_SAVINGS = re.compile(r"((To|From) ([A-Z]{3} )?Flexible Cash Funds|Savings Vault topup)\b")
 _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
 
 

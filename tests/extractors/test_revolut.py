@@ -78,6 +78,11 @@ def test_deterministic_categories(result: Extraction) -> None:
     assert _row(result, "13")[2:] == (Kind.INTERNAL, "")
 
 
+def test_the_first_deposit_into_savings_is_internal_under_its_older_name() -> None:
+    older = TSV.replace("To Flexible Cash Funds", "Savings Vault topup")
+    assert _row(revolut.extract(older, source_file="chf.tsv"), "9")[2:] == (Kind.INTERNAL, "")
+
+
 def test_everything_else_is_income_or_expense_left_for_the_rules(result: Extraction) -> None:
     assert _row(result, "3")[2:] == (Kind.EXPENSE, "")
     assert _row(result, "7")[2:] == (Kind.INCOME, "")  # card refund
