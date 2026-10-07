@@ -13,7 +13,7 @@ from finanze import classification, monthclose, pipeline
 from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
 from finanze.storage import db, store
-from finanze.storage.money import PrecisionError, from_micro
+from finanze.storage.money import PrecisionError, from_nano
 from finanze.validation import ChainMismatchError, MissingLotsError, MissingStatementError
 from tests.conftest import INSTRUMENTS, write_rules
 from tests.storage.helpers import (
@@ -97,11 +97,11 @@ def test_every_transaction_of_the_month_is_stored(conn: sqlite3.Connection, fold
         expected[key] = expected.get(key, Decimal(0)) + row.amount
     stored = rows(
         conn,
-        "SELECT a.name, t.currency, sum(t.amount_micro) FROM transactions t "
+        "SELECT a.name, t.currency, sum(t.amount_nano) FROM transactions t "
         "JOIN accounts a ON a.id = t.account_id WHERE t.booking_date >= ? GROUP BY 1, 2",
         FIRST,
     )
-    assert {(name, currency): from_micro(total) for name, currency, total in stored} == expected
+    assert {(name, currency): from_nano(total) for name, currency, total in stored} == expected
 
 
 def test_both_dates_are_stored(conn: sqlite3.Connection, folder: Path) -> None:
@@ -280,15 +280,15 @@ def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None
     monthclose.stage(conn, batch(statement("migros", lines)), NOW)
     marked = rows(
         conn,
-        "SELECT t.amount_micro, o.name FROM transactions t "
-        "LEFT JOIN owners o ON o.id = t.counterparty_owner_id ORDER BY t.amount_micro",
+        "SELECT t.amount_nano, o.name FROM transactions t "
+        "LEFT JOIN owners o ON o.id = t.counterparty_owner_id ORDER BY t.amount_nano",
     )
     assert marked == [
-        (-500_000_000, None),
-        (-40_000_000, PARTNER),
-        (-12_000_000, None),
-        (-3_000_000, None),
-        (25_000_000, PARTNER),
+        (-500_000_000_000, None),
+        (-40_000_000_000, PARTNER),
+        (-12_000_000_000, None),
+        (-3_000_000_000, None),
+        (25_000_000_000, PARTNER),
     ]
 
 
@@ -298,8 +298,8 @@ def test_each_person_has_their_own_accounts_and_months(conn: sqlite3.Connection)
     monthclose.commit(conn, owner=PARTNER, month=SEPTEMBER, now=NOW)
     months = "SELECT o.name, m.status FROM months m JOIN owners o ON o.id = m.owner_id"
     assert rows(conn, months) == [(OWNER, "open"), (PARTNER, "committed")]
-    assert rows(conn, "SELECT owner, account, amount_micro FROM committed_transactions") == [
-        (PARTNER, "Migros", -2_000_000)
+    assert rows(conn, "SELECT owner, account, amount_nano FROM committed_transactions") == [
+        (PARTNER, "Migros", -2_000_000_000)
     ]
     assert rows(conn, "SELECT count(*) FROM accounts WHERE name = 'Migros'") == [(2,)]
 
@@ -320,12 +320,12 @@ def test_trades_and_instruments(conn: sqlite3.Connection) -> None:
     monthclose.stage(conn, batch(statement("ibkr", buys)), NOW)
     stored = rows(
         conn,
-        "SELECT i.symbol, i.type, i.currency, i.maturity, t.quantity, t.price, t.cost_micro "
+        "SELECT i.symbol, i.type, i.currency, i.maturity, t.quantity, t.price, t.cost_nano "
         "FROM trades t JOIN instruments i ON i.id = t.instrument_id ORDER BY 1",
     )
     assert stored == [
-        ("912797ZZ1", "bill", "USD", "2026-12-24", "10000", "98.51", 9_851_000_000),
-        ("WIDG", "etf", "USD", None, "20", "101.25", 2_025_000_000),
+        ("912797ZZ1", "bill", "USD", "2026-12-24", "10000", "98.51", 9_851_000_000_000),
+        ("WIDG", "etf", "USD", None, "20", "101.25", 2_025_000_000_000),
     ]
     monthclose.stage(conn, batch(statement("ibkr", [replace(buys[1], maturity=None)])), NOW)
     assert rows(conn, "SELECT maturity FROM instruments WHERE type = 'bill'") == [("2026-12-24",)]
@@ -334,13 +334,13 @@ def test_trades_and_instruments(conn: sqlite3.Connection) -> None:
 
 def test_a_manual_category_survives_a_new_import(conn: sqlite3.Connection) -> None:
     monthclose.stage(conn, batch(migros("0", "-30", "-8")), NOW)
-    (txn_id,) = rows(conn, "SELECT id FROM transactions WHERE amount_micro = -30000000")[0]
+    (txn_id,) = rows(conn, "SELECT id FROM transactions WHERE amount_nano = -30000000000")[0]
     (flights,) = rows(conn, "SELECT id FROM categories WHERE name = 'Voli'")[0]
     conn.execute(
         "INSERT INTO overrides (transaction_id, category_id, created_at) VALUES (?, ?, 'x')",
         (txn_id, flights),
     )
-    (other,) = rows(conn, "SELECT id FROM transactions WHERE amount_micro = -8000000")[0]
+    (other,) = rows(conn, "SELECT id FROM transactions WHERE amount_nano = -8000000000")[0]
     conn.execute(
         "INSERT INTO overrides (transaction_id, kind, created_at) VALUES (?, 'transfer', 'x')",
         (other,),
@@ -348,12 +348,12 @@ def test_a_manual_category_survives_a_new_import(conn: sqlite3.Connection) -> No
     monthclose.stage(conn, batch(migros("0", "-30", "-8")), LATER)
     kept = rows(
         conn,
-        "SELECT t.amount_micro, c.name, t.category_source, t.kind FROM transactions t "
+        "SELECT t.amount_nano, c.name, t.category_source, t.kind FROM transactions t "
         "JOIN categories c ON c.id = t.category_id ORDER BY 1",
     )
     assert kept == [
-        (-30_000_000, "Voli", "manual", "expense"),
-        (-8_000_000, "Spesa", "rule", "transfer"),
+        (-30_000_000_000, "Voli", "manual", "expense"),
+        (-8_000_000_000, "Spesa", "rule", "transfer"),
     ]
 
 
@@ -364,10 +364,11 @@ def test_a_re_exported_statement_replaces_the_old_one(conn: sqlite3.Connection) 
     assert rows(conn, "SELECT sha256, imported_at FROM statement_files") == [
         ("another export", "2026-10-07T09:30:00+00:00")
     ]
-    assert rows(conn, "SELECT count(*), sum(amount_micro) FROM transactions") == [(3, -40_000_000)]
-    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+    totals = rows(conn, "SELECT count(*), sum(amount_nano) FROM transactions")
+    assert totals == [(3, -40_000_000_000)]
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
         ("2026-08-31", 0),
-        ("2026-09-30", -40_000_000),
+        ("2026-09-30", -40_000_000_000),
     ]
 
 
@@ -409,7 +410,7 @@ def test_an_amount_that_does_not_fit_is_refused_and_nothing_is_kept(
     conn: sqlite3.Connection,
 ) -> None:
     with pytest.raises(PrecisionError):
-        monthclose.stage(conn, batch(statement("migros", [txn("-0.0000001")])), NOW)
+        monthclose.stage(conn, batch(statement("migros", [txn("-0.0000000001")])), NOW)
     assert rows(conn, "SELECT count(*) FROM months") == [(0,)]
 
 
@@ -418,9 +419,9 @@ def test_an_amount_that_does_not_fit_is_refused_and_nothing_is_kept(
 
 def test_statement_balances_are_stored_at_both_ends(conn: sqlite3.Connection) -> None:
     monthclose.stage(conn, batch(migros("1000", "-200", "50")), NOW)
-    assert rows(conn, "SELECT date, amount_micro, source FROM balances ORDER BY 1") == [
-        ("2026-08-31", 1_000_000_000, "statement"),
-        ("2026-09-30", 850_000_000, "statement"),
+    assert rows(conn, "SELECT date, amount_nano, source FROM balances ORDER BY 1") == [
+        ("2026-08-31", 1_000_000_000_000, "statement"),
+        ("2026-09-30", 850_000_000_000, "statement"),
     ]
 
 
@@ -436,10 +437,10 @@ def test_the_next_month_must_open_where_this_one_closed(conn: sqlite3.Connection
     assert dump(conn) == before
 
     monthclose.stage(conn, month_of(OCTOBER, "800", "-90"), NOW)
-    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
-        ("2026-08-31", 1_000_000_000),
-        ("2026-09-30", 800_000_000),
-        ("2026-10-31", 710_000_000),
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
+        ("2026-08-31", 1_000_000_000_000),
+        ("2026-09-30", 800_000_000_000),
+        ("2026-10-31", 710_000_000_000),
     ]
 
 
@@ -482,7 +483,7 @@ def test_a_quiet_month_without_a_statement_is_no_gap(conn: sqlite3.Connection) -
 
 def test_a_commit_checks_the_chain_again(conn: sqlite3.Connection) -> None:
     monthclose.stage(conn, batch(migros("1000", "-200")), NOW)
-    conn.execute("UPDATE transactions SET amount_micro = amount_micro - 1")
+    conn.execute("UPDATE transactions SET amount_nano = amount_nano - 1")
     with pytest.raises(ChainMismatchError):
         monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     assert rows(conn, "SELECT status FROM months") == [("open",)]
@@ -501,7 +502,7 @@ def test_rows_another_source_books_on_the_account_stay_out_of_its_balance(
     paid = {"source_file": "savings.tsv", "kind": Kind.INTEREST, "category": "Interessi"}
     interest = txn("0.08", **paid, **euro)
     monthclose.stage(conn, batch(current, statement("revolut_savings", [interest])), NOW)
-    assert rows(conn, "SELECT sum(amount_micro) FROM transactions") == [(-4_920_000,)]
+    assert rows(conn, "SELECT sum(amount_nano) FROM transactions") == [(-4_920_000_000,)]
     assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
 
 
@@ -511,19 +512,19 @@ def test_the_card_is_an_account_whose_invoices_chain(
     stage_september(conn, folder)
     card = rows(
         conn,
-        "SELECT b.date, b.amount_micro FROM balances b JOIN accounts a ON a.id = b.account_id "
+        "SELECT b.date, b.amount_nano FROM balances b JOIN accounts a ON a.id = b.account_id "
         "WHERE a.name = 'Swisscard' ORDER BY 1",
     )
-    assert card == [("2026-08-31", -1_142_600_000), ("2026-09-30", -1_288_180_000)]
+    assert card == [("2026-08-31", -1_142_600_000_000), ("2026-09-30", -1_288_180_000_000)]
     legs = rows(
         conn,
-        "SELECT a.name, t.date, t.amount_micro FROM transactions t "
+        "SELECT a.name, t.date, t.amount_nano FROM transactions t "
         "JOIN accounts a ON a.id = t.account_id "
         "WHERE t.kind = 'internal' AND a.name IN ('Migros', 'Swisscard') ORDER BY t.date",
     )
     assert legs == [
-        ("Swisscard", "2026-08-26", 1_142_600_000),  # August's payment, as the invoice lists it
-        ("Migros", "2026-09-08", -1_288_180_000),  # September's, as the bank debits it
+        ("Swisscard", "2026-08-26", 1_142_600_000_000),  # August's payment, as the invoice lists it
+        ("Migros", "2026-09-08", -1_288_180_000_000),  # September's, as the bank debits it
     ]
 
 
@@ -565,9 +566,9 @@ def test_a_statement_of_several_months_opens_each_of_them(
     assert rows(conn, "SELECT period_start, period_end FROM statement_files") == [
         ("2026-07-01", "2026-09-30")
     ]
-    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
         ("2026-06-30", 0),
-        ("2026-09-30", 13_671_078),
+        ("2026-09-30", 13_671_078_000),
     ]
     funds = rows(
         conn,
@@ -621,10 +622,10 @@ def test_statements_of_one_account_for_different_periods_go_in_together(
     staged = monthclose.stage(conn, both, NOW)
     assert (staged.transactions, staged.gaps) == (2, ())
     assert rows(conn, "SELECT month FROM months ORDER BY 1") == [("2026-07-01",), ("2026-08-01",)]
-    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
-        ("2026-06-30", 100_000_000),
-        ("2026-07-31", 90_000_000),
-        ("2026-08-31", 70_000_000),
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
+        ("2026-06-30", 100_000_000_000),
+        ("2026-07-31", 90_000_000_000),
+        ("2026-08-31", 70_000_000_000),
     ]
     assert rows(conn, "SELECT filename, period_start FROM statement_files ORDER BY 2") == [
         ("july.csv", "2026-07-01"),
@@ -644,11 +645,12 @@ def test_a_longer_export_replaces_a_shorter_one(conn: sqlite3.Connection) -> Non
     august_end = date(2026, 8, 31)
     longer = statement("migros", longer_rows, [balance], month=JULY, end=august_end, content="2")
     monthclose.stage(conn, batch(longer, month=JULY, end=august_end), LATER)
-    assert rows(conn, "SELECT count(*), sum(amount_micro) FROM transactions") == [(3, -35_000_000)]
-    assert rows(conn, "SELECT date, amount_micro FROM balances ORDER BY 1") == [
-        ("2026-06-30", 100_000_000),
-        ("2026-07-31", 85_000_000),
-        ("2026-08-31", 65_000_000),
+    totals = rows(conn, "SELECT count(*), sum(amount_nano) FROM transactions")
+    assert totals == [(3, -35_000_000_000)]
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
+        ("2026-06-30", 100_000_000_000),
+        ("2026-07-31", 85_000_000_000),
+        ("2026-08-31", 65_000_000_000),
     ]
     assert rows(conn, "SELECT count(*) FROM statement_files") == [(2,)]
 
@@ -662,13 +664,13 @@ def test_the_fixture_bill_is_split_into_cost_and_interest(
     stage_september(conn, folder)
     parts = rows(
         conn,
-        "SELECT t.description, t.amount_micro, t.kind, c.name, t.split_of IS NOT NULL "
+        "SELECT t.description, t.amount_nano, t.kind, c.name, t.split_of IS NOT NULL "
         "FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.description LIKE 'Maturity%' ORDER BY t.amount_micro DESC",
+        "WHERE t.description LIKE 'Maturity%' ORDER BY t.amount_nano DESC",
     )
     assert parts == [
-        ("Maturity 10.0 912797YY2 @ 1000", 9_920_000_000, "income", "Investimenti", 0),
-        ("Maturity 10.0 912797YY2 @ 1000 (interest)", 80_000_000, "interest", "Interessi", 1),
+        ("Maturity 10.0 912797YY2 @ 1000", 9_920_000_000_000, "income", "Investimenti", 0),
+        ("Maturity 10.0 912797YY2 @ 1000 (interest)", 80_000_000_000, "interest", "Interessi", 1),
     ]
 
 
@@ -680,8 +682,8 @@ def test_a_bill_whose_purchase_is_not_stored_blocks_the_commit(
         "Tastytrade: 912797YY2 matured or was sold on 2026-09-16, but its purchases are not all "
         "stored (import the earlier statements): the interest cannot be split from the cost",
     )
-    whole = rows(conn, "SELECT amount_micro FROM transactions WHERE description LIKE 'Maturity%'")
-    assert whole == [(10_000_000_000,)]
+    whole = rows(conn, "SELECT amount_nano FROM transactions WHERE description LIKE 'Maturity%'")
+    assert whole == [(10_000_000_000_000,)]
     with pytest.raises(MissingLotsError, match="912797YY2 matured or was sold on 2026-09-16"):
         monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
 
@@ -690,9 +692,9 @@ def test_a_bill_whose_purchase_is_not_stored_blocks_the_commit(
     assert monthclose.stage(conn, tastytrade(bought, month=AUGUST), NOW).gaps == ()
     split = rows(
         conn,
-        "SELECT amount_micro FROM transactions WHERE description LIKE 'Maturity%' ORDER BY 1",
+        "SELECT amount_nano FROM transactions WHERE description LIKE 'Maturity%' ORDER BY 1",
     )
-    assert split == [(80_000_000,), (9_920_000_000,)]
+    assert split == [(80_000_000_000,), (9_920_000_000_000,)]
     assert monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
 
 
@@ -710,19 +712,19 @@ def test_lots_are_closed_first_in_first_out(conn: sqlite3.Connection) -> None:
     assert monthclose.stage(conn, september, NOW).gaps == ()
     parts = rows(
         conn,
-        "SELECT t.date, t.kind, c.name, t.amount_micro FROM transactions t "
+        "SELECT t.date, t.kind, c.name, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.booking_date >= ? ORDER BY 1, 4 DESC",
         FIRST,
     )
     assert parts == [
-        ("2026-09-02", "security_trade", "Investimenti", 2_970_000_000),
-        ("2026-09-02", "interest", "Interessi", 12_000_000),
-        ("2026-09-16", "income", "Investimenti", 6_940_000_000),  # 1980 + 4960
-        ("2026-09-16", "interest", "Interessi", 60_000_000),
+        ("2026-09-02", "security_trade", "Investimenti", 2_970_000_000_000),
+        ("2026-09-02", "interest", "Interessi", 12_000_000_000),
+        ("2026-09-16", "income", "Investimenti", 6_940_000_000_000),  # 1980 + 4960
+        ("2026-09-16", "interest", "Interessi", 60_000_000_000),
     ]
     # the statement's figures are untouched in total, and the split is stable
-    total = rows(conn, "SELECT sum(amount_micro) FROM transactions WHERE booking_date >= ?", FIRST)
-    assert total == [(9_982_000_000,)]
+    total = rows(conn, "SELECT sum(amount_nano) FROM transactions WHERE booking_date >= ?", FIRST)
+    assert total == [(9_982_000_000_000,)]
     before = dump(conn)
     monthclose.stage(conn, september, LATER)
     assert dump(conn) == before
@@ -747,10 +749,10 @@ def test_a_manual_category_on_the_interest_survives(conn: sqlite3.Connection) ->
     monthclose.stage(conn, sale, LATER)
     kept = rows(
         conn,
-        "SELECT c.name, t.category_source, t.amount_micro FROM transactions t "
+        "SELECT c.name, t.category_source, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.split_of IS NOT NULL",
     )
-    assert kept == [("Dividendi", "manual", 30_000_000)]
+    assert kept == [("Dividendi", "manual", 30_000_000_000)]
 
 
 def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> None:
@@ -768,16 +770,16 @@ def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> 
     assert staged.gaps == ()
     parts = rows(
         conn,
-        "SELECT t.description, c.name, t.amount_micro FROM transactions t "
+        "SELECT t.description, c.name, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.booking_date >= ? "
         "ORDER BY t.date, 3 DESC",
         FIRST,
     )
     assert parts == [
-        ("-3000 912797YY2", "Investimenti", 2_970_000_000),
-        ("-3000 912797YY2 (interest)", "Interessi", 12_000_000),
-        ("principal", "Investimenti", 1_980_000_000),
-        ("interest", "Interessi", 20_000_000),
+        ("-3000 912797YY2", "Investimenti", 2_970_000_000_000),
+        ("-3000 912797YY2 (interest)", "Interessi", 12_000_000_000),
+        ("principal", "Investimenti", 1_980_000_000_000),
+        ("interest", "Interessi", 20_000_000_000),
     ]
 
 
@@ -794,10 +796,10 @@ def test_what_is_stored_adds_up_to_what_was_imported(amounts: list[str]) -> None
     month = batch(migros("500", *amounts))
     monthclose.stage(conn, month, NOW)
     total = sum((row.amount for row in month.month.transactions), Decimal(0))
-    (stored,) = rows(conn, "SELECT sum(amount_micro) FROM transactions")[0]
-    assert from_micro(stored) == total
-    (closing,) = rows(conn, "SELECT amount_micro FROM balances WHERE date = '2026-09-30'")[0]
-    assert from_micro(closing) == Decimal(500) + total
+    (stored,) = rows(conn, "SELECT sum(amount_nano) FROM transactions")[0]
+    assert from_nano(stored) == total
+    (closing,) = rows(conn, "SELECT amount_nano FROM balances WHERE date = '2026-09-30'")[0]
+    assert from_nano(closing) == Decimal(500) + total
     conn.close()
 
 

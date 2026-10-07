@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from finanze import categories
 from finanze.models import SecurityTrade, Transaction
-from finanze.storage.money import to_micro, to_text
+from finanze.storage.money import to_nano, to_text
 
 _CURRENCY_DECIMALS = 2
 _INSTRUMENT_TYPES = {"ETFs": "etf", "Stocks": "stock", "Bonds": "bill", "Funds": "fund"}
@@ -36,7 +36,7 @@ class Anchor:
     account: str
     currency: str
     day: date
-    amount_micro: int
+    amount_nano: int
     opening: bool  # only known as what the next statement started from: nothing covers `day`
 
 
@@ -222,7 +222,7 @@ def insert_transaction(  # noqa: PLR0913  # the row plus what only the caller kn
     statement_file: int | None,
 ) -> None:
     conn.execute(
-        "INSERT INTO transactions (id, account_id, date, booking_date, amount_micro, currency, "
+        "INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency, "
         "description, counterparty, kind, category_id, category_source, counterparty_owner_id, "
         "statement_file_id, source_ref, confidence) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -231,7 +231,7 @@ def insert_transaction(  # noqa: PLR0913  # the row plus what only the caller kn
             account,
             txn.date.isoformat(),
             txn.booking_date.isoformat(),
-            to_micro(txn.amount),
+            to_nano(txn.amount),
             txn.currency,
             txn.description,
             txn.counterparty,
@@ -257,9 +257,9 @@ def _insert_trade(conn: sqlite3.Connection, txn_id: str, trade: SecurityTrade) -
         (trade.ticker, _INSTRUMENT_TYPES[trade.asset_tab], trade.currency, maturity),
     ).fetchone()[0]
     conn.execute(
-        "INSERT INTO trades (transaction_id, instrument_id, quantity, price, cost_micro) "
+        "INSERT INTO trades (transaction_id, instrument_id, quantity, price, cost_nano) "
         "VALUES (?, ?, ?, ?, ?)",
-        (txn_id, instrument, to_text(trade.quantity), to_text(trade.price), to_micro(trade.cost)),
+        (txn_id, instrument, to_text(trade.quantity), to_text(trade.price), to_nano(trade.cost)),
     )
 
 
@@ -279,9 +279,9 @@ def set_closing_balance(
     conn: sqlite3.Connection, account: int, day: date, amount: Decimal, statement_file: int
 ) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO balances (account_id, date, amount_micro, source, "
+        "INSERT OR REPLACE INTO balances (account_id, date, amount_nano, source, "
         "statement_file_id) VALUES (?, ?, ?, 'statement', ?)",
-        (account, day.isoformat(), to_micro(amount), statement_file),
+        (account, day.isoformat(), to_nano(amount), statement_file),
     )
 
 
@@ -290,16 +290,16 @@ def set_opening_balance(
 ) -> None:
     """The balance a statement started from, unless an earlier statement already closed on it."""
     conn.execute(
-        "INSERT OR IGNORE INTO balances (account_id, date, amount_micro, source, "
+        "INSERT OR IGNORE INTO balances (account_id, date, amount_nano, source, "
         "statement_file_id) VALUES (?, ?, ?, 'statement', ?)",
-        (account, day.isoformat(), to_micro(amount), statement_file),
+        (account, day.isoformat(), to_nano(amount), statement_file),
     )
 
 
 def anchors(conn: sqlite3.Connection, owner: int) -> list[Anchor]:
     """Every statement balance of the owner's accounts, by account and then by day."""
     rows = conn.execute(
-        "SELECT b.account_id, a.name, a.currency, b.date, b.amount_micro, f.period_start > b.date "
+        "SELECT b.account_id, a.name, a.currency, b.date, b.amount_nano, f.period_start > b.date "
         "FROM balances b JOIN accounts a ON a.id = b.account_id "
         "JOIN statement_files f ON f.id = b.statement_file_id "
         "WHERE a.owner_id = ? AND b.source = 'statement' ORDER BY b.account_id, b.date",
@@ -318,7 +318,7 @@ def own_flow(conn: sqlite3.Connection, account: int, after: date, until: date) -
     own statement already has (D3: the card purchases behind the card debit on the bank).
     """
     row = conn.execute(
-        "SELECT coalesce(sum(t.amount_micro), 0) FROM transactions t "
+        "SELECT coalesce(sum(t.amount_nano), 0) FROM transactions t "
         "JOIN accounts a ON a.id = t.account_id "
         "JOIN statement_files f ON f.id = t.statement_file_id AND f.source = a.source "
         "WHERE t.account_id = ? AND t.booking_date > ? AND t.booking_date <= ?",

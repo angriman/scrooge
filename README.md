@@ -78,7 +78,7 @@ previous statement's balance plus what was booked in between.
 
 Each transaction has two dates: `date`, the day it happened, and `booking_date`, the day it
 counts on for its statement (a card purchase made in August and billed in September has
-both). Amounts are whole millionths of the currency unit (`amount_micro`).
+both). Amounts are whole billionths of the currency unit (`amount_nano`).
 
 `finanze.yaml` gains:
 

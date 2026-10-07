@@ -138,7 +138,7 @@ def test_a_missing_statement_is_shown_on_import_and_blocks_the_commit(run: Run) 
         "VALUES (1, 'migros', 'july.csv', 'x', '2026-07-01', '2026-07-31', 'yes', 'x')"
     )
     conn.execute(
-        "INSERT INTO balances SELECT account_id, '2026-07-31', amount_micro + 1, 'statement', "
+        "INSERT INTO balances SELECT account_id, '2026-07-31', amount_nano + 1, 'statement', "
         "last_insert_rowid() FROM balances b JOIN accounts a ON a.id = b.account_id "
         "WHERE a.name = 'Migros' AND b.date = '2026-08-31'"
     )

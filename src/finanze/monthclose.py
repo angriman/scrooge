@@ -20,7 +20,7 @@ from finanze.models import Kind, Transaction
 from finanze.pipeline import Month, Statement
 from finanze.storage import bills, db, store
 from finanze.storage.ids import transaction_ids
-from finanze.storage.money import from_micro
+from finanze.storage.money import from_nano
 from finanze.validation import ChainMismatchError, MissingStatementError, ReconciliationError
 
 # Sources whose rows are booked on an account that another source's statement reconciles:
@@ -193,10 +193,10 @@ def check_chain(conn: sqlite3.Connection, owner_id: int) -> list[MissingStatemen
         if earlier.account_id != later.account_id:
             continue
         span = (earlier.day, later.day)
-        reached = earlier.amount_micro + store.own_flow(conn, later.account_id, *span)
-        if reached == later.amount_micro:
+        reached = earlier.amount_nano + store.own_flow(conn, later.account_id, *span)
+        if reached == later.amount_nano:
             continue
-        expected, actual = from_micro(later.amount_micro), from_micro(reached)
+        expected, actual = from_nano(later.amount_nano), from_nano(reached)
         if not later.opening:
             raise ChainMismatchError(later.account, later.currency, span, expected, actual)
         gaps.append(MissingStatementError(later.account, later.currency, span, (actual, expected)))

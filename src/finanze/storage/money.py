@@ -1,6 +1,6 @@
 """Money and decimals as the database stores them (D16).
 
-Amounts are integers in millionths of the currency unit, so SQL sums are exact. Quantities,
+Amounts are integers in billionths of the currency unit, so SQL sums are exact. Quantities,
 prices and rates are text decimals. Nothing here rounds: a value that does not fit is refused.
 """
 
@@ -8,26 +8,26 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-_MICRO = Decimal(1_000_000)
+_NANO = Decimal(1_000_000_000)  # brokers print commissions with up to nine decimals
 
 
 class PrecisionError(ValueError):
-    """An amount has more than six decimals: storing it would silently change it."""
+    """An amount has more than nine decimals: storing it would silently change it."""
 
 
-def to_micro(amount: Decimal) -> int:
-    """`Decimal("12.5")` -> `12500000`."""
+def to_nano(amount: Decimal) -> int:
+    """`Decimal("12.5")` -> `12500000000`."""
     _require_decimal(amount)
-    scaled = amount * _MICRO
+    scaled = amount * _NANO
     if scaled != scaled.to_integral_value():
-        msg = f"{amount} has more than 6 decimals"
+        msg = f"{amount} has more than 9 decimals"
         raise PrecisionError(msg)
     return int(scaled)
 
 
-def from_micro(micro: int) -> Decimal:
-    """`12500000` -> `Decimal("12.5")`."""
-    return Decimal(micro).scaleb(-6).normalize() + Decimal(0)  # + 0: no exponent form, no -0
+def from_nano(nano: int) -> Decimal:
+    """`12500000000` -> `Decimal("12.5")`."""
+    return Decimal(nano).scaleb(-9).normalize() + Decimal(0)  # + 0: no exponent form, no -0
 
 
 def to_text(value: Decimal) -> str:

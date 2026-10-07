@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Iterable
 
 from finanze.models import Transaction
-from finanze.storage.money import to_micro
+from finanze.storage.money import to_nano
 
 _LENGTH = 24  # hex digits: 96 bits, far beyond any collision among a lifetime of rows
 
@@ -30,7 +30,7 @@ def transaction_ids(owner: str, transactions: Iterable[tuple[str, Transaction]])
             txn.account,
             txn.date.isoformat(),
             txn.booking_date.isoformat(),
-            str(to_micro(txn.amount)),
+            str(to_nano(txn.amount)),
             txn.currency,
             txn.description,
         )

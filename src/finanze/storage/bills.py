@@ -26,24 +26,24 @@ _INTEREST = "Interessi"
 
 @dataclass(frozen=True, slots=True)
 class Event:
-    """A purchase (`quantity` > 0, `cost_micro` paid) or a disposal (`quantity` < 0)."""
+    """A purchase (`quantity` > 0, `cost_nano` paid) or a disposal (`quantity` < 0)."""
 
     txn_id: str
     quantity: Decimal
-    cost_micro: int = 0
+    cost_nano: int = 0
 
 
 def fifo_costs(events: Iterable[Event]) -> dict[str, int | None]:
     """What each disposal's lots cost, oldest lots first; None where lots are missing.
 
-    A lot closed in part gives up its cost in proportion, rounded to the millionth; the rest
+    A lot closed in part gives up its cost in proportion, rounded to the billionth; the rest
     stays with the lot, so the costs handed out never add up to more or less than was paid.
     """
     lots: deque[list[Decimal | int]] = deque()  # [quantity left, cost left]
     costs: dict[str, int | None] = {}
     for event in events:
         if event.quantity > 0:
-            lots.append([event.quantity, event.cost_micro])
+            lots.append([event.quantity, event.cost_nano])
             continue
         needed, cost = -event.quantity, 0
         while needed and lots:
@@ -69,7 +69,7 @@ def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
     for _, rows in groupby(_bill_trades(conn, owner), key=lambda r: (r["account"], r["symbol"])):
         history = list(rows)
         costs = fifo_costs(
-            Event(r["id"], Decimal(r["quantity"]), int(r["cost_micro"])) for r in history
+            Event(r["id"], Decimal(r["quantity"]), int(r["cost_nano"])) for r in history
         )
         for row in history:
             if row["id"] not in costs:
@@ -78,8 +78,8 @@ def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
             if cost is None:
                 day = date.fromisoformat(row["date"])
                 missing.append(MissingLotsError(row["account"], row["symbol"], day))
-            elif cost != row["amount_micro"]:
-                _split_off(conn, row["id"], cost, row["amount_micro"] - cost, interest)
+            elif cost != row["amount_nano"]:
+                _split_off(conn, row["id"], cost, row["amount_nano"] - cost, interest)
     return missing
 
 
@@ -89,8 +89,8 @@ def _undo(conn: sqlite3.Connection, owner: int) -> None:
         "WHERE a.owner_id = ? AND part.split_of"
     )
     conn.execute(
-        "UPDATE transactions SET amount_micro = amount_micro + "  # noqa: S608  # `parts` is the literal above
-        f"(SELECT part.amount_micro {parts} = transactions.id) "
+        "UPDATE transactions SET amount_nano = amount_nano + "  # noqa: S608  # `parts` is the literal above
+        f"(SELECT part.amount_nano {parts} = transactions.id) "
         f"WHERE id IN (SELECT part.split_of {parts} IS NOT NULL)",
         (owner, owner),
     )
@@ -104,8 +104,8 @@ def _undo(conn: sqlite3.Connection, owner: int) -> None:
 def _bill_trades(conn: sqlite3.Connection, owner: int) -> Sequence[sqlite3.Row]:
     """Every bill trade of the owner, in the order lots open and close."""
     return conn.execute(
-        "SELECT t.id, a.name AS account, i.symbol, t.date, t.amount_micro, "
-        "tr.quantity, tr.cost_micro "
+        "SELECT t.id, a.name AS account, i.symbol, t.date, t.amount_nano, "
+        "tr.quantity, tr.cost_nano "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
         "JOIN accounts a ON a.id = t.account_id JOIN instruments i ON i.id = tr.instrument_id "
         "WHERE a.owner_id = ? AND i.type = 'bill' "
@@ -118,9 +118,9 @@ def _bill_trades(conn: sqlite3.Connection, owner: int) -> Sequence[sqlite3.Row]:
 def _split_off(
     conn: sqlite3.Connection, txn_id: str, cost: int, interest: int, category: int
 ) -> None:
-    conn.execute("UPDATE transactions SET amount_micro = ? WHERE id = ?", (cost, txn_id))
+    conn.execute("UPDATE transactions SET amount_nano = ? WHERE id = ?", (cost, txn_id))
     conn.execute(
-        "INSERT INTO transactions (id, account_id, date, booking_date, amount_micro, currency, "
+        "INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency, "
         "description, counterparty, kind, category_id, category_source, counterparty_owner_id, "
         "statement_file_id, source_ref, confidence, split_of) "
         "SELECT id || ':interest', account_id, date, booking_date, ?, currency, "

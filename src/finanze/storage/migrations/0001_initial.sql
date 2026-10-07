@@ -1,8 +1,8 @@
 -- Finanze database, migration 0001. Spec v2.0: D14 to D20. SQLite 3.37+ (STRICT tables).
 --
 -- Conventions
---   money       INTEGER millionths of the currency unit, column names end in _micro (one
---               franc is 1000000): statements carry up to 6 decimals, and sums stay exact.
+--   money       INTEGER billionths of the currency unit, column names end in _nano (one
+--               franc is 1000000000): statements carry up to 9 decimals, and sums stay exact.
 --               The currency is on the row or on its account. Outflows are negative.
 --   decimals    quantities, prices and rates are TEXT decimals ('12.5'), never REAL.
 --               STRICT rejects a fractional float in a money column, but would store a
@@ -26,7 +26,7 @@ CREATE TABLE owners (
 
 CREATE TABLE currencies (
     code        TEXT    PRIMARY KEY CHECK (length(code) = 3),  -- CHF, EUR, USD
-    decimals INTEGER NOT NULL CHECK (decimals BETWEEN 0 AND 6)  -- shown, not stored: 2
+    decimals INTEGER NOT NULL CHECK (decimals BETWEEN 0 AND 9)  -- shown, not stored: 2
 ) STRICT;
 
 -- An account is (owner, name): both people have a Migros and a Revolut account.
@@ -127,7 +127,7 @@ CREATE TABLE transactions (
     -- D19: the two dates. Equal for most rows.
     date                  TEXT    NOT NULL CHECK (date IS date(date)),                  -- real: view, query, cash flow
     booking_date          TEXT    NOT NULL CHECK (booking_date IS date(booking_date)),  -- in the statement period: reconcile
-    amount_micro          INTEGER NOT NULL,   -- signed, native currency
+    amount_nano          INTEGER NOT NULL,   -- signed, native currency
     currency              TEXT    NOT NULL REFERENCES currencies (code),
     description           TEXT    NOT NULL,
     counterparty          TEXT    NOT NULL DEFAULT '',
@@ -164,7 +164,7 @@ CREATE TABLE trades (
     instrument_id  INTEGER NOT NULL REFERENCES instruments (id),
     quantity       TEXT    NOT NULL,          -- signed, sells negative
     price          TEXT,                      -- NULL for an in-kind move
-    cost_micro     INTEGER NOT NULL DEFAULT 0 -- total paid, in the transaction's currency
+    cost_nano     INTEGER NOT NULL DEFAULT 0 -- total paid, in the transaction's currency
 ) STRICT;
 CREATE INDEX trades_instrument ON trades (instrument_id);
 
@@ -189,21 +189,21 @@ CREATE TABLE overrides (
 CREATE TABLE balances (
     account_id        INTEGER NOT NULL REFERENCES accounts (id),
     date              TEXT    NOT NULL CHECK (date IS date(date)),
-    amount_micro      INTEGER NOT NULL,
+    amount_nano      INTEGER NOT NULL,
     source            TEXT    NOT NULL CHECK (source IN ('statement', 'manual')),
     statement_file_id INTEGER REFERENCES statement_files (id),
     PRIMARY KEY (account_id, date)
 ) STRICT;
 
 -- Holdings as a statement prints them (or as typed for the opening snapshot): checked
--- against the quantity derived from trades. value_micro is also a known point for a bill.
+-- against the quantity derived from trades. value_nano is also a known point for a bill.
 CREATE TABLE positions (
     account_id        INTEGER NOT NULL REFERENCES accounts (id),
     instrument_id     INTEGER NOT NULL REFERENCES instruments (id),
     date              TEXT    NOT NULL CHECK (date IS date(date)),
     quantity          TEXT    NOT NULL,
     price             TEXT,
-    value_micro       INTEGER,                -- in the instrument's currency
+    value_nano       INTEGER,                -- in the instrument's currency
     source            TEXT    NOT NULL CHECK (source IN ('statement', 'manual')),
     statement_file_id INTEGER REFERENCES statement_files (id),
     PRIMARY KEY (account_id, instrument_id, date)
@@ -242,7 +242,7 @@ SELECT t.id,
        a.name  AS account,
        t.date,
        t.booking_date,
-       t.amount_micro,
+       t.amount_nano,
        t.currency,
        t.description,
        t.counterparty,
