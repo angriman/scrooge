@@ -43,6 +43,9 @@ _PERIOD = re.compile(r"(\w+) (\d{1,2}), (\d{4}) - (\w+) (\d{1,2}), (\d{4})")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_name) if name}
 _OPTION_CATEGORIES = {"Options On Futures", "Equity and Index Options"}
 _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
+_HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own accounts
+# Shares promised and taken back before they vest never were in the account.
+_UNVESTED_GRANTS = ("Stock Award Grant", "Stock Award Return")
 _STOCK_TABS = {"ETF": "ETFs", "COMMON": "Stocks", "ADR": "Stocks", "REIT": "Stocks"}
 _T_BILL_MATURITY = re.compile(r"Treasury Bill Maturity \((\w+),")
 
@@ -62,6 +65,7 @@ def extract(content: str, source_file: str) -> Extraction:
     transactions += parser.deposits_withdrawals(sections.get("Deposits & Withdrawals", []))
     transactions += parser.trades(sections.get("Trades", []))
     transactions += parser.corporate_actions(sections.get("Corporate Actions", []))
+    transactions += parser.grants(sections.get("Grant Activity", []))
     parser.check_transfers(sections.get("Transfers", []))
     transactions += parser.dividends(sections.get("Dividends", []))
     transactions += parser.cash_items(
@@ -376,6 +380,46 @@ class _Parser:
             out += self._t_bill_maturity(row, match[1], proceeds, f"Corporate Actions:{n}")
         return out
 
+    def grants(self, rows: list[_Row]) -> list[Transaction]:
+        """Shares the broker awards (for a deposit) come into the account the day they vest.
+
+        No cash moves. What they were worth that day is their cost, so that a later sale
+        does not show the whole proceeds as a gain. Vesting rows count the shares as they are
+        after any split in between, so the split of unvested shares needs no row of its own.
+        """
+        out: list[Transaction] = []
+        for n, row in enumerate(rows, start=1):
+            description = row["Description"]
+            if row.is_total() or description.startswith(_UNVESTED_GRANTS):
+                continue
+            if description != "Stock Award Vesting":
+                msg = f"Grant Activity row {n}: unsupported grant activity {description!r}"
+                raise UnsupportedStatementError(msg)
+            symbol = row["Symbol"]
+            quantity = parse_decimal(row["Quantity"], "Grant Activity quantity")
+            price = parse_decimal(row["Price"], "Grant Activity price")
+            # The statement says nowhere which currency the award is in: the broker's own.
+            out.append(
+                SecurityTrade(
+                    date=self._in_period(parse_iso_date(row["Report Date"], "Grant Activity")),
+                    account=_account("USD"),
+                    amount=Decimal(0),
+                    currency="USD",
+                    description=f"{description}: {format(quantity, 'f')} {symbol} "
+                    f"@ {format(price, 'f')}",
+                    kind=Kind.SECURITY_TRADE,
+                    source_file=self._source_file,
+                    source_ref=f"Grant Activity:{n}",
+                    category="Investimenti",
+                    ticker=symbol,
+                    quantity=quantity,
+                    price=price,
+                    cost=parse_decimal(row["Value"], "Grant Activity value"),
+                    asset_tab=self._asset_tabs.get(symbol, ""),
+                )
+            )
+        return out
+
     def _t_bill_maturity(
         self, row: _Row, cusip: str, proceeds: Decimal, ref: str
     ) -> list[Transaction]:
@@ -547,6 +591,8 @@ class _Parser:
         proceeds = parse_decimal(row["Proceeds"], "Trades proceeds")
         bought = base if quantity > 0 else quote
         category = f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
+        if bought == _HOME_CURRENCY:
+            category = "Giroconto"
         price = parse_decimal(row["T. Price"], "FX price")
         description = f"FX {row['Symbol']} @ {format(price, 'f')}"
         return [

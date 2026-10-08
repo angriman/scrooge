@@ -369,3 +369,59 @@ def test_stock_of_an_unlisted_type_gets_no_asset_tab() -> None:
         if isinstance(t, SecurityTrade)
     ]
     assert [(t.ticker, t.asset_tab) for t in trades[:2]] == [("ACME", "Stocks"), ("WIDG", "")]
+
+
+def test_converting_back_into_francs_is_a_move_between_own_accounts() -> None:
+    content = CSV.replace(
+        'CHF.USD,"2026-09-12, 09:42:07","-2,500"', 'CHF.USD,"2026-09-12, 09:42:07","2,500"'
+    )
+    assert content != CSV
+    fx = [t for t in ibkr.extract(content, "a.csv").transactions if t.kind is Kind.FX]
+    assert {t.category for t in fx} == {"Giroconto"}
+
+
+GRANTS = (
+    "Grant Activity,Header,Symbol,Report Date,Description,Award Date,Vesting Date,Quantity,"
+    "Price,Value\n"
+    "Grant Activity,Data,ACME,2026-09-03,Stock Award Grant for Cash Deposit,2026-09-03,"
+    "2027-09-03,0.5,100,50\n"
+    "Grant Activity,Data,ACME,2026-09-04,Stock Award Return for Cash Withdrawal,2026-09-03,"
+    "2027-09-03,-0.1,101,-10.1\n"
+    "Grant Activity,Data,ACME,2026-09-10,Stock Award Vesting,2025-09-09,2026-09-09,1.25,"
+    "110.5,138.125\n"
+    "Grant Activity,Data,Total,,,,,1.65,,178.025\n"
+    "Grant Activity,Data,Total in CHF,,,,,1.65,,142.42\n"
+)
+
+
+def test_awarded_shares_come_in_when_they_vest_at_what_they_were_worth(result: Extraction) -> None:
+    with_grants = ibkr.extract(CSV + GRANTS, source_file="activity.csv")
+    check_balances(with_grants)  # no cash moves
+    extra = [t for t in with_grants.transactions if t not in result.transactions]
+    assert len(extra) == 1
+    vest = extra[0]
+    assert isinstance(vest, SecurityTrade)
+    assert (vest.ticker, vest.quantity, vest.price, vest.cost) == (
+        "ACME",
+        Decimal("1.25"),
+        Decimal("110.5"),
+        Decimal("138.125"),
+    )
+    assert (vest.date, vest.account, vest.amount, vest.asset_tab) == (
+        date(2026, 9, 10),
+        "IBKR USD",
+        Decimal(0),
+        "Stocks",
+    )
+    assert vest.description == "Stock Award Vesting: 1.25 ACME @ 110.5"
+    assert (vest.kind, vest.category, vest.source_ref) == (
+        Kind.SECURITY_TRADE,
+        "Investimenti",
+        "Grant Activity:3",
+    )
+
+
+def test_an_unknown_grant_activity_is_refused() -> None:
+    content = CSV + GRANTS.replace("Stock Award Vesting", "Stock Award Forfeiture")
+    with pytest.raises(UnsupportedStatementError, match="Stock Award Forfeiture"):
+        ibkr.extract(content, source_file="activity.csv")
