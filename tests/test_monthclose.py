@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import given
@@ -314,6 +315,74 @@ def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None
         (-3_000_000_000, None),
         (25_000_000_000, PARTNER),
     ]
+
+
+def marked(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
+    return rows(
+        conn,
+        "SELECT o.name, t.amount_nano / 1000000000, c.name FROM transactions t "
+        "JOIN accounts a ON a.id = t.account_id JOIN owners o ON o.id = a.owner_id "
+        "LEFT JOIN owners c ON c.id = t.counterparty_owner_id ORDER BY o.name, t.source_ref",
+    )
+
+
+def revolut(*lines: tuple[str, str, int], owner: str = OWNER) -> Batch:
+    """A Revolut statement: one row per (amount, description, day of September)."""
+    found = [
+        txn(
+            amount,
+            description=text,
+            account="Revolut EUR",
+            currency="EUR",
+            date=SEPTEMBER.replace(day=day),
+            source_ref=str(n),
+            source_file="revolut.tsv",
+        )
+        for n, (amount, text, day) in enumerate(lines, start=1)
+    ]
+    return batch(statement("revolut", found), owner=owner)
+
+
+def test_the_half_that_does_not_name_the_other_person_is_marked_too(
+    conn: sqlite3.Connection,
+) -> None:
+    his = revolut(
+        ("-200", "Revolut Bank", 7),  # her 200 of the day after
+        ("-200", "Revolut Bank", 20),  # nobody received this one
+        ("-50", "Transfer to ANNA MEIER", 9),  # named on both sides
+        ("-50", "Revolut Bank", 9),  # her second 50 of that day
+        ("30", "Revolut Bank", 12),  # two days from her payment: not the same money
+    )
+    hers = revolut(
+        ("200", "Transfer from LUKAS MEIER", 8),
+        ("50", "Transfer from LUKAS MEIER", 9),
+        ("50", "Transfer from LUKAS MEIER", 9),
+        ("-30", "Transfer to LUKAS MEIER", 10),
+        ("200", "Transfer from LUKAS MEIER", 28),  # he sent it from somewhere else
+        owner=PARTNER,
+    )
+    monthclose.stage(conn, his, NOW)
+    assert [who for _, _, who in marked(conn)] == [None, None, PARTNER, None, None]
+    monthclose.stage(conn, hers, NOW)  # her import settles his rows as well
+    hers_then_his = [who for _, _, who in marked(conn)]
+    assert hers_then_his[:5] == [OWNER] * 5
+    assert hers_then_his[5:] == [PARTNER, None, PARTNER, PARTNER, None]
+    before = dump(conn)
+    monthclose.stage(conn, his, NOW)  # and the order of the imports does not matter
+    assert dump(conn)["transactions"] == before["transactions"]
+
+
+def test_a_committed_month_is_not_marked_afterwards(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, revolut(("-200", "Revolut Bank", 7)), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    monthclose.stage(conn, revolut(("200", "From LUKAS MEIER", 7), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [OWNER, None]
+
+
+def test_another_bank_or_currency_is_not_the_other_half(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("500", "-200", description="Bonifico")), NOW)
+    monthclose.stage(conn, revolut(("200", "From LUKAS MEIER", 10), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [OWNER, None]
 
 
 def test_each_person_has_their_own_accounts_and_months(conn: sqlite3.Connection) -> None:

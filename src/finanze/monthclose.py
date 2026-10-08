@@ -8,7 +8,6 @@ Both run in one database transaction: any failure leaves the database as it was.
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -17,10 +16,11 @@ from decimal import Decimal
 from itertools import pairwise
 
 from finanze.categories import Extra
+from finanze.classification import Patterns, names
 from finanze.extractors.common import month_end, months_between
 from finanze.models import Kind, Transaction
 from finanze.pipeline import Month, Statement
-from finanze.storage import bills, db, store
+from finanze.storage import bills, db, pairs, store
 from finanze.storage.ids import transaction_ids
 from finanze.storage.money import from_nano
 from finanze.validation import ChainMismatchError, MissingStatementError, ReconciliationError
@@ -33,7 +33,6 @@ _KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
 
-Patterns = Sequence[re.Pattern[str]]
 People = Mapping[str, Patterns]
 
 
@@ -152,6 +151,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
         store.drop_unused_files(conn, replaced - set(files.values()))
         gaps = tuple(str(gap) for gap in _unsettled(conn, owner_id))
         store.apply_overrides(conn)
+        pairs.mark(conn)
         pending = store.uncategorized(conn, owner_id, month.period)
         return Staged(month.month, len(rows), pending, gaps)
 
@@ -273,8 +273,4 @@ def _refuse_duplicates(
 def _counterparty_owner(txn: Transaction, others: Mapping[int, Patterns]) -> int | None:
     if txn.kind not in _BETWEEN_OWNERS:
         return None
-    text = f"{txn.description}\n{txn.counterparty}"
-    for other, patterns in others.items():
-        if any(pattern.search(text) for pattern in patterns):
-            return other
-    return None
+    return next((other for other, patterns in others.items() if names(txn, patterns)), None)
