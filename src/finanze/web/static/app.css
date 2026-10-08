@@ -179,3 +179,149 @@ code {
   flex-wrap: wrap;
   gap: 0.4rem 0.8rem;
 }
+
+/* ---- net worth chart. Series colours are a validated categorical palette, in a fixed
+   order: an asset or a person keeps its colour whatever else is shown. */
+
+.chart {
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --grid: #e4e3df;
+  --tip: #ffffff;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  margin: 0 0 1.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chart {
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --grid: #383835;
+    --tip: #262624;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+  }
+}
+
+.headline {
+  font-size: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.ranges,
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.ranges button,
+.legend button {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.15rem 0.55rem;
+}
+
+.ranges button[aria-pressed="true"] {
+  background: var(--soft);
+  font-weight: 600;
+}
+
+.legend button[aria-pressed="false"] {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.ranges button:hover,
+.legend button:hover {
+  border-color: var(--line);
+}
+
+/* A short stroke of the series colour: the line it stands for. */
+.key {
+  border-radius: 1px;
+  display: inline-block;
+  height: 2px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+  width: 1rem;
+}
+
+.legend .key {
+  margin-right: 0;
+}
+
+.slot-0 { background: currentColor; }
+.slot-1 { background: var(--series-1, #2a78d6); }
+.slot-2 { background: var(--series-2, #eb6834); }
+.slot-3 { background: var(--series-3, #1baf7a); }
+.slot-4 { background: var(--series-4, #eda100); }
+.slot-5 { background: var(--series-5, #e87ba4); }
+.slot-6 { background: var(--series-6, #008300); }
+
+.plot {
+  min-height: 420px;
+  position: relative;
+}
+
+.tip {
+  background: var(--tip);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  pointer-events: none;
+  position: absolute;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.tip .when {
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+}
+
+.tip .entry {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 0.9rem 1fr auto;
+}
+
+.tip .entry i {
+  border-radius: 1px;
+  height: 2px;
+}
+
+.tip .entry strong {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tip .entry span {
+  color: var(--text-secondary);
+}
+
+figcaption {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}

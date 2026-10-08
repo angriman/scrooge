@@ -23,13 +23,13 @@ from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from finanze import cashflow, classification, monthclose, months, query
+from finanze import cashflow, classification, monthclose, months, networth, query
 from finanze.models import Kind
 from finanze.storage import db, store
 from finanze.validation import ReconciliationError
@@ -114,6 +114,8 @@ def create_app(
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
+            Route("/networth", _networth, name="networth"),
+            Route("/networth.json", _networth_json, name="networth_json"),
             Route("/cashflow", _cashflow, name="cashflow"),
             Route("/months", _months, name="months"),
             Route("/months/{owner}/{month}", _month, name="month"),
@@ -280,6 +282,81 @@ async def _reopen(request: Request) -> Response:
 
     await run_in_threadpool(reopen)
     return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
+
+
+@dataclass(frozen=True, slots=True)
+class _Part:
+    """One line of the net-worth chart: the total, or what one asset or person adds to it."""
+
+    name: str
+    slot: int  # which colour it wears, the same whatever else is shown; 0 for the total
+    values: tuple[Decimal, ...]
+
+    def before(self, days: int) -> Decimal | None:
+        """What it was worth `days` before the last day; None when that is before the first."""
+        return self.values[-1 - days] if len(self.values) > days else None
+
+
+def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...]) -> list[_Part]:
+    """The total first, then its parts: each keeps its colour whoever is looked at."""
+    parts = [_Part("Net worth", 0, result.total)]
+    if by == "asset":
+        slots = {asset: n for n, asset in enumerate(networth.ASSETS, 1)}
+    elif by == "owner":
+        slots = {person.name: n for n, person in enumerate(people, 1)}
+    else:
+        return parts
+    return parts + [_Part(name, slots[name], values) for name, values in result.by(by).items()]
+
+
+def _valued(
+    request: Request, asked: forms.NetWorthView
+) -> tuple[networth.NetWorth | None, tuple[query.Person, ...], tuple[networth.Check, ...], str]:
+    """Net worth as asked for, or the reason there is none to show."""
+    with db.reading(request.app.state.database) as conn:
+        people = query.people(conn)
+        try:
+            result = networth.run(conn, owner=asked.owner, currency=asked.currency)
+        except networth.MissingRateError as exc:
+            message = str(exc)
+            return None, people, (), f"{message[0].upper()}{message[1:]}."
+        return result, people, networth.checks(conn, owner=asked.owner), ""
+
+
+def _networth(request: Request) -> Response:
+    asked = forms.networth_view(request.query_params)
+    result, people, checks, error = _valued(request, asked)
+    context = {
+        "people": people,
+        "owner": asked.owner,
+        "asked": asked,
+        "currencies": networth.CURRENCIES,
+        "breakdowns": forms.BREAKDOWNS,
+        "errors": [*asked.errors, *([error] if error else [])],
+        "result": result,
+        "parts": _parts(result, asked.by, people) if result and result.days else [],
+        "checks": checks,
+    }
+    return _templates.TemplateResponse(request, "networth.html", context)
+
+
+def _networth_json(request: Request) -> Response:
+    """What the chart of the page at the same address draws. Amounts are text, to the cent."""
+    asked = forms.networth_view(request.query_params)
+    result, people, _, error = _valued(request, asked)
+    if asked.errors or result is None:
+        return JSONResponse({"errors": [*asked.errors, *([error] if error else [])]}, 400)
+    lines = _parts(result, asked.by, people) if result.days else []
+    return JSONResponse(
+        {
+            "currency": result.currency,
+            "first": result.days[0].isoformat() if result.days else None,
+            "series": [
+                {"name": part.name, "slot": part.slot, "values": [str(v) for v in part.values]}
+                for part in lines
+            ],
+        }
+    )
 
 
 def _cashflow(request: Request) -> Response:

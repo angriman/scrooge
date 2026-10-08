@@ -85,14 +85,14 @@ class Check:
     owner: str
     accounts: str
     day: date
-    label: str  # the statement's word: Cash, Stock, Bonds
+    label: str  # the statement's word: Cash, Stock, Bonds, Options, Total, ...
     currency: str
     printed: Decimal
-    derived: Decimal
+    derived: Decimal | None  # None: something these pages do not count (options, accruals)
 
     @property
-    def difference(self) -> Decimal:
-        return self.derived - self.printed
+    def difference(self) -> Decimal | None:
+        return None if self.derived is None else self.derived - self.printed
 
 
 def _added(series: Iterable[Sequence[Decimal]]) -> tuple[Decimal, ...]:
@@ -511,16 +511,18 @@ def run(
     return NetWorth(currency, valued.days, lines, valued.notes)
 
 
-# What a statement calls an asset, and what that is here.
+# What a statement calls an asset, and what that is here. Its total is set against the sum
+# of these: the difference is then what the statement counts and these pages do not.
 _PRINTED = {"Cash": (CASH,), "Stock": (ETFS, STOCKS), "Bonds": (BILLS,)}
+_PRINTED["Total"] = tuple(asset for assets in _PRINTED.values() for asset in assets)
 
 
 def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check, ...]:
     """Each statement's own valuation against what is derived for its accounts that day.
 
     A difference is expected and small: another close, a bill valued in a straight line,
-    cash on its way. What the statement counts and these pages do not (options, accruals)
-    is not compared.
+    shares awarded and not yet vested. What the statement counts and these pages do not
+    (options, accruals) has nothing derived next to it, and shows in the total.
     """
     valued = _value(conn, owner)
     if valued is None:
@@ -535,7 +537,7 @@ def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check
     ).fetchall()
     for file_id, owner_name, day_text, label, currency, nano in rows:
         day = date.fromisoformat(day_text)
-        if label not in _PRINTED or day not in index:
+        if day not in index:
             continue
         of_file = {
             int(r[0]): str(r[1])
@@ -545,15 +547,16 @@ def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check
                 (file_id,),
             )
         }
-        mine = [
-            s
-            for s in valued.series
-            if s.account_id in of_file and s.asset in _PRINTED[label] and s.owner == owner_name
-        ]
-        derived = sum(
-            (_converted(s.values, s.currency, currency, rates)[index[day]] for s in mine),
-            Decimal(0),
-        )
+        derived = None
+        if label in _PRINTED:
+            derived = sum(
+                (
+                    _converted(s.values, s.currency, currency, rates)[index[day]]
+                    for s in valued.series
+                    if s.account_id in of_file and s.asset in _PRINTED[label]
+                ),
+                Decimal(0),
+            ).quantize(_CENT)
         found.append(
             Check(
                 owner_name,
@@ -562,7 +565,7 @@ def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check
                 label,
                 currency,
                 from_nano(nano).quantize(_CENT),
-                derived.quantize(_CENT),
+                derived,
             )
         )
     return tuple(found)

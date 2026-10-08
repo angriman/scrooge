@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from finanze import query
+from finanze import networth, query
 from finanze.cashflow import Grouping
 from finanze.models import Kind
 
@@ -24,6 +24,17 @@ class CashFlowRange:
     last: date | None
     owner: str | None
     grouping: Grouping
+    errors: tuple[str, ...]
+
+
+BREAKDOWNS = ("total", "asset", "owner")  # how the net-worth page cuts its one line
+
+
+@dataclass(frozen=True, slots=True)
+class NetWorthView:
+    owner: str | None
+    currency: str
+    by: str  # one of BREAKDOWNS
     errors: tuple[str, ...]
 
 
@@ -96,3 +107,17 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
         text=text("text") or "",
     )
     return Parsed(wanted, tuple(errors))
+
+
+def networth_view(params: Mapping[str, str]) -> NetWorthView:
+    """`owner`, `currency` (euros when left out) and `by` (total, asset or owner)."""
+    errors: list[str] = []
+    currency = (_text(params, "currency") or networth.DEFAULT_CURRENCY).upper()
+    if currency not in networth.CURRENCIES:
+        errors.append(f"'{currency}' is not one of {', '.join(networth.CURRENCIES)}.")
+        currency = networth.DEFAULT_CURRENCY
+    by = _text(params, "by") or BREAKDOWNS[0]
+    if by not in BREAKDOWNS:
+        errors.append(f"'{by}' is not total, asset or owner.")
+        by = BREAKDOWNS[0]
+    return NetWorthView(_text(params, "owner"), currency, by, tuple(errors))

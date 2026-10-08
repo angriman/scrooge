@@ -658,7 +658,9 @@ def test_a_statement_s_own_valuation_is_set_against_what_is_derived(
     assert [(c.label, c.printed, c.derived, c.difference) for c in found] == [
         ("Bonds", D(7900), D(7898), D(-2)),  # 9872.5 dollars in a straight line
         ("Cash", D(7720), D(7720), D(0)),  # the broker's cash only, not the bank's
+        ("Options", D(-644), None, None),  # not an asset here
         ("Stock", D(440), D(440), D(0)),  # at the close the statement prints
+        ("Total", D(15416), D(16058), D(642)),  # the options, less the 2 on the bill
     ]
     assert {(c.owner, c.accounts, c.day, c.currency) for c in found} == {
         (OWNER, "IBKR USD", day(30), "CHF")

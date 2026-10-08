@@ -115,10 +115,21 @@ def test_the_stylesheet_is_served_from_the_package(client: TestClient) -> None:
 
 
 def test_no_page_or_asset_names_another_site() -> None:
-    files = [*WEB.glob("templates/*"), *WEB.glob("static/*")]
+    files = [*WEB.glob("templates/*"), *(f for f in WEB.glob("static/*") if f.is_file())]
     assert files
     for file in files:
         assert not re.search(r"https?:|//\w", file.read_text(encoding="utf-8")), file.name
+
+
+def test_the_vendored_chart_library_is_whole_and_asks_nothing_of_the_network() -> None:
+    # uPlot 1.6.32 (MIT), copied in: the page loads it from this machine (D18).
+    script = (WEB / "static" / "vendor" / "uPlot.iife.min.js").read_text(encoding="utf-8")
+    banner, _, code = script.partition("\n")
+    assert banner == "/*! https://github.com/leeoniya/uPlot (v1.6.32) */"
+    assert not re.search(r"https?:|fetch\(|XMLHttpRequest|WebSocket|import\(", code)
+    style = (WEB / "static" / "vendor" / "uPlot.min.css").read_text(encoding="utf-8")
+    assert not re.search(r"url\(|@import|https?:", style)
+    assert "MIT License" in (WEB / "static" / "vendor" / "uPlot.LICENSE").read_text("utf-8")
 
 
 def test_transactions_are_listed_newest_first_with_their_totals(client: TestClient) -> None:

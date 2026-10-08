@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{% endblock %} · Finanze</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  {%- block head %}{% endblock %}
 </head>
 <body>
   <header>
     <nav aria-label="Pages">
-      {%- for name, label in [("overview", "Overview"), ("cashflow", "Cash flow"), ("transactions", "Transactions"), ("months", "Months")] %}
+      {%- for name, label in [("overview", "Overview"), ("networth", "Net worth"), ("cashflow", "Cash flow"), ("transactions", "Transactions"), ("months", "Months")] %}
       <a href="{{ url_for(name) }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}"{% if request.url.path == url_for(name).path or (name == "months" and request.url.path.startswith("/months/")) %} aria-current="page"{% endif %}>{{ label }}</a>
       {%- endfor %}
     </nav>

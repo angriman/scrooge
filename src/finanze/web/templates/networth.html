@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Net worth{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', path='vendor/uPlot.min.css') }}">
+  <script src="{{ url_for('static', path='vendor/uPlot.iife.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='networth.js') }}" defer></script>
+{%- endblock %}
+{% block main %}
+<form method="get" class="filter" id="view">
+  {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
+  <label>Currency
+    <select name="currency">
+      {%- for currency in currencies %}
+      <option{% if currency == asked.currency %} selected{% endif %}>{{ currency }}</option>
+      {%- endfor %}
+    </select>
+  </label>
+  <label>Break down by
+    <select name="by">
+      {%- for by in breakdowns %}
+      <option value="{{ by }}"{% if by == asked.by %} selected{% endif %}>{{ {"total": "nothing", "asset": "asset type", "owner": "person"}[by] }}</option>
+      {%- endfor %}
+    </select>
+  </label>
+  <button>Show</button>
+</form>
+{%- for error in errors %}
+<p class="error" role="alert">{{ error }}</p>
+{%- endfor %}
+{%- if parts %}
+{%- set last = result.days[-1] %}
+<p class="headline"><strong>{{ parts[0].values[-1]|money }} {{ result.currency }}</strong> on {{ last }}</p>
+<figure class="chart" id="networth" data-source="{{ url_for('networth_json') }}?{{ request.url.query }}">
+  <div class="ranges" role="group" aria-label="Period shown">
+    {%- for months, label in [(3, "3M"), (12, "1Y"), (36, "3Y"), (0, "All")] %}
+    <button type="button" data-months="{{ months }}"{% if not months %} aria-pressed="true"{% endif %}>{{ label }}</button>
+    {%- endfor %}
+  </div>
+  {%- if parts|length > 1 %}
+  <ul class="legend" aria-label="Lines">
+    {%- for part in parts %}
+    <li><button type="button" data-series="{{ loop.index }}" aria-pressed="true"><span class="key slot-{{ part.slot }}"></span>{{ part.name }}</button></li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <div class="plot"></div>
+  <figcaption>
+    Every day at its own close and exchange rate, up to the last committed month. Drag across
+    the chart to zoom in, double-click to zoom out.
+  </figcaption>
+</figure>
+<table class="narrow">
+  <thead>
+    <tr><th></th><th class="number">{{ last }}</th><th class="number">30 days before</th><th class="number">A year before</th></tr>
+  </thead>
+  <tbody>
+    {%- for part in parts %}
+    <tr>
+      <td>{% if part.slot %}<span class="key slot-{{ part.slot }}"></span>{% endif %}{{ part.name }}</td>
+      <td class="number">{{ part.values[-1]|money }}</td>
+      {%- for days in (30, 365) %}
+      <td class="number">{% if part.before(days) is none %}–{% else %}{{ part.before(days)|money }}{% endif %}</td>
+      {%- endfor %}
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- for note in result.notes %}
+<p class="note">{{ note }}</p>
+{%- endfor %}
+<p class="note">
+  Options and futures are not counted as assets: what was paid or received for them is cash,
+  and what open positions are worth is in no line above. Shares not yet moved to a broker
+  that sends statements are not counted either.
+</p>
+{%- if checks %}
+<details>
+  <summary>Against the brokers&#39; own figures</summary>
+  <p class="note">
+    What each statement says its accounts were worth at the end of its period, next to what
+    is worked out here for the same accounts and day. A difference comes from another close,
+    from a bill valued in a straight line, or from shares awarded and not yet vested.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Day</th><th>Person</th><th>Accounts</th><th>Line</th><th class="number">Statement</th><th class="number">Here</th><th class="number">Difference</th><th></th></tr>
+    </thead>
+    <tbody>
+      {%- for check in checks|reverse %}
+      <tr>
+        <td class="date">{{ check.day }}</td>
+        <td>{{ check.owner }}</td>
+        <td>{{ check.accounts }}</td>
+        <td>{{ check.label }}</td>
+        <td class="number">{{ check.printed|money }}</td>
+        <td class="number">{% if check.derived is none %}not counted{% else %}{{ check.derived|money }}{% endif %}</td>
+        <td class="number">{% if check.derived is not none %}{{ check.difference|money }}{% endif %}</td>
+        <td>{{ check.currency }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</details>
+{%- endif %}
+{%- elif not errors %}
+<p>Nothing is committed yet.</p>
+{%- endif %}
+{% endblock %}
