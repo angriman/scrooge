@@ -23,7 +23,8 @@ def test_a_new_database_gets_the_whole_schema(conn: sqlite3.Connection) -> None:
 
 def test_migrating_again_changes_nothing(conn: sqlite3.Connection) -> None:
     assert db.migrate(conn, NOW) == []
-    assert conn.execute("SELECT count(*) FROM schema_version").fetchone()[0] == 1
+    applied = conn.execute("SELECT count(*) FROM schema_version").fetchone()[0]
+    assert applied == len(db.migrations())
 
 
 def test_no_column_can_hold_a_float(conn: sqlite3.Connection) -> None:

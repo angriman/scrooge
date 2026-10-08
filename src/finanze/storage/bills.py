@@ -2,8 +2,9 @@
 
 A bill sold, and at Tastytrade also a bill that matures, comes out of the extractor whole, as
 `Investimenti`. With the purchases in the database the cost of the lots it closes is known:
-the row keeps that cost, and the rest becomes a row of its own under `Interessi`. (An IBKR
-maturity is not a trade: its extractor splits it from the profit the statement prints.)
+the row keeps that cost, and the rest becomes a row of its own under `Interessi`. An IBKR
+maturity is the exception: its extractor has split it already, from the profit the statement
+prints. It closes its lots here like any other disposal, and is otherwise left alone.
 
 The split is derived data. `split` first undoes every earlier split of the owner and then
 redoes them all, so importing an earlier month later corrects the months after it.
@@ -91,7 +92,7 @@ def _disposals(conn: sqlite3.Connection, owner: int) -> list[tuple[sqlite3.Row, 
         costs = fifo_costs(
             Event(r["id"], Decimal(r["quantity"]), int(r["cost_nano"])) for r in history
         )
-        found += [(row, costs[row["id"]]) for row in history if row["id"] in costs]
+        found += [(row, costs[row["id"]]) for row in history if row["id"] in costs and row["whole"]]
     return found
 
 
@@ -114,12 +115,17 @@ def _undo(conn: sqlite3.Connection, owner: int) -> None:
 
 
 def _bill_trades(conn: sqlite3.Connection, owner: int) -> Sequence[sqlite3.Row]:
-    """Every bill trade of the owner, in the order lots open and close."""
+    """Every bill trade of the owner, in the order lots open and close.
+
+    `whole` is false for a maturity its statement has already split into cost and interest.
+    """
     return conn.execute(
         "SELECT t.id, a.name AS account, i.symbol, t.date, t.amount_nano, "
-        "tr.quantity, tr.cost_nano "
+        "tr.quantity, tr.cost_nano, "
+        "NOT (t.kind = 'income' AND coalesce(f.source, '') = 'ibkr') AS whole "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
         "JOIN accounts a ON a.id = t.account_id JOIN instruments i ON i.id = tr.instrument_id "
+        "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
         "WHERE a.owner_id = ? AND i.type = 'bill' "
         # on one day, purchases come before disposals
         "ORDER BY a.name, i.symbol, t.date, tr.quantity LIKE '-%', t.id",

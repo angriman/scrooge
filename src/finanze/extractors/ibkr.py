@@ -58,7 +58,7 @@ _UNVESTED_GRANTS = ("Stock Award Grant", "Stock Award Return")
 _STOCK_TABS = {"ETF": "ETFs", "COMMON": "Stocks", "ADR": "Stocks", "REIT": "Stocks"}
 _HELD_CATEGORIES = {"Stocks", "Treasury Bills"}  # what counts as an asset (D20)
 _PRICE_STEP = Decimal("0.000001")  # a transfer prints its value, not its price
-_T_BILL_MATURITY = re.compile(r"Treasury Bill Maturity \((\w+),")
+_T_BILL_MATURITY = re.compile(r"Treasury Bill Maturity \((\w+), B (\d\d)/(\d\d)/(\d\d),")
 
 
 def extract(content: str, source_file: str) -> Extraction:
@@ -202,7 +202,11 @@ def _asset_tabs(rows: list[_Row]) -> dict[str, str]:
 
 def _holdings(rows: list[_Row], asset_tabs: dict[str, str]) -> tuple[Holding, ...]:
     """Shares, ETFs and bills held at the end of the period. Options and futures are not
-    assets (D20) and are left out; a statement without the section holds nothing."""
+    assets (D20) and are left out; a statement without the section holds nothing.
+
+    Shares awarded are listed from the day they are granted, in lots that say when they vest.
+    """
+    awarded = {row["Symbol"] for row in rows if "(Vesting:" in row.get("Open", "")}
     held: list[Holding] = []
     for row in rows:
         category = _asset_category(row)
@@ -220,6 +224,7 @@ def _holdings(rows: list[_Row], asset_tabs: dict[str, str]) -> tuple[Holding, ..
                 price=parse_decimal(row["Close Price"], "Open Positions close price"),
                 value=parse_decimal(row["Value"], "Open Positions value"),
                 asset_tab="Bonds" if bill else asset_tabs.get(symbol, ""),
+                unvested=symbol in awarded,
             )
         )
     return tuple(held)
@@ -441,7 +446,7 @@ class _Parser:
             if _asset_category(row) != "Treasury Bills" or not match:
                 msg = f"Corporate Actions row {n}: unsupported corporate action {description!r}"
                 raise UnsupportedStatementError(msg)
-            out += self._t_bill_maturity(row, match[1], proceeds, f"Corporate Actions:{n}")
+            out += self._t_bill_maturity(row, match, proceeds, f"Corporate Actions:{n}")
         return out
 
     def grants(self, rows: list[_Row]) -> list[Transaction]:
@@ -485,30 +490,52 @@ class _Parser:
         return out
 
     def _t_bill_maturity(
-        self, row: _Row, cusip: str, proceeds: Decimal, ref: str
+        self, row: _Row, bill: re.Match[str], proceeds: Decimal, ref: str
     ) -> list[Transaction]:
         # D13 on IBKR's basis: principal = proceeds - realized P/L (FIFO cost incl. the buy
-        # commission), interest = realized P/L. Dated on the maturity (report) date.
+        # commission), interest = realized P/L. Dated on the report date, when the cash
+        # arrives. The principal ends the holding: it carries the bill and the face repaid.
+        cusip = bill[1]
+        printed = date(2000 + int(bill[4]), int(bill[2]), int(bill[3]))
         interest = parse_decimal(row["Realized P/L"], "Corporate Actions realized P/L")
         day = parse_iso_date(row["Report Date"], "Corporate Actions")
-        legs = (
-            ("principal", proceeds - interest, Kind.INCOME, "Investimenti"),
-            ("interest", interest, Kind.INTEREST, "Interessi"),
+        principal = self._txn(
+            day=day,
+            currency=row["Currency"],
+            amount=proceeds - interest,
+            description=f"T-bill {cusip} maturity: principal",
+            kind=Kind.INCOME,
+            category="Investimenti",
+            ref=f"{ref}:principal",
+            counterparty=cusip,
         )
-        return [
-            self._txn(
-                day=day,
-                currency=row["Currency"],
-                amount=amount,
-                description=f"T-bill {cusip} maturity: {leg}",
-                kind=kind,
-                category=category,
-                ref=f"{ref}:{leg}",
-                counterparty=cusip,
+        quantity = parse_decimal(row["Quantity"], "Corporate Actions quantity")
+        fields = {name: getattr(principal, name) for name in principal.__slots__}
+        legs: list[Transaction] = [
+            SecurityTrade(
+                **fields,
+                ticker=cusip,
+                quantity=quantity,
+                price=Decimal(100),
+                cost=-principal.amount,
+                asset_tab="Bonds",
+                maturity=self._maturities.get(cusip, printed),
             )
-            for leg, amount, kind, category in legs
-            if amount != 0
         ]
+        if interest != 0:
+            legs.append(
+                self._txn(
+                    day=day,
+                    currency=row["Currency"],
+                    amount=interest,
+                    description=f"T-bill {cusip} maturity: interest",
+                    kind=Kind.INTEREST,
+                    category="Interessi",
+                    ref=f"{ref}:interest",
+                    counterparty=cusip,
+                )
+            )
+        return legs
 
     def transfers(self, rows: list[_Row]) -> list[Transaction]:
         """Shares moved in or out in kind: from another broker, or between one's own accounts.

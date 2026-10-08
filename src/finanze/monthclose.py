@@ -23,7 +23,7 @@ from finanze.classification import Patterns, names
 from finanze.extractors.common import month_end, months_between
 from finanze.models import Kind, Transaction
 from finanze.pipeline import Month, Statement
-from finanze.storage import bills, db, pairs, store
+from finanze.storage import bills, db, holdings, pairs, store
 from finanze.storage.ids import transaction_ids
 from finanze.storage.money import from_nano
 from finanze.validation import ChainMismatchError, MissingStatementError, ReconciliationError
@@ -35,6 +35,7 @@ _KINDS = {"ibkr": "broker_cash", "tastytrade": "broker_cash", "finpension": "bro
 _KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
+_RATES_IN = "CHF"
 
 People = Mapping[str, Patterns]
 
@@ -126,6 +127,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 period=s.extraction.period,
                 reconciled="yes" if _has_figures(s) else "nothing_to_check",
                 imported_at=db.timestamp(now),
+                holdings=s.extraction.holdings is not None,
             )
             for s in statements
         }
@@ -150,6 +152,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 before = first - timedelta(days=1)
                 store.set_closing_balance(conn, account, last, balance.closing, file_id)
                 store.set_opening_balance(conn, account, before, balance.opening, file_id)
+            _store_valuation(conn, statement, accounts[statement.filename], files)
 
         store.drop_unused_files(conn, replaced - set(files.values()))
         gaps = tuple(str(gap) for gap in _unsettled(conn, owner_id))
@@ -157,6 +160,23 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
         pairs.mark(conn)
         pending = store.uncategorized(conn, owner_id, month.period)
         return Staged(month.month, len(rows), pending, gaps)
+
+
+def _store_valuation(
+    conn: sqlite3.Connection,
+    statement: Statement,
+    accounts: Mapping[str, int],
+    files: Mapping[str, int],
+) -> None:
+    """What the statement says its accounts held and were worth at the end of its period."""
+    extraction, file_id = statement.extraction, files[statement.filename]
+    last = extraction.period[1]
+    store.set_statement_values(conn, file_id, extraction.values)
+    for rate in extraction.rates:
+        if rate.base == _RATES_IN:  # the only rates the database keeps
+            store.set_rate(conn, last, rate.currency, rate.rate, source="statement")
+    for holding in extraction.holdings or ():
+        store.set_holding(conn, accounts[holding.account], last, holding, file_id)
 
 
 def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) -> bool:
@@ -335,12 +355,20 @@ def reopen(conn: sqlite3.Connection, *, owner: str, month: date) -> None:
 
 def would_refuse(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:
     """What a commit of the owner's months would refuse, without changing anything."""
-    return [*check_chain(conn, owner_id), *bills.missing(conn, owner_id)]
+    return [
+        *check_chain(conn, owner_id),
+        *bills.missing(conn, owner_id),
+        *holdings.check(conn, owner_id),
+    ]
 
 
 def _unsettled(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:
     """Bring the derived rows up to date; returns what only an earlier statement can settle."""
-    return [*check_chain(conn, owner_id), *bills.split(conn, owner_id)]
+    return [
+        *check_chain(conn, owner_id),
+        *bills.split(conn, owner_id),
+        *holdings.check(conn, owner_id),
+    ]
 
 
 def check_chain(conn: sqlite3.Connection, owner_id: int) -> list[MissingStatementError]:
@@ -386,6 +414,7 @@ def _accounts(
     named = {(txn.account, txn.currency) for txn in rows}
     named |= {(b.account, b.currency) for b in extraction.balances}
     named |= {(c.account, c.currency) for c in extraction.controls}
+    named |= {(h.account, h.currency) for h in extraction.holdings or ()}
     source = _BOOKED_ON.get(statement.source, statement.source)
     kind = _KINDS.get(source, "bank")
     return {

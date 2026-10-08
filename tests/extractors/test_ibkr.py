@@ -148,6 +148,48 @@ def test_maturity_splits_into_principal_and_interest_on_the_ibkr_basis(
     ]
 
 
+def test_t_bill_maturity_ends_the_holding(result: Extraction) -> None:
+    principal = next(
+        t for t in result.transactions if t.source_ref == "Corporate Actions:1:principal"
+    )
+    assert isinstance(principal, SecurityTrade)
+    # The face repaid; the bill is not among the statement's instruments, so its maturity
+    # is the one its description prints.
+    assert (principal.ticker, principal.quantity, principal.asset_tab, principal.maturity) == (
+        "912797YY2",
+        Decimal(-5000),
+        "Bonds",
+        date(2026, 9, 17),
+    )
+    assert principal.cost == Decimal("-4879.6")
+
+
+def test_t_bill_maturity_takes_the_maturity_the_statement_lists() -> None:
+    listed = CSV.replace(
+        "Treasury Bills,912797ZZ1,B 12/24/26,1002,US912797ZZ11,BILL,,1,2026-12-24,",
+        "Treasury Bills,912797ZZ1,B 12/24/26,1002,US912797ZZ11,BILL,,1,2026-12-24,\n"
+        "Financial Instrument Information,Data,Treasury Bills,912797YY2,B 09/18/26,1005,"
+        "US912797YY23,BILL,,1,2026-09-18,",
+    )
+    principal = next(
+        t
+        for t in ibkr.extract(listed, "activity.csv").transactions
+        if t.source_ref == "Corporate Actions:1:principal"
+    )
+    assert isinstance(principal, SecurityTrade)
+    assert principal.maturity == date(2026, 9, 18)
+
+
+def test_t_bill_maturity_without_profit_has_no_interest_row() -> None:
+    flat = CSV.replace('US912797YY23)",-5000,5000,0,120.4,', 'US912797YY23)",-5000,5000,0,0,')
+    rows = [
+        t
+        for t in ibkr.extract(flat, "activity.csv").transactions
+        if t.source_ref.startswith("Corporate Actions:")
+    ]
+    assert [(t.amount, t.kind) for t in rows] == [(Decimal(5000), Kind.INCOME)]
+
+
 def test_zero_cash_corporate_actions_are_skipped(result: Extraction) -> None:
     assert not any("Split" in t.description for t in result.transactions)
 

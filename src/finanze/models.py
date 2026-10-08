@@ -106,7 +106,8 @@ class Holding:
     """What a statement says an account held of one instrument at the end of its period.
 
     `quantity` is face value for a bill, whose `price` is then a percentage of it. `value` is
-    the statement's own figure, in the instrument's currency.
+    the statement's own figure, in the instrument's currency. With `unvested` the quantity
+    includes shares awarded and not yet vested, which the transactions do not count yet.
     """
 
     account: str
@@ -116,6 +117,7 @@ class Holding:
     price: Decimal
     value: Decimal
     asset_tab: str = ""
+    unvested: bool = False
 
 
 @dataclass(frozen=True, slots=True)

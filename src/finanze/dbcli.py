@@ -365,12 +365,14 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
     statements, skipped = pipeline.load_files(_files(args.paths), database=True)
-    statements = pipeline.relabel(statements, session.labels)
+    instruments = classification.load_instruments(args.instruments)
+    statements = pipeline.resolve_holdings(
+        pipeline.relabel(statements, session.labels), instruments
+    )
     owner, people = session.owner, session.people
     shared = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
     own = classification.personal_file(shared[0], owner)
     rule_files = [own, *shared]
-    instruments = classification.load_instruments(args.instruments)
 
     categories_file = shared[0].with_name(categories.FILE)
 

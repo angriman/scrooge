@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -28,7 +28,7 @@ import yaml
 
 from finanze import categories
 from finanze.errors import ConfigError
-from finanze.models import Kind, SecurityTrade, Transaction
+from finanze.models import Holding, Kind, SecurityTrade, Transaction
 
 ASSET_TABS = frozenset({"ETFs", "Stocks", "Bonds"})
 _FLOWS = frozenset({Kind.EXPENSE, Kind.INCOME})
@@ -67,6 +67,7 @@ class Instrument:
     tab: str = ""  # ETFs | Stocks | Bonds; empty keeps what the statement says
     ticker: str = ""  # name used in the sheet when it differs from the broker's symbol
     maturity: date | None = None  # for bills, when the statement does not give it (Tastytrade)
+    price_symbol: str = ""  # where its prices are fetched under another symbol than its own
 
 
 # Characters YAML refuses even inside quotes; JSON leaves them as they are. Some statements hold
@@ -159,7 +160,12 @@ def load_instruments(path: Path) -> dict[str, Instrument]:
         if maturity is not None and not isinstance(maturity, date):
             msg = f"{path}: {symbol}: maturity must be a date like 2026-12-24"
             raise ConfigError(msg)
-        instruments[str(symbol)] = Instrument(tab, str((entry or {}).get("ticker", "")), maturity)
+        instruments[str(symbol)] = Instrument(
+            tab,
+            str((entry or {}).get("ticker", "")),
+            maturity,
+            str((entry or {}).get("price_symbol", "")),
+        )
     return instruments
 
 
@@ -212,6 +218,16 @@ def _kind(txn: Transaction, rule: Rule) -> Kind:
 def uncategorized(transactions: Iterable[Transaction]) -> tuple[Transaction, ...]:
     """Rows still needing the user's decision; they block the write."""
     return tuple(t for t in transactions if not t.category and t.kind is not Kind.INTERNAL)
+
+
+def resolve_holding(holding: Holding, instruments: Mapping[str, Instrument]) -> Holding:
+    """Apply `instruments.yaml` to a holding; one left without a tab is an error."""
+    override = instruments.get(holding.ticker, Instrument())
+    tab = override.tab or holding.asset_tab
+    if not tab:
+        msg = f"{holding.ticker}: no asset tab; add it to instruments.yaml (ETFs/Stocks/Bonds)"
+        raise UnknownInstrumentError(msg)
+    return replace(holding, asset_tab=tab, ticker=override.ticker or holding.ticker)
 
 
 def resolve_instruments(

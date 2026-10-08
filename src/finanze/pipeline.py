@@ -99,9 +99,25 @@ def relabel(statements: Sequence[Statement], labels: Mapping[str, str]) -> list[
             balances=tuple(replace(b, account=name(b.account)) for b in extraction.balances),
             controls=tuple(replace(c, account=name(c.account)) for c in extraction.controls),
             unreconciled=tuple(name(account) for account in extraction.unreconciled),
+            holdings=extraction.holdings
+            and tuple(replace(h, account=name(h.account)) for h in extraction.holdings),
         )
         renamed.append(replace(statement, extraction=relabelled))
     return renamed
+
+
+def resolve_holdings(
+    statements: Sequence[Statement], instruments: Mapping[str, Instrument]
+) -> list[Statement]:
+    """Apply `instruments.yaml` to what statements say was held, as `process` does to trades."""
+    resolved: list[Statement] = []
+    for statement in statements:
+        held = statement.extraction.holdings
+        if held:
+            named = tuple(classification.resolve_holding(h, instruments) for h in held)
+            statement = replace(statement, extraction=replace(statement.extraction, holdings=named))  # noqa: PLW2901  # the same statement, with its instruments named
+        resolved.append(statement)
+    return resolved
 
 
 def load_folder(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]:

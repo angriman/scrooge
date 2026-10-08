@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 
 from finanze import categories
-from finanze.models import SecurityTrade, Transaction
+from finanze.models import Holding, PrintedValue, SecurityTrade, Transaction
 from finanze.storage.money import to_nano, to_text
 
 _CURRENCY_DECIMALS = 2
@@ -50,6 +50,13 @@ def owner_id(conn: sqlite3.Connection, name: str) -> int | None:
     return None if row is None else int(row[0])
 
 
+def ensure_currency(conn: sqlite3.Connection, code: str) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO currencies (code, decimals) VALUES (?, ?)",
+        (code, _CURRENCY_DECIMALS),
+    )
+
+
 def ensure_account(  # noqa: PLR0913  # one argument per column
     conn: sqlite3.Connection,
     owner: int,
@@ -60,10 +67,7 @@ def ensure_account(  # noqa: PLR0913  # one argument per column
     source: str | None,
 ) -> int:
     """The account's id, creating it on first sight. `source` is None for a typed account."""
-    conn.execute(
-        "INSERT OR IGNORE INTO currencies (code, decimals) VALUES (?, ?)",
-        (currency, _CURRENCY_DECIMALS),
-    )
+    ensure_currency(conn, currency)
     conn.execute(
         "INSERT OR IGNORE INTO accounts (owner_id, name, kind, currency, source) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -164,15 +168,20 @@ def upsert_statement_file(  # noqa: PLR0913  # one argument per column
     period: tuple[date, date],
     reconciled: str,
     imported_at: str,
+    holdings: bool = False,
 ) -> int:
-    """The row of this exact file; importing the same bytes again keeps its id and timestamp."""
+    """The row of this exact file; importing the same bytes again keeps its id and timestamp.
+
+    `holdings` says that the statement lists what its accounts held at the end of its period.
+    """
     row = conn.execute(
-        "INSERT INTO statement_files "
-        "(owner_id, source, filename, sha256, period_start, period_end, reconciled, imported_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "INSERT INTO statement_files (owner_id, source, filename, sha256, period_start, "
+        "period_end, reconciled, imported_at, holdings) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (owner_id, sha256) DO UPDATE SET source = excluded.source, "
         "filename = excluded.filename, period_start = excluded.period_start, "
-        "period_end = excluded.period_end, reconciled = excluded.reconciled "
+        "period_end = excluded.period_end, reconciled = excluded.reconciled, "
+        "holdings = excluded.holdings "
         "RETURNING id",
         (
             owner,
@@ -183,6 +192,7 @@ def upsert_statement_file(  # noqa: PLR0913  # one argument per column
             period[1].isoformat(),
             reconciled,
             imported_at,
+            "printed" if holdings else "not_printed",
         ),
     ).fetchone()
     return int(row[0])
@@ -194,7 +204,8 @@ def delete_statement_rows(
     """Remove what earlier imports of `source` stored for these accounts in this period.
 
     Transactions go by booking date, which always lies inside the statement period; balances
-    go with the earlier file of the same period. Returns the files those rows came from.
+    and holdings go with the earlier file of the same period. Returns the files those rows
+    came from.
     """
     marks = ", ".join("?" * len(accounts))
     first, last = period[0].isoformat(), period[1].isoformat()
@@ -210,6 +221,7 @@ def delete_statement_rows(
     for rows, args in (
         (transactions, (*accounts, first, last, source)),
         (balances, (*accounts, source, first, last)),
+        (balances.replace("FROM balances", "FROM positions"), (*accounts, source, first, last)),
     ):
         found = conn.execute(f"SELECT DISTINCT statement_file_id {rows}", args).fetchall()
         touched |= {int(row[0]) for row in found}
@@ -266,14 +278,21 @@ def insert_transaction(  # noqa: PLR0913  # the row plus what only the caller kn
         _insert_trade(conn, txn_id, txn)
 
 
-def _insert_trade(conn: sqlite3.Connection, txn_id: str, trade: SecurityTrade) -> None:
-    maturity = None if trade.maturity is None else trade.maturity.isoformat()
-    instrument = conn.execute(
+def instrument_id(
+    conn: sqlite3.Connection, symbol: str, tab: str, currency: str, maturity: date | None = None
+) -> int:
+    """The instrument's id, creating it on first sight; what is said now replaces its type."""
+    row = conn.execute(
         "INSERT INTO instruments (symbol, type, currency, maturity) VALUES (?, ?, ?, ?) "
         "ON CONFLICT (symbol, currency) DO UPDATE SET type = excluded.type, "
         "maturity = coalesce(excluded.maturity, maturity) RETURNING id",
-        (trade.ticker, _INSTRUMENT_TYPES[trade.asset_tab], trade.currency, maturity),
-    ).fetchone()[0]
+        (symbol, _INSTRUMENT_TYPES[tab], currency, maturity and maturity.isoformat()),
+    ).fetchone()
+    return int(row[0])
+
+
+def _insert_trade(conn: sqlite3.Connection, txn_id: str, trade: SecurityTrade) -> None:
+    instrument = instrument_id(conn, trade.ticker, trade.asset_tab, trade.currency, trade.maturity)
     conn.execute(
         "INSERT INTO trades (transaction_id, instrument_id, quantity, price, cost_nano) "
         "VALUES (?, ?, ?, ?, ?)",
@@ -323,6 +342,83 @@ def set_typed_balance(conn: sqlite3.Connection, account: int, day: date, amount:
         "VALUES (?, ?, ?, 'manual')",
         (account, day.isoformat(), to_nano(amount)),
     )
+
+
+def set_holding(
+    conn: sqlite3.Connection, account: int, day: date, holding: Holding, statement_file: int
+) -> None:
+    """What the statement says the account held of one instrument at the end of `day`.
+
+    A share's close that day is kept as a price too. A bill's is a percentage of its face,
+    and no price of the bill: its worth is the value on the row.
+    """
+    instrument = instrument_id(conn, holding.ticker, holding.asset_tab, holding.currency)
+    conn.execute(
+        "INSERT OR REPLACE INTO positions (account_id, instrument_id, date, quantity, price, "
+        "value_nano, source, statement_file_id, unvested) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'statement', ?, ?)",
+        (
+            account,
+            instrument,
+            day.isoformat(),
+            to_text(holding.quantity),
+            to_text(holding.price),
+            to_nano(holding.value),
+            statement_file,
+            int(holding.unvested),
+        ),
+    )
+    if _INSTRUMENT_TYPES[holding.asset_tab] != "bill":
+        set_price(conn, instrument, day, holding.price, source="statement")
+
+
+def set_price(  # noqa: PLR0913  # one argument per column
+    conn: sqlite3.Connection,
+    instrument: int,
+    day: date,
+    close: Decimal,
+    *,
+    source: str,
+    fetched_at: str | None = None,
+) -> None:
+    """The instrument's close on `day` as `source` gives it, as it traded that day."""
+    conn.execute(
+        "INSERT OR REPLACE INTO prices (instrument_id, date, close, source, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (instrument, day.isoformat(), to_text(close), source, fetched_at),
+    )
+
+
+def set_rate(  # noqa: PLR0913  # one argument per column
+    conn: sqlite3.Connection,
+    day: date,
+    currency: str,
+    rate: Decimal,
+    *,
+    source: str,
+    fetched_at: str | None = None,
+) -> None:
+    """What one unit of `currency` was worth in francs at the close of `day`."""
+    ensure_currency(conn, currency)
+    conn.execute(
+        "INSERT OR REPLACE INTO fx_rates (date, currency, rate_to_chf, source, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (day.isoformat(), currency, to_text(rate), source, fetched_at),
+    )
+
+
+def set_statement_values(
+    conn: sqlite3.Connection, statement_file: int, values: Iterable[PrintedValue]
+) -> None:
+    """The statement's own valuation, replacing what an earlier import of the file stored."""
+    conn.execute("DELETE FROM statement_values WHERE statement_file_id = ?", (statement_file,))
+    for value in values:
+        ensure_currency(conn, value.currency)
+        conn.execute(
+            "INSERT INTO statement_values (statement_file_id, label, currency, value_nano) "
+            "VALUES (?, ?, ?, ?)",
+            (statement_file, value.label, value.currency, to_nano(value.value)),
+        )
 
 
 def anchors(conn: sqlite3.Connection, owner: int) -> list[Anchor]:

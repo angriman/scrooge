@@ -462,7 +462,7 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert app.state.database == run.database
     assert app.state.rules.shared == Path("rules.local.yaml")
     assert app.state.rules.people == {}
-    assert run.count("schema_version") == 1
+    assert run.count("schema_version") == len(db.migrations())
 
     with pytest.raises(SystemExit):
         run("serve", "--host", "0.0.0.0")  # noqa: S104  # the address that must be refused

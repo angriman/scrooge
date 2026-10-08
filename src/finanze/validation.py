@@ -99,6 +99,24 @@ class MissingLotsError(ReconciliationError):
         )
 
 
+class HoldingsMismatchError(ReconciliationError):
+    """A statement prints another quantity of an instrument than the rows before it lead to."""
+
+    def __init__(
+        self, account: str, symbol: str, day: date, expected: Decimal, actual: Decimal
+    ) -> None:
+        self.account = account
+        self.symbol = symbol
+        self.day = day
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"{account}: the statement says {format(expected, 'f')} {symbol} were held on {day}, "
+            f"but the holdings before it and what was booked since give {format(actual, 'f')} "
+            "(a statement in between is missing, or a split is not stored)"
+        )
+
+
 class MissingBalanceError(ReconciliationError):
     """Transactions exist for an account whose balance the statement never printed."""
 
