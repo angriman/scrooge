@@ -294,20 +294,6 @@
   {
     "date": "2026-09-21",
     "account": "IBKR USD",
-    "amount": "34000",
-    "currency": "USD",
-    "description": "Sell 1 MESZ6 @ 6800",
-    "kind": "trading",
-    "source_file": "activity.csv",
-    "source_ref": "Trades:10",
-    "counterparty": "",
-    "category": "Trading",
-    "confidence": "1",
-    "booking_date": "2026-09-21"
-  },
-  {
-    "date": "2026-09-21",
-    "account": "IBKR USD",
     "amount": "-0.62",
     "currency": "USD",
     "description": "Commission MESZ6",
@@ -322,9 +308,9 @@
   {
     "date": "2026-09-22",
     "account": "IBKR USD",
-    "amount": "-33950",
+    "amount": "50",
     "currency": "USD",
-    "description": "Buy 1 MESZ6 @ 6790",
+    "description": "Buy 1 MESZ6 @ 6790: position closed",
     "kind": "trading",
     "source_file": "activity.csv",
     "source_ref": "Trades:11",

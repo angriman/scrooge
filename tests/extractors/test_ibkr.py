@@ -285,14 +285,41 @@ def test_rates_are_the_closing_prices_of_the_other_currencies(result: Extraction
     )
 
 
-def test_flat_futures_round_trip_books_notional_values_as_trading(result: Extraction) -> None:
+def test_a_futures_round_trip_books_its_result_once_on_the_closing_trade(
+    result: Extraction,
+) -> None:
+    # Sold at a notional 34000 and bought back at 33950: the 50 are the Cash Settling MTM.
     futures = [t for t in result.transactions if "MESZ6" in t.description]
-    assert [(t.amount, t.kind) for t in futures] == [
-        (Decimal(34000), Kind.TRADING),
-        (Decimal("-0.62"), Kind.COMMISSION),
-        (Decimal(-33950), Kind.TRADING),
-        (Decimal("-0.62"), Kind.COMMISSION),
+    assert [(t.date, t.amount, t.kind) for t in futures] == [
+        (date(2026, 9, 21), Decimal("-0.62"), Kind.COMMISSION),
+        (date(2026, 9, 22), Decimal(50), Kind.TRADING),
+        (date(2026, 9, 22), Decimal("-0.62"), Kind.COMMISSION),
     ]
+    assert futures[1].description == "Buy 1 MESZ6 @ 6790: position closed"
+
+
+def test_a_futures_position_closed_in_parts_is_booked_when_the_last_part_goes() -> None:
+    opened = 'Trades,Data,Order,Futures,USD,MESZ6,"2026-09-21, 15:00:00",-1,6800,6795,34000,'
+    twice = CSV.replace(opened, opened.replace(",-1,6800,6795,34000,", ",-2,6800,6795,68000,"))
+    closed = 'Trades,Data,Order,Futures,USD,MESZ6,"2026-09-22, 15:30:00",1,6790,6792,-33950,'
+    rest = closed.replace("2026-09-22, 15:30:00", "2026-09-24, 10:00:00").replace(
+        ",1,6790,6792,-33950,", ",1,6780,6792,-33900,"
+    )
+    line = next(row for row in CSV.splitlines() if row.startswith(closed))
+    twice = twice.replace(line, f"{line}\n{line.replace(closed, rest)}")
+    futures = [
+        t
+        for t in ibkr.extract(twice, "activity.csv").transactions
+        if "MESZ6" in t.description and t.kind is Kind.TRADING
+    ]
+    assert [(t.date, t.amount) for t in futures] == [(date(2026, 9, 24), Decimal(150))]
+
+
+def test_a_futures_position_the_trades_leave_open_is_refused() -> None:
+    closed = 'Trades,Data,Order,Futures,USD,MESZ6,"2026-09-22, 15:30:00",1,6790,'
+    lines = [row for row in CSV.splitlines() if not row.startswith(closed)]
+    with pytest.raises(UnsupportedStatementError, match="futures MESZ6 are never closed"):
+        ibkr.extract("\n".join(lines), "activity.csv")
 
 
 def test_vat_on_market_data_is_a_commission(result: Extraction) -> None:

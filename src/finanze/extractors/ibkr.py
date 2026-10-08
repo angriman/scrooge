@@ -285,6 +285,8 @@ class _Parser:
         self._maturities = instruments.maturities
         self._asset_tabs = instruments.asset_tabs
         self._futures = instruments.futures
+        # symbol -> (contracts held, notional value so far) of positions not yet closed
+        self._open_futures: dict[str, tuple[Decimal, Decimal]] = {}
 
     def _txn(  # noqa: PLR0913  # builder mirroring the Transaction fields it fills
         self,
@@ -598,7 +600,7 @@ class _Parser:
             elif category == "Treasury Bills":
                 out.append(self._t_bill_trade(row, ref))
             elif category == "Futures":
-                out.append(self._futures_trade(row, ref))
+                out += self._futures_trade(row, ref)
             elif category in _OPTION_CATEGORIES:
                 out += self._option_trade(row, ref)
             elif category == "Forex":
@@ -607,6 +609,9 @@ class _Parser:
                 msg = f"Trades row {n}: unsupported asset category {category!r}"
                 raise UnsupportedStatementError(msg)
             out += self._commission(row, ref, backdated=category == "Forex")
+        if self._open_futures:
+            msg = f"Trades: futures {', '.join(sorted(self._open_futures))} are never closed"
+            raise UnsupportedStatementError(msg)
         return out
 
     def _commission(self, row: _Row, ref: str, *, backdated: bool) -> list[Transaction]:
@@ -665,9 +670,11 @@ class _Parser:
             maturity=maturity,
         )
 
-    def _futures_trade(self, row: _Row, ref: str) -> Transaction:
+    def _futures_trade(self, row: _Row, ref: str) -> list[Transaction]:
         # Futures settle daily (Cash Settling MTM), which the statement doesn't itemise. For a
-        # position flat at both ends of the period the notional values net to that cash.
+        # position flat at both ends of the period the notional values net to that cash. No
+        # trade moves its notional value, though: what a position made or lost is booked
+        # once, on the trade that closes it, so that no day shows cash that never was there.
         symbol = row["Symbol"]
         position = self._futures.get(symbol)
         if position is None:
@@ -678,15 +685,24 @@ class _Parser:
             raise UnsupportedStatementError(msg)
         quantity = parse_decimal(row["Quantity"], "Trades quantity")
         price = parse_decimal(row["T. Price"], "Trades price")
-        return self._txn(
-            day=parse_iso_date(row["Date/Time"], "Trades"),
-            currency=row["Currency"],
-            amount=parse_decimal(row["Notional Value"], "Trades notional value"),
-            description=_describe(quantity, symbol, price),
-            kind=Kind.TRADING,
-            category="Trading",
-            ref=ref,
-        )
+        held, notional = self._open_futures.get(symbol, (Decimal(0), Decimal(0)))
+        held += quantity
+        notional += parse_decimal(row["Notional Value"], "Trades notional value")
+        self._open_futures[symbol] = (held, notional)
+        if held != 0:
+            return []
+        del self._open_futures[symbol]
+        return [
+            self._txn(
+                day=parse_iso_date(row["Date/Time"], "Trades"),
+                currency=row["Currency"],
+                amount=notional,
+                description=f"{_describe(quantity, symbol, price)}: position closed",
+                kind=Kind.TRADING,
+                category="Trading",
+                ref=ref,
+            )
+        ]
 
     def _option_trade(self, row: _Row, ref: str) -> list[Transaction]:
         proceeds = parse_decimal(row["Proceeds"], "Trades proceeds")
