@@ -96,6 +96,12 @@ def test_cash_rounded_to_six_decimals_still_matches_units_times_price() -> None:
     assert len(finpension.extract(finer, source_file="t.tsv").transactions) == 9
 
 
+def test_a_rate_of_one_is_accepted_however_it_is_written() -> None:
+    padded = TSV.replace("\tCHF\t1\t", "\tCHF\t1.0000000000\t")
+    assert padded != TSV
+    assert len(finpension.extract(padded, source_file="t.tsv").transactions) == 9
+
+
 def test_a_numbered_download_is_a_portfolio_of_its_own() -> None:
     second = finpension.extract(TSV, source_file="2022/transaction_report-2.tsv")
     assert {t.account for t in second.transactions} == {"Finpension 3a 2"}

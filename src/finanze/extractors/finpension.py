@@ -79,7 +79,7 @@ def extract(content: str, source_file: str) -> Extraction:
             msg = f"finpension row {n}: balance {after} does not follow {balance} {amount:+}"
             raise ExtractionError(msg)
         balance = after
-        if row["Currency Rate"] != "1":
+        if _number(row, "Currency Rate") != 1:
             msg = f"finpension row {n}: unsupported currency rate {row['Currency Rate']!r}"
             raise UnsupportedStatementError(msg)
         what, fund = row["Category"], row["Asset Name"]
