@@ -9,13 +9,14 @@ Both run in one database transaction: any failure leaves the database as it was.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from itertools import pairwise
 from pathlib import Path
 
+from finanze import classification
 from finanze.categories import Extra
 from finanze.classification import Patterns, names
 from finanze.extractors.common import month_end, months_between
@@ -192,6 +193,67 @@ def commit_with_copy(
         copy.unlink()
         return None
     return copy
+
+
+@dataclass(frozen=True, slots=True)
+class Remember:
+    """Where a choice of category is saved as a rule, as `--review` does (plan 5.4)."""
+
+    shared: Path  # the rules both people share
+    own: Path  # the owner's rules, for rows that name a person
+    people: Patterns  # what recognises a person, anybody
+
+
+def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is remembered
+    conn: sqlite3.Connection,
+    *,
+    owner: str,
+    month: date,
+    ids: Collection[str],
+    category: str,
+    now: datetime,
+    remember: Remember | None,
+) -> int:
+    """Give `category` to rows of an open month that have none. Returns how many.
+
+    With `remember` the choice also becomes a rule for each counterparty and direction among
+    the rows, so the next import makes it again. Without, it is kept as an override of these
+    rows alone. A transfer category makes an income or expense a transfer, as a rule would.
+    """
+    with db.transaction(conn):
+        owner_id, status = _month(conn, owner, month)
+        if status == "committed":
+            msg = f"{month:%Y-%m} is committed for {owner}: reopen it first"
+            raise MonthCommittedError(msg)
+        rows = store.waiting(conn, owner_id, (month, month_end(month)), ids)
+        if not rows or len(rows) != len(set(ids)):
+            msg = "those rows are no longer waiting for a category: load the page again"
+            raise MonthCloseError(msg)
+        leaves = store.leaf_categories(conn)
+        flows = {kind.value for kind in _BETWEEN_OWNERS}
+        rules: dict[tuple[str, str], Path] = {}
+        for row in rows:
+            chosen = store.category_for(leaves, category, from_nano(row.amount_nano))
+            if chosen is None:
+                msg = "no category was chosen"
+                raise MonthCloseError(msg)
+            moved = ("transfer", category) in leaves and row.kind in flows
+            kind = Kind.TRANSFER.value if moved else row.kind
+            store.set_category(conn, row.id, chosen, "rule" if remember else "manual", kind)
+            if remember is None:
+                store.set_override(conn, row.id, chosen, kind, db.timestamp(now))
+                continue
+            name = (row.counterparty or row.description).strip()
+            if not name:
+                msg = "a row without any text cannot become a rule: choose 'just these rows'"
+                raise MonthCloseError(msg)
+            text = f"{row.description}\n{row.counterparty}"
+            named = any(pattern.search(text) for pattern in remember.people)
+            flow = "in" if row.amount_nano > 0 else "out"
+            rules[name, flow] = remember.own if named else remember.shared
+        for (name, flow), where in rules.items():
+            classification.append_rule(where, name, flow, category)
+        return len(rows)
 
 
 def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how much

@@ -979,3 +979,125 @@ def test_a_commit_with_a_copy_keeps_the_copy_only_when_something_changed(tmp_pat
     assert commit() is None
     assert list(copies.iterdir()) == []
     conn.close()
+
+
+def waiting_month(conn: sqlite3.Connection) -> dict[str, str]:
+    """September staged with rows that need a category; returns description -> id."""
+    plain = {"category": "", "date": date(2026, 9, 10)}
+    found = [
+        txn("-20", source_ref="1", description="KIOSK", **plain),
+        txn("-30", source_ref="2", description="KIOSK", **plain),
+        txn("5", source_ref="3", description="KIOSK", kind=Kind.INCOME, **plain),
+        txn("-200", source_ref="4", description="TWINT", counterparty="Anna Meier", **plain),
+        txn("-500", source_ref="5", description="TO SAVINGS", **plain),
+        txn("-7", source_ref="6", description=" ", **plain),
+        txn("-9", source_ref="7", description="DONE", date=date(2026, 9, 10)),
+    ]
+    balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(-661))
+    monthclose.stage(conn, batch(statement("migros", found, [balance])), NOW)
+    stored = rows(conn, "SELECT description, source_ref, id FROM transactions")
+    return {f"{description.strip()}{ref}": txn_id for description, ref, txn_id in stored}
+
+
+def choose(
+    conn: sqlite3.Connection,
+    ids: list[str],
+    category: str,
+    remember: monthclose.Remember | None = None,
+    month: date = SEPTEMBER,
+) -> int:
+    return monthclose.categorize(
+        conn, owner=OWNER, month=month, ids=ids, category=category, now=LATER, remember=remember
+    )
+
+
+def category_of(conn: sqlite3.Connection, txn_id: str) -> tuple[Any, ...]:
+    (found,) = rows(
+        conn,
+        "SELECT c.name, c.side, t.category_source, t.kind FROM transactions t "
+        "LEFT JOIN categories c ON c.id = t.category_id WHERE t.id = ?",
+        txn_id,
+    )
+    return found
+
+
+def test_a_choice_for_these_rows_alone_is_an_override_that_survives_an_import(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    assert choose(conn, [ids["KIOSK1"], ids["KIOSK3"]], "Regali") == 2
+    assert category_of(conn, ids["KIOSK1"]) == ("Regali", "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK3"]) == ("Regali", "uscite", "manual", "income")
+    assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
+    assert rows(conn, "SELECT count(*), min(created_at) FROM overrides") == [
+        (2, "2026-10-07T09:30:00+00:00")
+    ]
+
+    assert waiting_month(conn) == ids  # imported again: the same rows, the choice put back
+    assert category_of(conn, ids["KIOSK1"]) == ("Regali", "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
+
+
+def test_a_choice_to_remember_becomes_a_rule_per_counterparty_and_direction(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    ids = waiting_month(conn)
+    shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    everyone = [pattern for patterns in PEOPLE.values() for pattern in patterns]
+    remember = monthclose.Remember(shared, own, everyone)
+    chosen = [ids["KIOSK1"], ids["KIOSK2"], ids["KIOSK3"], ids["TWINT4"]]
+    assert choose(conn, chosen, "Regali", remember) == 4
+    assert category_of(conn, ids["KIOSK2"]) == ("Regali", "uscite", "rule", "expense")
+    assert rows(conn, "SELECT count(*) FROM overrides") == [(0,)]
+    assert shared.read_text(encoding="utf-8") == (
+        "rules:\n"
+        '  - {match: "(?m)^KIOSK$", category: "Regali", direction: out}\n'
+        '  - {match: "(?m)^KIOSK$", category: "Regali", direction: in}\n'
+    )
+    assert own.read_text(encoding="utf-8") == (
+        'rules:\n  - {match: "(?m)^Anna\\\\ Meier$", category: "Regali", direction: out}\n'
+    )
+
+
+def test_a_transfer_category_makes_the_row_a_transfer(conn: sqlite3.Connection) -> None:
+    ids = waiting_month(conn)
+    choose(conn, [ids["TO SAVINGS5"]], "Giroconto")
+    assert category_of(conn, ids["TO SAVINGS5"]) == ("Giroconto", "transfer", "manual", "transfer")
+    assert rows(conn, "SELECT kind FROM overrides") == [("transfer",)]
+
+
+def test_a_choice_that_cannot_be_made_changes_nothing(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    ids = waiting_month(conn)
+    before = dump(conn)
+    remember = monthclose.Remember(tmp_path / "rules.yaml", tmp_path / "own.yaml", ())
+    one = [ids["KIOSK1"]]
+    refused: list[tuple[list[str], str, monthclose.Remember | None, str]] = [
+        ([*one, ids["DONE7"]], "Regali", None, "no longer waiting"),
+        ([*one, "no-such-row"], "Regali", None, "no longer waiting"),
+        ([], "Regali", None, "no longer waiting"),
+        (one, "", None, "no category was chosen"),
+        ([*one, ids["6"]], "Regali", remember, "any text"),
+    ]
+    for chosen, category, how, message in refused:
+        with pytest.raises(monthclose.MonthCloseError, match=message):
+            choose(conn, chosen, category, how)
+    with pytest.raises(store.UnknownCategoryError, match="'Regalo'"):
+        choose(conn, one, "Regalo")
+    assert dump(conn) == before
+    assert not list(tmp_path.iterdir())
+
+    # The same id twice is one row; a row without text can still be set for itself alone.
+    assert choose(conn, [ids["6"], ids["6"]], "Regali") == 1
+
+
+def test_rows_of_a_committed_or_unknown_month_cannot_be_categorized(
+    conn: sqlite3.Connection,
+) -> None:
+    monthclose.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    with pytest.raises(monthclose.MonthCommittedError, match="reopen it first"):
+        choose(conn, ["x"], "Regali")
+    with pytest.raises(monthclose.NothingStagedError):
+        choose(conn, ["x"], "Regali", month=OCTOBER)

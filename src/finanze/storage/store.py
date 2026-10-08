@@ -363,3 +363,49 @@ def uncategorized(conn: sqlite3.Connection, owner: int, period: tuple[date, date
         (owner, period[0].isoformat(), period[1].isoformat()),
     ).fetchone()
     return int(row[0])
+
+
+@dataclass(frozen=True, slots=True)
+class Waiting:
+    """A row without a category, with what a choice for it depends on."""
+
+    id: str
+    amount_nano: int
+    kind: str
+    description: str
+    counterparty: str
+
+
+def waiting(
+    conn: sqlite3.Connection, owner: int, period: tuple[date, date], ids: Collection[str]
+) -> list[Waiting]:
+    """Those of `ids` that are rows of the owner booked in the period and still need a category."""
+    marks = ", ".join("?" * len(ids))
+    rows = conn.execute(
+        "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks are interpolated
+        "FROM transactions t JOIN accounts a ON a.id = t.account_id "
+        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
+        f"AND t.category_id IS NULL AND t.kind <> 'internal' AND t.id IN ({marks}) ORDER BY t.id",
+        (owner, period[0].isoformat(), period[1].isoformat(), *ids),
+    ).fetchall()
+    return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]
+
+
+def set_category(
+    conn: sqlite3.Connection, txn_id: str, category: int, source: str, kind: str
+) -> None:
+    conn.execute(
+        "UPDATE transactions SET category_id = ?, category_source = ?, kind = ? WHERE id = ?",
+        (category, source, kind, txn_id),
+    )
+
+
+def set_override(
+    conn: sqlite3.Connection, txn_id: str, category: int, kind: str, created_at: str
+) -> None:
+    """Remember a choice made for this row alone: `apply_overrides` restores it after an import."""
+    conn.execute(
+        "INSERT OR REPLACE INTO overrides (transaction_id, category_id, kind, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (txn_id, category, kind, created_at),
+    )
