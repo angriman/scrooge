@@ -7,7 +7,15 @@ import pytest
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors import ibkr
-from finanze.models import CashBalance, Extraction, Kind, SecurityTrade
+from finanze.models import (
+    CashBalance,
+    Extraction,
+    Holding,
+    Kind,
+    PrintedValue,
+    Rate,
+    SecurityTrade,
+)
 from finanze.validation import check_balances
 from tests.extractors.golden import assert_matches_golden
 
@@ -96,7 +104,11 @@ def test_income_is_t_bill_principal_and_the_referral_credit(result: Extraction) 
 
 
 def test_security_trades_carry_asset_tab_fields(result: Extraction) -> None:
-    trades = [t for t in result.transactions if isinstance(t, SecurityTrade)]
+    trades = [
+        t
+        for t in result.transactions
+        if isinstance(t, SecurityTrade) and t.kind is Kind.SECURITY_TRADE
+    ]
     assert [(t.ticker, t.date, t.quantity, t.price, t.cost, t.currency) for t in trades] == [
         ("ACME", date(2026, 9, 15), Decimal(20), Decimal("112.4"), Decimal(2248), "USD"),
         ("WIDG", date(2026, 9, 23), Decimal(-10), Decimal("54.25"), Decimal("-542.5"), "USD"),
@@ -136,11 +148,99 @@ def test_maturity_splits_into_principal_and_interest_on_the_ibkr_basis(
     ]
 
 
-def test_zero_cash_corporate_actions_and_position_transfers_are_skipped(
-    result: Extraction,
-) -> None:
+def test_zero_cash_corporate_actions_are_skipped(result: Extraction) -> None:
     assert not any("Split" in t.description for t in result.transactions)
-    assert not any(t.source_ref.startswith("Transfers:") for t in result.transactions)
+
+
+def test_shares_moved_in_change_the_quantity_held_and_no_cash(result: Extraction) -> None:
+    [moved] = [t for t in result.transactions if t.source_ref.startswith("Transfers:")]
+    assert isinstance(moved, SecurityTrade)
+    assert (moved.kind, moved.category, moved.amount) == (Kind.TRANSFER, "Giroconto", Decimal(0))
+    assert (moved.date, moved.account, moved.ticker) == (date(2026, 9, 29), "IBKR USD", "GOOG")
+    # What the shares were worth that day is their cost; the price follows from it.
+    assert (moved.quantity, moved.cost, moved.price) == (
+        Decimal(5),
+        Decimal("1021.50"),
+        Decimal("204.3"),
+    )
+    assert str(moved.price) == "204.3"
+    assert moved.asset_tab == "Stocks"
+
+
+def test_shares_moved_out_carry_a_negative_quantity() -> None:
+    out = CSV.replace("2026-09-29,FOP,In,--,MS-XXXXXX-00,5,", "2026-09-29,Internal,Out,--,U2,-5,")
+    out = out.replace('"1,021.50",0.00,0.00', '"-1,021.50",0.00,0.00')
+    [moved] = [
+        t
+        for t in ibkr.extract(out, "activity.csv").transactions
+        if t.source_ref.startswith("Transfers:")
+    ]
+    assert isinstance(moved, SecurityTrade)
+    assert (moved.quantity, moved.cost, moved.price) == (
+        Decimal(-5),
+        Decimal("-1021.50"),
+        Decimal("204.3"),
+    )
+    assert moved.description == "Transfer out: 5 GOOG"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("USD,GOOG,2026-09-29,FOP,In,--,MS-XXXXXX-00,5,", "USD,GOOG,2026-09-29,FOP,In,--,MS,0,"),
+        (
+            "carried by Interactive Brokers LLC,USD,GOOG,2026-09-29",
+            "carried by Interactive Brokers LLC,USD,GOOG 16OCT26 200 C,2026-09-29",
+        ),
+    ],
+)
+def test_a_transfer_of_nothing_or_of_something_else_than_shares_is_refused(
+    old: str, new: str
+) -> None:
+    changed = CSV.replace(old, new)
+    if "16OCT26" in new:
+        changed = changed.replace(
+            "Transfers,Data,Stocks - Held with Interactive Brokers (U.K.) Limited carried by "
+            "Interactive Brokers LLC",
+            "Transfers,Data,Equity and Index Options",
+        )
+    with pytest.raises(UnsupportedStatementError, match="unsupported transfer"):
+        ibkr.extract(changed, "activity.csv")
+
+
+def test_holdings_are_the_shares_and_bills_of_open_positions(result: Extraction) -> None:
+    # Options are not assets (D20), and a lot repeats its summary row.
+    assert result.holdings == (
+        Holding("IBKR USD", "ACME", "USD", Decimal(20), Decimal("113.1"), Decimal(2262), "Stocks"),
+        Holding(
+            "IBKR USD", "GOOG", "USD", Decimal(5), Decimal("204.3"), Decimal("1021.5"), "Stocks"
+        ),
+        Holding(
+            "IBKR USD", "912797ZZ1", "USD", Decimal(10000), Decimal("98.71"), Decimal(9871), "Bonds"
+        ),
+    )
+
+
+def test_a_statement_without_open_positions_holds_nothing() -> None:
+    lines = [line for line in CSV.splitlines() if not line.startswith("Open Positions,")]
+    assert ibkr.extract("\n".join(lines), "activity.csv").holdings == ()
+
+
+def test_printed_values_are_the_lines_of_net_asset_value(result: Extraction) -> None:
+    assert result.values == (
+        PrintedValue("Cash", "CHF", Decimal("5986.2")),
+        PrintedValue("Stock", "CHF", Decimal("2626.8")),
+        PrintedValue("Options", "CHF", Decimal(-644)),
+        PrintedValue("Bonds", "CHF", Decimal("7896.8")),
+        PrintedValue("Total", "CHF", Decimal("15865.8")),
+    )
+
+
+def test_rates_are_the_closing_prices_of_the_other_currencies(result: Extraction) -> None:
+    assert result.rates == (
+        Rate("EUR", "CHF", Decimal("0.95")),
+        Rate("USD", "CHF", Decimal("0.8")),
+    )
 
 
 def test_flat_futures_round_trip_books_notional_values_as_trading(result: Extraction) -> None:
@@ -180,7 +280,8 @@ def test_commission_refund_under_deposits_is_a_commission(result: Extraction) ->
 
 
 def test_expired_options_produce_no_zero_amount_rows(result: Extraction) -> None:
-    assert all(txn.amount != 0 for txn in result.transactions)
+    # only shares moved in kind are rows without cash
+    assert all(txn.amount != 0 for txn in result.transactions if txn.kind is not Kind.TRANSFER)
     expired = ("NQ 11SEP26 21000 P", "DAX 18SEP26 23000 P")
     assert not any(e in t.description for e in expired for t in result.transactions)
 

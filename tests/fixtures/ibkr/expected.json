@@ -410,6 +410,26 @@
     "booking_date": "2026-09-17"
   },
   {
+    "date": "2026-09-29",
+    "account": "IBKR USD",
+    "amount": "0",
+    "currency": "USD",
+    "description": "Transfer in: 5 GOOG",
+    "kind": "transfer",
+    "source_file": "activity.csv",
+    "source_ref": "Transfers:1",
+    "counterparty": "MS-XXXXXX-00",
+    "category": "Giroconto",
+    "confidence": "1",
+    "booking_date": "2026-09-29",
+    "ticker": "GOOG",
+    "quantity": "5",
+    "price": "204.3",
+    "cost": "1021.50",
+    "asset_tab": "Stocks",
+    "maturity": null
+  },
+  {
     "date": "2026-09-25",
     "account": "IBKR USD",
     "amount": "10",

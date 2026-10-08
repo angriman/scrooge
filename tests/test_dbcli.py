@@ -431,7 +431,7 @@ def test_query_combines_account_amount_and_owner(closed: Run) -> None:
 def test_query_reads_both_people_without_an_owner_in_the_config(closed: Run) -> None:
     closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
     assert closed("query", "--summary") == dbcli.OK
-    assert closed.output.startswith("110 transactions\n")
+    assert closed.output.startswith("111 transactions\n")
 
 
 def test_query_refuses_a_name_it_does_not_know(closed: Run) -> None:

@@ -102,6 +102,41 @@ class ControlTotal:
 
 
 @dataclass(frozen=True, slots=True)
+class Holding:
+    """What a statement says an account held of one instrument at the end of its period.
+
+    `quantity` is face value for a bill, whose `price` is then a percentage of it. `value` is
+    the statement's own figure, in the instrument's currency.
+    """
+
+    account: str
+    ticker: str
+    currency: str
+    quantity: Decimal
+    price: Decimal
+    value: Decimal
+    asset_tab: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class PrintedValue:
+    """One line of the statement's own valuation at the end of its period (IBKR: Stock, Bonds)."""
+
+    label: str
+    currency: str
+    value: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class Rate:
+    """What one unit of `currency` was worth in `base` at the end of the statement period."""
+
+    currency: str
+    base: str
+    rate: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class Extraction:
     """What an extractor returns: transactions plus the figures they must reconcile to.
 
@@ -118,6 +153,11 @@ class Extraction:
     end: _Date | None = None
     # The institution's own number for the account, where one person may have several there.
     account_id: str = ""
+    # What the statement says was held at the end of its period. None: it does not say, which
+    # is not the same as saying that nothing was held.
+    holdings: tuple[Holding, ...] | None = None
+    values: tuple[PrintedValue, ...] = ()
+    rates: tuple[Rate, ...] = ()
 
     @property
     def period(self) -> tuple[_Date, _Date]:

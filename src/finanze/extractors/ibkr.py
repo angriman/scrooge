@@ -18,7 +18,16 @@ from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors.common import parse_decimal, parse_iso_date
-from finanze.models import CashBalance, Extraction, Kind, SecurityTrade, Transaction
+from finanze.models import (
+    CashBalance,
+    Extraction,
+    Holding,
+    Kind,
+    PrintedValue,
+    Rate,
+    SecurityTrade,
+    Transaction,
+)
 
 
 class _Row(dict[str, str]):
@@ -47,6 +56,8 @@ _HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own ac
 # Shares promised and taken back before they vest never were in the account.
 _UNVESTED_GRANTS = ("Stock Award Grant", "Stock Award Return")
 _STOCK_TABS = {"ETF": "ETFs", "COMMON": "Stocks", "ADR": "Stocks", "REIT": "Stocks"}
+_HELD_CATEGORIES = {"Stocks", "Treasury Bills"}  # what counts as an asset (D20)
+_PRICE_STEP = Decimal("0.000001")  # a transfer prints its value, not its price
 _T_BILL_MATURITY = re.compile(r"Treasury Bill Maturity \((\w+),")
 
 
@@ -66,7 +77,7 @@ def extract(content: str, source_file: str) -> Extraction:
     transactions += parser.trades(sections.get("Trades", []))
     transactions += parser.corporate_actions(sections.get("Corporate Actions", []))
     transactions += parser.grants(sections.get("Grant Activity", []))
-    parser.check_transfers(sections.get("Transfers", []))
+    transactions += parser.transfers(sections.get("Transfers", []))
     transactions += parser.dividends(sections.get("Dividends", []))
     transactions += parser.cash_items(
         "Withholding Tax",
@@ -84,12 +95,17 @@ def extract(content: str, source_file: str) -> Extraction:
     else:  # yearly exports itemise no VAT, only the Cash Report total
         transactions += parser.sales_tax(sections.get("Cash Report", []))
     balances = _balances(sections.get("Cash Report", []))
+    account = _fields(sections, "Account Information")
+    base = account.get("Base Currency", "")
     return Extraction(
         month=start,
         transactions=tuple(transactions),
         balances=balances,
         end=end,
-        account_id=_fields(sections, "Account Information").get("Account", ""),
+        account_id=account.get("Account", ""),
+        holdings=_holdings(sections.get("Open Positions", []), instruments.asset_tabs),
+        values=_values(sections.get("Net Asset Value", []), base),
+        rates=_rates(sections.get("Forex Balances", []), base),
     )
 
 
@@ -182,6 +198,54 @@ def _asset_tabs(rows: list[_Row]) -> dict[str, str]:
         if tab:
             tabs.update(dict.fromkeys(row["Symbol"].split(", "), tab))
     return tabs
+
+
+def _holdings(rows: list[_Row], asset_tabs: dict[str, str]) -> tuple[Holding, ...]:
+    """Shares, ETFs and bills held at the end of the period. Options and futures are not
+    assets (D20) and are left out; a statement without the section holds nothing."""
+    held: list[Holding] = []
+    for row in rows:
+        category = _asset_category(row)
+        if row["DataDiscriminator"] != "Summary" or category not in _HELD_CATEGORIES:
+            continue
+        bill = category == "Treasury Bills"
+        # A bill is listed as "<CUSIP> - <description>".
+        symbol = row["Symbol"].split(maxsplit=1)[0] if bill else row["Symbol"]
+        held.append(
+            Holding(
+                account=_account(row["Currency"]),
+                ticker=symbol,
+                currency=row["Currency"],
+                quantity=parse_decimal(row["Quantity"], "Open Positions quantity"),
+                price=parse_decimal(row["Close Price"], "Open Positions close price"),
+                value=parse_decimal(row["Value"], "Open Positions value"),
+                asset_tab="Bonds" if bill else asset_tabs.get(symbol, ""),
+            )
+        )
+    return tuple(held)
+
+
+def _values(rows: list[_Row], base: str) -> tuple[PrintedValue, ...]:
+    """The lines of Net Asset Value, in the account's base currency. The section also holds
+    the rate of return, under a header of its own: those rows have no total."""
+    return tuple(
+        PrintedValue(
+            row["Asset Class"].strip(),
+            base,
+            parse_decimal(row["Current Total"], "Net Asset Value"),
+        )
+        for row in rows
+        if "Current Total" in row
+    )
+
+
+def _rates(rows: list[_Row], base: str) -> tuple[Rate, ...]:
+    """The closing rate of every currency the account holds cash in, from Forex Balances."""
+    return tuple(
+        Rate(row["Description"], base, parse_decimal(row["Close Price"], "Forex Balances rate"))
+        for row in rows
+        if not row.is_total() and row["Description"] != base
+    )
 
 
 def _futures_positions(rows: list[_Row]) -> dict[str, tuple[Decimal, Decimal]]:
@@ -446,15 +510,49 @@ class _Parser:
             if amount != 0
         ]
 
-    def check_transfers(self, rows: list[_Row]) -> None:
-        # Position transfers (e.g. shares moved in from another broker) move no cash here.
+    def transfers(self, rows: list[_Row]) -> list[Transaction]:
+        """Shares moved in or out in kind: from another broker, or between one's own accounts.
+
+        No cash moves and nothing is bought or sold: only the quantity held changes. What
+        the shares were worth that day is their cost, as for a vesting.
+        """
+        out: list[Transaction] = []
         for n, row in enumerate(rows, start=1):
             if row.is_total():
                 continue
+            symbol = row["Symbol"]
             cash = parse_decimal(row["Cash Amount"], "Transfers cash amount")
             if cash != 0:
-                msg = f"Transfers row {n}: transfer of {row['Symbol']} moves cash {cash}"
+                msg = f"Transfers row {n}: transfer of {symbol} moves cash {cash}"
                 raise UnsupportedStatementError(msg)
+            quantity = parse_decimal(row["Qty"], "Transfers quantity")
+            if _asset_category(row) != "Stocks" or quantity == 0:
+                msg = f"Transfers row {n}: unsupported transfer of {symbol}"
+                raise UnsupportedStatementError(msg)
+            value = parse_decimal(row["Market Value"], "Transfers market value")
+            currency = row["Currency"]
+            out.append(
+                SecurityTrade(
+                    date=self._in_period(parse_iso_date(row["Date"], "Transfers")),
+                    account=_account(currency),
+                    amount=Decimal(0),
+                    currency=currency,
+                    description=f"Transfer {row['Direction'].lower()}: "
+                    f"{format(abs(quantity), 'f')} {symbol}",
+                    kind=Kind.TRANSFER,
+                    source_file=self._source_file,
+                    source_ref=f"Transfers:{n}",
+                    counterparty=row["Xfer Account"],
+                    category="Giroconto",
+                    ticker=symbol,
+                    quantity=quantity,
+                    # + 0: plain digits, no exponent
+                    price=(value / quantity).quantize(_PRICE_STEP).normalize() + Decimal(0),
+                    cost=value,
+                    asset_tab=self._asset_tabs.get(symbol, ""),
+                )
+            )
+        return out
 
     def dividends(self, rows: list[_Row]) -> list[Transaction]:
         # Payments in lieu of dividends are booked as dividends too.
