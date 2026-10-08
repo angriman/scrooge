@@ -4,10 +4,12 @@ import hashlib
 import re
 import sqlite3
 from collections.abc import Sequence
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
+from finanze import monthclose
+from finanze.extractors.common import months_between
 from finanze.models import CashBalance, Extraction, Kind, SecurityTrade, Transaction
 from finanze.monthclose import Batch
 from finanze.pipeline import Month, Statement
@@ -17,6 +19,7 @@ SEPTEMBER = date(2026, 9, 1)
 OCTOBER = date(2026, 10, 1)
 OWNER = "Lukas"
 PARTNER = "Anna"
+CLOSED_AT = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
 PEOPLE = {OWNER: [re.compile("LUKAS MEIER")], PARTNER: [re.compile("ANNA MEIER", re.IGNORECASE)]}
 
 
@@ -125,3 +128,24 @@ def dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
 
 def rows(conn: sqlite3.Connection, sql: str, *args: Any) -> list[tuple[Any, ...]]:
     return [tuple(row) for row in conn.execute(sql, args).fetchall()]
+
+
+def close(
+    conn: sqlite3.Connection,
+    owner: str,
+    span: tuple[date, date],
+    committed: date,
+    *files: tuple[str, Sequence[Transaction]],
+) -> None:
+    """Stage statements that cover `span`, and commit the months up to `committed`."""
+    first, last = span
+    statements = []
+    for source, rows in files:
+        closing = sum((row.amount for row in rows), Decimal(0))
+        balance = CashBalance(rows[0].account, rows[0].currency, Decimal(0), closing)
+        statements.append(statement(source, rows, [balance], month=first, end=last))
+    every = tuple(row for _, rows in files for row in rows)
+    month = Month(first, every, (), (), last)
+    monthclose.stage(conn, Batch(owner, statements, month, PEOPLE), CLOSED_AT)
+    for each in months_between(first, committed):
+        monthclose.commit(conn, owner=owner, month=each, now=CLOSED_AT)

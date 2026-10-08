@@ -8,14 +8,11 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import monthclose, query
-from finanze.extractors.common import months_between
-from finanze.models import CashBalance, Kind, Transaction
-from finanze.monthclose import Batch
-from finanze.pipeline import Month
+from finanze import query
+from finanze.models import Kind
 from finanze.query import Filter
 from finanze.storage import db
-from tests.storage.helpers import OWNER, PARTNER, PEOPLE, statement, txn
+from tests.storage.helpers import OWNER, PARTNER, close, txn
 
 NOW = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
 START = date(2025, 1, 1)
@@ -49,26 +46,6 @@ ANNA = [
     ),
     txn("-60", date=date(2026, 7, 12), source_ref="2"),
 ]
-
-
-def close(
-    conn: sqlite3.Connection,
-    owner: str,
-    span: tuple[date, date],
-    committed: date,
-    *files: tuple[str, Sequence[Transaction]],
-) -> None:
-    """Stage statements that cover `span`, and commit the months up to `committed`."""
-    first, last = span
-    statements = []
-    for source, rows in files:
-        closing = sum((row.amount for row in rows), Decimal(0))
-        balance = CashBalance(rows[0].account, rows[0].currency, Decimal(0), closing)
-        statements.append(statement(source, rows, [balance], month=first, end=last))
-    every = tuple(row for _, rows in files for row in rows)
-    monthclose.stage(conn, Batch(owner, statements, Month(first, every, (), (), last), PEOPLE), NOW)
-    for month in months_between(first, committed):
-        monthclose.commit(conn, owner=owner, month=month, now=NOW)
 
 
 @pytest.fixture(scope="module")

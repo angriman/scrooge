@@ -83,7 +83,7 @@ class Result:
 
 def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
     """The committed transactions that match `wanted`, with what they add up to."""
-    _check_names(conn, wanted)
+    check_names(conn, wanted)
     column = "booking_date" if wanted.booking else "date"
     conditions: list[tuple[str, object]] = [
         (f"{column} >= ?", wanted.first and wanted.first.isoformat()),
@@ -122,7 +122,7 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
     )
 
 
-def _check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
+def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
     """Refuse a name nothing can match: a typo would otherwise read as "no transactions"."""
     checks = (
         ("owner", wanted.owner, "SELECT 1 FROM owners WHERE name = ?"),
