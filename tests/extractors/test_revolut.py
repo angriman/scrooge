@@ -34,6 +34,28 @@ def test_balances_are_the_ends_of_the_running_balance(result: Extraction) -> Non
     check_balances(result)
 
 
+def test_an_export_of_every_currency_is_one_account_per_currency(result: Extraction) -> None:
+    euros = (
+        "Exchange\tCurrent\t2026-09-07 10:00:00\t2026-09-07 10:00:00\tExchanged to EUR"
+        "\t50\t0\tEUR\tCOMPLETED\t62.5\n"
+        "Card Payment\tCurrent\t2026-09-08 9:00:00\t2026-09-09 9:00:00\tKonsum"
+        "\t-12.5\t0\tEUR\tCOMPLETED\t50\n"
+    )
+    header, _, chf = TSV.partition("\n")
+    merged = revolut.extract(f"{header}\n{euros}{chf}", source_file="all.tsv")
+    assert merged.balances == (
+        CashBalance("Revolut EUR", "EUR", Decimal("12.5"), Decimal(50)),
+        CashBalance("Revolut CHF", "CHF", Decimal("7.13"), Decimal("188.31")),
+    )
+    check_balances(merged)
+    assert [(t.account, t.currency, t.amount) for t in merged.transactions[:2]] == [
+        ("Revolut EUR", "EUR", Decimal(50)),
+        ("Revolut EUR", "EUR", Decimal("-12.5")),
+    ]
+    assert [t.amount for t in merged.transactions[2:]] == [t.amount for t in result.transactions]
+    assert {t.account for t in merged.transactions[2:]} == {"Revolut CHF"}
+
+
 def test_csv_export_gives_the_same_result(result: Extraction) -> None:
     assert revolut.extract("\ufeff" + TSV.replace("\t", ","), source_file="chf.tsv") == result
 
@@ -103,7 +125,8 @@ def test_fees_are_separate_rows(result: Extraction) -> None:
         (TSV.replace("\t129.78\n", "\t129.77\n"), ExtractionError, "does not follow"),
         (TSV.replace("\tBalance\n", "\tSaldo\n"), ExtractionError, "missing column"),
         (TSV.replace("COMPLETED", "PENDING"), ExtractionError, "no completed rows"),
-        (TSV.replace("-7.35\t0\tCHF", "-7.35\t0\tEUR"), ExtractionError, "mixes currencies"),
+        # a row in another currency starts that currency's balance and leaves a hole in this one
+        (TSV.replace("-7.35\t0\tCHF", "-7.35\t0\tEUR"), ExtractionError, "row 4: balance 81.80"),
         (TSV.replace("Card Refund", "Cashback"), UnsupportedStatementError, "Cashback"),
         (TSV.replace("REVERTED", "DECLINED"), UnsupportedStatementError, "DECLINED"),
         (TSV.replace("Transfer\tDeposit", "Transfer\tPocket"), UnsupportedStatementError, "Pocket"),
@@ -113,3 +136,17 @@ def test_malformed_statements_raise(content: str, error: type[Exception], messag
     assert content != TSV
     with pytest.raises(error, match=message):
         revolut.extract(content, source_file="chf.tsv")
+
+
+def test_exchanging_back_into_francs_is_a_move_between_own_accounts() -> None:
+    content = TSV.replace("Exchanged to GBP\t-20", "Exchanged to CHF\t-20")
+    assert content != TSV
+    rows = revolut.extract(content, source_file="chf.tsv").transactions
+    assert (Kind.FX, "Giroconto") in {(t.kind, t.category) for t in rows}
+
+
+def test_savings_are_recognised_in_italian_too() -> None:
+    content = TSV.replace("To Flexible Cash Funds", "To EUR Fondi monetari flessibili")
+    assert content != TSV
+    rows = revolut.extract(content, source_file="chf.tsv").transactions
+    assert [t.kind for t in rows if "Fondi" in t.description] == [Kind.INTERNAL]

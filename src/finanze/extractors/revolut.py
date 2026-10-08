@@ -1,9 +1,11 @@
-"""Revolut account statement (TSV or CSV, one file per currency) -> normalized transactions.
+"""Revolut account statement (TSV or CSV) -> normalized transactions.
 
-Rows are in completion order and `Balance` is the running balance after each completed row, so
-the whole chain is checked here and its ends become the opening and closing balance. A row
-changes the balance by `Amount - Fee`. Pending and reverted rows never touched the balance.
-Savings are held under the same sheet account, so transfers to and from them are internal.
+An export holds one currency or, when every account is downloaded together, all of them: each
+currency is an account of its own. Rows of a currency are in completion order and `Balance` is
+its running balance after each completed row, so every chain is checked here and its ends
+become the opening and closing balance. A row changes the balance by `Amount - Fee`. Pending
+and reverted rows never touched the balance. Savings are held under the same sheet account, so
+transfers to and from them are internal.
 """
 
 from __future__ import annotations
@@ -31,8 +33,13 @@ _NO_CASH_STATES = {"PENDING", "REVERTED"}
 _CARD_TOPUP = re.compile(r"(Top-up|(Google|Apple) Pay deposit) by \*", re.IGNORECASE)
 _EXCHANGED_TO = re.compile(r"Exchanged? to ([A-Z]{3})")
 # "Savings Vault topup" is what the first deposit was called when the savings were opened
-_OWN_SAVINGS = re.compile(r"((To|From) ([A-Z]{3} )?Flexible Cash Funds|Savings Vault topup)\b")
+# The app's language decides the wording: "Fondi monetari flessibili" is the Italian one.
+_OWN_SAVINGS = re.compile(
+    r"((To|From) ([A-Z]{3} )?(Flexible Cash Funds|Fondi monetari flessibili)"
+    r"|Savings Vault topup)\b"
+)
 _FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
+_HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own accounts
 
 
 def extract(content: str, source_file: str) -> Extraction:
@@ -46,12 +53,6 @@ def extract(content: str, source_file: str) -> Extraction:
     if not rows:
         msg = "Revolut statement has no completed rows"
         raise ExtractionError(msg)
-    currencies = {row["Currency"] for _, row in rows}
-    if len(currencies) != 1:
-        msg = f"Revolut statement mixes currencies {sorted(currencies)}"
-        raise ExtractionError(msg)
-    currency = currencies.pop()
-    account = f"Revolut {currency}"
     started = [parse_iso_date(row["Started Date"], "Revolut Started Date") for _, row in rows]
     # The balance chain follows completion, and a payment can start before the statement does:
     # the period is the months in which rows were completed.
@@ -59,22 +60,20 @@ def extract(content: str, source_file: str) -> Extraction:
     first, last = whole_months(completed, "Revolut statement")
 
     transactions: list[Transaction] = []
-    # The statement has no opening balance: it is what the first row started from.
-    _, first_row = rows[0]
-    opening = (
-        parse_decimal(first_row["Balance"], "Revolut Balance")
-        - parse_decimal(first_row["Amount"], "Revolut Amount")
-        + parse_decimal(first_row["Fee"], "Revolut Fee")
-    )
-    balance = opening
+    opening: dict[str, Decimal] = {}
+    balance: dict[str, Decimal] = {}
     for (n, row), start, end in zip(rows, started, completed, strict=True):
+        currency = row["Currency"]
+        account = f"Revolut {currency}"
         amount = parse_decimal(row["Amount"], "Revolut Amount")
         fee = parse_decimal(row["Fee"], "Revolut Fee")
         after = parse_decimal(row["Balance"], "Revolut Balance")
-        if balance + amount - fee != after:
-            msg = f"Revolut row {n}: balance {after} does not follow {balance} {amount:+} -{fee}"
+        # The statement has no opening balance: it is what a currency's first row started from.
+        before = balance.get(currency, opening.setdefault(currency, after - amount + fee))
+        if before + amount - fee != after:
+            msg = f"Revolut row {n}: balance {after} does not follow {before} {amount:+} -{fee}"
             raise ExtractionError(msg)
-        balance = after
+        balance[currency] = after
         # D4: the transaction (start) date, unless the payment started before the statement:
         # it is part of this statement's balance, so it is booked on its completion date.
         day = start if first <= start <= last else end
@@ -101,7 +100,10 @@ def extract(content: str, source_file: str) -> Extraction:
     return Extraction(
         month=first,
         transactions=tuple(transactions),
-        balances=(CashBalance(account, currency, opening, balance),),
+        balances=tuple(
+            CashBalance(f"Revolut {currency}", currency, opened, balance[currency])
+            for currency, opened in opening.items()
+        ),
         end=last,
     )
 
@@ -133,7 +135,8 @@ def _classify(row: dict[str, str], amount: Decimal, n: int) -> tuple[Kind, str]:
     if kind == "EXCHANGE":
         match = _EXCHANGED_TO.search(description)
         bought = match[1] if match else ""
-        return Kind.FX, f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
+        named = f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
+        return Kind.FX, "Giroconto" if bought == _HOME_CURRENCY else named
     if kind == "ATM":
         return Kind.TRANSFER, "Prelievi"
     if kind in {"TRANSFER", "REV_PAYMENT"}:
