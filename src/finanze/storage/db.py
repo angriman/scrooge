@@ -34,6 +34,17 @@ def connect(path: Path | str) -> sqlite3.Connection:
 
 
 @contextmanager
+def reading(path: Path) -> Iterator[sqlite3.Connection]:
+    """A connection that cannot change the database, closed on the way out."""
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[None]:
     """Everything inside is saved together, or not at all if anything raises."""
     conn.execute("BEGIN IMMEDIATE")

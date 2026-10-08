@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block main %}
+<table>
+  <thead>
+    <tr><th>Person</th><th>Committed months</th><th class="number">Transactions</th><th class="number">Open months</th></tr>
+  </thead>
+  <tbody>
+    {%- for person in shown %}
+    <tr>
+      <td>{{ person.name }}</td>
+      <td>{% if person.committed %}{{ person.first.strftime("%Y-%m") }} to {{ person.last.strftime("%Y-%m") }} ({{ person.committed }}){% else %}none{% endif %}</td>
+      <td class="number">{{ person.transactions }}</td>
+      <td class="number">{{ person.open }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+<p>Only committed months are shown on these pages.</p>
+{% endblock %}

@@ -4,8 +4,11 @@ version = "0.1.0"
 description = "Parse monthly bank/brokerage statements into rows for the Finanze Google Sheet"
 requires-python = ">=3.11"
 dependencies = [
+    "jinja2>=3.1.6",
     "pdfplumber>=0.11",
     "pyyaml>=6.0",
+    "starlette>=1.7.0",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -21,6 +24,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "types-pyyaml>=6.0",
+    "httpx2>=2.13.1",
 ]
 
 [build-system]
@@ -31,7 +35,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-finanze = ["storage/migrations/*.sql"]
+finanze = ["storage/migrations/*.sql", "web/templates/*.html", "web/static/*"]
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]

@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import uvicorn
+from starlette.applications import Starlette
 
 from finanze import categories, cli, dbcli
 from finanze.storage import db
@@ -444,3 +446,22 @@ def test_query_dates_must_look_like_dates(
     with pytest.raises(SystemExit):
         closed("query", "--from", text)
     assert f"{text!r} is not a day, a month or a year" in capsys.readouterr().err
+
+
+def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
+    run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    served: list[tuple[object, dict[str, object]]] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **how: served.append((app, how)))
+    run.config.write_text(f"database: {run.database}\n", encoding="utf-8")  # no owner needed
+    assert run("serve", "--port", "9000") == dbcli.OK
+    assert run.output == f"{run.database} is at http://127.0.0.1:9000 (Ctrl-C to stop)\n"
+    ((app, how),) = served
+    assert (how["host"], how["port"]) == ("127.0.0.1", 9000)
+    assert isinstance(app, Starlette)
+    assert app.state.database == run.database
+    assert run.count("schema_version") == 1
+
+    with pytest.raises(SystemExit):
+        run("serve", "--host", "0.0.0.0")  # noqa: S104  # the address that must be refused
+    assert "unrecognized arguments: --host" in capsys.readouterr().err

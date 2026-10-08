@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · Finanze</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+</head>
+<body>
+  <header>
+    <nav aria-label="Pages">
+      <a href="{{ url_for('overview') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}">Overview</a>
+    </nav>
+    <nav aria-label="Whose">
+      <a href="{{ request.url.remove_query_params('owner') }}"{% if not owner %} aria-current="true"{% endif %}>Everyone</a>
+      {%- for person in people %}
+      <a href="{{ request.url.include_query_params(owner=person.name) }}"{% if owner == person.name %} aria-current="true"{% endif %}>{{ person.name }}</a>
+      {%- endfor %}
+    </nav>
+  </header>
+  <main>
+    <h1>{{ self.title() }}</h1>
+    {% block main %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -104,3 +104,17 @@ def test_backup_copies_the_database(conn: sqlite3.Connection, tmp_path: Path) ->
     copy = db.connect(target)
     assert copy.execute("SELECT name FROM owners").fetchone()[0] == "A"
     copy.close()
+
+
+def test_a_reading_connection_cannot_change_the_database(tmp_path: Path) -> None:
+    path = tmp_path / "with space" / "finanze.db"
+    path.parent.mkdir()
+    writer = db.connect(path)
+    db.migrate(writer, NOW)
+    writer.close()
+    with db.reading(path) as conn:
+        assert conn.execute("SELECT count(*) FROM owners").fetchone()[0] == 0
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            conn.execute("INSERT INTO owners (name) VALUES ('Lukas')")
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        conn.execute("SELECT 1")

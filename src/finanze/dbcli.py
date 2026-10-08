@@ -1,4 +1,4 @@
-"""`finanze import | commit | reopen | balance | query`: the database from the terminal.
+"""`finanze import | commit | reopen | balance | query | serve`: the database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
@@ -6,13 +6,14 @@
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
     finanze query [filters]   list the committed transactions that match, with their totals
+    finanze serve             show the database as web pages, on this machine only
 
 `commit` and `reopen` take a second month to cover every month from the first to it.
 
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
-`query` is the exception: it reads both people's transactions unless `--owner` names one.
+`query` and `serve` are the exceptions: they read both people's transactions.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TextIO
 
+import uvicorn
 import yaml
 
 from finanze import categories, classification, monthclose, pipeline, query, review
@@ -39,8 +41,10 @@ from finanze.storage import db, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
+from finanze.web import app as webapp
 
-COMMANDS = ("import", "commit", "reopen", "balance", "query")
+COMMANDS = ("import", "commit", "reopen", "balance", "query", "serve")
+_READ_BOTH = ("query", "serve")  # commands that are not about one person's month
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -126,6 +130,8 @@ def _parser() -> argparse.ArgumentParser:
     typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
     typed.add_argument("currency", help="CHF, EUR, ...")
     _query_parser(commands.add_parser("query", parents=[files], help="find transactions"))
+    serve = commands.add_parser("serve", parents=[files], help="browse the database")
+    serve.add_argument("--port", type=int, default=8765, help="default: 8765")
     return parser
 
 
@@ -248,7 +254,7 @@ class _Session:
 def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     out = console.out
     config = _config(args.config)
-    owner = "" if args.command == "query" else _setting(args, config, "owner", "owner")
+    owner = "" if args.command in _READ_BOTH else _setting(args, config, "owner", "owner")
     path = Path(_setting(args, config, "db", "database")).expanduser()
     people = _people(config, args.config)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +263,9 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         db.migrate(conn, now)
         if args.command == "query":
             return _query(conn, args, out)
+        if args.command == "serve":
+            conn.close()  # the pages open the database themselves, read-only
+            return _serve(path, args.port, out)
         labels = _labels(config, args.config)
         session = _Session(conn, path, owner, people, labels, console, now)
         if args.command == "import":
@@ -286,6 +295,13 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         return OK
     finally:
         conn.close()
+
+
+def _serve(database: Path, port: int, out: TextIO) -> int:
+    """Serve the pages until interrupted. There is no option to listen anywhere else (D18)."""
+    out.write(f"{database} is at http://{webapp.HOST}:{port} (Ctrl-C to stop)\n")
+    uvicorn.run(webapp.create_app(database), host=webapp.HOST, port=port, log_level="warning")
+    return OK
 
 
 def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> int:

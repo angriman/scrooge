@@ -81,6 +81,42 @@ class Result:
     by_month: tuple[Sum, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class Person:
+    """One person and how much of their history the pages can show."""
+
+    name: str
+    committed: int  # months
+    first: date | None  # the first and last committed month; None when there is none
+    last: date | None
+    open: int  # months staged and not yet committed
+    transactions: int  # in committed months
+
+
+def people(conn: sqlite3.Connection) -> tuple[Person, ...]:
+    """Everyone in the database, by name."""
+    found = conn.execute(
+        "SELECT o.name, "
+        "count(m.month) FILTER (WHERE m.status = 'committed') AS committed, "
+        "min(m.month) FILTER (WHERE m.status = 'committed') AS first, "
+        "max(m.month) FILTER (WHERE m.status = 'committed') AS last, "
+        "count(m.month) FILTER (WHERE m.status = 'open') AS open, "
+        "(SELECT count(*) FROM committed_transactions t WHERE t.owner = o.name) AS transactions "
+        "FROM owners o LEFT JOIN months m ON m.owner_id = o.id GROUP BY o.id ORDER BY o.name"
+    ).fetchall()
+    return tuple(
+        Person(
+            name=r["name"],
+            committed=r["committed"],
+            first=r["first"] and date.fromisoformat(r["first"]),
+            last=r["last"] and date.fromisoformat(r["last"]),
+            open=r["open"],
+            transactions=r["transactions"],
+        )
+        for r in found
+    )
+
+
 def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
     """The committed transactions that match `wanted`, with what they add up to."""
     check_names(conn, wanted)

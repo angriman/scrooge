@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 from finanze import query
 from finanze.models import Kind
 from finanze.query import Filter
-from finanze.storage import db
+from finanze.storage import db, store
 from tests.storage.helpers import OWNER, PARTNER, close, txn
 
 NOW = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
@@ -182,3 +182,20 @@ def test_subtotals_add_up_to_the_totals_and_to_the_rows(
     assert per_currency(result.totals) == from_rows
     assert per_currency(result.by_year) == from_rows
     assert per_currency(result.by_month) == from_rows
+
+
+def test_people_are_listed_with_what_is_committed_and_what_is_open(
+    conn: sqlite3.Connection,
+) -> None:
+    anna, lukas = query.people(conn)
+    july = date(2026, 7, 1)
+    assert anna == query.Person(PARTNER, 1, july, july, open=0, transactions=2)
+    assert lukas == query.Person(OWNER, 20, START, date(2026, 8, 1), open=1, transactions=8)
+
+
+def test_a_person_with_nothing_staged_is_listed_too() -> None:
+    empty = db.connect(":memory:")
+    db.migrate(empty, NOW)
+    store.ensure_owner(empty, "Zoe")
+    assert query.people(empty) == (query.Person("Zoe", 0, None, None, open=0, transactions=0),)
+    empty.close()
