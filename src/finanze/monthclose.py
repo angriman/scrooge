@@ -174,6 +174,28 @@ def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) 
         return True
 
 
+def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:
+    """Save a copy of the database in `backups/` next to it, under a name no copy has yet.
+
+    Two commits in one second get two files: dropping the copy of the one that changed
+    nothing never takes away the copy the other one kept.
+    """
+    folder = database.parent / "backups"
+    folder.mkdir(parents=True, exist_ok=True)
+    stem = f"{database.stem}-{now:%Y%m%dT%H%M%S}"
+    taken = 0
+    while True:
+        copy = folder / (f"{stem}-{taken + 1}.db" if taken else f"{stem}.db")
+        try:
+            copy.open("xb").close()  # claimed here: a commit in another thread takes the next
+        except FileExistsError:
+            taken += 1
+        else:
+            break
+    db.backup(conn, copy)
+    return copy
+
+
 def commit_with_copy(
     conn: sqlite3.Connection, database: Path, *, owner: str, month: date, now: datetime
 ) -> Path | None:
@@ -182,8 +204,7 @@ def commit_with_copy(
     Returns the copy, or None when the month was already committed. The copy is dropped
     when nothing changed, including when the commit is refused.
     """
-    copy = database.parent / "backups" / f"{database.stem}-{now:%Y%m%dT%H%M%S}.db"
-    db.backup(conn, copy)
+    copy = copy_before(conn, database, now)
     try:
         done = commit(conn, owner=owner, month=month, now=now)
     except BaseException:

@@ -981,6 +981,37 @@ def test_a_commit_with_a_copy_keeps_the_copy_only_when_something_changed(tmp_pat
     conn.close()
 
 
+def test_two_commits_in_one_second_do_not_share_a_copy(tmp_path: Path) -> None:
+    database = tmp_path / "finanze.db"
+    conn = db.connect(database)
+    db.migrate(conn, NOW)
+    monthclose.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
+    monthclose.stage(conn, batch(migros("0", "-5"), owner=PARTNER), NOW)
+    conn.execute(
+        "UPDATE transactions SET category_id = NULL, category_source = NULL "
+        "WHERE amount_nano = -5000000000"
+    )
+    kept = monthclose.commit_with_copy(conn, database, owner=OWNER, month=SEPTEMBER, now=LATER)
+    assert kept is not None
+    # The same second: once refused, once with nothing left to commit.
+    with pytest.raises(monthclose.UncategorizedRowsError):
+        monthclose.commit_with_copy(conn, database, owner=PARTNER, month=SEPTEMBER, now=LATER)
+    again = monthclose.commit_with_copy(conn, database, owner=OWNER, month=SEPTEMBER, now=LATER)
+    assert again is None
+    assert list((tmp_path / "backups").iterdir()) == [kept]
+    before = db.connect(kept)
+    assert rows(before, "SELECT DISTINCT status FROM months") == [("open",)]
+    before.close()
+
+    second = monthclose.copy_before(conn, database, LATER)
+    third = monthclose.copy_before(conn, database, LATER)
+    assert [second.name, third.name] == [
+        "finanze-20261007T093000-2.db",
+        "finanze-20261007T093000-3.db",
+    ]
+    conn.close()
+
+
 def waiting_month(conn: sqlite3.Connection) -> dict[str, str]:
     """September staged with rows that need a category; returns description -> id."""
     plain = {"category": "", "date": date(2026, 9, 10)}

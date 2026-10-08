@@ -437,8 +437,7 @@ def _span(first: date, last: date) -> str:
 def _commit(session: _Session, months: Sequence[date]) -> int:
     """Commit after saving a copy of the database; the copy is dropped if nothing changed."""
     path, owner, now, out = session.path, session.owner, session.now, session.console.out
-    copy = path.parent / "backups" / f"{path.stem}-{now:%Y%m%dT%H%M%S}.db"
-    db.backup(session.conn, copy)
+    copy = monthclose.copy_before(session.conn, path, now)
     done: list[date] = []
     try:
         for month in months:
