@@ -1,7 +1,8 @@
 """The web app: pages over the database, for this machine only (D18).
 
-Handlers stay thin: read the query string, call a service, render. Every request opens the
-database read-only. Nothing is loaded from another site, and a header tells the browser so.
+Handlers stay thin: read the query string or the form, call a service, render. Every page
+opens the database read-only; only the forms of a month's page (commit, reopen, category)
+open it to write. Nothing is loaded from another site, and a header tells the browser so.
 """
 
 from __future__ import annotations
@@ -196,12 +197,18 @@ def _month_page(
 
 async def _sent(request: Request) -> dict[str, list[str]]:
     """The fields of a form of these pages, each with all its values; anything else is refused."""
-    origin = request.headers.get("origin")
-    if origin is not None and urlsplit(origin).hostname not in _HOSTS:
+    # These pages ask for no referrer, so the browser says `Origin: null` for their own forms:
+    # that says nothing either way, and the token below is what decides.
+    origin = request.headers.get("origin", "null")
+    if origin != "null" and urlsplit(origin).hostname not in _HOSTS:
         raise HTTPException(403)
-    body = (await request.body()).decode()
+    try:
+        body = (await request.body()).decode()
+    except UnicodeDecodeError:
+        raise HTTPException(400) from None
     fields = parse_qs(body, keep_blank_values=True)
-    if not secrets.compare_digest(fields.get("token", [""])[-1], request.app.state.token):
+    token = fields.get("token", [""])[-1].encode()  # bytes: any text can be compared
+    if not secrets.compare_digest(token, request.app.state.token.encode()):
         raise HTTPException(403)
     return fields
 

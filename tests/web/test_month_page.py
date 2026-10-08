@@ -187,6 +187,25 @@ def test_a_form_without_the_token_of_these_pages_changes_nothing(
     assert here.status_code == 303
 
 
+def test_a_browser_that_withholds_the_origin_can_still_send_the_forms(client: TestClient) -> None:
+    # `referrer-policy: no-referrer` makes a browser send `Origin: null` with these forms.
+    page = client.get("/months/Lukas/2026-08")
+    assert page.headers["referrer-policy"] == "no-referrer"
+    url = "/months/Lukas/2026-08/reopen"
+    sent = client.post(url, data={"token": token(page.text)}, headers={"origin": "null"})
+    assert sent.status_code == 303
+    assert client.post(url, data={"token": "x"}, headers={"origin": "null"}).status_code == 403
+
+
+def test_a_form_that_is_not_text_is_refused(client: TestClient, database: Path) -> None:
+    before = status(database)
+    url = "/months/Lukas/2026-08/reopen"
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    assert client.post(url, content=b"token=%C3%A9", headers=form).status_code == 403
+    assert client.post(url, content=b"token=\xff", headers=form).status_code == 400
+    assert status(database) == before
+
+
 def test_a_month_cannot_be_changed_by_following_a_link(client: TestClient) -> None:
     assert client.get("/months/Lukas/2026-08/reopen").status_code == 405
 
