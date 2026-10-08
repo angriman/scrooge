@@ -66,21 +66,33 @@ def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
         "SELECT id FROM categories WHERE side = 'entrate' AND name = ?", (_INTEREST,)
     ).fetchone()[0]
     missing: list[MissingLotsError] = []
+    for row, cost in _disposals(conn, owner):
+        if cost is None:
+            missing.append(_missing(row))
+        elif cost != row["amount_nano"]:
+            _split_off(conn, row["id"], cost, row["amount_nano"] - cost, interest)
+    return missing
+
+
+def missing(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
+    """The bill disposals of `owner` that `split` cannot do. Changes nothing."""
+    return [_missing(row) for row, cost in _disposals(conn, owner) if cost is None]
+
+
+def _missing(row: sqlite3.Row) -> MissingLotsError:
+    return MissingLotsError(row["account"], row["symbol"], date.fromisoformat(row["date"]))
+
+
+def _disposals(conn: sqlite3.Connection, owner: int) -> list[tuple[sqlite3.Row, int | None]]:
+    """Every bill disposal of the owner with what its lots cost; None where lots are missing."""
+    found: list[tuple[sqlite3.Row, int | None]] = []
     for _, rows in groupby(_bill_trades(conn, owner), key=lambda r: (r["account"], r["symbol"])):
         history = list(rows)
         costs = fifo_costs(
             Event(r["id"], Decimal(r["quantity"]), int(r["cost_nano"])) for r in history
         )
-        for row in history:
-            if row["id"] not in costs:
-                continue
-            cost = costs[row["id"]]
-            if cost is None:
-                day = date.fromisoformat(row["date"])
-                missing.append(MissingLotsError(row["account"], row["symbol"], day))
-            elif cost != row["amount_nano"]:
-                _split_off(conn, row["id"], cost, row["amount_nano"] - cost, interest)
-    return missing
+        found += [(row, costs[row["id"]]) for row in history if row["id"] in costs]
+    return found
 
 
 def _undo(conn: sqlite3.Connection, owner: int) -> None:

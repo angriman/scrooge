@@ -16,9 +16,11 @@ from tests.storage.helpers import (
     PARTNER,
     SEPTEMBER,
     batch,
+    bill,
     close,
     migros,
     statement,
+    tastytrade,
     txn,
 )
 
@@ -162,3 +164,12 @@ def test_waiting_rows_are_grouped_by_counterparty_and_direction(conn: sqlite3.Co
         ("Kiosk", False, ["-7", "-9"]),
         ("KONSUM", True, ["3"]),
     ]
+
+
+def test_a_bill_without_its_purchase_blocks_and_is_said(conn: sqlite3.Connection) -> None:
+    sold = bill("10000", "-10000", date(2026, 9, 16), kind=Kind.INCOME)
+    monthclose.stage(conn, tastytrade(sold), CLOSED_AT)
+    september = months.checklist(conn, OWNER, SEPTEMBER)
+    (reason,) = [gap for gap in september.gaps if "912797YY2" in gap]
+    assert reason.startswith("Tastytrade: 912797YY2 matured or was sold on 2026-09-16")
+    assert reason in september.blocked_by

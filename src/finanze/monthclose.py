@@ -279,6 +279,11 @@ def reopen(conn: sqlite3.Connection, *, owner: str, month: date) -> None:
         store.set_month(conn, owner_id, month, "open", None)
 
 
+def would_refuse(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:
+    """What a commit of the owner's months would refuse, without changing anything."""
+    return [*check_chain(conn, owner_id), *bills.missing(conn, owner_id)]
+
+
 def _unsettled(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:
     """Bring the derived rows up to date; returns what only an earlier statement can settle."""
     return [*check_chain(conn, owner_id), *bills.split(conn, owner_id)]

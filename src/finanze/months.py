@@ -196,9 +196,9 @@ def _day(text: str) -> date:
 
 
 def _gaps(conn: sqlite3.Connection, owner_id: int) -> tuple[str, ...]:
-    """What the chain of balances is missing, as sentences. Nothing is settled or hidden here:
-    the commit runs the same check and refuses."""
+    """What the chain of balances and the bills are missing, as sentences. Nothing is settled or
+    hidden here: the commit runs the same checks and refuses."""
     try:
-        return tuple(str(gap) for gap in monthclose.check_chain(conn, owner_id))
+        return tuple(str(gap) for gap in monthclose.would_refuse(conn, owner_id))
     except ReconciliationError as exc:  # two statements disagree: shown, and the commit raises it
         return (str(exc),)
