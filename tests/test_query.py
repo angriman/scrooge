@@ -199,3 +199,23 @@ def test_a_person_with_nothing_staged_is_listed_too() -> None:
     store.ensure_owner(empty, "Zoe")
     assert query.people(empty) == (query.Person("Zoe", 0, None, None, open=0, transactions=0),)
     empty.close()
+
+
+def test_the_choices_are_the_accounts_in_view_and_the_whole_taxonomy(
+    conn: sqlite3.Connection,
+) -> None:
+    assert query.choices(conn).accounts == ("Migros", "Revolut EUR")
+    assert query.choices(conn, PARTNER).accounts == ("Migros",)
+    groups = dict(query.choices(conn).categories)
+    assert groups["Casa"] == ("Casa", "Affitto", "Utenze", "Arredamento e casa")
+    assert groups["Regali"] == ("Regali", "Donazioni")  # the leaf named like its parent: once
+    assert groups["Entrate"][0] == "Stipendio"
+    assert "Giroconto" in groups["Transfer"]
+    assert next(iter(groups)) == "Casa"
+    assert [*groups][-2:] == ["Entrate", "Transfer"]
+
+
+@pytest.mark.parametrize("text", ["May", "20266", "2026-13", "2026-02-30", ""])
+def test_a_span_must_be_a_day_a_month_or_a_year(text: str) -> None:
+    with pytest.raises(ValueError, match=r"month|isoformat|invalid literal|day is out"):
+        query.span(text)

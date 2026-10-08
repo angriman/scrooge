@@ -1,3 +1,5 @@
+import csv
+import io
 import re
 from datetime import date
 from pathlib import Path
@@ -15,7 +17,18 @@ LUKAS = [
     txn("-45.20", date=date(2026, 7, 3), source_ref="1"),
     txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Stipendio"),
     txn("-12", date=date(2026, 9, 10), source_ref="3"),
+    # Bought on the last day of July, booked in August, at a shop with a name to escape.
+    txn(
+        "-80",
+        date=date(2026, 7, 31),
+        booking_date=date(2026, 8, 2),
+        source_ref="4",
+        category="Ristoranti",
+        counterparty="<b>Bäckerei</b>",
+        description="CARD 1234",
+    ),
 ]
+BAKERY = "&lt;b&gt;Bäckerei&lt;/b&gt; CARD 1234"  # as the page must write it
 ANNA = [txn("-60", date=date(2026, 7, 12), source_ref="1")]
 
 
@@ -38,13 +51,18 @@ def client(database: Path) -> TestClient:
 
 
 def rows(html: str) -> list[list[str]]:
-    """The cells of every table row in the page's body."""
-    body = html.partition("<tbody>")[2]
+    """The cells of every row of the page's last table, without their tags."""
+    body = html.rpartition("<tbody>")[2]
     found = []
     for row in re.findall(r"<tr>(.*?)</tr>", body, re.DOTALL):
         cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
-        found.append([re.sub(r"\s+", " ", cell).strip() for cell in cells])
+        found.append([text(cell) for cell in cells])
     return found
+
+
+def text(html: str) -> str:
+    """What a reader sees: no tags, single spaces."""
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
 def test_the_overview_says_what_each_person_has_committed(client: TestClient) -> None:
@@ -52,7 +70,7 @@ def test_the_overview_says_what_each_person_has_committed(client: TestClient) ->
     assert response.status_code == 200
     assert rows(response.text) == [
         ["Anna", "2026-07 to 2026-07 (1)", "1", "0"],
-        ["Lukas", "2026-07 to 2026-08 (2)", "2", "1"],
+        ["Lukas", "2026-07 to 2026-08 (2)", "3", "1"],
     ]
     assert '<a href="http://127.0.0.1:8765/" aria-current="true">Everyone</a>' in response.text
 
@@ -63,7 +81,8 @@ def test_the_view_can_be_one_person(client: TestClient) -> None:
     page = response.text.replace("http://127.0.0.1:8765", "")
     assert '<a href="/?owner=Anna" aria-current="true">Anna</a>' in page
     assert '<a href="/">Everyone</a>' in page
-    assert '<a href="/?owner=Anna">Overview</a>' in page
+    assert '<a href="/?owner=Anna" aria-current="page">Overview</a>' in page
+    assert '<a href="/transactions?owner=Anna">Transactions</a>' in page
 
 
 def test_a_person_the_database_does_not_have_is_not_found(client: TestClient) -> None:
@@ -100,3 +119,108 @@ def test_no_page_or_asset_names_another_site() -> None:
     assert files
     for file in files:
         assert not re.search(r"https?:|//\w", file.read_text(encoding="utf-8")), file.name
+
+
+def test_transactions_are_listed_newest_first_with_their_totals(client: TestClient) -> None:
+    response = client.get("/transactions")
+    assert response.status_code == 200
+    assert rows(response.text) == [
+        ["2026-08-25", "Lukas", "Migros", "Stipendio income", "KONSUM", "6,000.00 CHF"],
+        [
+            "2026-07-31 booked 2026-08-02",
+            "Lukas",
+            "Migros",
+            "Ristoranti expense",
+            BAKERY,
+            "-80.00 CHF",
+        ],
+        ["2026-07-12", "Anna", "Migros", "Spesa expense", "KONSUM", "-60.00 CHF"],
+        ["2026-07-03", "Lukas", "Migros", "Spesa expense", "KONSUM", "-45.20 CHF"],
+    ]
+    assert "4 transactions · 5,814.80 CHF · CSV" in text(response.text)
+    assert "By month 2026-07 -185.20 CHF 3 2026-08 6,000.00 CHF 1" in text(response.text)
+    assert "By year" not in response.text
+    assert '<a href="http://127.0.0.1:8765/transactions" aria-current="page">' in response.text
+
+
+def test_the_filter_narrows_the_list_and_stays_in_the_form(client: TestClient) -> None:
+    asked = {"category": "Ristoranti e bar", "from": "2026-08", "booking": "1", "owner": "Lukas"}
+    response = client.get("/transactions", params=asked)
+    assert rows(response.text) == [
+        ["2026-08-02 real 2026-07-31", "Migros", "Ristoranti expense", BAKERY, "-80.00 CHF"]
+    ]
+    assert "1 transaction · -80.00 CHF" in text(response.text)
+    assert "By month" not in response.text
+    assert "<option selected>Ristoranti e bar</option>" in response.text
+    assert 'name="from" value="2026-08"' in response.text
+    assert 'name="booking" value="1" checked' in response.text
+    assert '<input type="hidden" name="owner" value="Lukas">' in response.text
+
+    by_kind = client.get("/transactions", params={"kind": "income", "min": "5000", "text": "kon"})
+    assert [row[-1] for row in rows(by_kind.text)] == ["6,000.00 CHF"]
+    assert '<option value="income" selected>income</option>' in by_kind.text
+
+
+def test_a_field_that_cannot_be_read_is_said_and_the_rest_still_applies(
+    client: TestClient,
+) -> None:
+    response = client.get("/transactions", params={"from": "May", "owner": "Anna"})
+    assert response.status_code == 200
+    assert "&#39;May&#39; is not a day, a month or a year" in response.text
+    assert len(rows(response.text)) == 1
+
+
+def test_an_account_the_person_does_not_have_gives_an_empty_list(client: TestClient) -> None:
+    response = client.get("/transactions", params={"owner": "Anna", "account": "Tastytrade"})
+    assert response.status_code == 200
+    assert "No account named &#39;Tastytrade&#39; of Anna." in response.text
+    assert "0 transactions" in text(response.text)
+    assert "CSV" not in response.text
+    assert client.get("/transactions", params={"owner": "Zoe"}).status_code == 404
+
+
+def test_a_long_list_comes_in_pages(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(webapp, "_PAGE", 3)
+    first = client.get("/transactions", params={"owner": "Lukas"})
+    assert len(rows(first.text)) == 3
+    assert "Page 1 of 1" not in first.text
+    everyone = client.get("/transactions")
+    assert len(rows(everyone.text)) == 3
+    assert "Page 1 of 2" in everyone.text
+    assert 'href="http://127.0.0.1:8765/transactions?page=2" rel="next">Older</a>' in everyone.text
+    assert "Newer" not in everyone.text
+    for page in ("2", "99"):
+        last = client.get("/transactions", params={"page": page})
+        assert [row[0] for row in rows(last.text)] == ["2026-07-03"]
+        assert "Page 2 of 2" in last.text
+        assert "Older" not in last.text
+        assert "Newer" in last.text
+    for page in ("0", "-1", "two"):
+        assert "Page 1 of 2" in client.get("/transactions", params={"page": page}).text
+
+
+def test_the_result_can_be_saved_as_csv_with_exact_amounts(client: TestClient) -> None:
+    response = client.get("/transactions.csv", params={"owner": "Lukas", "to": "2026-07"})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert response.headers["content-disposition"] == 'attachment; filename="transactions.csv"'
+    header, *lines = csv.reader(io.StringIO(response.text))
+    assert header[:6] == ["date", "booking_date", "owner", "account", "amount", "currency"]
+    assert [line[:6] for line in lines] == [
+        ["2026-07-03", "2026-07-03", "Lukas", "Migros", "-45.2", "CHF"],
+        ["2026-07-31", "2026-08-02", "Lukas", "Migros", "-80", "CHF"],
+    ]
+    named = dict(zip(header, lines[1], strict=True))
+    assert named["counterparty"] == "<b>Bäckerei</b>"
+    assert (named["kind"], named["category"], named["category_parent"]) == (
+        "expense",
+        "Ristoranti",
+        "Ristoranti e bar",
+    )
+
+
+def test_the_csv_refuses_a_filter_it_cannot_read(client: TestClient) -> None:
+    response = client.get("/transactions.csv", params={"from": "May"})
+    assert response.status_code == 400
+    assert response.text.startswith("'May' is not a day")
+    assert client.get("/transactions.csv", params={"category": "Nope"}).status_code == 404

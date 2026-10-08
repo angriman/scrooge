@@ -9,12 +9,14 @@
 <body>
   <header>
     <nav aria-label="Pages">
-      <a href="{{ url_for('overview') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}">Overview</a>
+      {%- for name, label in [("overview", "Overview"), ("transactions", "Transactions")] %}
+      <a href="{{ url_for(name) }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}"{% if request.url.path == url_for(name).path %} aria-current="page"{% endif %}>{{ label }}</a>
+      {%- endfor %}
     </nav>
     <nav aria-label="Whose">
-      <a href="{{ request.url.remove_query_params('owner') }}"{% if not owner %} aria-current="true"{% endif %}>Everyone</a>
+      <a href="{{ request.url.remove_query_params(['owner', 'page']) }}"{% if not owner %} aria-current="true"{% endif %}>Everyone</a>
       {%- for person in people %}
-      <a href="{{ request.url.include_query_params(owner=person.name) }}"{% if owner == person.name %} aria-current="true"{% endif %}>{{ person.name }}</a>
+      <a href="{{ request.url.remove_query_params('page').include_query_params(owner=person.name) }}"{% if owner == person.name %} aria-current="true"{% endif %}>{{ person.name }}</a>
       {%- endfor %}
     </nav>
   </header>

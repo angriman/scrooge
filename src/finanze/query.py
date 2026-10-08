@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from finanze.extractors.common import month_end
 from finanze.models import Kind
 from finanze.storage.money import from_nano, to_nano
 
@@ -115,6 +116,53 @@ def people(conn: sqlite3.Connection) -> tuple[Person, ...]:
         )
         for r in found
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Choices:
+    """What the account and category filters can be set to."""
+
+    accounts: tuple[str, ...]
+    # A heading and the names under it: each top-level expense category followed by its
+    # leaves, then income, then transfers.
+    categories: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
+    """The accounts of `owner` (of everyone without one) and the whole taxonomy."""
+    accounts = conn.execute(
+        "SELECT DISTINCT a.name FROM accounts a JOIN owners o ON o.id = a.owner_id "
+        "WHERE o.name = coalesce(?, o.name) ORDER BY a.name",
+        (owner,),
+    ).fetchall()
+    found = conn.execute(
+        "SELECT c.name, c.side, p.name AS parent FROM categories c "
+        "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.sort_order, c.id"
+    ).fetchall()
+    groups: dict[str, list[str]] = {}
+    for r in found:
+        heading = r["parent"] or (r["name"] if r["side"] == "uscite" else r["side"].capitalize())
+        names = groups.setdefault(heading, [])
+        if r["name"] not in names:  # a leaf named like its parent is one choice
+            names.append(r["name"])
+    return Choices(
+        tuple(r["name"] for r in accounts),
+        tuple((heading, tuple(names)) for heading, names in groups.items()),
+    )
+
+
+def span(text: str) -> tuple[date, date]:
+    """The first and last day of `2025`, of `2025-05`, or `2025-05-17` twice.
+
+    Raises ValueError for anything else.
+    """
+    if len(text) == 4:
+        return date(int(text), 1, 1), date(int(text), 12, 31)
+    if len(text) == 7:
+        first = date.fromisoformat(f"{text}-01")
+        return first, month_end(first)
+    day = date.fromisoformat(text)
+    return day, day
 
 
 def run(conn: sqlite3.Connection, wanted: Filter) -> Result:

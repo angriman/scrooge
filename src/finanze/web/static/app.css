@@ -64,3 +64,73 @@ td {
   text-align: right;
   white-space: nowrap;
 }
+
+.narrow {
+  width: auto;
+}
+
+small {
+  display: block;
+  opacity: 0.65;
+}
+
+.date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.filter {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.filter label {
+  display: grid;
+  font-size: 0.85rem;
+  gap: 0.15rem;
+}
+
+.filter .check {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  padding-bottom: 0.3rem;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+}
+
+select {
+  max-width: 14rem;
+}
+
+.error {
+  border-left: 3px solid #c0392b;
+  padding-left: 0.6rem;
+}
+
+.summary {
+  margin: 1rem 0;
+}
+
+details {
+  margin: 0.4rem 0;
+}
+
+summary {
+  cursor: pointer;
+}
+
+.pager {
+  align-items: center;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.2rem;
+}

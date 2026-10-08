@@ -155,18 +155,11 @@ def _query_parser(find: argparse.ArgumentParser) -> None:
 
 
 def _span_of(text: str) -> tuple[date, date]:
-    """The first and last day of `2025`, of `2025-05`, or `2025-05-17` twice."""
     try:
-        if len(text) == 4:
-            return date(int(text), 1, 1), date(int(text), 12, 31)
-        if len(text) == 7:
-            first = date.fromisoformat(f"{text}-01")
-            return first, month_end(first)
-        day = date.fromisoformat(text)
+        return query.span(text)
     except ValueError:
         msg = f"{text!r} is not a day, a month or a year like 2025-05-17, 2025-05 or 2025"
         raise argparse.ArgumentTypeError(msg) from None
-    return day, day
 
 
 def _first_day(text: str) -> date:
