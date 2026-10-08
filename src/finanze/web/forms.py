@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from finanze import query
+from finanze.cashflow import Grouping
 from finanze.models import Kind
 
 
@@ -15,6 +16,45 @@ from finanze.models import Kind
 class Parsed:
     wanted: query.Filter
     errors: tuple[str, ...]  # one sentence per field that could not be read; it is then unset
+
+
+@dataclass(frozen=True, slots=True)
+class CashFlowRange:
+    first: date | None
+    last: date | None
+    owner: str | None
+    grouping: Grouping
+    errors: tuple[str, ...]
+
+
+def _text(params: Mapping[str, str], name: str) -> str | None:
+    return params.get(name, "").strip() or None
+
+
+def _day(params: Mapping[str, str], name: str, end: int, errors: list[str]) -> date | None:
+    """The first (`end` 0) or last (`end` 1) day of what the field names."""
+    value = _text(params, name)
+    try:
+        return None if value is None else query.span(value)[end]
+    except ValueError:
+        errors.append(f"'{value}' is not a day, a month or a year like 2025-05-17 or 2025-05.")
+        return None
+
+
+def cashflow_range(params: Mapping[str, str]) -> CashFlowRange:
+    """`from`, `to`, `owner` and `by` (week, month, quarter or year; month when left out)."""
+    errors: list[str] = []
+    by = _text(params, "by")
+    if by is not None and by not in set(Grouping):
+        errors.append(f"'{by}' is not week, month, quarter or year.")
+        by = None
+    return CashFlowRange(
+        first=_day(params, "from", 0, errors),
+        last=_day(params, "to", 1, errors),
+        owner=_text(params, "owner"),
+        grouping=Grouping.MONTH if by is None else Grouping(by),
+        errors=tuple(errors),
+    )
 
 
 def transactions_filter(params: Mapping[str, str]) -> Parsed:
@@ -26,15 +66,7 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
     errors: list[str] = []
 
     def text(name: str) -> str | None:
-        return params.get(name, "").strip() or None
-
-    def day(name: str, end: int) -> date | None:
-        value = text(name)
-        try:
-            return None if value is None else query.span(value)[end]
-        except ValueError:
-            errors.append(f"'{value}' is not a day, a month or a year like 2025-05-17 or 2025-05.")
-            return None
+        return _text(params, name)
 
     def amount(name: str) -> Decimal | None:
         value = text(name)
@@ -52,8 +84,8 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
         errors.append(f"'{kind}' is not a kind of transaction.")
         kind = None
     wanted = query.Filter(
-        first=day("from", 0),
-        last=day("to", 1),
+        first=_day(params, "from", 0, errors),
+        last=_day(params, "to", 1, errors),
         booking=text("booking") is not None,
         owner=text("owner"),
         account=text("account"),

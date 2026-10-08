@@ -21,7 +21,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from finanze import query
+from finanze import cashflow, query
 from finanze.models import Kind
 from finanze.storage import db
 from finanze.web import forms
@@ -59,6 +59,7 @@ def _money(amount: Decimal) -> str:
 
 
 _templates.env.filters["money"] = _money
+_templates.env.globals["days"] = cashflow.days
 
 
 class _OwnAssetsOnly:
@@ -81,6 +82,7 @@ def create_app(database: Path) -> Starlette:
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
+            Route("/cashflow", _cashflow, name="cashflow"),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
@@ -104,6 +106,29 @@ def _overview(request: Request) -> Response:
     shown = [person for person in people if owner in (None, person.name)]
     context = {"people": people, "shown": shown, "owner": owner}
     return _templates.TemplateResponse(request, "overview.html", context)
+
+
+def _cashflow(request: Request) -> Response:
+    asked = forms.cashflow_range(request.query_params)
+    with db.reading(request.app.state.database) as conn:
+        result = cashflow.run(
+            conn, first=asked.first, last=asked.last, owner=asked.owner, grouping=asked.grouping
+        )
+        people = query.people(conn)
+    context = {
+        "people": people,
+        "owner": asked.owner,
+        "asked": asked,
+        "given": request.query_params,
+        "groupings": list(cashflow.Grouping),
+        "result": result,
+        "sides": (
+            (cashflow.INCOME, "Income"),
+            (cashflow.EXPENSES, "Expenses"),
+            (cashflow.INVESTING, "Investing"),
+        ),
+    }
+    return _templates.TemplateResponse(request, "cashflow.html", context)
 
 
 def _transactions(request: Request) -> Response:

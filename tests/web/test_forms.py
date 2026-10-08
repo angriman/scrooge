@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from finanze.cashflow import Grouping
 from finanze.models import Kind
 from finanze.query import Filter
 from finanze.web import forms
@@ -66,3 +67,24 @@ def test_a_field_that_cannot_be_read_is_reported_and_left_unset(
     params: dict[str, str], error: str
 ) -> None:
     assert forms.transactions_filter(params) == forms.Parsed(Filter(), (error,))
+
+
+def test_a_cash_flow_range_is_by_month_unless_asked() -> None:
+    everything = forms.CashFlowRange(None, None, None, Grouping.MONTH, ())
+    assert forms.cashflow_range({}) == everything
+    assert forms.cashflow_range({"by": " ", "from": ""}) == everything
+    asked = {"from": "2025", "to": "2026-03", "owner": "Lukas", "by": "quarter"}
+    assert forms.cashflow_range(asked) == forms.CashFlowRange(
+        date(2025, 1, 1), date(2026, 3, 31), "Lukas", Grouping.QUARTER, ()
+    )
+
+
+def test_a_cash_flow_range_that_cannot_be_read_is_reported() -> None:
+    parsed = forms.cashflow_range({"from": "May", "by": "decade"})
+    assert parsed == forms.CashFlowRange(
+        None,
+        None,
+        None,
+        Grouping.MONTH,
+        ("'decade' is not week, month, quarter or year.", f"'May' {NOT_A_DAY}"),
+    )
