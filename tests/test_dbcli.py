@@ -1,14 +1,15 @@
 import io
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 import uvicorn
 from starlette.applications import Starlette
 
-from finanze import categories, cli, dbcli
+from finanze import categories, cli, dbcli, prices
 from finanze.storage import db
 from tests.conftest import INSTRUMENTS_YAML, write_rules
+from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 CONFIG = """database: {database}
@@ -42,13 +43,14 @@ class Run:
         self.instruments = folder / "instruments.yaml"
         self.instruments.write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
         self.output = ""
+        self.source: FakeSource | None = None  # what `prices` fetches from
         self.answers: list[str] = []
         self.questions: list[str] = []
 
     def __call__(self, command: str, *args: str) -> int:
         argv = [command, *args, "--config", str(self.config)]
         out = io.StringIO()
-        code = dbcli.main(argv, out, ask=self._ask, now=lambda: NOW)
+        code = dbcli.main(argv, out, ask=self._ask, now=lambda: NOW, source=self.source)
         self.output = out.getvalue()
         return code
 
@@ -467,3 +469,51 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     with pytest.raises(SystemExit):
         run("serve", "--host", "0.0.0.0")  # noqa: S104  # the address that must be refused
     assert "unrecognized arguments: --host" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------------- prices
+
+
+def test_prices_fetches_what_is_held_and_says_what_it_stored(closed: Run) -> None:
+    closes = [(date(2026, 9, 15), "112.5"), (date(2026, 9, 30), "113.1")]
+    rates = [(date(2026, 9, 30), "0.8")]
+    closed.source = FakeSource(
+        {"ACME": closes, "GOOG": closes, "WIDG.SW": closes[:1]}
+        | {f"{currency}CHF=X": rates for currency in ("EUR", "USD", "GBP", "JPY")},
+    )
+    closed.instruments.write_text(
+        INSTRUMENTS_YAML + MATURED + "  WIDG: {price_symbol: WIDG.SW}\n", encoding="utf-8"
+    )
+    paths = ["--instruments", str(closed.instruments)]
+    assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
+    assert closed.output == "4 closes, 4 exchange rates and 0 splits stored.\n"
+    # Nothing is fetched twice, and no owner is needed: prices are everyone's.
+    closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
+    assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
+    assert closed.output == "0 closes, 0 exchange rates and 0 splits stored.\n"
+
+
+def test_prices_lists_what_it_could_not_fetch_and_fetches_up_to_today(closed: Run) -> None:
+    closed.source = FakeSource({"USDCHF=X": [(date(2026, 10, 5), "0.8")]})
+    assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.NEEDS_REVIEW
+    lines = closed.output.splitlines()
+    assert lines[0] == "0 closes, 1 exchange rates and 0 splits stored."
+    assert "  missing: ACME: no prices (ACME: No data found)" in lines
+    assert "  missing: EUR: no rates (EURCHF=X: No data found)" in lines
+    assert all(asked[2] <= NOW.date() for asked in closed.source.asked)
+    assert ("USDCHF=X", NOW.date()) in {(asked[0], asked[2]) for asked in closed.source.asked}
+
+
+def test_prices_uses_the_real_source_unless_given_another(
+    closed: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made: list[FakeSource] = []
+
+    def yahoo() -> FakeSource:
+        made.append(FakeSource())
+        return made[-1]
+
+    monkeypatch.setattr(prices, "Yahoo", yahoo)
+    assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.NEEDS_REVIEW
+    assert len(made) == 1
+    assert made[0].asked

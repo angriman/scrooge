@@ -1,10 +1,12 @@
-"""`finanze import | commit | reopen | balance | query | serve`: the database from the terminal.
+"""`finanze import | commit | reopen | balance | prices | query | serve`: the database from the
+terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
+    finanze prices            fetch the closes, splits and exchange rates not stored yet
     finanze query [filters]   list the committed transactions that match, with their totals
     finanze serve             show the database as web pages, on this machine only
 
@@ -13,7 +15,8 @@
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
-`query` and `serve` are the exceptions: they read both people's transactions.
+`prices`, `query` and `serve` are the exceptions: they are about both people. `prices` is the
+only command that uses the network (D9).
 """
 
 from __future__ import annotations
@@ -31,7 +34,17 @@ from typing import TextIO
 import uvicorn
 import yaml
 
-from finanze import categories, classification, monthclose, pipeline, query, review
+from finanze import (
+    categories,
+    classification,
+    marketdata,
+    monthclose,
+    networth,
+    pipeline,
+    prices,
+    query,
+    review,
+)
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
 from finanze.extractors.common import month_end, months_between
@@ -43,8 +56,8 @@ from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
 from finanze.web import app as webapp
 
-COMMANDS = ("import", "commit", "reopen", "balance", "query", "serve")
-_READ_BOTH = ("query", "serve")  # commands that are not about one person's month
+COMMANDS = ("import", "commit", "reopen", "balance", "prices", "query", "serve")
+_READ_BOTH = ("prices", "query", "serve")  # commands that are not about one person's month
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -70,10 +83,12 @@ def main(
     out: TextIO,
     ask: Callable[[str], str] = input,
     now: Callable[[], datetime] = _utc_now,
+    source: prices.PriceSource | None = None,
 ) -> int:
+    """Run one command. `source` stands in for the network in tests."""
     args = _parser().parse_args(argv)
     try:
-        return _run(args, _Console(out, ask), now())
+        return _run(args, _Console(out, ask, source), now())
     except _ERRORS as exc:
         out.write(f"error: {exc}\n")
         return FAILED
@@ -129,6 +144,18 @@ def _parser() -> argparse.ArgumentParser:
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
     typed.add_argument("currency", help="CHF, EUR, ...")
+    fetch = commands.add_parser("prices", parents=[files], help="fetch closes and rates")
+    fetch.add_argument(
+        "--through",
+        type=date.fromisoformat,
+        help="the last day to fetch, as YYYY-MM-DD (default: today)",
+    )
+    fetch.add_argument(
+        "--instruments",
+        type=Path,
+        default=Path("instruments.yaml"),
+        help="where 'price_symbol' names the symbol an instrument's prices are found under",
+    )
     _query_parser(commands.add_parser("query", parents=[files], help="find transactions"))
     serve = commands.add_parser("serve", parents=[files], help="browse the database")
     serve.add_argument("--port", type=int, default=8765, help="default: 8765")
@@ -236,6 +263,7 @@ def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key
 class _Console:
     out: TextIO
     ask: Callable[[str], str]
+    source: prices.PriceSource | None = None  # None: the real one
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,38 +291,45 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         db.migrate(conn, now)
         if args.command == "query":
             return _query(conn, args, out)
+        if args.command == "prices":
+            return _prices(conn, args, console, now)
         if args.command == "serve":
             conn.close()  # the pages open the database themselves, read-only
             return _serve(path, args.port, webapp.Rules(args.rules, people), out)
         labels = _labels(config, args.config)
-        session = _Session(conn, path, owner, people, labels, console, now)
-        if args.command == "import":
-            return _import(session, args)
-        if args.command == "balance":
-            currency = args.currency.upper()
-            monthclose.type_balance(
-                conn,
-                owner=owner,
-                account=args.account,
-                day=args.day,
-                amount=args.amount,
-                currency=currency,
-            )
-            out.write(f"{args.account} of {owner}: {args.amount} {currency} on {args.day}.\n")
-            return OK
-        last = args.through or args.month
-        if last < args.month:
-            msg = f"{last:%Y-%m} is before {args.month:%Y-%m}"
-            raise ConfigError(msg)
-        months = months_between(args.month, last)
-        if args.command == "commit":
-            return _commit(session, months)
-        for month in months:
-            monthclose.reopen(conn, owner=owner, month=month)
-        out.write(f"{_span(months[0], months[-1])} is open again for {owner}.\n")
-        return OK
+        return _for_owner(_Session(conn, path, owner, people, labels, console, now), args)
     finally:
         conn.close()
+
+
+def _for_owner(session: _Session, args: argparse.Namespace) -> int:
+    """The commands about one person's months."""
+    conn, owner, out = session.conn, session.owner, session.console.out
+    if args.command == "import":
+        return _import(session, args)
+    if args.command == "balance":
+        currency = args.currency.upper()
+        monthclose.type_balance(
+            conn,
+            owner=owner,
+            account=args.account,
+            day=args.day,
+            amount=args.amount,
+            currency=currency,
+        )
+        out.write(f"{args.account} of {owner}: {args.amount} {currency} on {args.day}.\n")
+        return OK
+    last = args.through or args.month
+    if last < args.month:
+        msg = f"{last:%Y-%m} is before {args.month:%Y-%m}"
+        raise ConfigError(msg)
+    months = months_between(args.month, last)
+    if args.command == "commit":
+        return _commit(session, months)
+    for month in months:
+        monthclose.reopen(conn, owner=owner, month=month)
+    out.write(f"{_span(months[0], months[-1])} is open again for {owner}.\n")
+    return OK
 
 
 def _serve(database: Path, port: int, rules: webapp.Rules, out: TextIO) -> int:
@@ -303,6 +338,28 @@ def _serve(database: Path, port: int, rules: webapp.Rules, out: TextIO) -> int:
     app = webapp.create_app(database, rules=rules)
     uvicorn.run(app, host=webapp.HOST, port=port, log_level="warning")
     return OK
+
+
+def _prices(
+    conn: sqlite3.Connection, args: argparse.Namespace, console: _Console, now: datetime
+) -> int:
+    """Fetch what is missing; what could not be fetched is listed and nothing is guessed."""
+    typed = classification.load_instruments(args.instruments)
+    refreshed = marketdata.refresh(
+        conn,
+        console.source or prices.Yahoo(),
+        through=args.through or now.date(),
+        now=now,
+        symbols={symbol: entry.price_symbol for symbol, entry in typed.items()},
+        currencies=networth.CURRENCIES,
+    )
+    out = console.out
+    out.write(
+        f"{refreshed.closes} closes, {refreshed.rates} exchange rates and "
+        f"{refreshed.splits} splits stored.\n"
+    )
+    out.writelines(f"  missing: {problem}\n" for problem in refreshed.problems)
+    return NEEDS_REVIEW if refreshed.problems else OK
 
 
 def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> int:

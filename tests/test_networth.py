@@ -1,0 +1,683 @@
+"""Net worth day by day: cash, holdings at the close of the day, at the rate of the day."""
+
+import sqlite3
+from collections.abc import Iterator
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from finanze import monthclose, networth, query
+from finanze.models import CashBalance, Holding, Kind, PrintedValue, SecurityTrade, Transaction
+from finanze.networth import BILLS, CARD, CASH, ETFS, PENSION, STOCKS, MissingRateError
+from finanze.pipeline import Statement
+from finanze.storage import db, store
+from tests.storage.helpers import (
+    AUGUST,
+    OCTOBER,
+    OWNER,
+    PARTNER,
+    SEPTEMBER,
+    batch,
+    statement,
+    trade,
+    txn,
+)
+
+NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+D = Decimal
+
+
+def day(n: int, month: int = 9) -> date:
+    return date(2026, month, n)
+
+
+@pytest.fixture
+def conn() -> Iterator[sqlite3.Connection]:
+    connection = db.connect(":memory:")
+    db.migrate(connection, NOW)
+    yield connection
+    connection.close()
+
+
+def account(
+    source: str,
+    name: str,
+    currency: str,
+    opening: str,
+    *rows: Transaction,
+    month: date = SEPTEMBER,
+    filename: str = "",
+) -> Statement:
+    """A statement of one account whose closing balance follows from its rows."""
+    closing = D(opening) + sum((row.amount for row in rows), D(0))
+    balance = CashBalance(name, currency, D(opening), closing)
+    file = filename or f"{name} {month:%Y-%m}.csv"
+    rows = tuple(replace(row, source_file=file) for row in rows)
+    return statement(source, rows, [balance], filename=file, month=month)
+
+
+def close(
+    conn: sqlite3.Connection, *statements: Statement, owner: str = OWNER, month: date = SEPTEMBER
+) -> None:
+    """Stage the statements of one month and commit it."""
+    monthclose.stage(conn, batch(*statements, owner=owner, month=month), NOW)
+    monthclose.commit(conn, owner=owner, month=month, now=NOW)
+
+
+def spent(amount: str, on: date, **fields: object) -> Transaction:
+    return txn(amount, date=on, source_ref=f"{on}{amount}", **fields)
+
+
+def bought(ticker: str, quantity: str, amount: str, on: date, **fields: object) -> SecurityTrade:
+    quantity_, amount_ = D(quantity), D(amount)
+    fields.setdefault("price", abs(amount_ / quantity_) if quantity_ else D(0))
+    return trade(amount, ticker, quantity, date=on, source_ref=f"{ticker}{on}{quantity}", **fields)
+
+
+def price(
+    conn: sqlite3.Connection, symbol: str, on: date, close_: str, source: str = "fetched:x"
+) -> None:
+    instrument = conn.execute("SELECT id FROM instruments WHERE symbol = ?", (symbol,)).fetchone()[
+        0
+    ]
+    store.set_price(conn, instrument, on, D(close_), source=source)
+
+
+def rate(
+    conn: sqlite3.Connection, currency: str, on: date, rate_: str, source: str = "fetched:x"
+) -> None:
+    store.set_rate(conn, on, currency, D(rate_), source=source)
+
+
+def line(result: networth.NetWorth, asset: str, owner: str = OWNER) -> dict[date, Decimal]:
+    [found] = [x for x in result.lines if (x.owner, x.asset) == (owner, asset)]
+    return dict(zip(result.days, found.values, strict=True))
+
+
+# ------------------------------------------------------------------------------- nothing
+
+
+def test_nothing_committed_is_no_net_worth(conn: sqlite3.Connection) -> None:
+    assert networth.run(conn) == networth.NetWorth("EUR", (), (), ())
+    assert networth.run(conn).total == ()
+    assert networth.checks(conn) == ()
+    monthclose.stage(conn, batch(account("migros", "Migros", "CHF", "1000")), NOW)
+    assert networth.run(conn, currency="CHF").days == ()  # staged is not committed
+
+
+def test_committed_months_without_anything_in_them_are_no_net_worth(
+    conn: sqlite3.Connection,
+) -> None:
+    owner = store.ensure_owner(conn, OWNER)
+    store.set_month(conn, owner, SEPTEMBER, "committed", "2026-10-06T12:00:00+00:00")
+    assert networth.run(conn, currency="CHF").days == ()
+
+
+def test_an_unknown_person_is_refused(conn: sqlite3.Connection) -> None:
+    with pytest.raises(query.QueryError, match="Nobody"):
+        networth.run(conn, owner="Nobody")
+
+
+# ---------------------------------------------------------------------------------- cash
+
+
+def test_cash_starts_with_the_first_statement_and_follows_its_rows(
+    conn: sqlite3.Connection,
+) -> None:
+    rows = [
+        spent("-200", day(10)),
+        spent("-50.25", day(10)),
+        spent("3000", day(25), kind=Kind.INCOME, category="Stipendio"),
+    ]
+    close(conn, account("migros", "Migros", "CHF", "1000", *rows))
+    result = networth.run(conn, currency="CHF")
+    assert (result.days[0], result.days[-1]) == (day(31, 8), day(30))
+    assert len(result.days) == 31
+    cash = line(result, CASH)
+    assert [cash[d] for d in (day(31, 8), day(9), day(10), day(24), day(25), day(30))] == [
+        D(1000),
+        D(1000),
+        D("749.75"),
+        D("749.75"),
+        D("3749.75"),
+        D("3749.75"),
+    ]
+    assert result.total == tuple(cash.values())
+    assert result.notes == ()
+
+
+def test_only_committed_months_count(conn: sqlite3.Connection) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000", spent("-200", day(10))))
+    october = account("migros", "Migros", "CHF", "800", spent("-100", day(5, 10)), month=OCTOBER)
+    monthclose.stage(conn, batch(october, month=OCTOBER), NOW)
+    result = networth.run(conn, currency="CHF")
+    assert result.days[-1] == day(30)
+    assert result.total[-1] == 800
+    monthclose.commit(conn, owner=OWNER, month=OCTOBER, now=NOW)
+    result = networth.run(conn, currency="CHF")
+    assert (result.days[-1], result.total[-1]) == (day(31, 10), D(700))
+
+
+def test_an_account_whose_first_statement_is_not_committed_does_not_count_yet(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    # Its statement opens on the last day of September, which is committed: October is not.
+    staged = account("revolut", "Revolut CHF", "CHF", "500", month=OCTOBER)
+    monthclose.stage(conn, batch(staged, month=OCTOBER), NOW)
+    assert networth.run(conn, currency="CHF").total[-1] == 1000
+    monthclose.commit(conn, owner=OWNER, month=OCTOBER, now=NOW)
+    result = networth.run(conn, currency="CHF")
+    assert [result.total[result.days.index(d)] for d in (day(29), day(30))] == [D(1000), D(1500)]
+
+
+def test_an_account_counts_for_nothing_before_its_first_statement(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000", month=AUGUST), month=AUGUST)
+    close(
+        conn,
+        account("migros", "Migros", "CHF", "1000"),
+        account("revolut", "Revolut CHF", "CHF", "500"),
+    )
+    cash = line(networth.run(conn, currency="CHF"), CASH)
+    assert [cash[d] for d in (day(31, 7), day(30, 8), day(31, 8), day(30))] == [
+        D(1000),
+        D(1000),
+        D(1500),
+        D(1500),
+    ]
+
+
+def test_money_set_aside_inside_an_account_stays_part_of_it(conn: sqlite3.Connection) -> None:
+    # D8: the savings are part of the Revolut account. Its statement shows 400 leaving for
+    # them, and the savings report shows what they earn.
+    moved = spent(
+        "-400", day(5), account="Revolut EUR", currency="EUR", kind=Kind.INTERNAL, category=""
+    )
+    paid = spent("-100", day(8), account="Revolut EUR", currency="EUR")
+    current = account("revolut", "Revolut EUR", "EUR", "1000", moved, paid)
+    earned = spent(
+        "0.5",
+        day(20),
+        account="Revolut EUR",
+        currency="EUR",
+        kind=Kind.INTEREST,
+        category="Interessi",
+        source_file="savings.tsv",
+    )
+    savings = statement("revolut_savings", [earned], filename="savings.tsv")
+    close(conn, current, savings)
+    cash = line(networth.run(conn, currency="EUR"), CASH)
+    assert [cash[d] for d in (day(4), day(5), day(8), day(19), day(20), day(30))] == [
+        D(1000),
+        D(1000),
+        D(900),
+        D(900),
+        D("900.5"),
+        D("900.5"),
+    ]
+
+
+def test_an_internal_row_of_an_account_nothing_else_feeds_is_cash_leaving(
+    conn: sqlite3.Connection,
+) -> None:
+    # The card debit on the bank: internal, and the money is gone from the bank.
+    debit = spent("-300", day(5), kind=Kind.INTERNAL, category="")
+    payment = spent("300", day(6), account="Swisscard", kind=Kind.INTERNAL, category="")
+    purchase = spent("-120", day(12), account="Swisscard")
+    close(
+        conn,
+        account("migros", "Migros", "CHF", "1000", debit),
+        account("swisscard", "Swisscard", "CHF", "-300", payment, purchase),
+    )
+    result = networth.run(conn, currency="CHF")
+    assert line(result, CASH)[day(5)] == 700
+    card = line(result, CARD)
+    assert [card[d] for d in (day(31, 8), day(6), day(12), day(30))] == [
+        D(-300),
+        D(0),
+        D(-120),
+        D(-120),
+    ]
+    assert result.total[-1] == 580
+    assert [x.asset for x in result.lines] == [CASH, CARD]
+
+
+def test_an_account_that_is_only_typed_is_carried_flat_and_says_so(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    for on, amount in ((day(5), "250"), (day(20), "300")):
+        monthclose.type_balance(
+            conn, owner=OWNER, account="Old bank", day=on, amount=D(amount), currency="CHF"
+        )
+    result = networth.run(conn, currency="CHF")
+    assert [
+        result.total[result.days.index(d)] for d in (day(4), day(5), day(19), day(20), day(30))
+    ] == [
+        D(1000),
+        D(1250),
+        D(1250),
+        D(1300),
+        D(1300),
+    ]
+    assert result.notes == (
+        "Old bank of Lukas has no statements: it is carried at what was typed, last for "
+        "2026-09-20.",
+    )
+
+
+def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.Connection) -> None:
+    # Tastytrade prints totals and no balances.
+    rows = [
+        spent(
+            "5000",
+            day(3),
+            account="Tastytrade",
+            currency="USD",
+            kind=Kind.TRANSFER,
+            category="Giroconto",
+            source_file="tasty.csv",
+        ),
+        spent(
+            "-120",
+            day(9),
+            account="Tastytrade",
+            currency="USD",
+            kind=Kind.TRADING,
+            category="Trading",
+            source_file="tasty.csv",
+        ),
+    ]
+    close(conn, statement("tastytrade", rows, filename="tasty.csv"))
+    cash = line(networth.run(conn, currency="USD"), CASH)
+    assert (min(cash), cash[day(3)], cash[day(30)]) == (day(3), D(5000), D(4880))
+
+
+def test_rows_booked_before_the_first_balance_lead_up_to_it(conn: sqlite3.Connection) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000", spent("-200", day(10))))
+    # an earlier balance is dropped: the row of the 10th is then before the first one known
+    conn.execute("DELETE FROM balances WHERE date = '2026-08-31'")
+    cash = line(networth.run(conn, currency="CHF"), CASH)
+    assert (min(cash), cash[day(10)], cash[day(30)]) == (day(10), D(800), D(800))
+
+
+# -------------------------------------------------------------------------------- shares
+
+
+def ibkr(*rows: Transaction, opening: str = "10000", month: date = SEPTEMBER) -> Statement:
+    return account("ibkr", "IBKR USD", "USD", opening, *rows, month=month)
+
+
+def test_shares_are_worth_the_last_close_on_or_before_the_day(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15))))
+    price(conn, "WIDG", day(11), "49")  # a Friday before it was bought
+    price(conn, "WIDG", day(15), "51")
+    price(conn, "WIDG", day(18), "53.5")
+    result = networth.run(conn, currency="USD")
+    etfs = line(result, ETFS)
+    assert [etfs[d] for d in (day(14), day(15), day(17), day(18), day(30))] == [
+        D(0),
+        D(510),
+        D(510),
+        D(535),
+        D(535),
+    ]
+    assert line(result, CASH)[day(15)] == 9500
+    assert result.total[-1] == 10035
+    assert result.notes == ()
+
+
+def test_a_close_typed_or_printed_by_a_statement_counts_before_a_fetched_one(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15), asset_tab="Stocks")))
+    price(conn, "WIDG", day(20), "60")
+    price(conn, "WIDG", day(20), "61", "statement")
+    price(conn, "WIDG", day(25), "70", "statement")
+    price(conn, "WIDG", day(25), "71")
+    price(conn, "WIDG", day(25), "72", "manual")
+    stocks = line(networth.run(conn, currency="USD"), STOCKS)
+    assert [stocks[d] for d in (day(15), day(20), day(25))] == [D(500), D(610), D(720)]
+
+
+def test_without_any_close_the_last_trade_price_stands_in_and_a_note_says_so(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15)), bought("WIDG", "-4", "220", day(20))))
+    result = networth.run(conn, currency="USD")
+    etfs = line(result, ETFS)
+    assert [etfs[d] for d in (day(15), day(19), day(20), day(30))] == [
+        D(500),
+        D(500),
+        D(330),
+        D(330),
+    ]
+    assert result.notes == (
+        "No close is stored for WIDG: valued at the price of the last trade. Run `finanze prices`.",
+    )
+
+
+def test_shares_sold_before_any_close_leave_no_note(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15)), bought("WIDG", "-10", "500", day(15))))
+    result = networth.run(conn, currency="USD")
+    assert [x.asset for x in result.lines] == [CASH]
+    assert result.notes == ()
+
+
+def test_shares_moved_in_without_a_price_are_not_counted_and_a_note_says_so(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Giroconto")))
+    conn.execute("UPDATE trades SET price = NULL")
+    result = networth.run(conn, currency="USD")
+    assert [x.asset for x in result.lines] == [CASH]
+    assert result.notes == ("WIDG has no price at all: it is not counted.",)
+
+
+def test_a_split_changes_the_quantity_and_not_the_worth(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-2000", day(3), asset_tab="Stocks")))
+    price(conn, "WIDG", day(9), "200")
+    price(conn, "WIDG", day(10), "50.5")  # the first day of the new shares
+    instrument = conn.execute("SELECT id FROM instruments").fetchone()[0]
+    store.add_split(conn, instrument, day(10), 4, 1)
+    stocks = line(networth.run(conn, currency="USD"), STOCKS)
+    assert [stocks[d] for d in (day(9), day(10))] == [D(2000), D(2020)]
+
+
+def test_holdings_a_statement_prints_are_where_the_quantity_starts_from(
+    conn: sqlite3.Connection,
+) -> None:
+    # No trade is stored: the shares were there before the history starts.
+    base = ibkr()
+    held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
+    result = networth.run(conn, currency="USD")
+    etfs = line(result, ETFS)
+    # counted from the first thing known about them: the statement, at its close
+    assert [etfs[d] for d in (day(29), day(30))] == [D(0), D(550)]
+
+
+def test_fund_units_and_cash_of_a_pension_account_are_one_asset(conn: sqlite3.Connection) -> None:
+    unit = bought(
+        "CH0000000001", "2", "-300", day(15), asset_tab="Funds", account="Pillar 3a", currency="CHF"
+    )
+    close(conn, account("finpension", "Pillar 3a", "CHF", "1000", unit))
+    price(conn, "CH0000000001", day(15), "155")
+    result = networth.run(conn, currency="CHF")
+    assert [x.asset for x in result.lines] == [PENSION]
+    pension = line(result, PENSION)
+    assert [pension[d] for d in (day(14), day(15))] == [D(1000), D(1010)]
+
+
+# --------------------------------------------------------------------------------- bills
+
+
+def bill(quantity: str, amount: str, on: date, **fields: object) -> SecurityTrade:
+    fields.setdefault("maturity", date(2026, 12, 24))
+    return bought("912797ZZ1", quantity, amount, on, asset_tab="Bonds", price=D(99), **fields)
+
+
+def test_a_bill_runs_in_a_straight_line_from_its_cost_to_its_face(conn: sqlite3.Connection) -> None:
+    # 100 days from 15 September to 24 December: 1.5 a day on the 150 below face.
+    close(conn, ibkr(bill("10000", "-9850", day(15))))
+    bills = line(networth.run(conn, currency="USD"), BILLS)
+    assert [bills[d] for d in (day(14), day(15), day(16), day(25), day(30))] == [
+        D(0),
+        D(9850),
+        D("9851.5"),
+        D(9865),
+        D("9872.5"),
+    ]
+
+
+def test_bill_lots_are_sold_oldest_first(conn: sqlite3.Connection) -> None:
+    rows = [
+        bill("10000", "-9850", day(15)),
+        bill("10000", "-9900", day(20), maturity=None),
+        bill("-10000", "9870", day(25)),
+    ]
+    close(conn, ibkr(*rows, opening="30000"))
+    bills = line(networth.run(conn, currency="USD"), BILLS)
+    # until the 24th both lots; from the 25th only the second, bought at 9900 on the 20th
+    both_lots = D(9850) + D("1.5") * 9 + D(9900) + D(100) * 4 / 95
+    assert bills[day(24)] == both_lots.quantize(D("0.01"))
+    assert bills[day(25)] == (D(9900) + D(100) * 5 / 95).quantize(D("0.01"))
+    assert bills[day(30)] == (D(9900) + D(100) * 10 / 95).quantize(D("0.01"))
+
+
+def test_a_bill_is_worth_its_face_from_maturity_until_it_is_repaid(
+    conn: sqlite3.Connection,
+) -> None:
+    rows = [
+        bill("10000", "-9990", day(5), maturity=day(15)),
+        bill("-10000", "10000", day(17), maturity=day(15), kind=Kind.INCOME),
+    ]
+    close(conn, ibkr(*rows, opening="20000"))
+    result = networth.run(conn, currency="USD")
+    bills = line(result, BILLS)
+    assert [bills[d] for d in (day(5), day(10), day(15), day(16), day(17))] == [
+        D(9990),
+        D(9995),
+        D(10000),
+        D(10000),
+        D(0),
+    ]
+    assert result.total[result.days.index(day(17))] == 20010
+
+
+def test_a_bill_without_a_maturity_stays_at_its_cost(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(bill("10000", "-9850", day(15))))
+    conn.execute("UPDATE instruments SET maturity = NULL")
+    bills = line(networth.run(conn, currency="USD"), BILLS)
+    assert (bills[day(15)], bills[day(30)]) == (D(9850), D(9850))
+
+
+def test_a_bill_repaid_without_its_purchase_is_not_counted(conn: sqlite3.Connection) -> None:
+    # The history starts after it was bought: nothing is known of it but the cash it repaid.
+    close(conn, ibkr(bill("-10000", "9870", day(25), kind=Kind.INCOME)))
+    result = networth.run(conn, currency="USD")
+    assert [x.asset for x in result.lines] == [CASH]
+
+
+# ---------------------------------------------------------------------------- currencies
+
+
+def test_every_day_is_converted_at_its_own_rate(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(), account("migros", "Migros", "CHF", "900"))
+    rate(conn, "USD", day(1), "0.8")
+    rate(conn, "USD", day(16), "0.9")
+    rate(conn, "EUR", day(1), "1")
+    rate(conn, "EUR", day(16), "0.9")
+    in_francs = networth.run(conn, currency="CHF")
+    assert [in_francs.total[in_francs.days.index(d)] for d in (day(31, 8), day(15), day(16))] == [
+        D(8900),  # the first rate stands in for the days before it
+        D(8900),
+        D(9900),
+    ]
+    # crossed through francs: 10000 USD and 900 CHF in euros
+    in_euros = networth.run(conn, currency="EUR")
+    assert [in_euros.total[in_euros.days.index(d)] for d in (day(15), day(16))] == [
+        D(8900),
+        D(11000),
+    ]
+    assert in_euros.currency == "EUR"
+    in_dollars = networth.run(conn, currency="USD")
+    assert in_dollars.total[in_dollars.days.index(day(16))] == D(11000)
+
+
+def test_a_rate_printed_by_a_statement_counts_before_a_fetched_one(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr())
+    rate(conn, "USD", day(30), "0.8")
+    rate(conn, "USD", day(30), "0.81", "statement")
+    assert networth.run(conn, currency="CHF").total[-1] == 8100
+    rate(conn, "USD", day(30), "0.82", "manual")
+    assert networth.run(conn, currency="CHF").total[-1] == 8200
+    rate(conn, "USD", day(30), "0.9", "fetched:other")
+    assert networth.run(conn, currency="CHF").total[-1] == 8200
+
+
+def test_a_currency_without_any_rate_cannot_be_converted(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(), account("migros", "Migros", "CHF", "900"))
+    with pytest.raises(MissingRateError, match="no exchange rate is stored for USD"):
+        networth.run(conn, currency="CHF")
+    rate(conn, "USD", day(1), "0.8")
+    assert networth.run(conn, currency="CHF").total[-1] == 8900
+    with pytest.raises(MissingRateError, match="no exchange rate is stored for EUR"):
+        networth.run(conn)
+
+
+def test_what_is_already_in_the_currency_asked_for_needs_no_rate(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr())
+    assert networth.run(conn, currency="USD").total[-1] == 10000
+
+
+# -------------------------------------------------------------------------------- people
+
+
+def both(conn: sqlite3.Connection) -> None:
+    close(
+        conn,
+        account("migros", "Migros", "CHF", "1000", spent("-200", day(10))),
+        ibkr(bought("WIDG", "10", "-500", day(15))),
+    )
+    close(
+        conn, account("migros", "Migros", "CHF", "400", month=AUGUST), owner=PARTNER, month=AUGUST
+    )
+    close(
+        conn,
+        account("migros", "Migros", "CHF", "400", spent("50", day(12), kind=Kind.INCOME)),
+        owner=PARTNER,
+    )
+    rate(conn, "USD", day(1, 7), "0.8")
+    rate(conn, "EUR", day(1, 7), "0.95")
+
+
+def test_each_person_has_lines_of_their_own_and_the_views_add_up(conn: sqlite3.Connection) -> None:
+    both(conn)
+    everyone = networth.run(conn, currency="CHF")
+    assert [(x.owner, x.asset) for x in everyone.lines] == [
+        (PARTNER, CASH),
+        (OWNER, CASH),
+        (OWNER, ETFS),
+    ]
+    assert everyone.days[0] == day(31, 7)  # her first statement
+    mine = networth.run(conn, owner=OWNER, currency="CHF")
+    hers = networth.run(conn, owner=PARTNER, currency="CHF")
+    assert mine.days[0] == day(31, 8)
+    assert [x.owner for x in mine.lines] == [OWNER, OWNER]
+    assert everyone.total[-1] == mine.total[-1] + hers.total[-1] == D(800) + D(8000) + D(450)
+    by_owner = everyone.by("owner")
+    assert list(by_owner) == [PARTNER, OWNER]
+    assert by_owner[OWNER][-1] == mine.total[-1]
+    by_asset = everyone.by("asset")
+    assert list(by_asset) == [CASH, ETFS]
+    assert by_asset[CASH][-1] == D(800) + D(9500) * D("0.8") + D(450)
+
+
+def test_several_people_end_on_the_last_day_all_of_them_have_committed(
+    conn: sqlite3.Connection,
+) -> None:
+    both(conn)
+    close(conn, account("migros", "Migros", "CHF", "800", month=OCTOBER), month=OCTOBER)
+    assert networth.run(conn, owner=OWNER, currency="CHF").days[-1] == day(31, 10)
+    assert networth.run(conn, owner=PARTNER, currency="CHF").days[-1] == day(30)
+    assert networth.run(conn, currency="CHF").days[-1] == day(30)
+
+
+@settings(max_examples=25, deadline=None)
+@given(
+    st.lists(st.tuples(st.integers(1, 28), st.integers(-5000, 5000)), max_size=6),
+    st.lists(st.tuples(st.integers(1, 28), st.integers(1, 40)), max_size=3),
+    st.sampled_from(["CHF", "EUR", "USD"]),
+)
+def test_the_total_is_the_sum_of_its_parts_however_it_is_cut(
+    payments: list[tuple[int, int]], buys: list[tuple[int, int]], currency: str
+) -> None:
+    conn = db.connect(":memory:")
+    db.migrate(conn, NOW)
+    cash = [
+        replace(spent(str(amount), day(n)), source_ref=str(i))
+        for i, (n, amount) in enumerate(payments)
+        if amount
+    ]
+    shares = [
+        replace(bought("WIDG", str(quantity), str(-50 * quantity), day(n)), source_ref=f"t{i}")
+        for i, (n, quantity) in enumerate(buys)
+    ]
+    close(conn, account("migros", "Migros", "CHF", "1000", *cash), ibkr(*shares))
+    close(conn, account("migros", "Migros", "CHF", "400"), owner=PARTNER)
+    rate(conn, "USD", day(1), "0.8")
+    rate(conn, "USD", day(16), "0.83")
+    rate(conn, "EUR", day(1), "0.95")
+    everyone = networth.run(conn, currency=currency)
+    for attribute in ("owner", "asset"):
+        parts = everyone.by(attribute).values()
+        assert tuple(sum(values) for values in zip(*parts, strict=True)) == everyone.total
+    mine = networth.run(conn, owner=OWNER, currency=currency)
+    hers = networth.run(conn, owner=PARTNER, currency=currency)
+    cent = D("0.01") * len(everyone.lines)  # each line is rounded to the cent on its own
+    for whole, a, b in zip(everyone.total, mine.total, hers.total, strict=True):
+        assert abs(whole - a - b) <= cent
+    # the same database always gives the same figures
+    assert networth.run(conn, currency=currency) == everyone
+    conn.close()
+
+
+# -------------------------------------------------------------------------------- checks
+
+
+def test_a_statement_s_own_valuation_is_set_against_what_is_derived(
+    conn: sqlite3.Connection,
+) -> None:
+    base = ibkr(
+        bought("WIDG", "10", "-500", day(15)), bill("10000", "-9850", day(15)), opening="20000"
+    )
+    values = (
+        PrintedValue("Cash", "CHF", D(7720)),
+        PrintedValue("Stock", "CHF", D(440)),
+        PrintedValue("Bonds", "CHF", D(7900)),
+        PrintedValue("Options", "CHF", D(-644)),
+        PrintedValue("Total", "CHF", D(15416)),
+    )
+    held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(
+        conn,
+        replace(base, extraction=replace(base.extraction, values=values, holdings=held)),
+        account("migros", "Migros", "CHF", "1000"),
+    )
+    rate(conn, "USD", day(30), "0.8")
+    found = networth.checks(conn)
+    assert [(c.label, c.printed, c.derived, c.difference) for c in found] == [
+        ("Bonds", D(7900), D(7898), D(-2)),  # 9872.5 dollars in a straight line
+        ("Cash", D(7720), D(7720), D(0)),  # the broker's cash only, not the bank's
+        ("Stock", D(440), D(440), D(0)),  # at the close the statement prints
+    ]
+    assert {(c.owner, c.accounts, c.day, c.currency) for c in found} == {
+        (OWNER, "IBKR USD", day(30), "CHF")
+    }
+    assert networth.checks(conn, owner=PARTNER) == ()
+
+
+def test_a_valuation_of_a_month_not_committed_is_not_checked(conn: sqlite3.Connection) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    base = ibkr(month=OCTOBER)
+    values = (PrintedValue("Cash", "USD", D(10000)),)
+    staged = replace(base, extraction=replace(base.extraction, values=values))
+    monthclose.stage(conn, batch(staged, month=OCTOBER), NOW)
+    assert networth.checks(conn) == ()
+    monthclose.commit(conn, owner=OWNER, month=OCTOBER, now=NOW)
+    [check] = networth.checks(conn)
+    assert (check.printed, check.derived) == (D(10000), D(10000))
+
+
+def test_days_run_without_a_gap() -> None:
+    days = networth._days(day(27, 2), day(2, 3))
+    assert days == tuple(day(27, 2) + timedelta(days=n) for n in range(4))

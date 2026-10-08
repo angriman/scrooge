@@ -407,6 +407,102 @@ def set_rate(  # noqa: PLR0913  # one argument per column
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Instrument:
+    id: int
+    symbol: str
+    type: str
+    currency: str
+    price_symbol: str | None  # where its prices are fetched; None until that is known
+
+
+def instruments(conn: sqlite3.Connection) -> list[Instrument]:
+    rows = conn.execute(
+        "SELECT id, symbol, type, currency, price_symbol FROM instruments ORDER BY id"
+    ).fetchall()
+    return [Instrument(int(r[0]), r[1], r[2], r[3], r[4]) for r in rows]
+
+
+def set_price_symbol(conn: sqlite3.Connection, instrument: int, price_symbol: str) -> None:
+    conn.execute("UPDATE instruments SET price_symbol = ? WHERE id = ?", (price_symbol, instrument))
+
+
+def last_price_day(conn: sqlite3.Connection, instrument: int, source: str) -> date | None:
+    """The latest day `source` has given a close of the instrument for."""
+    row = conn.execute(
+        "SELECT max(date) FROM prices WHERE instrument_id = ? AND source = ?", (instrument, source)
+    ).fetchone()
+    return None if row[0] is None else date.fromisoformat(row[0])
+
+
+def last_rate_day(conn: sqlite3.Connection, currency: str, source: str) -> date | None:
+    """The latest day `source` has given a rate of the currency for."""
+    row = conn.execute(
+        "SELECT max(date) FROM fx_rates WHERE currency = ? AND source = ?", (currency, source)
+    ).fetchone()
+    return None if row[0] is None else date.fromisoformat(row[0])
+
+
+def add_price(  # noqa: PLR0913  # one argument per column
+    conn: sqlite3.Connection,
+    instrument: int,
+    day: date,
+    close: Decimal,
+    *,
+    source: str,
+    fetched_at: str,
+) -> int:
+    """Keep a fetched close, unless that source already gave one for the day: a close that
+    is stored is never fetched again (D10). Returns how many rows were added."""
+    return conn.execute(
+        "INSERT OR IGNORE INTO prices (instrument_id, date, close, source, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (instrument, day.isoformat(), to_text(close), source, fetched_at),
+    ).rowcount
+
+
+def add_rate(  # noqa: PLR0913  # one argument per column
+    conn: sqlite3.Connection,
+    day: date,
+    currency: str,
+    rate: Decimal,
+    *,
+    source: str,
+    fetched_at: str,
+) -> int:
+    """Keep a fetched rate, unless that source already gave one for the day."""
+    ensure_currency(conn, currency)
+    return conn.execute(
+        "INSERT OR IGNORE INTO fx_rates (date, currency, rate_to_chf, source, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (day.isoformat(), currency, to_text(rate), source, fetched_at),
+    ).rowcount
+
+
+def add_split(
+    conn: sqlite3.Connection, instrument: int, day: date, numerator: int, denominator: int
+) -> int:
+    """Keep a split, unless one is stored for that day already."""
+    return conn.execute(
+        "INSERT OR IGNORE INTO splits (instrument_id, date, numerator, denominator) "
+        "VALUES (?, ?, ?, ?)",
+        (instrument, day.isoformat(), numerator, denominator),
+    ).rowcount
+
+
+def currencies(conn: sqlite3.Connection) -> list[str]:
+    return [str(row[0]) for row in conn.execute("SELECT code FROM currencies ORDER BY code")]
+
+
+def first_day(conn: sqlite3.Connection) -> date | None:
+    """The earliest day anything is known for: a transaction or a balance."""
+    row = conn.execute(
+        "SELECT min(day) FROM (SELECT min(booking_date) AS day FROM transactions "
+        "UNION ALL SELECT min(date) FROM transactions UNION ALL SELECT min(date) FROM balances)"
+    ).fetchone()
+    return None if row[0] is None else date.fromisoformat(row[0])
+
+
 def set_statement_values(
     conn: sqlite3.Connection, statement_file: int, values: Iterable[PrintedValue]
 ) -> None:

@@ -40,24 +40,35 @@ def fifo_costs(events: Iterable[Event]) -> dict[str, int | None]:
     A lot closed in part gives up its cost in proportion, rounded to the billionth; the rest
     stays with the lot, so the costs handed out never add up to more or less than was paid.
     """
-    lots: deque[list[Decimal | int]] = deque()  # [quantity left, cost left]
+    return _fifo(events)[0]
+
+
+def open_lots(events: Iterable[Event]) -> list[tuple[str, Decimal, int]]:
+    """The lots still held after `events`, oldest first: (purchase, quantity left, cost left)."""
+    return [(str(bought), Decimal(left), int(paid)) for bought, left, paid in _fifo(events)[1]]
+
+
+def _fifo(
+    events: Iterable[Event],
+) -> tuple[dict[str, int | None], deque[list[Decimal | int | str]]]:
+    lots: deque[list[Decimal | int | str]] = deque()  # [purchase, quantity left, cost left]
     costs: dict[str, int | None] = {}
     for event in events:
         if event.quantity > 0:
-            lots.append([event.quantity, event.cost_nano])
+            lots.append([event.txn_id, event.quantity, event.cost_nano])
             continue
         needed, cost = -event.quantity, 0
         while needed and lots:
-            left, paid = lots[0]
+            _, left, paid = lots[0]
             taken = min(needed, Decimal(left))
-            share = int((Decimal(paid) * taken / left).to_integral_value(ROUND_HALF_EVEN))
-            lots[0] = [left - taken, paid - share]
+            share = int((Decimal(paid) * taken / Decimal(left)).to_integral_value(ROUND_HALF_EVEN))
+            lots[0][1:] = [Decimal(left) - taken, int(paid) - share]
             if taken == left:
                 lots.popleft()
             needed -= taken
             cost += share
         costs[event.txn_id] = None if needed else cost
-    return costs
+    return costs, lots
 
 
 def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:

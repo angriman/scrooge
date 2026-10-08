@@ -28,7 +28,7 @@ test: ## pytest with branch coverage (90% global floor)
 	$(UV) run pytest --cov=finanze --cov-report=term-missing
 
 strict-cover: ## 100% coverage floor on validation.py, writers/ and everything that writes to the database
-	@inc=$$( { ls src/finanze/validation.py src/finanze/monthclose.py; find src/finanze/validation src/finanze/writers src/finanze/storage -name '*.py'; } 2>/dev/null | paste -sd, -); \
+	@inc=$$( { ls src/finanze/validation.py src/finanze/monthclose.py src/finanze/marketdata.py; find src/finanze/validation src/finanze/writers src/finanze/storage -name '*.py'; } 2>/dev/null | paste -sd, -); \
 	if [ -z "$$inc" ]; then \
 		echo "strict-cover: no validation.py or writers/ modules yet, skipping"; \
 	else \
