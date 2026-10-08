@@ -66,6 +66,7 @@ The same month can be stored in a local SQLite database, one row per transaction
 finanze import <folder>    # reconcile, classify, then stage the month
 finanze commit 2026-09     # make it final; a copy of the database is saved first
 finanze reopen 2026-09     # take it back, to import it again
+finanze query --from 2026  # find committed transactions (see "Querying it" below)
 ```
 
 `finanze import --review` asks for the category of unmatched rows, as `finanze --review` does.
@@ -111,6 +112,54 @@ More for the database:
   by its account number (`IBKR 2 USD`).
 - `finanze balance Sparkasse 2023-01-31 1234.56 EUR` types what an account without statements
   held on a day.
+
+### Querying it
+
+`finanze query` lists the transactions that match, oldest first, then what they add up to.
+It reads committed months only, and both people's unless `--owner` names one. The database
+is the one in `finanze.yaml`, or `--db`.
+
+```sh
+finanze query --from 2026-09 --to 2026-09             # one month
+finanze query --from 2025 --category Ristoranti       # a category since January 2025
+finanze query --from 2025 --category Casa --summary   # a top-level category, totals only
+finanze query --owner Anna --account Revolut --kind income
+finanze query --text "meier" --min 500                # by counterparty or description
+```
+
+Every filter is optional and they combine; without any, everything committed is listed.
+
+| Option | Matches |
+|---|---|
+| `--from`, `--to` | a day, a month or a year (`2025-05-17`, `2025-05`, `2025`), both included: `--to 2025` runs through 31 December |
+| `--booking` | compare (and sort, group and print) the booking date instead of the day it happened |
+| `--owner` | one person's transactions |
+| `--account` | one account, by its exact name |
+| `--category` | a category by its exact name; a top-level one stands for everything under it |
+| `--kind` | `expense`, `income`, `transfer`, `fx`, `trading`, `commission`, `interest`, `dividend`, `tax`, `security_trade` or `internal` |
+| `--min`, `--max` | the size of the amount whatever its sign: `--min 500` finds a 500 expense and a 500 income |
+| `--text` | the text as typed, anywhere in the counterparty or the description, ignoring case |
+| `--summary` | print the totals without the rows |
+
+An owner, account or category the database does not have is an error, not an empty result, so
+a typo cannot read as "no transactions".
+
+Each row shows the date, owner, account, amount, currency, category and the counterparty (the
+description when there is none). The totals follow, with the number of rows in brackets:
+
+```
+14 transactions
+Total:
+  -1,234.50 CHF  (12)
+     -80.00 EUR  (2)
+By month:
+  2026-08    -410.00 CHF  (5)
+  2026-09    -824.50 CHF  (7)
+  2026-09     -80.00 EUR  (2)
+```
+
+Amounts are never converted, so there is one total per currency. `By year` and `By month`
+appear only when the result spans more than one.
 
 ## Using the transactions elsewhere
 

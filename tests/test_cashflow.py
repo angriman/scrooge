@@ -17,6 +17,7 @@ START, END = date(2025, 1, 1), date(2026, 8, 31)
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
 SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
+BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
 
 LUKAS = [
     txn("-45.20", date=date(2025, 5, 3), source_ref="1"),
@@ -31,6 +32,11 @@ LUKAS = [
     txn("-70", date=date(2026, 7, 4), source_ref="9", kind=Kind.INTERNAL, category=""),
     txn("-200", date=date(2026, 7, 10), source_ref="10", category="Regali", counterparty=GIFT),
     txn("6100", date=date(2026, 7, 25), source_ref="11", **SALARY),
+    # A bill bought and repaid with its interest, and a futures trade closed at a loss.
+    txn("-9920", date=date(2026, 8, 3), source_ref="12", **BILL),
+    txn("9920", date=date(2026, 8, 20), source_ref="13", **BILL),
+    txn("80", date=date(2026, 8, 20), source_ref="14", kind=Kind.INTEREST, category="Interessi"),
+    txn("-35", date=date(2026, 8, 21), source_ref="15", kind=Kind.TRADING, category="Trading"),
 ]
 LUKAS_EUR = [txn("-30", date=date(2026, 7, 5), source_ref="1", category="Ristoranti", **EUR)]
 ANNA = [
@@ -62,12 +68,12 @@ def july(conn: sqlite3.Connection, owner: str | None) -> cashflow.CashFlow:
 
 def line(where: str, category: str, count: int, total: str) -> Line:
     """`where` is the period, the currency and the side: `2025-05 CHF entrate`."""
-    period, currency, side = where.split()
+    period, currency, side = where.rpartition(" ")[0].rpartition(" ")[0], *where.split()[-2:]
     return Line(period, currency, side, category, count, Decimal(total))
 
 
 def balance(period: str, currency: str, income: str, expenses: str) -> Balance:
-    return Balance(period, currency, Decimal(income), Decimal(expenses))
+    return Balance(period, currency, Decimal(income), Decimal(expenses), Decimal(0))
 
 
 def test_a_month_is_income_and_expenses_by_top_level_category(conn: sqlite3.Connection) -> None:
@@ -104,6 +110,30 @@ def test_what_the_two_pay_each_other_counts_for_one_and_not_for_both(
         line("2026-07 CHF entrate", "Stipendio", 1, "6100"),
         line("2026-07 CHF uscite", "Alimentari", 1, "-60"),
         line("2026-07 EUR uscite", "Ristoranti e bar", 1, "-30"),
+    )
+
+
+def test_securities_and_trading_are_investing_not_income_or_expenses(
+    conn: sqlite3.Connection,
+) -> None:
+    august = cashflow.run(conn, first=date(2026, 8, 1), last=END)
+    assert august.lines == (
+        line("2026-08 CHF entrate", "Interessi", 1, "80"),
+        line("2026-08 CHF investing", "Investimenti", 2, "0"),
+        line("2026-08 CHF investing", "Trading", 1, "-35"),
+    )
+    (month,) = august.balances
+    assert month == Balance("2026-08", "CHF", Decimal(80), Decimal(0), Decimal(-35))
+    assert month.net == Decimal(80)
+
+
+def test_the_whole_range_is_added_up_per_category(conn: sqlite3.Connection) -> None:
+    result = cashflow.run(conn, first=date(2025, 1, 1), last=date(2025, 12, 31), owner=OWNER)
+    assert result.totals == (
+        line(" CHF entrate", "Stipendio", 1, "6000"),
+        line(" CHF uscite", "Alimentari", 2, "-25.2"),
+        line(" CHF uscite", "Casa", 1, "-1850"),
+        line(" CHF uscite", "Ristoranti e bar", 1, "-80"),
     )
 
 
@@ -159,6 +189,16 @@ def test_period_names(day: date, grouping: Grouping, name: str) -> None:
     assert cashflow.period(day, grouping) == name
 
 
+@given(day=st.dates(date(2000, 1, 1), date(2100, 12, 31)), grouping=st.sampled_from(Grouping))
+def test_a_period_covers_the_days_named_after_it(day: date, grouping: Grouping) -> None:
+    first, last = cashflow.days(cashflow.period(day, grouping))
+    assert first <= day <= last
+    assert cashflow.period(first, grouping) == cashflow.period(last, grouping)
+    before, after = date.fromordinal(first.toordinal() - 1), date.fromordinal(last.toordinal() + 1)
+    assert cashflow.period(before, grouping) != cashflow.period(day, grouping)
+    assert cashflow.period(after, grouping) != cashflow.period(day, grouping)
+
+
 def test_an_unknown_owner_is_refused(conn: sqlite3.Connection) -> None:
     with pytest.raises(query.QueryError, match="no owner named 'Lucas'"):
         cashflow.run(conn, owner="Lucas")
@@ -183,4 +223,7 @@ def test_lines_and_balances_add_up_to_the_counted_transactions(
         balances = [item for item in result.balances if item.currency == currency]
         assert sum(item.total for item in lines) == sum(counted)
         assert sum(item.count for item in lines) == len(counted)
-        assert sum(item.net for item in balances) == sum(counted)
+        assert sum(item.net + item.investing for item in balances) == sum(counted)
+        assert sum(item.total for item in result.totals if item.currency == currency) == sum(
+            counted
+        )
