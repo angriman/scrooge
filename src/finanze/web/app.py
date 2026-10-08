@@ -8,22 +8,29 @@ from __future__ import annotations
 
 import csv
 import io
+import secrets
+from collections.abc import Callable
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from finanze import cashflow, query
+from finanze import cashflow, monthclose, months, query
 from finanze.models import Kind
 from finanze.storage import db
+from finanze.validation import ReconciliationError
 from finanze.web import forms
 
 HOST = "127.0.0.1"  # the only address the app is ever served on
@@ -77,12 +84,20 @@ class _OwnAssetsOnly:
         await self.app(scope, receive, add_headers)
 
 
-def create_app(database: Path) -> Starlette:
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def create_app(database: Path, clock: Callable[[], datetime] = _utc_now) -> Starlette:
     """The app over `database`, whose schema is already up to date."""
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
             Route("/cashflow", _cashflow, name="cashflow"),
+            Route("/months", _months, name="months"),
+            Route("/months/{owner}/{month}", _month, name="month"),
+            Route("/months/{owner}/{month}/commit", _commit, methods=["POST"], name="commit"),
+            Route("/months/{owner}/{month}/reopen", _reopen, methods=["POST"], name="reopen"),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
@@ -92,9 +107,16 @@ def create_app(database: Path) -> Starlette:
             Middleware(TrustedHostMiddleware, allowed_hosts=_HOSTS),
             Middleware(_OwnAssetsOnly),
         ],
-        exception_handlers={query.QueryError: _unknown_name},
+        exception_handlers={
+            query.QueryError: _unknown_name,
+            monthclose.NothingStagedError: _unknown_name,
+        },
     )
     app.state.database = database
+    app.state.clock = clock
+    # Sent back by every form of these pages: a page of another site cannot read it, so it
+    # cannot make the browser change anything here.
+    app.state.token = secrets.token_urlsafe(32)
     return app
 
 
@@ -106,6 +128,90 @@ def _overview(request: Request) -> Response:
     shown = [person for person in people if owner in (None, person.name)]
     context = {"people": people, "shown": shown, "owner": owner}
     return _templates.TemplateResponse(request, "overview.html", context)
+
+
+def _months(request: Request) -> Response:
+    owner = _owner(request)
+    with db.reading(request.app.state.database) as conn:
+        query.check_names(conn, query.Filter(owner=owner))
+        lines = months.listing(conn, owner)
+        context = {"people": query.people(conn), "owner": owner, "lines": lines}
+    return _templates.TemplateResponse(request, "months.html", context)
+
+
+def _which(request: Request) -> tuple[str, date]:
+    """The person and the month a month page is about."""
+    try:
+        month = date.fromisoformat(f"{request.path_params['month']}-01")
+    except ValueError:
+        raise HTTPException(404) from None
+    return request.path_params["owner"], month
+
+
+def _month(request: Request) -> Response:
+    return _month_page(request, *_which(request))
+
+
+def _month_page(
+    request: Request, owner: str, month: date, error: str = "", status: int = 200
+) -> Response:
+    with db.reading(request.app.state.database) as conn:
+        context = {
+            "people": query.people(conn),
+            "owner": owner,
+            "month": months.checklist(conn, owner, month),
+            "error": error,
+            "token": request.app.state.token,
+        }
+    return _templates.TemplateResponse(request, "month.html", context, status_code=status)
+
+
+async def _sent(request: Request) -> dict[str, str]:
+    """The fields of a form of these pages; anything else is refused."""
+    origin = request.headers.get("origin")
+    if origin is not None and urlsplit(origin).hostname not in _HOSTS:
+        raise HTTPException(403)
+    body = (await request.body()).decode()
+    fields = {name: values[-1] for name, values in parse_qs(body, keep_blank_values=True).items()}
+    if not secrets.compare_digest(fields.get("token", ""), request.app.state.token):
+        raise HTTPException(403)
+    return fields
+
+
+async def _commit(request: Request) -> Response:
+    await _sent(request)
+    owner, month = _which(request)
+    state = request.app.state
+
+    def commit() -> None:
+        conn = db.connect(state.database)
+        try:
+            now = state.clock()
+            monthclose.commit_with_copy(conn, state.database, owner=owner, month=month, now=now)
+        finally:
+            conn.close()
+
+    try:
+        await run_in_threadpool(commit)
+    except (monthclose.UncategorizedRowsError, ReconciliationError) as exc:
+        # Nothing was committed, and nothing here can override it: the page says why.
+        return await run_in_threadpool(_month_page, request, owner, month, str(exc), 409)
+    return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
+
+
+async def _reopen(request: Request) -> Response:
+    await _sent(request)
+    owner, month = _which(request)
+
+    def reopen() -> None:
+        conn = db.connect(request.app.state.database)
+        try:
+            monthclose.reopen(conn, owner=owner, month=month)
+        finally:
+            conn.close()
+
+    await run_in_threadpool(reopen)
+    return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
 
 
 def _cashflow(request: Request) -> Response:

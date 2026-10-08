@@ -949,3 +949,33 @@ def test_running_a_month_again_yields_the_same_database(amounts: list[str]) -> N
     monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     assert dump(conn) == before
     conn.close()
+
+
+def test_a_commit_with_a_copy_keeps_the_copy_only_when_something_changed(tmp_path: Path) -> None:
+    database = tmp_path / "finanze.db"
+    conn = db.connect(database)
+    db.migrate(conn, NOW)
+    monthclose.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
+    copies = tmp_path / "backups"
+
+    def commit() -> Path | None:
+        return monthclose.commit_with_copy(conn, database, owner=OWNER, month=SEPTEMBER, now=LATER)
+
+    conn.execute("UPDATE transactions SET category_id = NULL, category_source = NULL")
+    with pytest.raises(monthclose.UncategorizedRowsError):
+        commit()
+    assert list(copies.iterdir()) == []
+
+    monthclose.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
+    copy = commit()
+    assert copy == copies / "finanze-20261007T093000.db"
+    before = db.connect(copy)
+    assert rows(before, "SELECT status FROM months") == [("open",)]
+    before.close()
+    assert rows(conn, "SELECT status FROM months") == [("committed",)]
+
+    assert copy is not None
+    copy.unlink()
+    assert commit() is None
+    assert list(copies.iterdir()) == []
+    conn.close()

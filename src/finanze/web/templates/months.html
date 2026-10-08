@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Months{% endblock %}
+{% block main %}
+{%- if lines %}
+<table>
+  <thead>
+    <tr><th>Month</th><th>Person</th><th>State</th><th class="number">Statements</th><th class="number">Transactions</th><th class="number">Need a category</th></tr>
+  </thead>
+  <tbody>
+    {%- for line in lines %}
+    <tr>
+      <td class="date"><a href="{{ url_for('month', owner=line.owner, month=line.month.strftime('%Y-%m')) }}">{{ line.month.strftime("%Y-%m") }}</a></td>
+      <td>{{ line.owner }}</td>
+      <td>{{ "committed" if line.committed else "open" }}</td>
+      <td class="number">{{ line.statements }}</td>
+      <td class="number">{{ line.transactions }}</td>
+      <td class="number">{{ line.uncategorized or "" }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- else %}
+<p>Nothing is imported yet: <code>finanze import</code> stages a month.</p>
+{%- endif %}
+{% endblock %}

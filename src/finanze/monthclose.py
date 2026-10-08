@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from itertools import pairwise
+from pathlib import Path
 
 from finanze.categories import Extra
 from finanze.classification import Patterns, names
@@ -170,6 +171,27 @@ def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) 
             raise gap
         store.set_month(conn, owner_id, month, "committed", db.timestamp(now))
         return True
+
+
+def commit_with_copy(
+    conn: sqlite3.Connection, database: Path, *, owner: str, month: date, now: datetime
+) -> Path | None:
+    """Commit one month after saving a copy of the database next to it.
+
+    Returns the copy, or None when the month was already committed. The copy is dropped
+    when nothing changed, including when the commit is refused.
+    """
+    copy = database.parent / "backups" / f"{database.stem}-{now:%Y%m%dT%H%M%S}.db"
+    db.backup(conn, copy)
+    try:
+        done = commit(conn, owner=owner, month=month, now=now)
+    except BaseException:
+        copy.unlink()
+        raise
+    if not done:
+        copy.unlink()
+        return None
+    return copy
 
 
 def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how much

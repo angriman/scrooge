@@ -9,8 +9,8 @@
 <body>
   <header>
     <nav aria-label="Pages">
-      {%- for name, label in [("overview", "Overview"), ("cashflow", "Cash flow"), ("transactions", "Transactions")] %}
-      <a href="{{ url_for(name) }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}"{% if request.url.path == url_for(name).path %} aria-current="page"{% endif %}>{{ label }}</a>
+      {%- for name, label in [("overview", "Overview"), ("cashflow", "Cash flow"), ("transactions", "Transactions"), ("months", "Months")] %}
+      <a href="{{ url_for(name) }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}"{% if request.url.path == url_for(name).path or (name == "months" and request.url.path.startswith("/months/")) %} aria-current="page"{% endif %}>{{ label }}</a>
       {%- endfor %}
     </nav>
     <nav aria-label="Whose">
