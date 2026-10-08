@@ -16,6 +16,7 @@ from tests.storage.helpers import (
     CLOSED_AT,
     OWNER,
     PARTNER,
+    PEOPLE,
     batch,
     close,
     statement,
@@ -98,10 +99,12 @@ def test_an_open_month_says_what_blocks_it_and_has_no_commit_button(client: Test
     page = text(response.text)
     assert "September 2026, Lukas" in page
     assert "It cannot be committed yet: 1 transaction still needs a category" in page
-    assert "<button>" not in response.text
+    assert "<button>Commit" not in response.text
     statements, pending, totals = tables(response.text)
     assert statements == [["migros", "migros.csv", "2026-08-01 to 2026-09-30", "yes", "2"]]
-    assert pending == [["2026-09-05", "Migros", "&lt;i&gt;Kiosk&lt;/i&gt; KONSUM", "-80.00 CHF"]]
+    assert [row[:2] for row in pending] == [
+        ["&lt;i&gt;Kiosk&lt;/i&gt; paid · KONSUM", "2026-09-05 · Migros · -80.00 CHF"]
+    ]
     assert totals == [["Giroconto transfer", "-1,000.00 CHF", "1"]]
     assert f'<a href="{SITE}/months?owner=Lukas" aria-current="page">Months</a>' in response.text
 
@@ -136,6 +139,7 @@ def test_a_month_that_is_not_ready_is_refused_and_says_why(
     response = client.post("/months/Lukas/2026-09/commit", data={"token": token(page)})
     assert response.status_code == 409
     assert "Not committed: 1 transactions of 2026-09 still need a category." in text(response.text)
+    assert response.text.count('role="alert"') == 1
     assert status(database)["Lukas", "2026-09"] == "open"
     assert not list((database.parent / "backups").iterdir())
 
@@ -199,3 +203,90 @@ def test_each_start_of_the_app_has_a_token_of_its_own(database: Path) -> None:
     first, second = webapp.create_app(database), webapp.create_app(database)
     assert first.state.token != second.state.token
     assert len(first.state.token) >= 32
+
+
+def waiting(database: Path) -> str:
+    conn = sqlite3.connect(database)
+    (found,) = conn.execute("SELECT id FROM transactions WHERE category_id IS NULL").fetchall()
+    conn.close()
+    return str(found[0])
+
+
+def stored(database: Path, txn_id: str) -> tuple[str | None, str | None]:
+    conn = sqlite3.connect(database)
+    (found,) = conn.execute(
+        "SELECT c.name, t.category_source FROM transactions t "
+        "LEFT JOIN categories c ON c.id = t.category_id WHERE t.id = ?",
+        (txn_id,),
+    ).fetchall()
+    conn.close()
+    return (found[0], found[1])
+
+
+def test_the_form_offers_leaf_categories_and_only_these_rows_without_rules(
+    client: TestClient, database: Path
+) -> None:
+    page = client.get("/months/Lukas/2026-09").text
+    assert f'<input type="hidden" name="id" value="{waiting(database)}">' in page
+    assert "<option>Affitto</option>" in page
+    assert "<option>Casa</option>" not in page
+    assert 'type="radio"' not in page
+    assert "For these rows only." in page
+
+
+def test_a_category_set_for_these_rows_unblocks_the_month(
+    client: TestClient, database: Path
+) -> None:
+    row = waiting(database)
+    form = {"token": token_of(client), "id": row, "category": "Regali", "remember": "rule"}
+    response = client.post("/months/Lukas/2026-09/categorize", data=form)
+    assert response.status_code == 303
+    assert response.headers["location"] == f"{SITE}/months/Lukas/2026-09"
+    assert stored(database, row) == ("Regali", "manual")  # no rules file: not remembered
+    page = client.get("/months/Lukas/2026-09").text
+    assert "Need a category" not in page
+    assert "<button>Commit the month</button>" in page
+
+
+def test_a_category_to_remember_is_saved_as_a_rule(database: Path, tmp_path: Path) -> None:
+    rules = webapp.Rules(tmp_path / "rules.local.yaml", PEOPLE)
+    client = TestClient(webapp.create_app(database, rules=rules), base_url=SITE)
+    page = client.get("/months/Lukas/2026-09").text
+    assert '<input type="radio" name="remember" value="rule" checked>' in page
+    row = waiting(database)
+    form = {"token": token(page), "id": row, "category": "Regali", "remember": "rule"}
+    assert client.post("/months/Lukas/2026-09/categorize", data=form).status_code == 200
+    assert stored(database, row) == ("Regali", "rule")
+    assert rules.shared.read_text(encoding="utf-8") == (
+        'rules:\n  - {match: "(?m)^<i>Kiosk</i>$", category: "Regali", direction: out}\n'
+    )
+    assert rules.of("Lukas").own == tmp_path / "rules.lukas.yaml"
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"category": ""}, "No category was set: no category was chosen."),
+        ({"category": "Casa"}, "No category was set: unknown category &#39;Casa&#39;."),
+        ({"id": "gone"}, "No category was set: those rows are no longer waiting"),
+    ],
+)
+def test_a_choice_that_cannot_be_made_is_said(
+    client: TestClient, database: Path, change: dict[str, str], message: str
+) -> None:
+    row = waiting(database)
+    form = {"token": token_of(client), "id": row, "category": "Regali", "remember": "rows"}
+    response = client.post("/months/Lukas/2026-09/categorize", data=form | change)
+    assert response.status_code == 409
+    assert message in response.text
+    assert stored(database, row) == (None, None)
+
+
+def test_rows_of_a_committed_or_missing_month_cannot_be_categorized(client: TestClient) -> None:
+    form = {"token": token_of(client), "id": "x", "category": "Regali"}
+    response = client.post("/months/Lukas/2026-08/categorize", data=form)
+    assert response.status_code == 409
+    assert "2026-08 is committed for Lukas: reopen it first" in response.text
+    assert client.post("/months/Zoe/2026-08/categorize", data=form).status_code == 404
+    forged = client.post("/months/Lukas/2026-08/categorize", data=form | {"token": "x"})
+    assert forged.status_code == 403

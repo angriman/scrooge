@@ -58,6 +58,15 @@ class Pending:
 
 
 @dataclass(frozen=True, slots=True)
+class Group:
+    """Waiting rows of one counterparty going one way: they get their category together."""
+
+    name: str  # the counterparty, or the description without one; "" when the rows have no text
+    incoming: bool
+    rows: tuple[Pending, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CategoryTotal:
     side: str  # "uscite", "entrate" or "transfer"
     category: str
@@ -81,6 +90,15 @@ class Checklist:
     gaps: tuple[str, ...]
     uncategorized: tuple[Pending, ...]
     totals: tuple[CategoryTotal, ...]  # by booking date, as the month is closed
+
+    @property
+    def groups(self) -> tuple[Group, ...]:
+        """The waiting rows as `--review` asks about them: per counterparty and direction."""
+        found: dict[tuple[str, bool], list[Pending]] = {}
+        for row in self.uncategorized:
+            name = (row.counterparty or row.description).strip()
+            found.setdefault((name, row.amount > 0), []).append(row)
+        return tuple(Group(name, incoming, tuple(rows)) for (name, incoming), rows in found.items())
 
     @property
     def blocked_by(self) -> tuple[str, ...]:

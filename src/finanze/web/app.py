@@ -10,6 +10,7 @@ import csv
 import io
 import secrets
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -27,9 +28,9 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from finanze import cashflow, monthclose, months, query
+from finanze import cashflow, classification, monthclose, months, query
 from finanze.models import Kind
-from finanze.storage import db
+from finanze.storage import db, store
 from finanze.validation import ReconciliationError
 from finanze.web import forms
 
@@ -88,8 +89,26 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def create_app(database: Path, clock: Callable[[], datetime] = _utc_now) -> Starlette:
-    """The app over `database`, whose schema is already up to date."""
+@dataclass(frozen=True, slots=True)
+class Rules:
+    """Where the month page saves a remembered choice of category (plan 5.4)."""
+
+    shared: Path  # the rules both people share; each person's own file sits next to it
+    people: monthclose.People  # what recognises each person as a counterparty
+
+    def of(self, owner: str) -> monthclose.Remember:
+        everyone = [pattern for patterns in self.people.values() for pattern in patterns]
+        own = classification.personal_file(self.shared, owner)
+        return monthclose.Remember(self.shared, own, everyone)
+
+
+def create_app(
+    database: Path, clock: Callable[[], datetime] = _utc_now, rules: Rules | None = None
+) -> Starlette:
+    """The app over `database`, whose schema is already up to date.
+
+    Without `rules` a category can only be chosen for the rows shown, not remembered.
+    """
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
@@ -98,6 +117,12 @@ def create_app(database: Path, clock: Callable[[], datetime] = _utc_now) -> Star
             Route("/months/{owner}/{month}", _month, name="month"),
             Route("/months/{owner}/{month}/commit", _commit, methods=["POST"], name="commit"),
             Route("/months/{owner}/{month}/reopen", _reopen, methods=["POST"], name="reopen"),
+            Route(
+                "/months/{owner}/{month}/categorize",
+                _categorize,
+                methods=["POST"],
+                name="categorize",
+            ),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
@@ -114,6 +139,7 @@ def create_app(database: Path, clock: Callable[[], datetime] = _utc_now) -> Star
     )
     app.state.database = database
     app.state.clock = clock
+    app.state.rules = rules
     # Sent back by every form of these pages: a page of another site cannot read it, so it
     # cannot make the browser change anything here.
     app.state.token = secrets.token_urlsafe(32)
@@ -162,18 +188,20 @@ def _month_page(
             "month": months.checklist(conn, owner, month),
             "error": error,
             "token": request.app.state.token,
+            "choices": query.choices(conn, owner),
+            "can_remember": request.app.state.rules is not None,
         }
     return _templates.TemplateResponse(request, "month.html", context, status_code=status)
 
 
-async def _sent(request: Request) -> dict[str, str]:
-    """The fields of a form of these pages; anything else is refused."""
+async def _sent(request: Request) -> dict[str, list[str]]:
+    """The fields of a form of these pages, each with all its values; anything else is refused."""
     origin = request.headers.get("origin")
     if origin is not None and urlsplit(origin).hostname not in _HOSTS:
         raise HTTPException(403)
     body = (await request.body()).decode()
-    fields = {name: values[-1] for name, values in parse_qs(body, keep_blank_values=True).items()}
-    if not secrets.compare_digest(fields.get("token", ""), request.app.state.token):
+    fields = parse_qs(body, keep_blank_values=True)
+    if not secrets.compare_digest(fields.get("token", [""])[-1], request.app.state.token):
         raise HTTPException(403)
     return fields
 
@@ -195,7 +223,39 @@ async def _commit(request: Request) -> Response:
         await run_in_threadpool(commit)
     except (monthclose.UncategorizedRowsError, ReconciliationError) as exc:
         # Nothing was committed, and nothing here can override it: the page says why.
-        return await run_in_threadpool(_month_page, request, owner, month, str(exc), 409)
+        error = f"Not committed: {exc}."
+        return await run_in_threadpool(_month_page, request, owner, month, error, 409)
+    return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
+
+
+async def _categorize(request: Request) -> Response:
+    fields = await _sent(request)
+    owner, month = _which(request)
+    state = request.app.state
+    wanted = fields.get("remember", [""])[-1] == "rule" and state.rules is not None
+
+    def categorize() -> None:
+        conn = db.connect(state.database)
+        try:
+            monthclose.categorize(
+                conn,
+                owner=owner,
+                month=month,
+                ids=fields.get("id", []),
+                category=fields.get("category", [""])[-1],
+                now=state.clock(),
+                remember=state.rules.of(owner) if wanted else None,
+            )
+        finally:
+            conn.close()
+
+    try:
+        await run_in_threadpool(categorize)
+    except (monthclose.MonthCloseError, store.UnknownCategoryError) as exc:
+        if isinstance(exc, monthclose.NothingStagedError):
+            raise
+        error = f"No category was set: {exc}."
+        return await run_in_threadpool(_month_page, request, owner, month, error, 409)
     return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
 
 

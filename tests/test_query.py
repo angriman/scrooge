@@ -211,6 +211,10 @@ def test_the_choices_are_the_accounts_in_view_and_the_whole_taxonomy(
     assert groups["Regali"] == ("Regali", "Donazioni")  # the leaf named like its parent: once
     assert groups["Entrate"][0] == "Stipendio"
     assert "Giroconto" in groups["Transfer"]
+    leaves = dict(query.choices(conn).leaves)
+    assert leaves["Casa"] == ("Affitto", "Utenze", "Arredamento e casa")
+    assert leaves["Regali"] == ("Regali", "Donazioni")
+    assert leaves["Entrate"] == groups["Entrate"]
     assert next(iter(groups)) == "Casa"
     assert [*groups][-2:] == ["Entrate", "Transfer"]
 

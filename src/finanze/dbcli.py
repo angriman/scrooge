@@ -132,6 +132,13 @@ def _parser() -> argparse.ArgumentParser:
     _query_parser(commands.add_parser("query", parents=[files], help="find transactions"))
     serve = commands.add_parser("serve", parents=[files], help="browse the database")
     serve.add_argument("--port", type=int, default=8765, help="default: 8765")
+    serve.add_argument(
+        "--rules",
+        type=Path,
+        default=Path("rules.local.yaml"),
+        help="where a remembered category is saved as a rule (default: rules.local.yaml); "
+        "rows naming a person go to that owner's rules.<owner>.yaml next to it",
+    )
     return parser
 
 
@@ -258,7 +265,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             return _query(conn, args, out)
         if args.command == "serve":
             conn.close()  # the pages open the database themselves, read-only
-            return _serve(path, args.port, out)
+            return _serve(path, args.port, webapp.Rules(args.rules, people), out)
         labels = _labels(config, args.config)
         session = _Session(conn, path, owner, people, labels, console, now)
         if args.command == "import":
@@ -290,10 +297,11 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         conn.close()
 
 
-def _serve(database: Path, port: int, out: TextIO) -> int:
+def _serve(database: Path, port: int, rules: webapp.Rules, out: TextIO) -> int:
     """Serve the pages until interrupted. There is no option to listen anywhere else (D18)."""
     out.write(f"{database} is at http://{webapp.HOST}:{port} (Ctrl-C to stop)\n")
-    uvicorn.run(webapp.create_app(database), host=webapp.HOST, port=port, log_level="warning")
+    app = webapp.create_app(database, rules=rules)
+    uvicorn.run(app, host=webapp.HOST, port=port, log_level="warning")
     return OK
 
 

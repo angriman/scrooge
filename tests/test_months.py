@@ -143,3 +143,22 @@ def test_a_month_nobody_staged_is_refused(
 ) -> None:
     with pytest.raises(monthclose.NothingStagedError, match=f"nothing is staged for {owner}"):
         months.checklist(conn, owner, month)
+
+
+def test_waiting_rows_are_grouped_by_counterparty_and_direction(conn: sqlite3.Connection) -> None:
+    card_row = {"category": "", "account": "Swisscard", "source_file": "card.pdf"}
+    more = [
+        txn("-80", date=date(2026, 10, 5), source_ref="1", **card_row),
+        txn("-7", date=date(2026, 10, 6), source_ref="2", counterparty=" Kiosk ", **card_row),
+        txn("3", date=date(2026, 10, 7), source_ref="3", kind=Kind.INCOME, **card_row),
+        txn("-9", date=date(2026, 10, 8), source_ref="4", counterparty="Kiosk", **card_row),
+    ]
+    card = statement("swisscard", more, filename="card.pdf", month=OCTOBER)
+    monthclose.stage(conn, batch(card, month=OCTOBER), CLOSED_AT)
+    groups = months.checklist(conn, OWNER, OCTOBER).groups
+    found = [(g.name, g.incoming, [str(row.amount) for row in g.rows]) for g in groups]
+    assert found == [
+        ("KONSUM", False, ["-80"]),
+        ("Kiosk", False, ["-7", "-9"]),
+        ("KONSUM", True, ["3"]),
+    ]

@@ -126,6 +126,8 @@ class Choices:
     # A heading and the names under it: each top-level expense category followed by its
     # leaves, then income, then transfers.
     categories: tuple[tuple[str, tuple[str, ...]], ...]
+    # The same without the top-level names: what a transaction can be given.
+    leaves: tuple[tuple[str, tuple[str, ...]], ...]
 
 
 def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
@@ -140,14 +142,19 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.sort_order, c.id"
     ).fetchall()
     groups: dict[str, list[str]] = {}
+    leaves: dict[str, list[str]] = {}
     for r in found:
-        heading = r["parent"] or (r["name"] if r["side"] == "uscite" else r["side"].capitalize())
+        top = r["side"] == "uscite" and r["parent"] is None
+        heading = r["parent"] or (r["name"] if top else r["side"].capitalize())
         names = groups.setdefault(heading, [])
         if r["name"] not in names:  # a leaf named like its parent is one choice
             names.append(r["name"])
+        if not top:
+            leaves.setdefault(heading, []).append(r["name"])
     return Choices(
         tuple(r["name"] for r in accounts),
         tuple((heading, tuple(names)) for heading, names in groups.items()),
+        tuple((heading, tuple(names)) for heading, names in leaves.items()),
     )
 
 

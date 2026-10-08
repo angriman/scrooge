@@ -460,6 +460,8 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert (how["host"], how["port"]) == ("127.0.0.1", 9000)
     assert isinstance(app, Starlette)
     assert app.state.database == run.database
+    assert app.state.rules.shared == Path("rules.local.yaml")
+    assert app.state.rules.people == {}
     assert run.count("schema_version") == 1
 
     with pytest.raises(SystemExit):

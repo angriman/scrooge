@@ -8,7 +8,7 @@
 {% endmacro %}
 {% block main %}
 {%- if error %}
-<p class="error" role="alert">Not committed: {{ error }}.</p>
+<p class="error" role="alert">{{ error }}</p>
 {%- endif %}
 <section>
   <h2>State</h2>
@@ -52,25 +52,56 @@
     </tbody>
   </table>
 </section>
-{%- if month.uncategorized %}
+{%- if month.groups %}
 <section>
   <h2>Need a category</h2>
   <table>
     <thead>
-      <tr><th>Date</th><th>Account</th><th>Counterparty and description</th><th class="number">Amount</th></tr>
+      <tr><th>Counterparty or description</th><th>Rows</th><th>Category</th></tr>
     </thead>
     <tbody>
-      {%- for row in month.uncategorized %}
+      {%- for group in month.groups %}
       <tr>
-        <td class="date">{{ row.date }}</td>
-        <td>{{ row.account }}</td>
-        <td>{{ row.counterparty or row.description }}{% if row.counterparty and row.description != row.counterparty %}<small>{{ row.description }}</small>{% endif %}</td>
-        <td class="number">{{ row.amount|money }} {{ row.currency }}</td>
+        <td>{{ group.name or "(no text)" }}<small>{{ "received" if group.incoming else "paid" }}{% if group.rows[0].description != group.name %} · {{ group.rows[0].description }}{% endif %}</small></td>
+        <td>
+          {%- for row in group.rows %}
+          <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
+          {%- endfor %}
+        </td>
+        <td>
+          {%- if month.committed %}
+          Reopen the month to set it.
+          {%- else %}
+          <form method="post" action="{{ url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="choice">
+            <input type="hidden" name="token" value="{{ token }}">
+            {%- for row in group.rows %}
+            <input type="hidden" name="id" value="{{ row.id }}">
+            {%- endfor %}
+            <select name="category" required aria-label="Category for {{ group.name }}">
+              <option value="">Choose</option>
+              {%- for heading, names in choices.leaves %}
+              <optgroup label="{{ heading }}">
+                {%- for name in names %}
+                <option>{{ name }}</option>
+                {%- endfor %}
+              </optgroup>
+              {%- endfor %}
+            </select>
+            {%- if can_remember and group.name %}
+            <label><input type="radio" name="remember" value="rule" checked> always (save a rule)</label>
+            <label><input type="radio" name="remember" value="rows"> just these rows</label>
+            {%- else %}
+            <input type="hidden" name="remember" value="rows">
+            <small>For these rows only.</small>
+            {%- endif %}
+            <button>Set</button>
+          </form>
+          {%- endif %}
+        </td>
       </tr>
       {%- endfor %}
     </tbody>
   </table>
-  <p>Until the form can do it: <code>finanze import --review</code> asks for each of them.</p>
 </section>
 {%- endif %}
 <section>
