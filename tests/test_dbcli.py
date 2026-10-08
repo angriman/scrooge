@@ -354,3 +354,93 @@ def test_the_main_command_hands_database_commands_over(run: Run) -> None:
     argv = ["reopen", "2026-09", "--config", str(run.config)]
     assert cli.main(argv, out=out) == dbcli.FAILED
     assert out.getvalue() == "error: nothing is staged for Lukas in 2026-09\n"
+
+
+@pytest.fixture
+def closed(run: Run) -> Run:
+    """August and September 2026, committed."""
+    run.load_august()
+    run.load()
+    assert run("commit", "2026-08", "2026-09") == dbcli.OK
+    return run
+
+
+def test_query_lists_the_matching_rows_and_their_total(closed: Run) -> None:
+    assert closed("query", "--category", "Spesa") == dbcli.OK
+    assert closed.output == (
+        "2026-08-07  Lukas  Swisscard    -41.85  CHF  Spesa  FRISCHMARKT ZENTRUM\n"
+        "2026-08-30  Lukas  Migros       -25.40  CHF  Spesa  KONSUM-1234 ZUERICH\n"
+        "2026-08-31  Lukas  Revolut CHF  -20.00  CHF  Spesa  Konsum\n"
+        "3 transactions\n"
+        "Total:\n"
+        "  -87.25 CHF  (3)\n"
+    )
+
+
+def test_query_can_print_the_totals_alone_with_a_line_per_period(closed: Run) -> None:
+    assert closed("query", "--kind", "income", "--summary") == dbcli.OK
+    assert closed.output == (
+        "9 transactions\n"
+        "Total:\n"
+        "   7,430.70 CHF  (6)\n"
+        "  14,999.60 USD  (3)\n"
+        "By month:\n"
+        "  2026-08       2.40 CHF  (1)\n"
+        "  2026-09   7,428.30 CHF  (5)\n"
+        "  2026-09  14,999.60 USD  (3)\n"
+    )
+
+
+def test_query_takes_a_day_a_month_or_a_year_as_either_end(closed: Run) -> None:
+    def count(*args: str) -> str:
+        assert closed("query", "--summary", "--category", "Spesa", *args) == dbcli.OK
+        return closed.output.partition("\n")[0]
+
+    assert count("--from", "2026-08-30") == "2 transactions"
+    assert count("--to", "2026-08-30") == "2 transactions"
+    assert count("--from", "2026-08", "--to", "2026-08") == "3 transactions"
+    assert count("--from", "2026-09") == "0 transactions"
+    assert count("--from", "2026", "--to", "2026") == "3 transactions"
+    assert count("--to", "2025") == "0 transactions"
+
+
+def test_query_by_booking_date_shows_that_date(closed: Run) -> None:
+    assert closed("query", "--text", "frischmarkt", "--booking", "--from", "2026-09") == dbcli.OK
+    assert closed.output == (
+        "2026-09-04  Lukas  Swisscard  -41.85  CHF  Spesa  FRISCHMARKT ZENTRUM\n"
+        "1 transaction\n"
+        "Total:\n"
+        "  -41.85 CHF  (1)\n"
+    )
+
+
+def test_query_combines_account_amount_and_owner(closed: Run) -> None:
+    migros = ("query", "--account", "Migros", "--min", "1000", "--max", "2000")
+    assert closed(*migros, "--owner", "Lukas") == dbcli.OK
+    assert closed.output.startswith(
+        "2026-09-01  Lukas  Migros  -1,850.00  CHF  Affitto  Hans Muster\n"
+        "2026-09-08  Lukas  Migros  -1,288.18  CHF           Swisscard AECS GmbH\n"
+        "2 transactions\n"
+    )
+    assert closed("query", "--owner", "Anna") == dbcli.OK
+    assert closed.output == "0 transactions\n"
+
+
+def test_query_reads_both_people_without_an_owner_in_the_config(closed: Run) -> None:
+    closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
+    assert closed("query", "--summary") == dbcli.OK
+    assert closed.output.startswith("110 transactions\n")
+
+
+def test_query_refuses_a_name_it_does_not_know(closed: Run) -> None:
+    assert closed("query", "--category", "Spese") == dbcli.FAILED
+    assert closed.output == "error: no category named 'Spese'\n"
+
+
+@pytest.mark.parametrize("text", ["May", "20266", "2026-13", "2026-02-30"])
+def test_query_dates_must_look_like_dates(
+    closed: Run, capsys: pytest.CaptureFixture[str], text: str
+) -> None:
+    with pytest.raises(SystemExit):
+        closed("query", "--from", text)
+    assert f"{text!r} is not a day, a month or a year" in capsys.readouterr().err

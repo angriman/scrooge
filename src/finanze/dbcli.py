@@ -1,16 +1,18 @@
-"""`finanze import | commit | reopen`: one person's month in the database.
+"""`finanze import | commit | reopen | balance | query`: the database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
+    finanze query [filters]   list the committed transactions that match, with their totals
 
 `commit` and `reopen` take a second month to cover every month from the first to it.
 
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
+`query` is the exception: it reads both people's transactions unless `--owner` names one.
 """
 
 from __future__ import annotations
@@ -27,18 +29,20 @@ from typing import TextIO
 
 import yaml
 
-from finanze import categories, classification, monthclose, pipeline, review
+from finanze import categories, classification, monthclose, pipeline, query, review
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
 from finanze.extractors.common import month_end, months_between
+from finanze.models import Kind
 from finanze.monthclose import Batch, MonthCloseError, People
 from finanze.storage import db, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
 
-COMMANDS = ("import", "commit", "reopen", "balance")
+COMMANDS = ("import", "commit", "reopen", "balance", "query")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
+_AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
     ExtractionError,
     ReconciliationError,
@@ -49,6 +53,7 @@ _ERRORS = (
     PrecisionError,
     store.UnknownCategoryError,
     store.AccountMismatchError,
+    query.QueryError,
 )
 
 
@@ -80,9 +85,10 @@ def _month(text: str) -> date:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="finanze", description=__doc__)
-    shared = argparse.ArgumentParser(add_help=False)
-    shared.add_argument("--config", type=Path, default=Path("finanze.yaml"))
-    shared.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
+    files = argparse.ArgumentParser(add_help=False)
+    files.add_argument("--config", type=Path, default=Path("finanze.yaml"))
+    files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
+    shared = argparse.ArgumentParser(add_help=False, parents=[files])
     shared.add_argument("--owner", help="whose month this is (default: 'owner' in the config)")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -119,7 +125,50 @@ def _parser() -> argparse.ArgumentParser:
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
     typed.add_argument("currency", help="CHF, EUR, ...")
+    _query_parser(commands.add_parser("query", parents=[files], help="find transactions"))
     return parser
+
+
+def _query_parser(find: argparse.ArgumentParser) -> None:
+    day = "a day, a month or a year: 2025-05-17, 2025-05, 2025"
+    find.add_argument("--from", dest="first", type=_first_day, help=f"from {day}")
+    find.add_argument("--to", dest="last", type=_last_day, help=f"up to and including {day}")
+    find.add_argument(
+        "--booking",
+        action="store_true",
+        help="compare and group by the booking date, not the day it really happened",
+    )
+    find.add_argument("--owner", help="only this person's (default: both)")
+    find.add_argument("--account", help="only this account, by its name")
+    find.add_argument("--category", help="a category, or a top-level one for all its leaves")
+    find.add_argument("--kind", type=Kind, choices=list(Kind), help="only rows of this kind")
+    find.add_argument("--min", dest="at_least", type=_amount, help="amounts of at least this size")
+    find.add_argument("--max", dest="at_most", type=_amount, help="amounts of at most this size")
+    find.add_argument("--text", default="", help="words in the counterparty or the description")
+    find.add_argument("--summary", action="store_true", help="print the totals without the rows")
+
+
+def _span_of(text: str) -> tuple[date, date]:
+    """The first and last day of `2025`, of `2025-05`, or `2025-05-17` twice."""
+    try:
+        if len(text) == 4:
+            return date(int(text), 1, 1), date(int(text), 12, 31)
+        if len(text) == 7:
+            first = date.fromisoformat(f"{text}-01")
+            return first, month_end(first)
+        day = date.fromisoformat(text)
+    except ValueError:
+        msg = f"{text!r} is not a day, a month or a year like 2025-05-17, 2025-05 or 2025"
+        raise argparse.ArgumentTypeError(msg) from None
+    return day, day
+
+
+def _first_day(text: str) -> date:
+    return _span_of(text)[0]
+
+
+def _last_day(text: str) -> date:
+    return _span_of(text)[1]
 
 
 def _amount(text: str) -> Decimal:
@@ -199,13 +248,15 @@ class _Session:
 def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     out = console.out
     config = _config(args.config)
-    owner = _setting(args, config, "owner", "owner")
+    owner = "" if args.command == "query" else _setting(args, config, "owner", "owner")
     path = Path(_setting(args, config, "db", "database")).expanduser()
     people = _people(config, args.config)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(path)
     try:
         db.migrate(conn, now)
+        if args.command == "query":
+            return _query(conn, args, out)
         labels = _labels(config, args.config)
         session = _Session(conn, path, owner, people, labels, console, now)
         if args.command == "import":
@@ -235,6 +286,63 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         return OK
     finally:
         conn.close()
+
+
+def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> int:
+    wanted = query.Filter(
+        first=args.first,
+        last=args.last,
+        booking=args.booking,
+        owner=args.owner,
+        account=args.account,
+        category=args.category,
+        kind=args.kind,
+        at_least=args.at_least,
+        at_most=args.at_most,
+        text=args.text,
+    )
+    result = query.run(conn, wanted)
+    if not args.summary:
+        _print_rows(result.rows, out, booking=args.booking)
+    out.write(f"{len(result.rows)} transaction{'' if len(result.rows) == 1 else 's'}\n")
+    _print_sums("Total", result.totals, out)
+    for title, sums in (("By year", result.by_year), ("By month", result.by_month)):
+        if len({item.period for item in sums}) > 1:
+            _print_sums(title, sums, out)
+    return OK
+
+
+def _print_rows(rows: Sequence[query.Row], out: TextIO, *, booking: bool) -> None:
+    """One line per transaction, in columns as wide as their longest value."""
+    lines = [
+        (
+            (row.booking_date if booking else row.date).isoformat(),
+            row.owner,
+            row.account,
+            f"{row.amount:,.2f}",
+            row.currency,
+            row.category or "",
+            row.counterparty or row.description,
+        )
+        for row in rows
+    ]
+    widths = [max(len(value) for value in column) for column in zip(*lines, strict=True)]
+    for line in lines:
+        cells = [
+            value.rjust(width) if column == _AMOUNT else value.ljust(width)
+            for column, (value, width) in enumerate(zip(line, widths, strict=True))
+        ]
+        out.write("  ".join(cells).rstrip() + "\n")
+
+
+def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
+    if not sums:
+        return
+    out.write(f"{title}:\n")
+    width = max(len(f"{item.total:,.2f}") for item in sums)
+    for item in sums:
+        period = f"{item.period}  " if item.period else ""
+        out.write(f"  {period}{item.total:>{width},.2f} {item.currency}  ({item.count})\n")
 
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
