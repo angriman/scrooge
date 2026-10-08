@@ -10,6 +10,7 @@ from typing import TextIO
 
 from finanze import categories, classification
 from finanze.categories import Extra
+from finanze.classification import Patterns
 from finanze.models import Transaction
 
 _HELP = (
@@ -26,14 +27,19 @@ _STOP = "q"
 def ask_categories(
     pending: Sequence[Transaction],
     rules_file: Path,
-    categories_file: Path,
     out: TextIO,
     ask: Callable[[str], str],
+    personal: tuple[Path, Patterns] | None = None,
 ) -> None:
     """Ask once per counterparty and direction; each answer becomes a rule in `rules_file`.
 
-    An answer like `+Prestiti` adds the category to `categories_file` first.
+    An answer like `+Prestiti` adds the category to `categories.yaml`, next to it, first.
+    `personal` is the file of the owner's own rules and what recognises a person, anybody: the
+    answer for a row that names one is saved there instead, since on the statements of the
+    other person the same name means something else.
     """
+    categories_file = rules_file.with_name(categories.FILE)
+    own_file, people = personal or (rules_file, ())
     groups: dict[tuple[str, str], list[Transaction]] = {}
     unnamed = 0
     for txn in pending:
@@ -62,10 +68,11 @@ def ask_categories(
             chosen = new.name
             number = categories.names(categories.load(categories_file)).index(chosen) + 1
             under = f" under {new.group}" if new.group else ""
-            where = f"{new.side}{under}"
-            out.write(f"  new category {number}={chosen} ({where}) in {categories_file}\n")
-        classification.append_rule(rules_file, counterparty, flow, chosen)
-        out.write(f"  saved to {rules_file}: {counterparty} -> {chosen}\n")
+            side = f"{new.side}{under}"
+            out.write(f"  new category {number}={chosen} ({side}) in {categories_file}\n")
+        where = own_file if classification.names(rows[0], people) else rules_file
+        classification.append_rule(where, counterparty, flow, chosen)
+        out.write(f"  saved to {where}: {counterparty} -> {chosen}\n")
 
 
 def menu(extras: tuple[Extra, ...]) -> str:

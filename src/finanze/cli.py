@@ -126,7 +126,7 @@ def _run(args: argparse.Namespace, out: TextIO, ask: Callable[[str], str]) -> in
         )
         raise ExtractionError(msg)
     if args.review and month.uncategorized:
-        review.ask_categories(month.uncategorized, rule_files[0], categories_file, out, ask)
+        review.ask_categories(month.uncategorized, rule_files[0], out, ask)
         month = process()
     month = month.renamed(_names(config))
 

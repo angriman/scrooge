@@ -175,6 +175,17 @@ def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> N
     assert run.questions
 
 
+def test_the_rules_of_the_other_person_are_not_applied(run: Run) -> None:
+    run.rules.write_text("rules: []\n", encoding="utf-8")
+    rule = "rules:\n  - {match: Muster, category: Affitto}\n"
+    run.rules.with_name("rules.anna.yaml").write_text(rule, encoding="utf-8")
+    run.load()
+    without = run.pending()
+    run.rules.with_name("rules.lukas.yaml").write_text(rule, encoding="utf-8")
+    run.load()
+    assert run.pending() == without - 1
+
+
 def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
     run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
     run.answers = ["+Prestiti", "q"]

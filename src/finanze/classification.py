@@ -7,6 +7,12 @@ and counterparty; the first match wins. Extractors already set the deterministic
 A rule that gives a transfer category (Topup Revolut, Giroconto...) to a row the extractor took
 for income or an expense also makes it a transfer, which is never income or an expense: the
 answers of `--review` need no `kind`.
+
+Two people share the rules about shops (D14), and each has a file of their own for the rows
+that name either of them: what a name means depends on whose account it is read on (my wife's
+name on my account is a refund, on hers a move between her own accounts). And no rule makes a
+transfer of a row that names the other person: money between the two is income or an expense
+of each.
 """
 
 from __future__ import annotations
@@ -25,6 +31,9 @@ from finanze.errors import ConfigError
 from finanze.models import Kind, SecurityTrade, Transaction
 
 ASSET_TABS = frozenset({"ETFs", "Stocks", "Bonds"})
+_FLOWS = frozenset({Kind.EXPENSE, Kind.INCOME})
+
+Patterns = Sequence[re.Pattern[str]]  # what recognises a person: names, IBANs
 
 
 class UnknownInstrumentError(Exception):
@@ -38,12 +47,16 @@ class Rule:
     kind: Kind | None = None  # overrides the extractor's income/expense guess when set
     account: str = ""  # restricts the rule to one account when set
     direction: str = ""  # "in" or "out": restricts the rule to money received or spent
+    # Set by `between_people` on rules giving a transfer category: who the other people are.
+    unless: Patterns = ()
 
     def matches(self, txn: Transaction) -> bool:
         if self.account and self.account != txn.account:
             return False
         if self.direction and self.direction != direction(txn):
             return False
+        if self.unless and txn.kind in _FLOWS and names(txn, self.unless):
+            return False  # money between two people is not a move between one's own accounts
         # Stripped: statements pad some texts with spaces, and --review saves the name stripped
         # as a whole-text rule, which would otherwise never match the row it was made for.
         return bool(self.pattern.search(f"{txn.description.strip()}\n{txn.counterparty.strip()}"))
@@ -150,6 +163,31 @@ def load_instruments(path: Path) -> dict[str, Instrument]:
     return instruments
 
 
+PERSONAL = "rules.{owner}.yaml"  # one person's own rules, next to the first rules file
+
+
+def personal_file(rules_file: Path, owner: str) -> Path:
+    """Where the rules of `owner` alone are kept: tried before the rules both people share."""
+    return rules_file.with_name(PERSONAL.format(owner=owner.lower()))
+
+
+def between_people(rules: Iterable[Rule], others: Patterns) -> tuple[Rule, ...]:
+    """The rules as they apply to one person's statements when `others` recognise the rest.
+
+    Those giving a transfer category no longer match a row naming one of the others (D14).
+    """
+    return tuple(
+        replace(rule, unless=others) if rule.category in categories.TRANSFERS else rule
+        for rule in rules
+    )
+
+
+def names(txn: Transaction, people: Patterns) -> bool:
+    """Whether the text of `txn` holds one of the names or IBANs of `people`."""
+    text = f"{txn.description}\n{txn.counterparty}"
+    return any(pattern.search(text) for pattern in people)
+
+
 def classify(transactions: Iterable[Transaction], rules: Sequence[Rule]) -> tuple[Transaction, ...]:
     """Give every uncategorized transaction the category of the first rule that matches it."""
     return tuple(_classify(txn, rules) for txn in transactions)
@@ -166,7 +204,7 @@ def _classify(txn: Transaction, rules: Sequence[Rule]) -> Transaction:
 
 def _kind(txn: Transaction, rule: Rule) -> Kind:
     """The extractor's kind, unless the category says its income or expense is a transfer."""
-    if rule.category in categories.TRANSFERS and txn.kind in {Kind.EXPENSE, Kind.INCOME}:
+    if rule.category in categories.TRANSFERS and txn.kind in _FLOWS:
         return Kind.TRANSFER
     return txn.kind
 

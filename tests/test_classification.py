@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -9,9 +10,11 @@ from finanze.classification import (
     Instrument,
     UnknownInstrumentError,
     append_rule,
+    between_people,
     classify,
     load_instruments,
     load_rules,
+    personal_file,
     resolve_instruments,
     uncategorized,
 )
@@ -259,3 +262,46 @@ def test_an_appended_rule_loads_whatever_characters_the_name_holds(tmp_path: Pat
     rules = load_rules([path])
     assert classify([_txn(name)], rules)[0].category == "Treni"
     assert classify([_txn("B\u00c3R")], rules)[0].category == ""
+
+
+ANNA = (re.compile("ANNA MEIER", re.IGNORECASE),)
+
+
+def test_each_person_has_a_rules_file_of_their_own_read_first(tmp_path: Path) -> None:
+    shared = _rules(
+        tmp_path,
+        "rules:\n"
+        "  - {match: 'from lukas meier', category: Topup Revolut}\n"
+        "  - {match: 'konsum', category: Spesa}\n",
+    )
+    hers = personal_file(shared, "Anna")
+    assert hers == tmp_path / "rules.anna.yaml"
+    hers.write_text("rules:\n  - {match: 'from lukas meier', category: Rimborsi}\n", "utf-8")
+    rows = [_txn("Transfer from LUKAS MEIER", "50", kind=Kind.INCOME), _txn("Konsum")]
+    his = classify(rows, load_rules([personal_file(shared, "Lukas"), shared]))
+    assert [t.category for t in his] == ["Topup Revolut", "Spesa"]
+    her = classify(rows, load_rules([hers, shared]))
+    assert [(t.category, t.kind) for t in her] == [
+        ("Rimborsi", Kind.INCOME),
+        ("Spesa", Kind.EXPENSE),
+    ]
+
+
+def test_no_rule_makes_a_transfer_of_money_from_the_other_person(tmp_path: Path) -> None:
+    text = (
+        "rules:\n"
+        "  - {match: 'revolut', category: Topup Revolut}\n"
+        "  - {match: 'exchanged', category: Giroconto}\n"
+        "  - {match: 'anna', category: Rimborsi}\n"
+    )
+    rules = between_people(load_rules([_rules(tmp_path, text)]), ANNA)
+    rows = [
+        _txn("REVOLUT LTD, London", "-200"),
+        _txn("REVOLUT LTD, London", "-200", counterparty="12345, Anna Meier"),
+        _txn("Exchanged, ref Anna Meier", "-3", kind=Kind.FX),  # not income or an expense
+    ]
+    assert [(t.category, t.kind) for t in classify(rows, rules)] == [
+        ("Topup Revolut", Kind.TRANSFER),
+        ("Rimborsi", Kind.EXPENSE),
+        ("Giroconto", Kind.FX),
+    ]

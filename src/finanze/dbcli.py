@@ -98,7 +98,8 @@ def _parser() -> argparse.ArgumentParser:
         "--rules",
         type=Path,
         action="append",
-        help="rules file(s), first wins (default: rules.local.yaml, then rules.yaml)",
+        help="rules file(s), first wins (default: rules.local.yaml, then rules.yaml); the "
+        "owner's own rules.<owner>.yaml, next to the first, is read before them",
     )
     load.add_argument("--instruments", type=Path, default=Path("instruments.yaml"))
     load.add_argument(
@@ -240,21 +241,27 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
     statements, skipped = pipeline.load_files(_files(args.paths), database=True)
     statements = pipeline.relabel(statements, session.labels)
-    rule_files = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
+    owner, people = session.owner, session.people
+    shared = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
+    own = classification.personal_file(shared[0], owner)
+    rule_files = [own, *shared]
     instruments = classification.load_instruments(args.instruments)
 
-    categories_file = rule_files[0].with_name(categories.FILE)
+    categories_file = shared[0].with_name(categories.FILE)
+
+    others = [pattern for name, patterns in people.items() if name != owner for pattern in patterns]
+    everyone = [pattern for patterns in people.values() for pattern in patterns]
 
     def process() -> pipeline.Month:
         known = categories.names(categories.load(categories_file))
-        rules = classification.load_rules(rule_files, known)
+        rules = classification.between_people(classification.load_rules(rule_files, known), others)
         extractions = [(s.source, s.extraction) for s in statements]
         return pipeline.process(extractions, rules, instruments, skipped, database=True)
 
     month = process()
     if args.review and month.uncategorized:
         ask = session.console.ask
-        review.ask_categories(month.uncategorized, rule_files[0], categories_file, out, ask)
+        review.ask_categories(month.uncategorized, shared[0], out, ask, (own, everyone))
         month = process()
     added = categories.load(categories_file)
     batch = Batch(session.owner, statements, month, session.people, added)

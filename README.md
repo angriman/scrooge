@@ -42,7 +42,8 @@ and an account name that is not in `Cash!A2:A` only shows when you archive.
 | File | Committed | Purpose |
 |---|---|---|
 | `rules.yaml` | yes | generic word → category rules ("ristorante", "apotheke"); names no business |
-| `rules.local.yaml` | no | your own rules (shops, chains, people, employer); read first; `--review` appends here |
+| `rules.local.yaml` | no | your own rules (shops, chains, employer); read before `rules.yaml`; `--review` appends here |
+| `rules.<owner>.yaml` | no | database imports only: one person's rules for rows naming either person (transfers between the two, own top-ups); read first; `--review` saves those answers here |
 | `categories.yaml` | yes | categories added to the built-in taxonomy; `--review` appends here on `+Name`; read from the folder of the first rules file |
 | `instruments.yaml` | yes | asset tab for Tastytrade tickers, maturity of T-bills bought there, overrides |
 | `finanze.yaml` | no | sheet locale, account names |

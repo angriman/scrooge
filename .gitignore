@@ -6,6 +6,7 @@ transactions_*.csv
 output/
 # Personal: merchant rules naming people, account names
 rules.local.yaml
+rules.*.yaml
 finanze.yaml
 
 # Python

@@ -1,4 +1,5 @@
 import io
+import re
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -95,7 +96,7 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
         return next(answers, str(len(categories.ORDER) + 2))  # the number Giardino was given
 
     out = io.StringIO()
-    review.ask_categories(pending, rules, added, out, ask)
+    review.ask_categories(pending, rules, out, ask)
     text = out.getvalue()
     assert "+Name        a new category; +Group:Name puts an expense under" in text
     assert "unknown category '+'" in asked[1]
@@ -120,7 +121,7 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
 
     # the menu of the next session lists them
     out = io.StringIO()
-    review.ask_categories([replace(LENT, description="New")], rules, added, out, lambda _: "q")
+    review.ask_categories([replace(LENT, description="New")], rules, out, lambda _: "q")
     listed = out.getvalue()
     assert f"   3 Arredamento e casa   {number + 1} Giardino\n" in listed
     assert f"\n  Prestiti            {number} Prestiti\nEntrate\n" in listed
@@ -138,7 +139,7 @@ def review_one(tmp_path: Path, *answers: str) -> tuple[str, list[str], str]:
         return next(left)
 
     out = io.StringIO()
-    review.ask_categories([LENT], rules, tmp_path / "categories.yaml", out, ask)
+    review.ask_categories([LENT], rules, out, ask)
     return out.getvalue(), asked, rules.read_text("utf-8") if rules.exists() else ""
 
 
@@ -182,3 +183,17 @@ def test_the_list_of_categories_fits_the_screen() -> None:
     assert "Trasferimenti" in lines
     for n, name in enumerate(categories.ORDER, start=1):
         assert any(f" {n} {name}" in line for line in lines)
+
+
+def test_the_answer_for_a_row_naming_a_person_goes_to_the_owners_own_file(tmp_path: Path) -> None:
+    rules, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    pending = [replace(LENT, description="Transfer to ANNA MEIER"), LENT]
+    out = io.StringIO()
+    personal = (own, [re.compile("anna meier", re.IGNORECASE)])
+    review.ask_categories(pending, rules, out, lambda _: "Regali", personal)
+    assert "ANNA" in own.read_text("utf-8")
+    assert len(own.read_text("utf-8").splitlines()) == 2
+    assert "Jonas" in rules.read_text("utf-8")
+    assert len(rules.read_text("utf-8").splitlines()) == 2
+    assert f"saved to {own}: Transfer to ANNA MEIER -> Regali\n" in out.getvalue()
+    assert f"saved to {rules}: To Jonas Example -> Regali\n" in out.getvalue()
