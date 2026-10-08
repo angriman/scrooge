@@ -99,8 +99,9 @@ class Rules:
 
     def of(self, owner: str) -> monthclose.Remember:
         everyone = [pattern for patterns in self.people.values() for pattern in patterns]
+        others = [p for name, patterns in self.people.items() if name != owner for p in patterns]
         own = classification.personal_file(self.shared, owner)
-        return monthclose.Remember(self.shared, own, everyone)
+        return monthclose.Remember(self.shared, own, everyone, others)
 
 
 def create_app(

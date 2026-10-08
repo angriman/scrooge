@@ -9,7 +9,8 @@ Both run in one database transaction: any failure leaves the database as it was.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -174,6 +175,25 @@ def commit(conn: sqlite3.Connection, *, owner: str, month: date, now: datetime) 
         return True
 
 
+@contextmanager
+def _rules_kept() -> Iterator[dict[Path, str | None]]:
+    """Yields a place for what each rules file held before it was touched (None: no file).
+
+    Whatever raises inside, those files are put back: a rule is never saved for a choice
+    the database did not keep.
+    """
+    before: dict[Path, str | None] = {}
+    try:
+        yield before
+    except BaseException:
+        for path, text in before.items():
+            if text is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(text, encoding="utf-8")
+        raise
+
+
 def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:
     """Save a copy of the database in `backups/` next to it, under a name no copy has yet.
 
@@ -223,6 +243,9 @@ class Remember:
     shared: Path  # the rules both people share
     own: Path  # the owner's rules, for rows that name a person
     people: Patterns  # what recognises a person, anybody
+    # What recognises the people other than the owner: on import a rule giving a transfer
+    # category does not apply to a row naming one of them (`classification.between_people`).
+    others: Patterns = ()
 
 
 def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is remembered
@@ -240,8 +263,9 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     With `remember` the choice also becomes a rule for each counterparty and direction among
     the rows, so the next import makes it again. Without, it is kept as an override of these
     rows alone. A transfer category makes an income or expense a transfer, as a rule would.
+    Rule files are left as they were when anything fails.
     """
-    with db.transaction(conn):
+    with _rules_kept() as before, db.transaction(conn):
         owner_id, status = _month(conn, owner, month)
         if status == "committed":
             msg = f"{month:%Y-%m} is committed for {owner}: reopen it first"
@@ -262,17 +286,26 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
             kind = Kind.TRANSFER.value if moved else row.kind
             store.set_category(conn, row.id, chosen, "rule" if remember else "manual", kind)
             if remember is None:
-                store.set_override(conn, row.id, chosen, kind, db.timestamp(now))
+                changed = kind if moved else None
+                store.set_override(conn, row.id, chosen, changed, db.timestamp(now))
                 continue
             name = (row.counterparty or row.description).strip()
             if not name:
                 msg = "a row without any text cannot become a rule: choose 'just these rows'"
                 raise MonthCloseError(msg)
             text = f"{row.description}\n{row.counterparty}"
+            if moved and any(pattern.search(text) for pattern in remember.others):
+                msg = (
+                    f"a rule cannot make money to or from another person a transfer ({name}): "
+                    "choose 'just these rows'"
+                )
+                raise MonthCloseError(msg)
             named = any(pattern.search(text) for pattern in remember.people)
             flow = "in" if row.amount_nano > 0 else "out"
             rules[name, flow] = remember.own if named else remember.shared
         for (name, flow), where in rules.items():
+            if where not in before:
+                before[where] = where.read_text(encoding="utf-8") if where.exists() else None
             classification.append_rule(where, name, flow, category)
         return len(rows)
 

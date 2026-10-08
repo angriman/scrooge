@@ -122,7 +122,7 @@ def listing(conn: sqlite3.Connection, owner: str | None = None) -> tuple[MonthLi
         "SELECT o.name, m.month, m.status, "  # noqa: S608  # only the fixed text above is interpolated
         "(SELECT count(*) FROM statement_files f WHERE f.owner_id = m.owner_id "
         "AND f.period_start <= date(m.month, '+1 month', '-1 day') AND f.period_end >= m.month), "
-        f"{booked}), {booked} AND t.category_id IS NULL AND t.kind <> 'internal') "
+        f"{booked}), {booked} AND {store.WAITING}) "
         "FROM months m JOIN owners o ON o.id = m.owner_id "
         "WHERE o.name = coalesce(?, o.name) ORDER BY m.month DESC, o.name",
         (owner,),
@@ -159,10 +159,10 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
     ).fetchall()
     present = {f[0] for f in files}
     pending = conn.execute(
-        "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description "
+        "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description "  # noqa: S608  # only fixed text of `store` is interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        "AND t.category_id IS NULL AND t.kind <> 'internal' ORDER BY t.date, t.id",
+        f"AND {store.WAITING} ORDER BY t.date, t.id",
         (owner_id, *span),
     ).fetchall()
     totals = conn.execute(

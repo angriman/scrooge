@@ -288,7 +288,9 @@ def apply_overrides(conn: sqlite3.Connection) -> None:
         "FROM overrides o WHERE o.transaction_id = transactions.id AND o.category_id IS NOT NULL"
     )
     conn.execute(
-        "UPDATE transactions SET kind = o.kind "
+        "UPDATE transactions SET kind = o.kind, "
+        "counterparty_owner_id = CASE WHEN o.kind IN ('income', 'expense') "
+        "THEN transactions.counterparty_owner_id END "  # a transfer is nobody else's money (D14)
         "FROM overrides o WHERE o.transaction_id = transactions.id AND o.kind IS NOT NULL"
     )
 
@@ -354,12 +356,16 @@ def own_flow(conn: sqlite3.Connection, account: int, after: date, until: date) -
     return int(row[0])
 
 
+# What makes a row of `transactions t` wait for a category: the one condition behind the count
+# that blocks a commit, the rows the month page lists and the rows a category can be given to.
+WAITING = "t.category_id IS NULL AND t.kind <> 'internal'"
+
+
 def uncategorized(conn: sqlite3.Connection, owner: int, period: tuple[date, date]) -> int:
     """How many of the owner's rows booked in the period still need a category."""
     row = conn.execute(
-        "SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        "AND t.category_id IS NULL AND t.kind <> 'internal'",
+        "SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id "  # noqa: S608  # only the fixed text above is interpolated
+        f"WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND {WAITING}",
         (owner, period[0].isoformat(), period[1].isoformat()),
     ).fetchone()
     return int(row[0])
@@ -382,10 +388,10 @@ def waiting(
     """Those of `ids` that are rows of the owner booked in the period and still need a category."""
     marks = ", ".join("?" * len(ids))
     rows = conn.execute(
-        "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks are interpolated
+        "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks and the fixed text above are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        f"AND t.category_id IS NULL AND t.kind <> 'internal' AND t.id IN ({marks}) ORDER BY t.id",
+        f"AND {WAITING} AND t.id IN ({marks}) ORDER BY t.id",
         (owner, period[0].isoformat(), period[1].isoformat(), *ids),
     ).fetchall()
     return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]
@@ -394,16 +400,25 @@ def waiting(
 def set_category(
     conn: sqlite3.Connection, txn_id: str, category: int, source: str, kind: str
 ) -> None:
+    """Set the category and kind of a row. Only an income or expense is money between two people
+    (D14): with another kind the row stops naming the other person, as it would after an import.
+    """
     conn.execute(
-        "UPDATE transactions SET category_id = ?, category_source = ?, kind = ? WHERE id = ?",
+        "UPDATE transactions SET category_id = ?1, category_source = ?2, kind = ?3, "
+        "counterparty_owner_id = CASE WHEN ?3 IN ('income', 'expense') "
+        "THEN counterparty_owner_id END WHERE id = ?4",
         (category, source, kind, txn_id),
     )
 
 
 def set_override(
-    conn: sqlite3.Connection, txn_id: str, category: int, kind: str, created_at: str
+    conn: sqlite3.Connection, txn_id: str, category: int, kind: str | None, created_at: str
 ) -> None:
-    """Remember a choice made for this row alone: `apply_overrides` restores it after an import."""
+    """Remember a choice made for this row alone: `apply_overrides` restores it after an import.
+
+    `kind` is None unless the choice changed it: the row then keeps whatever kind a later
+    import gives it.
+    """
     conn.execute(
         "INSERT OR REPLACE INTO overrides (transaction_id, category_id, kind, created_at) "
         "VALUES (?, ?, ?, ?)",

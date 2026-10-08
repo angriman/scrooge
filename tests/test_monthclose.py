@@ -1060,8 +1060,9 @@ def test_a_choice_for_these_rows_alone_is_an_override_that_survives_an_import(
     assert category_of(conn, ids["KIOSK1"]) == ("Regali", "uscite", "manual", "expense")
     assert category_of(conn, ids["KIOSK3"]) == ("Regali", "uscite", "manual", "income")
     assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
-    assert rows(conn, "SELECT count(*), min(created_at) FROM overrides") == [
-        (2, "2026-10-07T09:30:00+00:00")
+    # The kind was not chosen: it is not pinned, and a later import may give another.
+    assert rows(conn, "SELECT count(*), min(created_at), max(kind) FROM overrides") == [
+        (2, "2026-10-07T09:30:00+00:00", None)
     ]
 
     assert waiting_month(conn) == ids  # imported again: the same rows, the choice put back
@@ -1095,6 +1096,73 @@ def test_a_transfer_category_makes_the_row_a_transfer(conn: sqlite3.Connection) 
     choose(conn, [ids["TO SAVINGS5"]], "Giroconto")
     assert category_of(conn, ids["TO SAVINGS5"]) == ("Giroconto", "transfer", "manual", "transfer")
     assert rows(conn, "SELECT kind FROM overrides") == [("transfer",)]
+
+
+def named(conn: sqlite3.Connection, txn_id: str) -> Any:
+    return rows(conn, "SELECT counterparty_owner_id FROM transactions WHERE id = ?", txn_id)[0][0]
+
+
+def test_a_row_made_a_transfer_is_no_longer_money_between_the_two(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    ids = waiting_month(conn)
+    twint = ids["TWINT4"]
+    assert named(conn, twint) is not None
+    choose(conn, [ids["KIOSK1"]], "Regali")
+    before = dump(conn)
+
+    # As a rule it would be lost on the next import: transfer rules skip rows naming the other.
+    everyone = [pattern for patterns in PEOPLE.values() for pattern in patterns]
+    shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    remember = monthclose.Remember(shared, own, everyone, PEOPLE[PARTNER])
+    with pytest.raises(monthclose.MonthCloseError, match=r"a transfer \(Anna Meier\)"):
+        choose(conn, [twint], "Giroconto", remember)
+    assert dump(conn) == before
+    assert not list(tmp_path.iterdir())
+    assert choose(conn, [twint], "Regali", remember) == 1  # not a transfer: a rule of his own
+    assert named(conn, twint) is not None
+    assert [path.name for path in tmp_path.iterdir()] == ["rules.lukas.yaml"]
+
+    ids = waiting_month(conn)  # imported again without that rule: the row waits again
+    choose(conn, [twint], "Giroconto")
+    assert category_of(conn, twint) == ("Giroconto", "transfer", "manual", "transfer")
+    assert named(conn, twint) is None
+    assert waiting_month(conn) == ids  # and the override says the same after an import
+    assert category_of(conn, twint) == ("Giroconto", "transfer", "manual", "transfer")
+    assert named(conn, twint) is None
+
+
+def test_rules_files_are_left_as_they_were_when_a_choice_fails(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ids = waiting_month(conn)
+    before = dump(conn)
+    shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    everyone = [pattern for patterns in PEOPLE.values() for pattern in patterns]
+    remember = monthclose.Remember(shared, own, everyone)
+    chosen = [ids["KIOSK1"], ids["KIOSK3"], ids["TWINT4"]]
+    append = classification.append_rule
+    saved: list[Path] = []
+
+    def full_disk(path: Path, *rule: str) -> None:
+        if len(saved) == 2:  # the third rule cannot be saved
+            raise OSError("no space left")
+        saved.append(path)
+        append(path, *rule)
+
+    monkeypatch.setattr(classification, "append_rule", full_disk)
+    with pytest.raises(OSError, match="no space left"):
+        choose(conn, chosen, "Regali", remember)
+    assert len(saved) == 2
+    assert not list(tmp_path.iterdir())  # files that were not there are gone again
+
+    saved.clear()
+    shared.write_text("rules: []\n", encoding="utf-8")
+    own.write_text("rules: []\n", encoding="utf-8")
+    with pytest.raises(OSError, match="no space left"):
+        choose(conn, chosen, "Regali", remember)
+    assert shared.read_text(encoding="utf-8") == own.read_text(encoding="utf-8") == "rules: []\n"
+    assert dump(conn) == before
 
 
 def test_a_choice_that_cannot_be_made_changes_nothing(
