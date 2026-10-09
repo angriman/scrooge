@@ -529,29 +529,35 @@ def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check
         return ()
     rates = _rates(conn, valued.days)
     index = {day: n for n, day in enumerate(valued.days)}
+    accounts: dict[int, dict[int, str]] = {}
     found: list[Check] = []
     rows = conn.execute(
         "SELECT f.id, o.name, f.period_end, v.label, v.currency, v.value_nano "
         "FROM statement_values v JOIN statement_files f ON f.id = v.statement_file_id "
-        "JOIN owners o ON o.id = f.owner_id ORDER BY o.name, f.period_end, f.id, v.label"
+        "JOIN owners o ON o.id = f.owner_id WHERE ?1 IS NULL OR o.name = ?1 "
+        "ORDER BY o.name, f.period_end, f.id, v.label",
+        (owner,),
     ).fetchall()
     for file_id, owner_name, day_text, label, currency, nano in rows:
         day = date.fromisoformat(day_text)
         if day not in index:
             continue
-        of_file = {
-            int(r[0]): str(r[1])
-            for r in conn.execute(
-                "SELECT DISTINCT a.id, a.name FROM balances b JOIN accounts a "
-                "ON a.id = b.account_id WHERE b.statement_file_id = ? ORDER BY a.name",
-                (file_id,),
-            )
-        }
+        if file_id not in accounts:
+            accounts[file_id] = {
+                int(r[0]): str(r[1])
+                for r in conn.execute(
+                    "SELECT DISTINCT a.id, a.name FROM balances b JOIN accounts a "
+                    "ON a.id = b.account_id WHERE b.statement_file_id = ? ORDER BY a.name",
+                    (file_id,),
+                )
+            }
+        of_file, at = accounts[file_id], index[day]
         derived = None
         if label in _PRINTED:
+            that_day = {code: values[at : at + 1] for code, values in rates.items()}
             derived = sum(
                 (
-                    _converted(s.values, s.currency, currency, rates)[index[day]]
+                    _converted(s.values[at : at + 1], s.currency, currency, that_day)[0]
                     for s in valued.series
                     if s.account_id in of_file and s.asset in _PRINTED[label]
                 ),

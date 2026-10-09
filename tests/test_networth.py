@@ -668,6 +668,17 @@ def test_a_statement_s_own_valuation_is_set_against_what_is_derived(
     assert networth.checks(conn, owner=PARTNER) == ()
 
 
+def test_one_person_s_checks_leave_out_the_other_s_statements(conn: sqlite3.Connection) -> None:
+    his = account("migros", "Migros", "CHF", "1000")
+    values = (PrintedValue("Cash", "CHF", D(1000)),)
+    close(conn, replace(his, extraction=replace(his.extraction, values=values)))
+    close(conn, account("migros", "Migros", "CHF", "500", filename="hers.csv"), owner=PARTNER)
+    [mine] = networth.checks(conn, owner=OWNER)
+    assert (mine.owner, mine.printed, mine.derived) == (OWNER, D(1000), D(1000))
+    assert networth.checks(conn) == (mine,)
+    assert networth.checks(conn, owner=PARTNER) == ()
+
+
 def test_a_valuation_of_a_month_not_committed_is_not_checked(conn: sqlite3.Connection) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
     base = ibkr(month=OCTOBER)
