@@ -188,6 +188,7 @@ code {
   --text-secondary: #52514e;
   --grid: #e4e3df;
   --tip: #ffffff;
+  --surface: Canvas;
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -255,17 +256,24 @@ code {
   border-color: var(--line);
 }
 
-/* A short stroke of the series colour: the line it stands for. */
+/* What a series is drawn with: a square of its colour for a band, a stroke for the total. */
 .key {
-  border-radius: 1px;
+  border-radius: 2px;
   display: inline-block;
-  height: 2px;
+  height: 0.7rem;
   margin-right: 0.4rem;
   vertical-align: middle;
+  width: 0.7rem;
+}
+
+.key.slot-0 {
+  border-radius: 1px;
+  height: 2px;
   width: 1rem;
 }
 
-.legend .key {
+.legend .key,
+.tip .key {
   margin-right: 0;
 }
 
@@ -304,12 +312,11 @@ code {
   align-items: center;
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: 0.9rem 1fr auto;
+  grid-template-columns: 1rem 1fr auto;
 }
 
 .tip .entry i {
-  border-radius: 1px;
-  height: 2px;
+  justify-self: center;
 }
 
 .tip .entry strong {

@@ -151,6 +151,10 @@ def test_the_parts_are_listed_and_stacked_from_the_steadiest_up(mixed: TestClien
     # its colour, and neighbours in the stack in neighbouring ones.
     assert legend(page) == [("0", "Net worth"), ("1", "Cash"), ("2", "Bills"), ("4", "ETFs")]
     assert [row[0] for row in tables(page)[0]] == ["Net worth", "Cash", "Bills", "ETFs"]
+    # The script finds the button of a series by its slot.
+    assert re.findall(r'<button type="button" data-slot="(\d)" aria-pressed="true">', page) == [
+        slot for slot, _ in legend(page)
+    ]
     # The chart stacks its parts in the order it is given them, and they add up to the total.
     series = mixed.get("/networth.json", params=asked).json()["series"]
     assert [(str(line["slot"]), line["name"]) for line in series] == legend(page)
