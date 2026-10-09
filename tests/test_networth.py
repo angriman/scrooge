@@ -295,8 +295,13 @@ def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.C
         ),
     ]
     close(conn, statement("tastytrade", rows, filename="tasty.csv"))
-    cash = line(networth.run(conn, currency="USD"), CASH)
+    result = networth.run(conn, currency="USD")
+    cash = line(result, CASH)
     assert (min(cash), cash[day(3)], cash[day(30)]) == (day(3), D(5000), D(4880))
+    assert result.notes == (
+        f"Tastytrade of {OWNER} has no balance from any statement: its cash adds up from "
+        "nothing, so what was there before its first row is missing.",
+    )
 
 
 def test_rows_booked_before_the_first_balance_lead_up_to_it(conn: sqlite3.Connection) -> None:
@@ -483,6 +488,18 @@ def test_a_bill_repaid_without_its_purchase_is_not_counted(conn: sqlite3.Connect
     close(conn, ibkr(bill("-10000", "9870", day(25), kind=Kind.INCOME)))
     result = networth.run(conn, currency="USD")
     assert [x.asset for x in result.lines] == [CASH]
+    assert result.notes == ()
+
+
+def test_a_bill_a_statement_says_is_held_without_its_purchase_is_not_counted_and_a_note_says_so(
+    conn: sqlite3.Connection,
+) -> None:
+    base = ibkr()
+    held = (Holding("IBKR USD", "912797YY2", "USD", D(10000), D("98.5"), D(9850), "Bonds"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
+    result = networth.run(conn, currency="USD")
+    assert [x.asset for x in result.lines] == [CASH]
+    assert result.notes == ("912797YY2 was bought before the history starts: it is not counted.",)
 
 
 # ---------------------------------------------------------------------------- currencies

@@ -264,7 +264,12 @@ def _cash(
         if not booked and not known:
             continue
         values = _balances(booked, known, days)
-        if account.source is None:
+        if not known:
+            notes.append(
+                f"{account.name} of {account.owner} has no balance from any statement: its "
+                "cash adds up from nothing, so what was there before its first row is missing."
+            )
+        elif account.source is None:
             typed = max(known)
             notes.append(
                 f"{account.name} of {account.owner} has no statements: it is carried at what "
@@ -332,6 +337,8 @@ def _securities(
         if kind in {"bill", "bond"}:
             trades = lots.get((holding.account_id, holding.instrument_id), [])
             values = _bill_values(trades, maturity, days)
+            if not trades and any(step.quantity for step in holding.steps):
+                notes.append(f"{symbol} was bought before the history starts: it is not counted.")
         else:
             points = closes.get(holding.instrument_id, [])
             values = _share_values(holding, [(day, close) for day, _, close in points], days)
