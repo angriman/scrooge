@@ -310,17 +310,19 @@ def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...])
 
 
 def _valued(
-    request: Request, asked: forms.NetWorthView
+    request: Request, asked: forms.NetWorthView, *, checked: bool = True
 ) -> tuple[networth.NetWorth | None, tuple[query.Person, ...], tuple[networth.Check, ...], str]:
-    """Net worth as asked for, or the reason there is none to show."""
+    """Net worth as asked for, with the statements' own figures if `checked`, or the reason
+    there is none to show."""
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
         try:
             result = networth.run(conn, owner=asked.owner, currency=asked.currency)
+            checks = networth.checks(conn, owner=asked.owner) if checked else ()
         except networth.MissingRateError as exc:
             message = str(exc)
             return None, people, (), f"{message[0].upper()}{message[1:]}."
-        return result, people, networth.checks(conn, owner=asked.owner), ""
+        return result, people, checks, ""
 
 
 def _networth(request: Request) -> Response:
@@ -330,6 +332,10 @@ def _networth(request: Request) -> Response:
         "people": people,
         "owner": asked.owner,
         "asked": asked,
+        # The view shown, not the one asked for: a field that could not be read is unset.
+        "source": request.url_for("networth_json").include_query_params(
+            currency=asked.currency, by=asked.by, **({"owner": asked.owner} if asked.owner else {})
+        ),
         "currencies": networth.CURRENCIES,
         "breakdowns": forms.BREAKDOWNS,
         "errors": [*asked.errors, *([error] if error else [])],
@@ -343,7 +349,7 @@ def _networth(request: Request) -> Response:
 def _networth_json(request: Request) -> Response:
     """What the chart of the page at the same address draws. Amounts are text, to the cent."""
     asked = forms.networth_view(request.query_params)
-    result, people, _, error = _valued(request, asked)
+    result, people, _, error = _valued(request, asked, checked=False)
     if asked.errors or result is None:
         return JSONResponse({"errors": [*asked.errors, *([error] if error else [])]}, 400)
     lines = _parts(result, asked.by, people) if result.days else []

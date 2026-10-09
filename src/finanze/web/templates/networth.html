@@ -30,7 +30,7 @@
 {%- if parts %}
 {%- set last = result.days[-1] %}
 <p class="headline"><strong>{{ parts[0].values[-1]|money }} {{ result.currency }}</strong> on {{ last }}</p>
-<figure class="chart" id="networth" data-source="{{ url_for('networth_json') }}?{{ request.url.query }}">
+<figure class="chart" id="networth" data-source="{{ source }}">
   <div class="ranges" role="group" aria-label="Period shown">
     {%- for months, label in [(3, "3M"), (12, "1Y"), (36, "3Y"), (0, "All")] %}
     <button type="button" data-months="{{ months }}"{% if not months %} aria-pressed="true"{% endif %}>{{ label }}</button>
