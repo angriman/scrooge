@@ -3,7 +3,7 @@
 import json
 import urllib.error
 import urllib.request
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from email.message import Message
 from io import BytesIO
@@ -94,6 +94,24 @@ def test_a_rate_is_dated_by_the_day_of_its_exchange() -> None:
         ),
     )
     assert "/chart/EURCHF%3DX?" in recorded.asked[0]
+
+
+def test_a_session_is_dated_in_its_exchange_s_time_of_that_day_not_of_today() -> None:
+    # London opens at midnight: 00:00 UTC in winter, 23:00 UTC of the evening before in summer.
+    # Asked in winter, the answer's own offset is zero, which would date summer a day early.
+    winter = int(datetime(2025, 1, 15, 0, tzinfo=UTC).timestamp())
+    summer = int(datetime(2025, 7, 14, 23, tzinfo=UTC).timestamp())
+    meta = '{"currency":"CHF","gmtoffset":0,"exchangeTimezoneName":"%s"}'
+    answer = (
+        '{"chart":{"result":[{"meta":%s,"timestamp":[%d,%d],'
+        '"indicators":{"quote":[{"close":[0.94,0.93]}]}}],"error":null}}'
+    )
+    london = (answer % (meta % "Europe/London", winter, summer)).encode()
+    history = yahoo(london)[0].history("EURCHF=X", date(2025, 1, 1), date(2025, 9, 30))
+    assert [day for day, _ in history.closes] == [date(2025, 1, 15), date(2025, 7, 15)]
+    nowhere = (answer % (meta % "Mars/Olympus", winter, summer)).encode()
+    with pytest.raises(PriceError, match="not in the expected form"):
+        yahoo(nowhere)[0].history("EURCHF=X", date(2025, 1, 1), date(2025, 9, 30))
 
 
 def test_a_range_that_ends_before_it_starts_is_refused() -> None:

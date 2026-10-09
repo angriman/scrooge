@@ -16,10 +16,11 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 from urllib.parse import quote, urlencode
+from zoneinfo import ZoneInfo
 
 _DIGITS = 7  # what a close is worth: Yahoo sends single-precision floats (51.127498626708984)
 _TIMEOUT = 30  # seconds
@@ -144,12 +145,12 @@ def parse_chart(payload: bytes, symbol: str) -> History:
             raise PriceError(msg)
         result = chart["result"][0]
         meta = result["meta"]
-        offset = timedelta(seconds=int(meta["gmtoffset"]))
-        days = [_day(stamp, offset) for stamp in result.get("timestamp", [])]
+        zone = _zone(meta)
+        days = [_day(stamp, zone) for stamp in result.get("timestamp", [])]
         closes = result["indicators"]["quote"][0].get("close", [])
         found = (result.get("events") or {}).get("splits", {}).values()
         splits = sorted(
-            (Split(_day(split["date"], offset), *_ratio(split, symbol)) for split in found),
+            (Split(_day(split["date"], zone), *_ratio(split, symbol)) for split in found),
             key=lambda split: split.day,
         )
         history = [
@@ -173,9 +174,19 @@ def parse_search(payload: bytes, isin: str) -> str | None:
         raise PriceError(msg) from None
 
 
-def _day(stamp: object, offset: timedelta) -> date:
+def _zone(meta: dict[str, object]) -> tzinfo:
+    """The exchange's time zone. `gmtoffset` alone is the offset on the day of the answer:
+    it would date the sessions of the other half of the year an hour off, and a London
+    session that opens at midnight a day early."""
+    name = meta.get("exchangeTimezoneName")
+    if name:
+        return ZoneInfo(str(name))  # an unknown name is a KeyError: not the expected form
+    return timezone(timedelta(seconds=int(str(meta["gmtoffset"]))))
+
+
+def _day(stamp: object, zone: tzinfo) -> date:
     """The exchange's own date of a session that Yahoo names by its opening, in seconds."""
-    return (datetime.fromtimestamp(int(str(stamp)), UTC) + offset).date()
+    return datetime.fromtimestamp(int(str(stamp)), zone).date()
 
 
 def _ratio(split: dict[str, object], symbol: str) -> tuple[int, int]:
