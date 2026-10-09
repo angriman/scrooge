@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from finanze.classification import Instrument
-from finanze.extractors import swisscard
+from finanze.extractors import ocr, swisscard
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FILES = {
@@ -49,3 +49,22 @@ INSTRUMENTS = {
     "912797ZZ1": Instrument(maturity=date(2026, 12, 24)),
 }
 INSTRUMENTS_YAML = "instruments:\n  WIDG: {tab: ETFs}\n  912797ZZ1: {maturity: 2026-12-24}\n"
+
+
+# The scanned certificates under names that say nothing, as they arrive, and their stored text.
+SCANS = {"Scan 0001.pdf": "axa", "Dokument.pdf": "servisa"}
+
+
+@pytest.fixture
+def pillar2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A folder with the two certificate scans; the stored text stands in for Tesseract."""
+    scans = tmp_path / "Pillar 2"
+    scans.mkdir()
+    for name, source in SCANS.items():
+        shutil.copy(FIXTURES / source / "certificate.pdf", scans / name)
+
+    def stored_text(path: Path) -> str:
+        return (FIXTURES / SCANS[path.name] / "certificate.txt").read_text(encoding="utf-8")
+
+    monkeypatch.setattr(ocr, "read_text", stored_text)
+    return scans

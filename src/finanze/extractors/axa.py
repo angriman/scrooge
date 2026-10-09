@@ -15,7 +15,9 @@ from finanze.extractors.common import only_match, parse_swiss_amount, parse_swis
 from finanze.models import PensionCertificate
 
 SOURCE = "axa"
+ACCOUNT = "Pillar 2 AXA"  # one account per pension fund (and person, D14)
 CURRENCY = "CHF"
+ADDS_UP = True  # the two portions must make the total: the figure is checked
 
 _TITLE = "Pension fund certificate"
 _ISSUER = re.compile(r"\bAXA\b")

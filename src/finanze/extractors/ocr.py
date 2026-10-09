@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pdfplumber
+from pdfplumber.utils.exceptions import PdfminerException
 
 from finanze.errors import ExtractionError, OcrUnavailableError
 
@@ -24,6 +25,19 @@ PROGRAM = "tesseract"
 LANGUAGE = "eng"
 DPI = 300  # an A4 page scanned at 300 dpi is 2480 x 3508 pixels
 _PAGE_AS_ONE_BLOCK = "6"  # keeps a table row on one line, where the default splits columns
+
+
+def is_scan(path: Path) -> bool:
+    """Whether the PDF is images of paper: it has pages and none carries a single character.
+
+    Cheap next to reading it: the pages are only parsed, up to the first one with text. A
+    file that is no PDF after all is no scan either.
+    """
+    try:
+        with pdfplumber.open(path) as pdf:
+            return bool(pdf.pages) and not any(page.chars for page in pdf.pages)
+    except PdfminerException:
+        return False
 
 
 def read_text(path: Path) -> str:

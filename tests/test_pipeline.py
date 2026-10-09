@@ -8,15 +8,15 @@ from finanze import pipeline, router
 from finanze.aggregate import BudgetRow, UncategorizedError
 from finanze.classification import Rule, UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
-from finanze.extractors import swisscard
-from finanze.models import CashBalance, Extraction, Kind, Transaction
+from finanze.extractors import ocr, swisscard
+from finanze.models import CashBalance, Extraction, Kind, PensionCertificate, Transaction
 from finanze.validation import (
     BalanceMismatchError,
     CardBillMismatchError,
     check_balances,
     check_card_bill,
 )
-from tests.conftest import INSTRUMENTS
+from tests.conftest import FIXTURES, INSTRUMENTS
 from tests.conftest import write_rules as _rules
 
 
@@ -331,3 +331,83 @@ def test_a_bill_gets_its_maturity_from_another_row_of_the_same_bill(folder: Path
     bought = [t for t in month.trades if t.ticker == "912797ZZ1"]
     assert {t.account for t in bought} == {"IBKR USD", "Tastytrade"}
     assert {t.maturity for t in bought} == {date(2026, 12, 24)}
+
+
+# ------------------------------------------------------------------ pension certificates
+
+
+def test_scanned_certificates_are_told_from_the_other_files(folder: Path, pillar2: Path) -> None:
+    files = [*sorted(folder.iterdir()), *sorted(pillar2.iterdir())]
+    files = [path for path in files if path.is_file()]
+    certificates, others = pipeline.load_certificates(files)
+    assert [(c.filename, c.account, c.adds_up) for c in certificates] == [
+        ("Dokument.pdf", "Pillar 2 Servisa", False),
+        ("Scan 0001.pdf", "Pillar 2 AXA", True),
+    ]
+    assert certificates[1].stated == PensionCertificate(
+        "axa",
+        date(2026, 3, 1),
+        "CHF",
+        Decimal("35802.00"),
+        Decimal("12345.65"),
+        date(2021, 9, 1),
+    )
+    assert certificates[0].stated.balance == Decimal("3579.40")
+    assert len({c.sha256 for c in certificates}) == 2
+    # every other file is left for `load_files`, the PDFs that are no scans included
+    assert sorted(others) == sorted(path for path in files if path.parent == folder)
+
+
+def test_a_pdf_with_text_is_never_read_with_ocr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def never(path: Path) -> str:
+        raise AssertionError(path)
+
+    monkeypatch.setattr(ocr, "read_text", never)
+    monkeypatch.setattr(ocr, "is_scan", lambda path: path.name.startswith("scan"))
+    (tmp_path / "invoice.pdf").write_bytes(b"%PDF-1.7 with text")
+    (tmp_path / "bare").write_bytes(b"%PDF-1.7 with text, saved without its extension")
+    (tmp_path / "scan").write_text("not a PDF: never looked at", encoding="utf-8")
+    (tmp_path / "scan.csv").write_text("Date,Amount", encoding="utf-8")
+    for path in tmp_path.iterdir():
+        assert router.load_certificate(path) is None
+
+
+def test_a_scan_that_no_issuer_recognises_is_not_a_statement(
+    pillar2: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ocr, "read_text", lambda path: "A letter from the dentist\n")
+    certificates, others = pipeline.load_certificates(pillar2.iterdir())
+    assert certificates == []
+    assert sorted(path.name for path in others) == ["Dokument.pdf", "Scan 0001.pdf"]
+    statements, skipped = pipeline.load_files(others, database=True)
+    assert statements == []
+    assert sorted(skipped) == sorted(others)
+
+
+def test_a_certificate_that_does_not_read_cleanly_names_its_file(
+    pillar2: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = (FIXTURES / "axa" / "certificate.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(ocr, "read_text", lambda path: text.replace("35'802.00", "35'802.10"))
+    with pytest.raises(ExtractionError, match=r"^Dokument\.pdf: AXA: the portions .* do not add"):
+        pipeline.load_certificates(pillar2.iterdir())
+
+
+def test_certificates_never_reach_the_files_to_paste(
+    folder: Path, pillar2: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def never(path: Path) -> str:
+        raise AssertionError(path)
+
+    monkeypatch.setattr(ocr, "read_text", never)  # not even opened
+    for scan in pillar2.iterdir():
+        scan.rename(folder / scan.name)
+    for database in (False, True):
+        statements, skipped = pipeline.load_statements(folder, database=database)
+        assert len(statements) == 6
+        assert {"Dokument.pdf", "Scan 0001.pdf"} <= {path.name for path in skipped}
+    extractions, skipped = pipeline.load_folder(folder)
+    month = pipeline.process(extractions, load_rules([_rules(folder)]), INSTRUMENTS, skipped)
+    assert not any("Pillar" in txn.account for txn in month.transactions)

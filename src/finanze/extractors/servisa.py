@@ -19,7 +19,9 @@ from finanze.extractors.common import only_match, parse_swiss_amount, parse_swis
 from finanze.models import PensionCertificate
 
 SOURCE = "servisa"
+ACCOUNT = "Pillar 2 Servisa"  # one account per pension fund (and person, D14)
 CURRENCY = "CHF"
+ADDS_UP = False  # nothing on the page adds up to the total: the reader must compare it
 
 _TITLE = re.compile(r"Vorsorgeausweis[ \t]+g\S{1,3}ltig[ \t]+ab\b")  # "gültig", read as "giiltig"
 _ISSUER = re.compile(r"\bServisa\b")

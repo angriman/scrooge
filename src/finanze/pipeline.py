@@ -15,7 +15,7 @@ from finanze.aggregate import Budget, aggregate
 from finanze.classification import Instrument, Rule
 from finanze.errors import ExtractionError
 from finanze.extractors.common import month_end, month_start
-from finanze.models import Extraction, Kind, SecurityTrade, Transaction
+from finanze.models import Extraction, Kind, PensionCertificate, SecurityTrade, Transaction
 from finanze.validation import CardBillMismatchError, check_balances, check_card_bill
 
 CARD_SOURCE = "swisscard"
@@ -73,6 +73,17 @@ class Statement:
     filename: str
     sha256: str
     extraction: Extraction
+
+
+@dataclass(frozen=True, slots=True)
+class Certificate:
+    """One scanned pension certificate and what was read off it (database imports only)."""
+
+    filename: str
+    sha256: str
+    account: str  # the pension account it states the balance of
+    adds_up: bool  # False: nothing on the certificate checks the figure that was read
+    stated: PensionCertificate
 
 
 def relabel(statements: Sequence[Statement], labels: Mapping[str, str]) -> list[Statement]:
@@ -157,6 +168,30 @@ def load_files(
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             statements.append(Statement(loaded[0], name, digest, loaded[1]))
     return statements, skipped
+
+
+def load_certificates(paths: Iterable[Path]) -> tuple[list[Certificate], list[Path]]:
+    """Read the scanned pension certificates among `paths`; returns them plus the other paths.
+
+    For the database only: the files to paste have no place for a certificate, and
+    `load_files` skips every scan unopened. Certificates are named as `load_files` names
+    statements.
+    """
+    certificates: list[Certificate] = []
+    others: list[Path] = []
+    for path, name in sorted(_names(paths).items()):
+        try:
+            scanned = router.load_certificate(path)
+        except ExtractionError as exc:
+            msg = f"{name}: {exc}"
+            raise type(exc)(msg) from exc
+        if scanned is None:
+            others.append(path)
+        else:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            account, adds_up, stated = scanned
+            certificates.append(Certificate(name, digest, account, adds_up, stated))
+    return certificates, others
 
 
 def _names(paths: Iterable[Path]) -> dict[Path, str]:
