@@ -14,7 +14,7 @@ from finanze.models import CashBalance, Holding, SecurityTrade
 from finanze.prices import Split
 from finanze.storage import db
 from tests.fakes import FakeSource
-from tests.storage.helpers import SEPTEMBER, batch, rows, statement, trade
+from tests.storage.helpers import AUGUST, SEPTEMBER, batch, rows, statement, trade
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 LATER = datetime(2026, 10, 9, 8, 0, tzinfo=UTC)
@@ -222,3 +222,20 @@ def test_shares_held_from_before_the_history_starts_are_priced(conn: sqlite3.Con
     source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
     marketdata.refresh(conn, source, through=date(2026, 10, 5), now=NOW)
     assert source.asked[0] == ("WIDG", END - timedelta(days=10), date(2026, 10, 5))
+
+
+def test_a_statement_that_says_none_was_held_yet_is_not_the_first_day(
+    conn: sqlite3.Connection,
+) -> None:
+    cash = [CashBalance("IBKR USD", "USD", D(0), D(0))]
+    before = statement("ibkr", [], cash, filename="august.csv", month=AUGUST)
+    nothing = replace(before, extraction=replace(before.extraction, holdings=()))
+    monthclose.stage(conn, batch(nothing, month=AUGUST), NOW)
+    after = statement("ibkr", [bought("WIDG", "10", day(15))], cash)
+    held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    monthclose.stage(
+        conn, batch(replace(after, extraction=replace(after.extraction, holdings=held))), NOW
+    )
+    source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
+    marketdata.refresh(conn, source, through=END, now=NOW)
+    assert source.asked[0] == ("WIDG", day(15) - timedelta(days=10), END)

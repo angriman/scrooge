@@ -123,14 +123,15 @@ def _closes(
 def _held_spans(conn: sqlite3.Connection, through: date) -> dict[int, tuple[date, date]]:
     """instrument -> the first and the last day a close of it is needed, up to `through`.
 
-    An instrument sold needs no close after the day the last of it went.
+    An instrument sold needs no close after the day the last of it went, and one bought
+    needs none before: a statement that says none was held yet is not the first day.
     """
     spans: dict[int, tuple[date, date]] = {}
     for holding in holdings.held(conn):
         steps = holding.steps
         if holding.opening == 0 and all(step.quantity == 0 for step in steps):
             continue
-        first = steps[0].day
+        first = next(s.day for s in steps if holding.opening != 0 or s.quantity != 0)
         last = through if steps[-1].quantity != 0 else min(steps[-1].day, through)
         if first > through:
             continue
