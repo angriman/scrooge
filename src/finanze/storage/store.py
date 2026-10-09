@@ -427,20 +427,22 @@ def set_price_symbol(conn: sqlite3.Connection, instrument: int, price_symbol: st
     conn.execute("UPDATE instruments SET price_symbol = ? WHERE id = ?", (price_symbol, instrument))
 
 
-def last_price_day(conn: sqlite3.Connection, instrument: int, source: str) -> date | None:
-    """The latest day `source` has given a close of the instrument for."""
+def price_days(conn: sqlite3.Connection, instrument: int, source: str) -> tuple[date, date] | None:
+    """The first and the latest day `source` has given a close of the instrument for."""
     row = conn.execute(
-        "SELECT max(date) FROM prices WHERE instrument_id = ? AND source = ?", (instrument, source)
+        "SELECT min(date), max(date) FROM prices WHERE instrument_id = ? AND source = ?",
+        (instrument, source),
     ).fetchone()
-    return None if row[0] is None else date.fromisoformat(row[0])
+    return None if row[0] is None else (date.fromisoformat(row[0]), date.fromisoformat(row[1]))
 
 
-def last_rate_day(conn: sqlite3.Connection, currency: str, source: str) -> date | None:
-    """The latest day `source` has given a rate of the currency for."""
+def rate_days(conn: sqlite3.Connection, currency: str, source: str) -> tuple[date, date] | None:
+    """The first and the latest day `source` has given a rate of the currency for."""
     row = conn.execute(
-        "SELECT max(date) FROM fx_rates WHERE currency = ? AND source = ?", (currency, source)
+        "SELECT min(date), max(date) FROM fx_rates WHERE currency = ? AND source = ?",
+        (currency, source),
     ).fetchone()
-    return None if row[0] is None else date.fromisoformat(row[0])
+    return None if row[0] is None else (date.fromisoformat(row[0]), date.fromisoformat(row[1]))
 
 
 def add_price(  # noqa: PLR0913  # one argument per column

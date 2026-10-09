@@ -239,3 +239,43 @@ def test_a_statement_that_says_none_was_held_yet_is_not_the_first_day(
     source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
     marketdata.refresh(conn, source, through=END, now=NOW)
     assert source.asked[0] == ("WIDG", day(15) - timedelta(days=10), END)
+
+
+def test_days_before_the_first_stored_are_fetched_when_older_history_is_imported(
+    conn: sqlite3.Connection,
+) -> None:
+    hold(conn, bought("WIDG", "10", day(15)))
+    marketdata.refresh(conn, FakeSource({"WIDG": WEEK, "USDCHF=X": USD}), through=END, now=NOW)
+    # A statement of July now says the shares were bought then.
+    cash = [CashBalance("IBKR USD", "USD", D(0), D(0))]
+    july = date(2026, 7, 1)
+    older = statement(
+        "ibkr",
+        [bought("WIDG", "5", day(20, 7), source_file="j.csv")],
+        cash,
+        filename="j.csv",
+        month=july,
+    )
+    monthclose.stage(conn, batch(older, month=july), NOW)
+    early = [(day(20, 7), "40"), (day(21, 7), "41")]
+    split = [Split(day(10, 8), 2, 1)]
+    source = FakeSource(
+        {
+            "WIDG": [*early, (day(14), "99")],
+            "USDCHF=X": [(day(1, 7), "0.78"), (day(20, 7), "0.79"), *USD],
+        },
+        splits={"WIDG": split},
+    )
+    done = marketdata.refresh(conn, source, through=date(2026, 10, 5), now=LATER)
+    # Only the days not stored are asked for: those before, and those since.
+    assert source.asked == [
+        ("WIDG", day(10, 7), day(13)),
+        ("WIDG", date(2026, 10, 1), date(2026, 10, 5)),
+        ("USDCHF=X", date(2026, 6, 20), day(31, 8)),  # the July statement opens on 30 June
+        ("USDCHF=X", date(2026, 10, 1), date(2026, 10, 5)),
+    ]
+    assert done == Refreshed(closes=2, rates=2, splits=1, problems=())  # the split of both, once
+    assert [row[1] for row in closes(conn)][:3] == ["2026-07-20", "2026-07-21", "2026-09-14"]
+    idle = FakeSource()
+    marketdata.refresh(conn, idle, through=END, now=LATER)
+    assert idle.asked == []  # the days before are not asked for twice

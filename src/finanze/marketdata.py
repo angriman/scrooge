@@ -98,13 +98,13 @@ def _closes(
         if instrument.type not in PRICED or instrument.id not in spans:
             continue
         first, last = spans[instrument.id]
-        stored = store.last_price_day(conn, instrument.id, name)
-        start = first - _MARGIN if stored is None else stored + timedelta(days=1)
-        if start > last:
+        stored = store.price_days(conn, instrument.id, name)
+        wanted = _missing(first, last, stored)
+        if not wanted:
             continue
         try:
             price_symbol = _price_symbol(instrument, symbols, source)
-            history = source.history(price_symbol, start, last)
+            history = _history(source, price_symbol, wanted)
         except PriceError as exc:
             problems.append(f"{instrument.symbol}: no prices ({exc})")
             continue
@@ -115,9 +115,39 @@ def _closes(
             )
             continue
         if not history.closes and stored is None:
-            problems.append(f"{instrument.symbol}: {price_symbol} has no close since {start}")
+            problems.append(
+                f"{instrument.symbol}: {price_symbol} has no close since {wanted[0][0]}"
+            )
         fetched.append(_Fetched(instrument, price_symbol, history))
     return fetched
+
+
+def _missing(first: date, last: date, stored: tuple[date, date] | None) -> list[tuple[date, date]]:
+    """The days to ask for, from a few before `first` to `last`, less those `stored` spans.
+
+    What is stored is never asked for again. Days before it are, when history older than the
+    first stored day was imported since; within the margin there may just be no close.
+    """
+    if stored is None:
+        return [(first - _MARGIN, last)] if first <= last else []
+    spans: list[tuple[date, date]] = []
+    if first + _MARGIN < stored[0]:
+        spans.append((first - _MARGIN, stored[0] - timedelta(days=1)))
+    if stored[1] < last:
+        spans.append((stored[1] + timedelta(days=1), last))
+    return spans
+
+
+def _history(source: PriceSource, symbol: str, spans: list[tuple[date, date]]) -> History:
+    """What the source says of each span, as one history."""
+    found = [source.history(symbol, start, end) for start, end in spans]
+    closes = tuple(close for history in found for close in history.closes)
+    splits = tuple(
+        sorted(
+            {split for history in found for split in history.splits}, key=lambda split: split.day
+        )
+    )
+    return History(found[0].currency, closes, splits)
 
 
 def _held_spans(conn: sqlite3.Connection, through: date) -> dict[int, tuple[date, date]]:
@@ -171,13 +201,12 @@ def _rates(
         return {}
     rates: dict[str, History] = {}
     for currency in sorted({*store.currencies(conn), *currencies} - {BASE}):
-        stored = store.last_rate_day(conn, currency, name)
-        start = first - _MARGIN if stored is None else stored + timedelta(days=1)
-        if start > through:
+        spans = _missing(first, through, store.rate_days(conn, currency, name))
+        if not spans:
             continue
         symbol = rate_symbol(currency, BASE)
         try:
-            history = source.history(symbol, start, through)
+            history = _history(source, symbol, spans)
         except PriceError as exc:
             problems.append(f"{currency}: no rates ({exc})")
             continue

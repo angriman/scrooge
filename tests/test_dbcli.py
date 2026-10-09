@@ -505,7 +505,7 @@ def test_prices_lists_what_it_could_not_fetch_and_fetches_up_to_yesterday(closed
     assert {asked[2] for asked in closed.source.asked} == {yesterday}
     closed.source.asked.clear()
     closed("prices", "--through", "2026-10-20", "--instruments", str(closed.instruments))
-    assert {asked[2] for asked in closed.source.asked} == {yesterday}  # nor a day to come
+    assert max(asked[2] for asked in closed.source.asked) == yesterday  # nor a day to come
 
 
 def test_prices_uses_the_real_source_unless_given_another(
