@@ -13,7 +13,7 @@ from finanze.models import PrintedValue
 from finanze.storage import db
 from finanze.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
-from tests.test_networth import NOW, account, close, rate, spent
+from tests.test_networth import NOW, account, bill, bought, close, ibkr, rate, spent
 from tests.web.test_app import text
 from tests.web.test_cashflow_page import tables
 
@@ -48,6 +48,18 @@ def empty(tmp_path: Path) -> TestClient:
     path = tmp_path / "finanze.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
+    conn.close()
+    return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
+
+
+@pytest.fixture
+def mixed(tmp_path: Path) -> TestClient:
+    """One broker account in dollars holding cash, an ETF and a bill."""
+    path = tmp_path / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    fifteenth = date(2026, 9, 15)
+    close(conn, ibkr(bought("WIDG", "10", "-500", fifteenth), bill("1000", "-990", fifteenth)))
     conn.close()
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
 
@@ -130,6 +142,20 @@ def test_the_chart_reads_every_day_as_text_to_the_cent(client: TestClient) -> No
     assert total["values"] == cash["values"] == ["1875.00"] * 10 + ["1625.00"] * 21
     assert len(total["values"]) == DAYS == (LAST - FIRST).days + 1
     assert [line["name"] for line in client.get("/networth.json").json()["series"]] == ["Net worth"]
+
+
+def test_the_parts_are_listed_and_stacked_from_the_steadiest_up(mixed: TestClient) -> None:
+    asked = {"by": "asset", "currency": "USD"}
+    page = mixed.get("/networth", params=asked).text
+    # Bills below the ETF, whatever the order the kinds of asset are worked out in; each in
+    # its colour, and neighbours in the stack in neighbouring ones.
+    assert legend(page) == [("0", "Net worth"), ("1", "Cash"), ("2", "Bills"), ("4", "ETFs")]
+    assert [row[0] for row in tables(page)[0]] == ["Net worth", "Cash", "Bills", "ETFs"]
+    # The chart stacks its parts in the order it is given them, and they add up to the total.
+    series = mixed.get("/networth.json", params=asked).json()["series"]
+    assert [(str(line["slot"]), line["name"]) for line in series] == legend(page)
+    total, *parts = ([Decimal(value) for value in line["values"]] for line in series)
+    assert total == [sum(day) for day in zip(*parts, strict=True)]
 
 
 def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: TestClient) -> None:

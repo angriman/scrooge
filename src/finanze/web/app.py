@@ -286,7 +286,7 @@ async def _reopen(request: Request) -> Response:
 
 @dataclass(frozen=True, slots=True)
 class _Part:
-    """One line of the net-worth chart: the total, or what one asset or person adds to it."""
+    """One series of the net-worth chart: the total, or what one asset or person adds to it."""
 
     name: str
     slot: int  # which colour it wears, the same whatever else is shown; 0 for the total
@@ -298,15 +298,19 @@ class _Part:
 
 
 def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...]) -> list[_Part]:
-    """The total first, then its parts: each keeps its colour whoever is looked at."""
+    """The total first, then its parts in the order the chart stacks them, from the bottom up:
+    each keeps its colour whoever is looked at."""
     parts = [_Part("Net worth", 0, result.total)]
     if by == "asset":
-        slots = {asset: n for n, asset in enumerate(networth.ASSETS, 1)}
+        # Neighbours in the stack wear neighbouring colours: those are the pairs the
+        # palette was checked for.
+        slots = {asset: n for n, asset in enumerate(networth.STACK, 1)}
     elif by == "owner":
         slots = {person.name: n for n, person in enumerate(people, 1)}
     else:
         return parts
-    return parts + [_Part(name, slots[name], values) for name, values in result.by(by).items()]
+    stacked = [_Part(name, slots[name], values) for name, values in result.by(by).items()]
+    return parts + sorted(stacked, key=lambda part: part.slot)
 
 
 def _valued(

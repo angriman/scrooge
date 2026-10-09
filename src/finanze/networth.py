@@ -40,6 +40,9 @@ CURRENCIES = ("EUR", "CHF", "USD", "GBP", "JPY")  # what net worth can be shown 
 DEFAULT_CURRENCY = "EUR"
 CASH, ETFS, STOCKS, BILLS, PENSION, CARD = "Cash", "ETFs", "Stocks", "Bills", "Pillar 3a", "Card"
 ASSETS = (CASH, ETFS, STOCKS, BILLS, PENSION, CARD)  # in the order they are listed
+# From the bottom of a stacked chart up: what moves least first, so that the swings of the
+# rest do not shake it. A card is only ever owed: it comes last and hangs below zero.
+STACK = (CASH, BILLS, PENSION, ETFS, STOCKS, CARD)
 _PENSION_SOURCE = "finpension"
 _CARRIED_FLAT = "manual"  # the kind of an account without rows: typed, or a pension fund's
 _BY_TYPE = {"etf": ETFS, "stock": STOCKS, "bill": BILLS, "bond": BILLS, "fund": PENSION}

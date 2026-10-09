@@ -786,6 +786,11 @@ def test_a_valuation_of_a_month_not_committed_is_not_checked(conn: sqlite3.Conne
     assert (check.printed, check.derived) == (D(10000), D(10000))
 
 
+def test_every_kind_of_asset_has_its_place_in_the_stack() -> None:
+    assert sorted(networth.STACK) == sorted(networth.ASSETS)
+    assert networth.STACK[0] == CASH  # the steadiest at the bottom
+
+
 def test_days_run_without_a_gap() -> None:
     days = networth._days(day(27, 2), day(2, 3))
     assert days == tuple(day(27, 2) + timedelta(days=n) for n in range(4))
