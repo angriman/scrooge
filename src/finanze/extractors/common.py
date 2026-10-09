@@ -14,6 +14,7 @@ from finanze.errors import ExtractionError
 
 _NUMBER = re.compile(r"[+-]?(\d+|\d{1,3}([,']\d{3})+)(\.\d+)?")
 _SWISS_DATE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
+_SWISS_AMOUNT = re.compile(r"(\d{1,3}('\d{3})*)\.\d{2}")
 
 
 def parse_decimal(text: str, what: str) -> Decimal:
@@ -27,6 +28,26 @@ def parse_decimal(text: str, what: str) -> Decimal:
         msg = f"cannot read amount {text!r} ({what})"
         raise ExtractionError(msg)
     return Decimal(cleaned.replace(",", "").replace("'", ""))
+
+
+def parse_swiss_amount(text: str, what: str) -> Decimal:
+    """Read `1'234.50` as a Swiss document prints money: nothing else, not even `1234.5`.
+
+    For text that was read off a scan, where a looser reading would let a misread figure pass.
+    """
+    if not _SWISS_AMOUNT.fullmatch(text):
+        msg = f"cannot read amount {text!r} ({what})"
+        raise ExtractionError(msg)
+    return Decimal(text.replace("'", ""))
+
+
+def only_match(pattern: re.Pattern[str], content: str, what: str) -> re.Match[str]:
+    """The one place `pattern` is found in `content`: none, or more than one, is an error."""
+    found = list(pattern.finditer(content))
+    if len(found) != 1:
+        msg = f"{what}: found {len(found)} times, expected once"
+        raise ExtractionError(msg)
+    return found[0]
 
 
 def parse_iso_date(text: str, what: str) -> date:

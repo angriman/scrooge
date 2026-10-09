@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -77,3 +78,48 @@ def test_read_table_requires_columns_and_fills_short_rows() -> None:
         common.read_table("A;B\n1;2\n", ";", {"A", "C"}, "x")
     with pytest.raises(ExtractionError, match="missing"):
         common.read_table("", ";", {"A"}, "x")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0.00", "0.00"),
+        ("950.40", "950.40"),
+        ("12'345.65", "12345.65"),
+        ("1'234'567.05", "1234567.05"),
+    ],
+)
+def test_parse_swiss_amount_reads_printed_money(text: str, expected: str) -> None:
+    assert common.parse_swiss_amount(text, "t") == Decimal(expected)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "12345.65",
+        "12,345.65",
+        "12'345",
+        "12'345.6",
+        "12'345.650",
+        "-1.00",
+        "1'23.00",
+        "1234'567.00",
+        " 1.00",
+        "1.0O",
+        "12\u2019345.65",
+        "'123.00",
+    ],
+)
+def test_parse_swiss_amount_rejects_anything_else(text: str) -> None:
+    with pytest.raises(ExtractionError, match="amount"):
+        common.parse_swiss_amount(text, "t")
+
+
+def test_only_match_wants_exactly_one() -> None:
+    pattern = re.compile(r"Total (\d+)")
+    assert common.only_match(pattern, "a\nTotal 12\nb", "the total")[1] == "12"
+    with pytest.raises(ExtractionError, match="the total: found 0 times, expected once"):
+        common.only_match(pattern, "nothing", "the total")
+    with pytest.raises(ExtractionError, match="the total: found 2 times, expected once"):
+        common.only_match(pattern, "Total 1\nTotal 2", "the total")
