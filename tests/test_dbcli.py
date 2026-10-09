@@ -1,5 +1,5 @@
 import io
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -493,15 +493,19 @@ def test_prices_fetches_what_is_held_and_says_what_it_stored(closed: Run) -> Non
     assert closed.output == "0 closes, 0 exchange rates and 0 splits stored.\n"
 
 
-def test_prices_lists_what_it_could_not_fetch_and_fetches_up_to_today(closed: Run) -> None:
-    closed.source = FakeSource({"USDCHF=X": [(date(2026, 10, 5), "0.8")]})
+def test_prices_lists_what_it_could_not_fetch_and_fetches_up_to_yesterday(closed: Run) -> None:
+    # Today's close is not final while a market is open, and it would never be fetched again.
+    yesterday = NOW.date() - timedelta(days=1)
+    closed.source = FakeSource({"USDCHF=X": [(yesterday, "0.8"), (NOW.date(), "0.9")]})
     assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.NEEDS_REVIEW
     lines = closed.output.splitlines()
     assert lines[0] == "0 closes, 1 exchange rates and 0 splits stored."
     assert "  missing: ACME: no prices (ACME: No data found)" in lines
     assert "  missing: EUR: no rates (EURCHF=X: No data found)" in lines
-    assert all(asked[2] <= NOW.date() for asked in closed.source.asked)
-    assert ("USDCHF=X", NOW.date()) in {(asked[0], asked[2]) for asked in closed.source.asked}
+    assert {asked[2] for asked in closed.source.asked} == {yesterday}
+    closed.source.asked.clear()
+    closed("prices", "--through", "2026-10-20", "--instruments", str(closed.instruments))
+    assert {asked[2] for asked in closed.source.asked} == {yesterday}  # nor a day to come
 
 
 def test_prices_uses_the_real_source_unless_given_another(

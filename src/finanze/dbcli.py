@@ -26,7 +26,7 @@ import re
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TextIO
@@ -343,12 +343,17 @@ def _serve(database: Path, port: int, rules: webapp.Rules, out: TextIO) -> int:
 def _prices(
     conn: sqlite3.Connection, args: argparse.Namespace, console: _Console, now: datetime
 ) -> int:
-    """Fetch what is missing; what could not be fetched is listed and nothing is guessed."""
+    """Fetch what is missing; what could not be fetched is listed and nothing is guessed.
+
+    Up to yesterday at most: today's close is not final while a market is open, and what is
+    stored is never fetched again.
+    """
+    yesterday = now.date() - timedelta(days=1)
     typed = classification.load_instruments(args.instruments)
     refreshed = marketdata.refresh(
         conn,
         console.source or prices.Yahoo(),
-        through=args.through or now.date(),
+        through=min(args.through or yesterday, yesterday),
         now=now,
         symbols={symbol: entry.price_symbol for symbol, entry in typed.items()},
         currencies=networth.CURRENCIES,
