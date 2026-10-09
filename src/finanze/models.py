@@ -139,6 +139,23 @@ class Rate:
 
 
 @dataclass(frozen=True, slots=True)
+class PensionCertificate:
+    """What a second-pillar certificate states: the retirement assets on one day.
+
+    A certificate has no transactions and no period: `balance` is what the pension fund held
+    for the person on `as_of`, a day of its own choosing (often the first of a month).
+    `mandatory` is the part of `balance` under the legal minimum (BVG), never more than it.
+    """
+
+    source: str
+    as_of: date
+    currency: str
+    balance: Decimal
+    mandatory: Decimal
+    insured_since: date  # nothing was held there before this day
+
+
+@dataclass(frozen=True, slots=True)
 class Extraction:
     """What an extractor returns: transactions plus the figures they must reconcile to.
 

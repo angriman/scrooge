@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from finanze.models import Extraction
+from finanze.models import Extraction, PensionCertificate
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 
@@ -24,3 +24,8 @@ def assert_matches_golden(result: Extraction, source: str) -> None:
     actual = [jsonable(asdict(txn)) for txn in result.transactions]
     expected = json.loads((FIXTURES / source / "expected.json").read_text(encoding="utf-8"))
     assert actual == expected
+
+
+def assert_certificate_matches_golden(result: PensionCertificate, source: str) -> None:
+    expected = json.loads((FIXTURES / source / "expected.json").read_text(encoding="utf-8"))
+    assert jsonable(asdict(result)) == expected
