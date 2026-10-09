@@ -1,14 +1,16 @@
 import io
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 import uvicorn
 from starlette.applications import Starlette
 
-from finanze import categories, cli, dbcli, prices
+from finanze import categories, cli, dbcli, networth, prices
+from finanze.extractors import ocr
 from finanze.storage import db
-from tests.conftest import INSTRUMENTS_YAML, write_rules
+from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -286,6 +288,92 @@ def test_a_balance_can_be_typed_for_an_account_without_statements(
     with pytest.raises(SystemExit):
         run("balance", "Kasse", "2023-02-28", "1,5", "EUR")
     assert "'1,5' is not an amount like 1234.56" in capsys.readouterr().err
+
+
+AXA_READ = (
+    "Pillar 2 AXA of Lukas: 35,802.00 CHF on 2026-03-01, read off the axa certificate "
+    "Scan 0001.pdf (mandatory part 12,345.65).\n"
+)
+SERVISA_READ = (
+    "Pillar 2 Servisa of Lukas: 3,579.40 CHF on 2026-01-01, read off the servisa certificate "
+    "Dokument.pdf (mandatory part 2,468.10).\n"
+    "  note: nothing on this certificate adds up to that figure: compare it with the paper\n"
+)
+
+
+def test_pension_certificates_are_imported_and_what_was_read_is_shown(
+    run: Run, pillar2: Path
+) -> None:
+    (pillar2 / "cover letter.txt").write_text("Dear member", encoding="utf-8")
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert run.output == (
+        SERVISA_READ
+        + AXA_READ
+        + "  skipped cover letter.txt (not a statement)\n"
+        + "Next: finanze commit 2026-01\nNext: finanze commit 2026-03\n"
+    )
+    assert (run.count("statement_files"), run.count("balances")) == (2, 2)
+    assert run.count("transactions") == 0
+    assert run("commit", "2026-01") == dbcli.OK
+    assert run("commit", "2026-03") == dbcli.OK
+
+    conn = db.connect(run.database)
+    result = networth.run(conn, currency="CHF")
+    conn.close()
+    worth = dict(zip(result.days, result.total, strict=True))
+    assert result.days[0] == date(2026, 1, 1)
+    assert worth[date(2026, 2, 28)] == Decimal("3579.40")
+    assert worth[date(2026, 3, 1)] == Decimal("3579.40") + Decimal("35802.00")
+    assert worth[date(2026, 3, 31)] == worth[date(2026, 3, 1)]
+
+
+def test_a_certificate_of_a_committed_month_is_refused_until_the_month_is_reopened(
+    run: Run, pillar2: Path
+) -> None:
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert run("commit", "2026-03") == dbcli.OK
+    assert run.load(folder=pillar2) == dbcli.FAILED
+    assert run.output == "error: 2026-03 is committed for Lukas: reopen it first\n"
+    assert run("reopen", "2026-03") == dbcli.OK
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert (run.count("statement_files"), run.count("balances")) == (2, 2)
+
+
+def test_certificates_come_in_with_the_statements_of_other_months(
+    run: Run, pillar2: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run.load_august()
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(run.folder), str(pillar2), *paths) == dbcli.OK
+    first, *rest = run.output.splitlines(keepends=True)
+    assert first.startswith("September 2026 for Lukas: 6 statements reconciled, ")
+    assert "".join(rest[:3]) == SERVISA_READ + AXA_READ
+    assert rest[-3:] == [
+        "Next: finanze commit 2026-09\n",
+        "Next: finanze commit 2026-01\n",
+        "Next: finanze commit 2026-03\n",
+    ]
+
+    # A certificate dated inside the months the statements cover needs no commit of its own.
+    text = (FIXTURES / "axa" / "certificate.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(ocr, "read_text", lambda path: text.replace("01.03.2026", "15.09.2026"))
+    scan = pillar2 / "Scan 0001.pdf"
+    assert run("import", str(run.folder), str(scan), *paths) == dbcli.OK
+    assert "Pillar 2 AXA of Lukas: 35,802.00 CHF on 2026-09-15, " in run.output
+    assert run.output.count("Next: ") == 1
+    assert run.output.endswith("Next: finanze commit 2026-09\n")
+    assert run("commit", "2026-09") == dbcli.OK
+
+
+def test_a_certificate_that_cannot_be_read_stores_nothing(
+    run: Run, pillar2: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = (FIXTURES / "servisa" / "certificate.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(ocr, "read_text", lambda path: text.replace("3'579.40", "3'579.4O"))
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(run.folder), str(pillar2), *paths) == dbcli.FAILED
+    assert run.output.startswith("error: Dokument.pdf: ")
+    assert (run.count("statement_files"), run.count("balances")) == (0, 0)
 
 
 def test_a_path_that_does_not_exist_is_reported(run: Run) -> None:

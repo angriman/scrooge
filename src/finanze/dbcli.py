@@ -12,6 +12,10 @@ terminal.
 
 `commit` and `reopen` take a second month to cover every month from the first to it.
 
+`import` also takes the scan of a second-pillar pension certificate: it gives the pension
+fund's account the balance it states for its day, in the month of that day, which is
+committed like any other. What was read is printed, to be compared with the paper.
+
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
@@ -47,7 +51,7 @@ from finanze import (
 )
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
-from finanze.extractors.common import month_end, months_between
+from finanze.extractors.common import month_end, month_start, months_between
 from finanze.models import Kind
 from finanze.monthclose import Batch, MonthCloseError, People
 from finanze.storage import db, store
@@ -426,7 +430,8 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
-    statements, skipped = pipeline.load_files(_files(args.paths), database=True)
+    certificates, files = pipeline.load_certificates(_files(args.paths))
+    statements, skipped = pipeline.load_files(files, database=True)
     instruments = classification.load_instruments(args.instruments)
     statements = pipeline.resolve_holdings(
         pipeline.relabel(statements, session.labels), instruments
@@ -447,19 +452,25 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         extractions = [(s.source, s.extraction) for s in statements]
         return pipeline.process(extractions, rules, instruments, skipped, database=True)
 
-    month = process()
+    if statements or not certificates:
+        month = process()
+    else:  # certificates alone: no statement, no row, the month of the earliest one
+        earliest = min(certificate.stated.as_of for certificate in certificates)
+        month = pipeline.Month(month_start(earliest), (), (), tuple(skipped))
     if args.review and month.uncategorized:
         ask = session.console.ask
         review.ask_categories(month.uncategorized, shared[0], out, ask, (own, everyone))
         month = process()
     added = categories.load(categories_file)
-    batch = Batch(session.owner, statements, month, session.people, added)
+    batch = Batch(session.owner, statements, month, session.people, added, certificates)
     staged = monthclose.stage(session.conn, batch, session.now)
     first, last = month.period
-    out.write(
-        f"{_span(first, last)} for {session.owner}: {len(statements)} statements reconciled, "
-        f"{staged.transactions} transactions staged.\n"
-    )
+    if statements:
+        out.write(
+            f"{_span(first, last)} for {session.owner}: {len(statements)} statements "
+            f"reconciled, {staged.transactions} transactions staged.\n"
+        )
+    _print_certificates(certificates, session.owner, out)
     out.writelines(f"  skipped {path.name} (not a statement)\n" for path in month.skipped)
     out.writelines(
         f"  note: {account} includes rows with no balance to check against\n"
@@ -473,8 +484,31 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         )
         return NEEDS_REVIEW
     through = "" if month.end is None else f" {last:%Y-%m}"
-    out.write(f"Next: finanze commit {first:%Y-%m}{through}\n")
+    if statements:
+        out.write(f"Next: finanze commit {first:%Y-%m}{through}\n")
+    covered = set(months_between(first, last)) if statements else set()
+    stated = {month_start(certificate.stated.as_of) for certificate in certificates}
+    out.writelines(f"Next: finanze commit {each:%Y-%m}\n" for each in sorted(stated - covered))
     return OK
+
+
+def _print_certificates(
+    certificates: Sequence[pipeline.Certificate], owner: str, out: TextIO
+) -> None:
+    """What was read off each certificate: the one check there is for a figure nothing on the
+    paper adds up to."""
+    for certificate in sorted(certificates, key=lambda c: (c.stated.as_of, c.account)):
+        stated = certificate.stated
+        out.write(
+            f"{certificate.account} of {owner}: {stated.balance:,.2f} {stated.currency} on "
+            f"{stated.as_of}, read off the {stated.source} certificate {certificate.filename} "
+            f"(mandatory part {stated.mandatory:,.2f}).\n"
+        )
+        if not certificate.adds_up:
+            out.write(
+                "  note: nothing on this certificate adds up to that figure: compare it with "
+                "the paper\n"
+            )
 
 
 def _files(paths: Sequence[Path]) -> list[Path]:
