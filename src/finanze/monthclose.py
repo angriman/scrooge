@@ -3,6 +3,8 @@
 `stage` stores what the pipeline produced for one person, replacing whatever an earlier import
 stored for the same accounts and days. Each statement covers its own period, of one month or
 many. The months they cover stay `open`, and the dashboards do not see them, until `commit`.
+A pension certificate is a statement of the one day it is dated: it belongs to the month of
+that day, which must be open like any other, and gives its account a balance and no rows.
 Both run in one database transaction: any failure leaves the database as it was.
 """
 
@@ -20,9 +22,9 @@ from pathlib import Path
 from finanze import classification
 from finanze.categories import Extra
 from finanze.classification import Patterns, names
-from finanze.extractors.common import month_end, months_between
+from finanze.extractors.common import month_end, month_start, months_between
 from finanze.models import Kind, Transaction
-from finanze.pipeline import Month, Statement
+from finanze.pipeline import Certificate, Month, Statement
 from finanze.storage import bills, db, holdings, pairs, store
 from finanze.storage.ids import transaction_ids
 from finanze.storage.money import from_nano
@@ -35,6 +37,9 @@ _KINDS = {"ibkr": "broker_cash", "tastytrade": "broker_cash", "finpension": "bro
 _KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
+# An account that only certificates feed: carried flat from each balance to the next, as a
+# typed account is, and outside the chain of balances (`store.anchors`).
+_CARRIED_FLAT = "manual"
 _RATES_IN = "CHF"
 
 People = Mapping[str, Patterns]
@@ -73,6 +78,8 @@ class Batch:
     month: Month
     people: People
     categories: Sequence[Extra] = ()  # what `categories.yaml` adds to the taxonomy
+    # Pension certificates: not part of `month`, which may then be empty.
+    certificates: Sequence[Certificate] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +99,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
         months = {m for s in statements for m in months_between(*s.extraction.period)}
+        months |= {month_start(c.stated.as_of) for c in batch.certificates}
         for covered in sorted(months):
             if store.month_status(conn, owner_id, covered) == "committed":
                 msg = f"{covered:%Y-%m} is committed for {owner}: reopen it first"
@@ -153,13 +161,61 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 store.set_closing_balance(conn, account, last, balance.closing, file_id)
                 store.set_opening_balance(conn, account, before, balance.opening, file_id)
             _store_valuation(conn, statement, accounts[statement.filename], files)
+        stored, dropped = _store_certificates(conn, owner_id, batch.certificates, now)
+        replaced |= dropped
 
-        store.drop_unused_files(conn, replaced - set(files.values()))
+        store.drop_unused_files(conn, replaced - set(files.values()) - stored)
         gaps = tuple(str(gap) for gap in _unsettled(conn, owner_id))
         store.apply_overrides(conn)
         pairs.mark(conn)
         pending = store.uncategorized(conn, owner_id, month.period)
         return Staged(month.month, len(rows), pending, gaps)
+
+
+def _store_certificates(
+    conn: sqlite3.Connection, owner_id: int, certificates: Sequence[Certificate], now: datetime
+) -> tuple[set[int], set[int]]:
+    """Give each certificate's account the balance it states for its day.
+
+    A certificate read again, or a new scan of it, replaces what it stored; one of another
+    day adds a balance and leaves the others. Returns the files now stored and the files
+    whose balances were replaced.
+    """
+    seen: dict[tuple[str, date], str] = {}
+    stored: set[int] = set()
+    replaced: set[int] = set()
+    for certificate in certificates:
+        stated = certificate.stated
+        other = seen.setdefault((certificate.account, stated.as_of), certificate.filename)
+        if other != certificate.filename:
+            msg = (
+                f"{other} and {certificate.filename} are both certificates of "
+                f"{certificate.account} for {stated.as_of}"
+            )
+            raise DuplicateStatementError(msg)
+        account = store.ensure_account(
+            conn,
+            owner_id,
+            name=certificate.account,
+            kind=_CARRIED_FLAT,
+            currency=stated.currency,
+            source=stated.source,
+        )
+        day = (stated.as_of, stated.as_of)
+        replaced |= store.delete_statement_rows(conn, stated.source, [account], day)
+        file_id = store.upsert_statement_file(
+            conn,
+            owner_id,
+            source=stated.source,
+            filename=certificate.filename,
+            sha256=certificate.sha256,
+            period=day,
+            reconciled="yes" if certificate.adds_up else "nothing_to_check",
+            imported_at=db.timestamp(now),
+        )
+        store.set_closing_balance(conn, account, stated.as_of, stated.balance, file_id)
+        stored.add(file_id)
+    return stored, replaced
 
 
 def _store_valuation(
@@ -335,8 +391,8 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
 ) -> None:
     """Record what an account without statements held at the end of `day`.
 
-    For accounts that are only ever typed (a closed bank, a pension fund certificate): the
-    account is created on first use, and can never also be fed from statements.
+    For accounts that are only ever typed (a closed bank): the account is created on first
+    use, and can never also be fed from statements or from certificates.
     """
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)

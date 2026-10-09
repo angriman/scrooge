@@ -66,7 +66,11 @@ def ensure_account(  # noqa: PLR0913  # one argument per column
     currency: str,
     source: str | None,
 ) -> int:
-    """The account's id, creating it on first sight. `source` is None for a typed account."""
+    """The account's id, creating it on first sight. `source` is None for a typed account.
+
+    Kind `manual` is an account carried flat between the days a balance is known for: typed,
+    or with a `source`, stated by that source's certificates.
+    """
     ensure_currency(conn, currency)
     conn.execute(
         "INSERT OR IGNORE INTO accounts (owner_id, name, kind, currency, source) "
@@ -520,12 +524,17 @@ def set_statement_values(
 
 
 def anchors(conn: sqlite3.Connection, owner: int) -> list[Anchor]:
-    """Every statement balance of the owner's accounts, by account and then by day."""
+    """Every statement balance of the owner's accounts, by account and then by day.
+
+    Not those of an account that is carried flat (kind `manual`): what a pension certificate
+    states does not follow from the one before it, and nothing is booked in between.
+    """
     rows = conn.execute(
         "SELECT b.account_id, a.name, a.currency, b.date, b.amount_nano, f.period_start > b.date "
         "FROM balances b JOIN accounts a ON a.id = b.account_id "
         "JOIN statement_files f ON f.id = b.statement_file_id "
-        "WHERE a.owner_id = ? AND b.source = 'statement' ORDER BY b.account_id, b.date",
+        "WHERE a.owner_id = ? AND b.source = 'statement' AND a.kind <> 'manual' "
+        "ORDER BY b.account_id, b.date",
         (owner,),
     ).fetchall()
     return [

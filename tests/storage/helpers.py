@@ -9,10 +9,17 @@ from decimal import Decimal
 from typing import Any
 
 from finanze import monthclose
-from finanze.extractors.common import months_between
-from finanze.models import CashBalance, Extraction, Kind, SecurityTrade, Transaction
+from finanze.extractors.common import month_start, months_between
+from finanze.models import (
+    CashBalance,
+    Extraction,
+    Kind,
+    PensionCertificate,
+    SecurityTrade,
+    Transaction,
+)
 from finanze.monthclose import Batch
-from finanze.pipeline import Month, Statement
+from finanze.pipeline import Certificate, Month, Statement
 
 AUGUST = date(2026, 8, 1)
 SEPTEMBER = date(2026, 9, 1)
@@ -115,6 +122,24 @@ def migros(opening: str, *amounts: str, month: date = SEPTEMBER, **fields: Any) 
     closing = Decimal(opening) + sum((row.amount for row in rows), Decimal(0))
     balance = CashBalance("Migros", "CHF", Decimal(opening), closing)
     return statement("migros", rows, [balance], filename="migros.csv", month=month)
+
+
+def certificate(
+    as_of: date, balance: str, *, issuer: str = "AXA", filename: str = "", content: str = ""
+) -> Certificate:
+    """A scanned pension certificate that states `balance` francs for `as_of`."""
+    name = filename or f"scan {issuer} {as_of}.pdf"
+    digest = hashlib.sha256(f"{name}{as_of}{balance}{content}".encode()).hexdigest()
+    stated = PensionCertificate(
+        issuer.lower(), as_of, "CHF", Decimal(balance), Decimal(0), date(2020, 1, 1)
+    )
+    return Certificate(name, digest, f"Pillar 2 {issuer}", issuer == "AXA", stated)
+
+
+def certified(*certificates: Certificate, owner: str = OWNER) -> Batch:
+    """A batch of certificates alone, as an import of nothing else makes it."""
+    first = month_start(min(c.stated.as_of for c in certificates))
+    return Batch(owner, (), Month(first, (), (), ()), PEOPLE, certificates=certificates)
 
 
 def dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:

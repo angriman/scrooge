@@ -27,6 +27,8 @@ from tests.storage.helpers import (
     SEPTEMBER,
     batch,
     bill,
+    certificate,
+    certified,
     dump,
     migros,
     rows,
@@ -671,6 +673,182 @@ def test_an_account_is_fed_by_statements_or_typed_never_both(conn: sqlite3.Conne
             currency="CHF",
         )
     assert rows(conn, "SELECT count(*) FROM balances WHERE source = 'manual'") == [(0,)]
+
+
+# ------------------------------------------------------------------ pension certificates
+
+MARCH = date(2026, 3, 1)
+BALANCES = (
+    "SELECT a.name, b.date, b.amount_nano, b.source, f.filename FROM balances b "
+    "JOIN accounts a ON a.id = b.account_id "
+    "LEFT JOIN statement_files f ON f.id = b.statement_file_id ORDER BY a.name, b.date"
+)
+
+
+def test_a_certificate_gives_its_account_a_balance_and_no_rows(conn: sqlite3.Connection) -> None:
+    axa = certificate(MARCH, "35802.00")
+    servisa = certificate(date(2026, 1, 15), "3579.40", issuer="Servisa")
+    staged = monthclose.stage(conn, certified(axa, servisa), NOW)
+    assert staged == monthclose.Staged(date(2026, 1, 1), 0, 0)
+    assert rows(conn, "SELECT name, kind, currency, source FROM accounts ORDER BY name") == [
+        ("Pillar 2 AXA", "manual", "CHF", "axa"),
+        ("Pillar 2 Servisa", "manual", "CHF", "servisa"),
+    ]
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2026-03-01", 35_802_000_000_000, "statement", axa.filename),
+        ("Pillar 2 Servisa", "2026-01-15", 3_579_400_000_000, "statement", servisa.filename),
+    ]
+    files = "SELECT source, sha256, period_start, period_end, reconciled, holdings "
+    assert rows(conn, files + "FROM statement_files ORDER BY source") == [
+        ("axa", axa.sha256, "2026-03-01", "2026-03-01", "yes", "not_printed"),
+        ("servisa", servisa.sha256, "2026-01-15", "2026-01-15", "nothing_to_check", "not_printed"),
+    ]
+    # each is a statement of the month of its day, and of no other
+    assert rows(conn, "SELECT month, status FROM months ORDER BY month") == [
+        ("2026-01-01", "open"),
+        ("2026-03-01", "open"),
+    ]
+    assert rows(conn, "SELECT count(*) FROM transactions") == [(0,)]
+
+
+def test_a_certificate_read_again_changes_nothing(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, certified(certificate(MARCH, "35802.00")), NOW)
+    before = dump(conn)
+    monthclose.stage(conn, certified(certificate(MARCH, "35802.00")), LATER)
+    assert dump(conn) == before
+
+
+def test_a_newer_certificate_adds_a_balance_and_leaves_the_older(conn: sqlite3.Connection) -> None:
+    old, new = certificate(MARCH, "35802.00"), certificate(date(2027, 3, 1), "41000.50")
+    monthclose.stage(conn, certified(old), NOW)
+    monthclose.stage(conn, certified(new), LATER)
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2026-03-01", 35_802_000_000_000, "statement", old.filename),
+        ("Pillar 2 AXA", "2027-03-01", 41_000_500_000_000, "statement", new.filename),
+    ]
+    # Nothing is booked between the two and nothing has to be: they are not chained.
+    owner = store.owner_id(conn, OWNER)
+    assert owner is not None
+    assert store.anchors(conn, owner) == []
+    assert monthclose.would_refuse(conn, owner) == []
+    assert monthclose.commit(conn, owner=OWNER, month=MARCH, now=LATER)
+    assert monthclose.commit(conn, owner=OWNER, month=date(2027, 3, 1), now=LATER)
+
+
+def test_a_new_scan_of_a_certificate_replaces_what_the_first_stored(
+    conn: sqlite3.Connection,
+) -> None:
+    monthclose.stage(conn, certified(certificate(MARCH, "35802.00")), NOW)
+    again = certificate(MARCH, "35802.00", filename="rescan.pdf", content="other bytes")
+    monthclose.stage(conn, certified(again), LATER)
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2026-03-01", 35_802_000_000_000, "statement", "rescan.pdf")
+    ]
+    assert rows(conn, "SELECT filename FROM statement_files") == [("rescan.pdf",)]
+
+
+def test_a_certificate_of_a_committed_month_needs_it_reopened(conn: sqlite3.Connection) -> None:
+    monthclose.stage(conn, batch(migros("1000", "-200", month=MARCH), month=MARCH), NOW)
+    monthclose.commit(conn, owner=OWNER, month=MARCH, now=NOW)
+    before = dump(conn)
+    with pytest.raises(monthclose.MonthCommittedError, match="2026-03 is committed for Lukas"):
+        monthclose.stage(conn, certified(certificate(MARCH, "35802.00")), LATER)
+    assert dump(conn) == before
+    monthclose.reopen(conn, owner=OWNER, month=MARCH)
+    monthclose.stage(conn, certified(certificate(MARCH, "35802.00")), LATER)
+    assert monthclose.commit(conn, owner=OWNER, month=MARCH, now=LATER)
+    assert rows(conn, "SELECT count(*) FROM transactions") == [(1,)]
+    assert rows(conn, "SELECT count(*) FROM balances") == [(3,)]
+
+
+def test_statements_and_certificates_are_staged_together_or_not_at_all(
+    conn: sqlite3.Connection,
+) -> None:
+    monthclose.stage(conn, batch(migros("1000", "-200", month=MARCH), month=MARCH), NOW)
+    monthclose.commit(conn, owner=OWNER, month=MARCH, now=NOW)
+    before = dump(conn)
+    september = batch(migros("800", "-1"))
+    both = replace(september, certificates=(certificate(MARCH, "35802.00"),))
+    with pytest.raises(monthclose.MonthCommittedError):
+        monthclose.stage(conn, both, LATER)
+    assert dump(conn) == before
+    later = replace(september, certificates=(certificate(date(2026, 9, 1), "36000"),))
+    assert monthclose.stage(conn, later, LATER) == monthclose.Staged(SEPTEMBER, 1, 0)
+    assert rows(conn, "SELECT count(*) FROM balances") == [(5,)]
+    assert rows(conn, "SELECT count(*) FROM statement_files") == [(3,)]
+
+
+def test_two_certificates_of_one_account_for_one_day_are_refused(conn: sqlite3.Connection) -> None:
+    one = certificate(MARCH, "35802.00", filename="a.pdf")
+    other = certificate(MARCH, "35802.00", filename="b.pdf")
+    with pytest.raises(
+        monthclose.DuplicateStatementError,
+        match=r"a\.pdf and b\.pdf are both certificates of Pillar 2 AXA for 2026-03-01",
+    ):
+        monthclose.stage(conn, certified(one, other), NOW)
+    assert rows(conn, "SELECT count(*) FROM balances") == [(0,)]
+    # the same day at two pension funds is two accounts
+    servisa = certificate(MARCH, "3579.40", issuer="Servisa")
+    monthclose.stage(conn, certified(one, one, servisa), NOW)
+    assert rows(conn, "SELECT count(*) FROM balances") == [(2,)]
+
+
+def test_a_pension_account_is_fed_by_certificates_or_typed_never_both(
+    conn: sqlite3.Connection,
+) -> None:
+    def typed(account: str) -> None:
+        monthclose.type_balance(
+            conn, owner=OWNER, account=account, day=MARCH, amount=Decimal(5), currency="CHF"
+        )
+
+    monthclose.stage(conn, certified(certificate(MARCH, "35802.00")), NOW)
+    with pytest.raises(store.AccountMismatchError, match="both statements and typed balances"):
+        typed("Pillar 2 AXA")
+    typed("Pillar 2 Servisa")
+    with pytest.raises(store.AccountMismatchError, match="both statements and typed balances"):
+        monthclose.stage(conn, certified(certificate(MARCH, "1", issuer="Servisa")), NOW)
+    assert rows(conn, "SELECT count(*) FROM balances") == [(2,)]
+
+
+@given(
+    st.lists(
+        st.tuples(
+            st.dates(date(2024, 1, 1), date(2027, 12, 31)),
+            st.decimals(0, 500_000, places=2),
+            st.sampled_from(["AXA", "Servisa"]),
+        ),
+        min_size=1,
+        max_size=6,
+    ),
+    st.randoms(),
+)
+def test_however_certificates_arrive_each_day_keeps_the_last_figure_read(
+    read: list[tuple[date, Decimal, str]], shuffled: Any
+) -> None:
+    conn = new_database()
+    expected: dict[tuple[str, str], int] = {}
+    for n, (day, balance, issuer) in enumerate(read):
+        scan = certificate(day, str(balance), issuer=issuer, content=str(n))
+        monthclose.stage(conn, certified(scan), NOW)
+        expected[f"Pillar 2 {issuer}", day.isoformat()] = int(balance * 1_000_000_000)
+    stored = {(name, day): nano for name, day, nano, _, _ in rows(conn, BALANCES)}
+    assert stored == expected
+    assert rows(conn, "SELECT count(*) FROM statement_files") == [(len(expected),)]
+    # importing everything once more, in any order, changes nothing
+    before = dump(conn)
+    last = {(issuer, day): n for n, (day, _, issuer) in enumerate(read)}
+    kept = [
+        certificate(day, str(balance), issuer=issuer, content=str(n))
+        for n, (day, balance, issuer) in enumerate(read)
+        if last[issuer, day] == n
+    ]
+    shuffled.shuffle(kept)
+    monthclose.stage(conn, certified(*kept), LATER)
+    assert dump(conn) == before
+    owner = store.owner_id(conn, OWNER)
+    assert owner is not None
+    assert monthclose.would_refuse(conn, owner) == []
+    conn.close()
 
 
 # ------------------------------------------------------------------ several months at once
