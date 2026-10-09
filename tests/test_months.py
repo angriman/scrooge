@@ -17,6 +17,8 @@ from tests.storage.helpers import (
     SEPTEMBER,
     batch,
     bill,
+    certificate,
+    certified,
     close,
     migros,
     statement,
@@ -173,3 +175,33 @@ def test_a_bill_without_its_purchase_blocks_and_is_said(conn: sqlite3.Connection
     (reason,) = [gap for gap in september.gaps if "912797YY2" in gap]
     assert reason.startswith("Tastytrade: 912797YY2 matured or was sold on 2026-09-16")
     assert reason in september.blocked_by
+
+
+def test_a_pension_certificate_is_a_statement_of_its_month_and_expected_in_no_other(
+    conn: sqlite3.Connection,
+) -> None:
+    before = months.checklist(conn, OWNER, SEPTEMBER)
+    august = months.checklist(conn, OWNER, AUGUST)
+    scan = certificate(date(2026, 9, 1), "35802.00", filename="scan.pdf")
+    monthclose.stage(conn, certified(scan), CLOSED_AT)
+    september = months.checklist(conn, OWNER, SEPTEMBER)
+    assert september.files == (
+        months.File("axa", "scan.pdf", SEPTEMBER, SEPTEMBER, True, 0),
+        *before.files,
+    )
+    assert (september.missing, september.gaps) == ((), ())
+    assert september.blocked_by == before.blocked_by
+    assert months.checklist(conn, OWNER, AUGUST) == august
+    assert months.listing(conn, OWNER) == (
+        months.MonthLine(OWNER, SEPTEMBER, False, 3, 4, 2),
+        months.MonthLine(OWNER, AUGUST, True, 2, 3, 0),
+    )
+    # October has the card alone: the bank and Revolut are missing, the pension fund is not.
+    card = statement(
+        "swisscard",
+        [txn("-10", date=date(2026, 10, 3), account="Swisscard", source_file="card.pdf")],
+        filename="card.pdf",
+        month=OCTOBER,
+    )
+    monthclose.stage(conn, batch(card, month=OCTOBER), CLOSED_AT)
+    assert months.checklist(conn, OWNER, OCTOBER).missing == ("migros", "revolut")

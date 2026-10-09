@@ -84,7 +84,8 @@ class Checklist:
     committed: bool
     committed_at: str | None
     files: tuple[File, ...]
-    # Sources with a statement for the month before and none for this one.
+    # Sources with a statement for the month before and none for this one. Never a pension
+    # fund: its certificates come when they come, and none is expected in any month.
     missing: tuple[str, ...]
     # What only another statement can settle, anywhere in the person's history.
     gaps: tuple[str, ...]
@@ -154,7 +155,10 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
     ).fetchall()
     before = conn.execute(
         "SELECT DISTINCT source FROM statement_files WHERE owner_id = ?1 "
-        "AND period_start < ?2 AND period_end >= date(?2, '-1 month') ORDER BY source",
+        "AND period_start < ?2 AND period_end >= date(?2, '-1 month') "
+        # what feeds an account carried flat (a pension fund's certificates) is not monthly
+        "AND source NOT IN (SELECT source FROM accounts WHERE owner_id = ?1 "
+        "AND kind = 'manual' AND source IS NOT NULL) ORDER BY source",
         (owner_id, span[0]),
     ).fetchall()
     present = {f[0] for f in files}
