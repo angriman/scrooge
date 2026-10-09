@@ -84,6 +84,17 @@ def test_a_split_before_the_first_statement_is_undone_on_the_way_back() -> None:
     assert steps == [Step(day(15), D(40)), Step(day(30), D(40))]
 
 
+def test_a_split_that_is_no_exact_decimal_still_gives_whole_shares() -> None:
+    one_for_three = Change(day(15), SPLIT, D(1), D(3))
+    changes = [Change(day(3), TRADE, D(300)), one_for_three, Change(day(30), PRINTED, D(100))]
+    opening, steps, mismatches = timeline(changes)
+    assert opening == 0
+    assert mismatches == []
+    assert steps[1] == Step(day(15), D(100))
+    opening, _, _ = timeline([one_for_three, Change(day(30), PRINTED, D(100))])
+    assert opening == 300
+
+
 def test_holding_on_a_day_is_the_last_step_up_to_it() -> None:
     held = holdings.Holding(1, 1, D(7), (Step(day(3), D(17)), Step(day(12), D(12))), ())
     assert [held.on(day(n)) for n in (1, 3, 11, 12, 30)] == [7, 17, 17, 12, 12]

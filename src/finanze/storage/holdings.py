@@ -43,11 +43,13 @@ _SPLIT, _TRADE, _PRINTED = 0, 1, 2
 @dataclass(frozen=True, slots=True)
 class Change:
     """Something that moves the quantity held on `day`. `kind` is one of the three above:
-    a split multiplies by `amount`, a trade adds it, a statement says it is the quantity."""
+    a split multiplies by `amount` and divides by `per` (kept apart: one for three is no
+    exact decimal), a trade adds `amount`, a statement says it is the quantity."""
 
     day: date
     kind: int
     amount: Decimal
+    per: Decimal = Decimal(1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +102,7 @@ def timeline(changes: Iterable[Change]) -> tuple[Decimal, list[Step], list[Misma
     mismatches: list[Mismatch] = []
     for change in ordered:
         if change.kind == _SPLIT:
-            quantity *= change.amount
+            quantity = quantity * change.amount / change.per
         elif change.kind == _TRADE:
             quantity += change.amount
         else:
@@ -125,7 +127,7 @@ def _opening(ordered: Sequence[Change]) -> Decimal:
     quantity = ordered[first].amount
     for change in reversed(ordered[:first]):
         if change.kind == _SPLIT:
-            quantity /= change.amount
+            quantity = quantity * change.per / change.amount
         else:
             quantity -= change.amount
     return quantity
@@ -162,8 +164,9 @@ def held(
     for instrument, day, numerator, denominator in conn.execute(
         "SELECT instrument_id, date, numerator, denominator FROM splits"
     ):
-        ratio = Decimal(numerator) / Decimal(denominator)
-        splits[instrument].append(Change(date.fromisoformat(day), _SPLIT, ratio))
+        splits[instrument].append(
+            Change(date.fromisoformat(day), _SPLIT, Decimal(numerator), Decimal(denominator))
+        )
     holdings: list[Holding] = []
     for (account, instrument), moves in sorted(changes.items()):
         opening, steps, mismatches = timeline([*moves, *splits.get(instrument, [])])
