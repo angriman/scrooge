@@ -8,6 +8,9 @@ into the currency asked for. Nothing here is stored and nothing here writes.
   since; an account starts with its first statement and counts for nothing before. Money
   set aside inside an account (Revolut's savings, D8) stays part of it. An account that is
   only ever typed is carried flat between the days it was typed for.
+- **A second-pillar pension fund** has no assets to follow: it counts as cash in francs,
+  nothing before the day of its first certificate, then what each certificate states until
+  the day of the next one (decided 2026-10-10).
 - **Shares, ETFs and funds** are the quantity held (`storage.holdings`) times the last close
   on or before the day: typed, then printed by a statement, then fetched. Without any close
   the price of the last trade stands in, and a note says so.
@@ -38,6 +41,7 @@ DEFAULT_CURRENCY = "EUR"
 CASH, ETFS, STOCKS, BILLS, PENSION, CARD = "Cash", "ETFs", "Stocks", "Bills", "Pillar 3a", "Card"
 ASSETS = (CASH, ETFS, STOCKS, BILLS, PENSION, CARD)  # in the order they are listed
 _PENSION_SOURCE = "finpension"
+_CARRIED_FLAT = "manual"  # the kind of an account without rows: typed, or a pension fund's
 _BY_TYPE = {"etf": ETFS, "stock": STOCKS, "bill": BILLS, "bond": BILLS, "fund": PENSION}
 _CENT = Decimal("0.01")
 _ONE_DAY = timedelta(days=1)
@@ -233,7 +237,8 @@ def _anchors(
     """account -> day -> the balance a statement gives, or that was typed, oldest first.
 
     A statement counts once its month is committed: the month of the balance it closes
-    on, or the month it starts in for the balance it opens with.
+    on, or the month it starts in for the balance it opens with. A pension certificate is
+    a statement of the one day it is dated.
     """
     rows = conn.execute(
         "SELECT b.account_id, b.date, b.amount_nano FROM balances b "
@@ -274,6 +279,11 @@ def _cash(
             notes.append(
                 f"{account.name} of {account.owner} has no statements: it is carried at what "
                 f"was typed, last for {typed}."
+            )
+        elif account.kind == _CARRIED_FLAT:
+            notes.append(
+                f"{account.name} of {account.owner} is carried at what its certificates "
+                f"state, the last one for {max(known)}."
             )
         asset = CASH
         if account.kind == "card":

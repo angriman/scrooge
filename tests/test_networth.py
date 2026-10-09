@@ -22,6 +22,8 @@ from tests.storage.helpers import (
     PARTNER,
     SEPTEMBER,
     batch,
+    certificate,
+    certified,
     statement,
     trade,
     txn,
@@ -270,6 +272,82 @@ def test_an_account_that_is_only_typed_is_carried_flat_and_says_so(
         "Old bank of Lukas has no statements: it is carried at what was typed, last for "
         "2026-09-20.",
     )
+
+
+def test_a_pension_fund_counts_as_cash_from_the_day_of_its_certificate(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    before = networth.run(conn, currency="CHF")
+    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
+    monthclose.stage(conn, certified(certificate(day(5), "35802.00")), NOW)
+    assert networth.run(conn, currency="CHF").days == ()  # staged is not committed
+    monthclose.stage(conn, certified(certificate(day(20), "36000.50")), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+
+    result = networth.run(conn, currency="CHF")
+    assert result.days == before.days
+    assert [x.asset for x in result.lines] == [CASH]  # no line of its own
+    cash = line(result, CASH)
+    assert [cash[d] for d in (day(1), day(4), day(5), day(19), day(20), day(30))] == [
+        D(1000),
+        D(1000),
+        D("36802.00"),
+        D("36802.00"),
+        D("37000.50"),
+        D("37000.50"),
+    ]
+    assert result.notes == (
+        "Pillar 2 AXA of Lukas is carried at what its certificates state, the last one for "
+        "2026-09-20.",
+    )
+    assert networth.checks(conn) == ()
+
+
+def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Connection) -> None:
+    rate(conn, "EUR", day(1), "0.95")
+    rate(conn, "EUR", day(15), "0.94")
+    monthclose.stage(conn, certified(certificate(day(10), "9400")), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    result = networth.run(conn)
+    assert result.days[0] == day(10)  # nothing is known before: no day before it
+    cash = line(result, CASH)
+    assert (cash[day(10)], cash[day(15)]) == (D("9894.74"), D("10000.00"))
+
+
+def test_the_pension_fund_of_one_person_is_not_the_others(conn: sqlite3.Connection) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    close(conn, account("migros", "Migros", "CHF", "500"), owner=PARTNER)
+    monthclose.reopen(conn, owner=PARTNER, month=SEPTEMBER)
+    scan = certificate(day(1), "3579.40", issuer="Servisa")
+    monthclose.stage(conn, certified(scan, owner=PARTNER), NOW)
+    monthclose.commit(conn, owner=PARTNER, month=SEPTEMBER, now=NOW)
+    both = networth.run(conn, currency="CHF")
+    assert line(both, CASH, PARTNER)[day(1)] == D("4079.40")
+    assert line(both, CASH)[day(1)] == D(1000)
+    at = both.days.index(day(1))
+    assert both.total[at - 1 : at + 1] == (D(1500), D("5079.40"))
+    assert networth.run(conn, owner=OWNER, currency="CHF").notes == ()
+
+
+@settings(deadline=None, max_examples=40)
+@given(
+    st.dictionaries(st.integers(1, 30), st.decimals(0, 500_000, places=2), min_size=1, max_size=5)
+)
+def test_between_certificates_the_pension_fund_stands_still(stated: dict[int, Decimal]) -> None:
+    conn = db.connect(":memory:")
+    db.migrate(conn, NOW)
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    without = networth.run(conn, currency="CHF").total
+    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
+    scans = [certificate(day(n), str(balance)) for n, balance in stated.items()]
+    monthclose.stage(conn, certified(*scans), NOW)
+    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    result = networth.run(conn, currency="CHF")
+    conn.close()
+    for on, total, other in zip(result.days, result.total, without, strict=True):
+        known = [stated[at] for at in sorted(stated) if day(at) <= on]
+        assert total - other == (known[-1] if known else 0)
 
 
 def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.Connection) -> None:
