@@ -105,6 +105,11 @@ class Check:
         return None if self.derived is None else self.derived - self.printed
 
 
+def before(values: Sequence[Decimal], days: int) -> Decimal | None:
+    """What a series was worth `days` before its last day; None when that is before its first."""
+    return values[-1 - days] if len(values) > days else None
+
+
 def _added(series: Iterable[Sequence[Decimal]]) -> tuple[Decimal, ...]:
     return tuple(sum(values, Decimal(0)) for values in zip(*series, strict=True))
 
@@ -561,7 +566,12 @@ def run(
 
     For several people it ends on the last day all of them have committed.
     """
-    valued = value(conn, owner)
+    return worth_of(conn, value(conn, owner), currency)
+
+
+def worth_of(conn: sqlite3.Connection, valued: Valued | None, currency: str) -> NetWorth:
+    """`run` for what `value` already worked out: a page that shows more than net worth
+    values everything once."""
     if valued is None:
         return NetWorth(currency, (), (), ())
     rates = rates_on(conn, valued.days)

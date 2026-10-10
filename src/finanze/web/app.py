@@ -29,7 +29,16 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from finanze import cashflow, classification, monthclose, months, networth, portfolio, query
+from finanze import (
+    cashflow,
+    classification,
+    monthclose,
+    months,
+    networth,
+    overview,
+    portfolio,
+    query,
+)
 from finanze.models import Kind
 from finanze.storage import db, store
 from finanze.validation import ReconciliationError
@@ -166,12 +175,23 @@ def create_app(
 
 
 def _overview(request: Request) -> Response:
+    asked = forms.holdings_view(request.query_params)  # the same two fields: whose, and in what
+    errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
-        owner = _owner(request)
-        query.check_names(conn, query.Filter(owner=owner))
-    shown = [person for person in people if owner in (None, person.name)]
-    context = {"people": people, "shown": shown, "owner": owner}
+        try:
+            shown = overview.run(conn, owner=asked.owner, currency=asked.currency, top=overview.TOP)
+        except networth.MissingRateError as exc:
+            errors.append(_sentence(exc))
+            shown = None
+    context = {
+        "people": people,
+        "owner": asked.owner,
+        "asked": asked,
+        "currencies": networth.CURRENCIES,
+        "errors": errors,
+        "shown": shown,
+    }
     return _templates.TemplateResponse(request, "overview.html", context)
 
 
@@ -311,7 +331,7 @@ class _Part:
 
     def before(self, days: int) -> Decimal | None:
         """What it was worth `days` before the last day; None when that is before the first."""
-        return self.values[-1 - days] if len(self.values) > days else None
+        return networth.before(self.values, days)
 
 
 def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...]) -> list[_Part]:

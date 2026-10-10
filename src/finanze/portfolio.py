@@ -138,7 +138,7 @@ class Portfolio:
         if not total:
             return dict.fromkeys(self.positions, Decimal(0))
         exact = [position.value * 100 / total for position in self.positions]
-        return dict(zip(self.positions, _shared_out(exact), strict=True))
+        return dict(zip(self.positions, shared_out(exact), strict=True))
 
     @property
     def groups(self) -> tuple[Group, ...]:
@@ -165,7 +165,7 @@ class Portfolio:
         return None if maturity is None or self.day is None else (maturity - self.day).days
 
 
-def _shared_out(exact: Sequence[Decimal]) -> list[Decimal]:
+def shared_out(exact: Sequence[Decimal]) -> list[Decimal]:
     """`exact` to the cent, so that the parts add up to their rounded sum."""
     whole = sum(exact, Decimal(0)).quantize(_CENT)
     parts = [value.quantize(_CENT, rounding=ROUND_FLOOR) for value in exact]
@@ -224,7 +224,13 @@ def run(
     Only what is worth something that day is listed: what was sold is not, nor what net
     worth cannot value (a note then says why).
     """
-    valued = networth.value(conn, owner)
+    return positions_of(conn, networth.value(conn, owner), currency)
+
+
+def positions_of(
+    conn: sqlite3.Connection, valued: networth.Valued | None, currency: str
+) -> Portfolio:
+    """`run` for what `networth.value` already worked out."""
     if valued is None:
         return Portfolio(currency, None, (), ())
     last = valued.days[-1:]
@@ -240,7 +246,7 @@ def run(
             networth.convert(held[n].values[-1:], held[n].currency, currency, rates)[0]
             for n in members
         ]
-        for n, value in zip(members, _shared_out(exact), strict=True):
+        for n, value in zip(members, shared_out(exact), strict=True):
             values[n] = value
     accounts = dict(conn.execute("SELECT id, name FROM accounts").fetchall())
     instruments = {

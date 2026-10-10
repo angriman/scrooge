@@ -65,19 +65,26 @@ def text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
-def test_the_overview_says_what_each_person_has_committed(client: TestClient) -> None:
-    response = client.get("/")
+def test_the_months_page_says_what_each_person_has_committed(client: TestClient) -> None:
+    response = client.get("/months")
     assert response.status_code == 200
-    assert rows(response.text) == [
+    body = response.text.partition("</tbody>")[0]  # the first table of the page
+    assert rows(body) == [
         ["Anna", "2026-07 to 2026-07 (1)", "1", "0"],
         ["Lukas", "2026-07 to 2026-08 (2)", "3", "1"],
     ]
-    assert '<a href="http://127.0.0.1:8765/" aria-current="true">Everyone</a>' in response.text
+    only = client.get("/months", params={"owner": "Anna"}).text.partition("</tbody>")[0]
+    assert [row[0] for row in rows(only)] == ["Anna"]
 
 
-def test_the_view_can_be_one_person(client: TestClient) -> None:
+def test_the_view_is_everyone_or_one_person(client: TestClient) -> None:
+    everyone = client.get("/", params={"currency": "CHF"})
+    assert everyone.status_code == 200
+    assert "CHF net worth on 2026-07-31" in text(everyone.text)
+    assert '<a href="http://127.0.0.1:8765/?currency=CHF" aria-current="true">Everyone</a>' in (
+        everyone.text
+    )
     response = client.get("/", params={"owner": "Anna"})
-    assert [row[0] for row in rows(response.text)] == ["Anna"]
     page = response.text.replace("http://127.0.0.1:8765", "")
     assert '<a href="/?owner=Anna" aria-current="true">Anna</a>' in page
     assert '<a href="/">Everyone</a>' in page

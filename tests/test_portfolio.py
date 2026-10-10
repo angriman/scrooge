@@ -275,13 +275,13 @@ def test_the_cents_of_the_positions_add_up_to_the_cents_of_net_worth(
 def test_sharing_out_keeps_the_rounded_sum_and_moves_nothing_by_a_cent(
     exact: list[Decimal],
 ) -> None:
-    parts = portfolio._shared_out(exact)
+    parts = portfolio.shared_out(exact)
     assert sum(parts) == sum(exact, D(0)).quantize(D("0.01"))
     assert all(part == part.quantize(D("0.01")) for part in parts)
     assert all(abs(part - value) < D("0.01") for part, value in zip(parts, exact, strict=True))
     # what is a whole number of cents already stays as it is when all of them are
     whole = [value.quantize(D("0.01")) for value in exact]
-    assert portfolio._shared_out(whole) == whole
+    assert portfolio.shared_out(whole) == whole
 
 
 # -------------------------------------------------------------------------------- people
