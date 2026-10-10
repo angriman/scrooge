@@ -1,0 +1,38 @@
+# The web app on the NAS (Synology Container Manager: Project). Steps: README.md, here.
+#
+# Lives on the NAS next to `app/`, the folder `make nas-app` writes. Two things to adapt,
+# both marked PLACEHOLDER. No password here or in the image: its digest is in
+# finanze.yaml, in the data folder.
+
+services:
+  finanze:
+    image: finanze:latest
+    build: ./app
+    container_name: finanze
+
+    # PLACEHOLDER: the user and group of the NAS that may read the data folder, as numbers
+    # (`id <user>` on the NAS). Not root.
+    user: "1026:100"
+
+    volumes:
+      # PLACEHOLDER (left of the colon): the folder holding finanze.yaml and finanze.db.
+      # The folder, not the two files, so that a database put in place of the old one is
+      # the one read. Read-only: the app opens the database to read and writes no file
+      # next to it.
+      - /volume1/docker/finanze/data:/data:ro
+
+    ports:
+      # Every address of the NAS, the tailnet's among them. Put an address in front
+      # ("100.x.y.z:8765:8765") to answer on that one alone.
+      - "8765:8765"
+
+    restart: unless-stopped
+
+    # The app writes nothing: not in its own file system, not as anyone more than it is.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
