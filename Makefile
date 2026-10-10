@@ -2,9 +2,10 @@
 # See CLAUDE.md (Definition of done) and docs/parser-spec.md.
 
 UV ?= uv
+NAS_APP ?= output/nas/app
 
 .DEFAULT_GOAL := help
-.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean
+.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean nas-app
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -44,6 +45,13 @@ hooks: ## Install the git pre-commit hooks
 
 hooks-run: ## Run every pre-commit hook over all files
 	$(UV) run pre-commit run --all-files
+
+nas-app: ## The folder the NAS builds the web app's image from (deploy/README.md)
+	rm -rf $(NAS_APP)
+	mkdir -p $(NAS_APP)
+	git archive HEAD Dockerfile .dockerignore pyproject.toml src | tar -x -C $(NAS_APP)
+	cp uv.lock $(NAS_APP)/
+	@echo "$(NAS_APP): commit $$(git rev-parse --short HEAD), to copy to the NAS"
 
 clean: ## Remove caches and coverage artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov

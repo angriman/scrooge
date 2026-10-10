@@ -180,3 +180,6 @@ Each row has the columns in `records.FIELDS` with typed values (`date`, `Decimal
 
 `make check` runs ruff, `mypy --strict` and pytest with branch coverage. Real statements stay in
 `statements/` (git-ignored); only redacted fixtures live in `tests/fixtures/`.
+
+`deploy/README.md` says how the web app runs as a container on a NAS, over a copy of the
+database. The image is not built by `make check`.
