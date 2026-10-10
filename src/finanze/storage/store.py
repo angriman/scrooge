@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from finanze import categories
 from finanze.models import Holding, PrintedValue, SecurityTrade, Transaction
-from finanze.storage.money import to_nano, to_text
+from finanze.storage.money import from_nano, to_nano, to_text
 
 _CURRENCY_DECIMALS = 2
 _INSTRUMENT_TYPES = {"ETFs": "etf", "Stocks": "stock", "Bonds": "bill", "Funds": "fund"}
@@ -316,6 +316,15 @@ def apply_overrides(conn: sqlite3.Connection) -> None:
         "THEN transactions.counterparty_owner_id END "  # a transfer is nobody else's money (D14)
         "FROM overrides o WHERE o.transaction_id = transactions.id AND o.kind IS NOT NULL"
     )
+
+
+def balance_on(conn: sqlite3.Connection, account: int, day: date) -> Decimal | None:
+    """The balance stored for the account on `day`, if any."""
+    row = conn.execute(
+        "SELECT amount_nano FROM balances WHERE account_id = ? AND date = ?",
+        (account, day.isoformat()),
+    ).fetchone()
+    return None if row is None else from_nano(int(row[0]))
 
 
 def set_closing_balance(

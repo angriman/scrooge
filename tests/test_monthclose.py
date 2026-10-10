@@ -16,7 +16,12 @@ from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
 from finanze.storage import db, store
 from finanze.storage.money import PrecisionError, from_nano
-from finanze.validation import ChainMismatchError, MissingLotsError, MissingStatementError
+from finanze.validation import (
+    CertificatesDisagreeError,
+    ChainMismatchError,
+    MissingLotsError,
+    MissingStatementError,
+)
 from tests.conftest import INSTRUMENTS, write_rules
 from tests.storage.helpers import (
     AUGUST,
@@ -776,6 +781,71 @@ def test_statements_and_certificates_are_staged_together_or_not_at_all(
     assert monthclose.stage(conn, later, LATER) == monthclose.Staged(SEPTEMBER, 1, 0)
     assert rows(conn, "SELECT count(*) FROM balances") == [(5,)]
     assert rows(conn, "SELECT count(*) FROM statement_files") == [(3,)]
+
+
+JANUARY, YEAR_BEFORE = date(2026, 1, 1), date(2025, 1, 1)
+
+
+def test_a_yearly_certificate_also_gives_the_balance_its_year_began_with(
+    conn: sqlite3.Connection,
+) -> None:
+    yearly = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.30"))
+    monthclose.stage(conn, certified(yearly), NOW)
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2025-01-01", 58_240_300_000_000, "statement", yearly.filename),
+        ("Pillar 2 AXA", "2026-01-01", 84_710_650_000_000, "statement", yearly.filename),
+    ]
+    # like the balance a bank statement opens with, it is no statement of that earlier month
+    assert rows(conn, "SELECT month, status FROM months") == [("2026-01-01", "open")]
+    before = dump(conn)
+    monthclose.stage(conn, certified(yearly), LATER)
+    assert dump(conn) == before
+
+
+def test_a_new_scan_replaces_the_balance_the_year_began_with_too(conn: sqlite3.Connection) -> None:
+    monthclose.stage(
+        conn, certified(certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.30"))), NOW
+    )
+    again = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.20"), filename="again.pdf")
+    monthclose.stage(conn, certified(again), LATER)
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2025-01-01", 58_240_200_000_000, "statement", "again.pdf"),
+        ("Pillar 2 AXA", "2026-01-01", 84_710_650_000_000, "statement", "again.pdf"),
+    ]
+    assert rows(conn, "SELECT filename FROM statement_files") == [("again.pdf",)]
+
+
+@pytest.mark.parametrize("together", [True, False])
+@pytest.mark.parametrize("yearly_first", [True, False])
+def test_a_day_belongs_to_its_own_certificate_whichever_comes_first(
+    conn: sqlite3.Connection, together: bool, yearly_first: bool
+) -> None:
+    own = certificate(YEAR_BEFORE, "58240.30")
+    yearly = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.30"))
+    scans = (yearly, own) if yearly_first else (own, yearly)
+    for group in [scans] if together else [scans[:1], scans[1:]]:
+        monthclose.stage(conn, certified(*group), NOW)
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2025-01-01", 58_240_300_000_000, "statement", own.filename),
+        ("Pillar 2 AXA", "2026-01-01", 84_710_650_000_000, "statement", yearly.filename),
+    ]
+
+
+@pytest.mark.parametrize("yearly_first", [True, False])
+def test_two_certificates_that_disagree_on_a_day_are_refused(
+    conn: sqlite3.Connection, yearly_first: bool
+) -> None:
+    own = certificate(YEAR_BEFORE, "58240.30")
+    yearly = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.20"))
+    first, second = (yearly, own) if yearly_first else (own, yearly)
+    monthclose.stage(conn, certified(first), NOW)
+    before = dump(conn)
+    with pytest.raises(
+        CertificatesDisagreeError,
+        match=r"Pillar 2 AXA \(CHF\): two certificates disagree on 2025-01-01: 58240\.[23]0 and",
+    ):
+        monthclose.stage(conn, certified(second), LATER)
+    assert dump(conn) == before
 
 
 def test_two_certificates_of_one_account_for_one_day_are_refused(conn: sqlite3.Connection) -> None:

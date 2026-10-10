@@ -327,6 +327,21 @@ def test_pension_certificates_are_imported_and_what_was_read_is_shown(
     assert worth[date(2026, 3, 31)] == worth[date(2026, 3, 1)]
 
 
+def test_the_balance_a_yearly_certificate_opens_with_is_shown_too(
+    run: Run, pillar2: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = (FIXTURES / "axa_yearly" / "certificate.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(ocr, "read_text", lambda path: text)
+    assert run.load(folder=pillar2 / "Scan 0001.pdf") == dbcli.OK
+    assert run.output == (
+        "Pillar 2 AXA of Lukas: 37,026.00 CHF on 2026-01-01, read off the axa certificate "
+        "Scan 0001.pdf (mandatory part 12,345.65).\n"
+        "  and 30,000.75 CHF on 2025-01-01, where its year began\n"
+        "Next: finanze commit 2026-01\n"
+    )
+    assert (run.count("statement_files"), run.count("balances")) == (1, 2)
+
+
 def test_a_certificate_of_a_committed_month_is_refused_until_the_month_is_reopened(
     run: Run, pillar2: Path
 ) -> None:

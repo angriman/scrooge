@@ -5,6 +5,8 @@ stored for the same accounts and days. Each statement covers its own period, of 
 many. The months they cover stay `open`, and the dashboards do not see them, until `commit`.
 A pension certificate is a statement of the one day it is dated: it belongs to the month of
 that day, which must be open like any other, and gives its account a balance and no rows.
+The balance a yearly certificate says its year began with is stored like the one a bank
+statement opens with: for a day before its own, and only where no certificate has that day.
 Both run in one database transaction: any failure leaves the database as it was.
 """
 
@@ -28,7 +30,12 @@ from finanze.pipeline import Certificate, Month, Statement
 from finanze.storage import bills, db, holdings, pairs, store
 from finanze.storage.ids import transaction_ids
 from finanze.storage.money import from_nano
-from finanze.validation import ChainMismatchError, MissingStatementError, ReconciliationError
+from finanze.validation import (
+    CertificatesDisagreeError,
+    ChainMismatchError,
+    MissingStatementError,
+    ReconciliationError,
+)
 
 # Sources whose rows are booked on an account that another source's statement reconciles:
 # savings interest on the Revolut account (D8).
@@ -178,8 +185,10 @@ def _store_certificates(
     """Give each certificate's account the balance it states for its day.
 
     A certificate read again, or a new scan of it, replaces what it stored; one of another
-    day adds a balance and leaves the others. Returns the files now stored and the files
-    whose balances were replaced.
+    day adds a balance and leaves the others. The balance its year began with goes on that
+    earlier day unless the certificate of that day is stored, which keeps it; two that state
+    a day differently are refused. Returns the files now stored and the files whose balances
+    were replaced.
     """
     seen: dict[tuple[str, date], str] = {}
     stored: set[int] = set()
@@ -213,7 +222,16 @@ def _store_certificates(
             reconciled="yes" if certificate.adds_up else "nothing_to_check",
             imported_at=db.timestamp(now),
         )
+        days = [(stated.as_of, stated.balance), *([stated.opened] if stated.opened else [])]
+        for on, balance in days:  # what is left on a day now is another certificate's
+            standing = store.balance_on(conn, account, on)
+            if standing is not None and standing != balance:
+                raise CertificatesDisagreeError(
+                    certificate.account, stated.currency, on, balance, standing
+                )
         store.set_closing_balance(conn, account, stated.as_of, stated.balance, file_id)
+        if stated.opened:
+            store.set_opening_balance(conn, account, *stated.opened, file_id)
         stored.add(file_id)
     return stored, replaced
 

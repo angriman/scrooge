@@ -66,6 +66,22 @@ class ChainMismatchError(ReconciliationError):
         )
 
 
+class CertificatesDisagreeError(ReconciliationError):
+    """Two pension certificates state different retirement assets for the same day."""
+
+    def __init__(
+        self, account: str, currency: str, day: date, stated: Decimal, other: Decimal
+    ) -> None:
+        self.account = account
+        self.currency = currency
+        self.day = day
+        self.stated = stated
+        self.other = other
+        super().__init__(
+            f"{account} ({currency}): two certificates disagree on {day}: {stated} and {other}"
+        )
+
+
 class MissingStatementError(ReconciliationError):
     """An account's balance changed over a period that no statement covers."""
 

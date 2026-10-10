@@ -504,6 +504,9 @@ def _print_certificates(
             f"{stated.as_of}, read off the {stated.source} certificate {certificate.filename} "
             f"(mandatory part {stated.mandatory:,.2f}).\n"
         )
+        if stated.opened:
+            day, balance = stated.opened
+            out.write(f"  and {balance:,.2f} {stated.currency} on {day}, where its year began\n")
         if not certificate.adds_up:
             out.write(
                 "  note: nothing on this certificate adds up to that figure: compare it with "

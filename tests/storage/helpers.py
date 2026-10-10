@@ -125,13 +125,28 @@ def migros(opening: str, *amounts: str, month: date = SEPTEMBER, **fields: Any) 
 
 
 def certificate(
-    as_of: date, balance: str, *, issuer: str = "AXA", filename: str = "", content: str = ""
+    as_of: date,
+    balance: str,
+    *,
+    issuer: str = "AXA",
+    filename: str = "",
+    content: str = "",
+    opened: tuple[date, str] | None = None,
 ) -> Certificate:
-    """A scanned pension certificate that states `balance` francs for `as_of`."""
+    """A scanned pension certificate that states `balance` francs for `as_of`.
+
+    `opened` is the day and the francs its year began with, when it prints them.
+    """
     name = filename or f"scan {issuer} {as_of}.pdf"
     digest = hashlib.sha256(f"{name}{as_of}{balance}{content}".encode()).hexdigest()
     stated = PensionCertificate(
-        issuer.lower(), as_of, "CHF", Decimal(balance), Decimal(0), date(2020, 1, 1)
+        issuer.lower(),
+        as_of,
+        "CHF",
+        Decimal(balance),
+        Decimal(0),
+        date(2020, 1, 1),
+        opened and (opened[0], Decimal(opened[1])),
     )
     return Certificate(name, digest, f"Pillar 2 {issuer}", issuer == "AXA", stated)
 
