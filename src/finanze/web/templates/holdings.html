@@ -43,7 +43,7 @@
   </tfoot>
 </table>
 <h2>Positions</h2>
-<table>
+<table class="cards">
   <thead>
     <tr>
       <th>Instrument</th>
@@ -64,42 +64,42 @@
     <tr class="kind"><th colspan="{{ before + 3 }}" scope="rowgroup">{{ group.asset }}</th></tr>
     {%- for position in group.positions %}
     <tr>
-      <td>{{ position.symbol }}{% if position.name %}<small>{{ position.name }}</small>{% endif %}</td>
-      {%- if not owner %}<td>{{ position.owner }}</td>{% endif %}
-      <td>{{ position.account }}</td>
-      <td class="number">{{ position.quantity|exact }}</td>
-      <td class="number">
+      <td class="lead">{{ position.symbol }}{% if position.name %}<small>{{ position.name }}</small>{% endif %}</td>
+      {%- if not owner %}<td data-label="Person">{{ position.owner }}</td>{% endif %}
+      <td data-label="Account">{{ position.account }}</td>
+      <td class="number" data-label="Quantity">{{ position.quantity|exact }}</td>
+      <td class="number" data-label="Price">
         {%- if position.price is none %}–{% else %}{{ position.price|exact }} {{ position.currency }}
         {%- if position.price_is_trade %}<small>last trade{% if position.price_day != held.day %}, {{ position.price_day }}{% endif %}</small>
         {%- elif position.price_day != held.day %}<small>close of {{ position.price_day }}</small>
         {%- endif %}
         {%- endif -%}
       </td>
-      <td class="number">{{ position.value_native|money }} {{ position.currency }}</td>
-      <td class="number">{{ known(position.cost_native) }}</td>
-      <td class="number">
+      <td class="number" data-label="Value">{{ position.value_native|money }} {{ position.currency }}</td>
+      <td class="number" data-label="Cost">{{ known(position.cost_native) }}</td>
+      <td class="number" data-label="Gain or loss">
         {%- if position.gain_native is none %}–{% else %}{{ position.gain_native|signed }}
         {%- if position.gain_percent is not none %}<small>{{ position.gain_percent|signed }}%</small>{% endif %}
         {%- endif -%}
       </td>
-      <td class="number">{{ position.value|money }}</td>
-      <td class="number">{{ shares[position] }}%</td>
+      <td class="number total" data-unit="{{ held.currency }}">{{ position.value|money }}</td>
+      <td class="number" data-label="Share">{{ shares[position] }}%</td>
       <td class="share"><meter min="0" max="100" value="{{ [shares[position], 0]|max }}" title="{{ shares[position] }}% of the total"></meter></td>
     </tr>
     {%- endfor %}
     <tr class="subtotal">
-      <th colspan="{{ before }}">All {{ group.asset }}</th>
-      <td class="number">{{ group.value|money }}</td>
-      <td class="number">{{ group.share }}%</td>
+      <th colspan="{{ before }}" class="lead">All {{ group.asset }}</th>
+      <td class="number total">{{ group.value|money }}</td>
+      <td class="number" data-label="Share">{{ group.share }}%</td>
       <td class="share"><meter min="0" max="100" value="{{ [group.share, 0]|max }}" title="{{ group.share }}% of the total"></meter></td>
     </tr>
   </tbody>
   {%- endfor %}
   <tfoot>
     <tr>
-      <th colspan="{{ before }}">All {{ held.positions|length }}</th>
-      <td class="number">{{ held.total|money }}</td>
-      <td class="number">{{ groups|sum(attribute="share") }}%</td>
+      <th colspan="{{ before }}" class="lead">All {{ held.positions|length }}</th>
+      <td class="number total">{{ held.total|money }}</td>
+      <td class="number" data-label="Share">{{ groups|sum(attribute="share") }}%</td>
       <td></td>
     </tr>
   </tfoot>
@@ -120,7 +120,7 @@
 {%- set ladder = held.ladder %}
 {%- if ladder %}
 <h2>Bills by maturity</h2>
-<table>
+<table class="cards">
   <thead>
     <tr>
       <th>Maturity</th>
@@ -138,21 +138,21 @@
     {%- for rung in ladder %}
     {%- set position = rung.position %}
     <tr>
-      <td class="date">{{ position.maturity or "–" }}</td>
-      <td class="number">
+      <td class="date" data-label="Maturity">{{ position.maturity or "–" }}</td>
+      <td class="number" data-label="Days to go">
         {%- if rung.days is none %}–
         {%- elif rung.days < 0 %}due {{ -rung.days }} day{{ "" if rung.days == -1 else "s" }} ago, not yet repaid
         {%- elif rung.days == 0 %}due today
         {%- else %}{{ rung.days }}
         {%- endif -%}
       </td>
-      <td>{{ position.symbol }}{% if position.name %}<small>{{ position.name }}</small>{% endif %}</td>
-      {%- if not owner %}<td>{{ position.owner }}</td>{% endif %}
-      <td>{{ position.account }}</td>
-      <td class="number">{{ position.quantity|exact }} {{ position.currency }}</td>
-      <td class="number">{{ known(position.cost_native) }}</td>
-      <td class="number">{{ position.value_native|money }}</td>
-      <td class="number">{{ position.value|money }}</td>
+      <td class="lead">{{ position.symbol }}{% if position.name %}<small>{{ position.name }}</small>{% endif %}</td>
+      {%- if not owner %}<td data-label="Person">{{ position.owner }}</td>{% endif %}
+      <td data-label="Account">{{ position.account }}</td>
+      <td class="number" data-label="Face">{{ position.quantity|exact }} {{ position.currency }}</td>
+      <td class="number" data-label="Cost">{{ known(position.cost_native) }}</td>
+      <td class="number" data-label="Value today">{{ position.value_native|money }}</td>
+      <td class="number total" data-unit="{{ held.currency }}">{{ position.value|money }}</td>
     </tr>
     {%- endfor %}
   </tbody>

@@ -20,19 +20,19 @@
 <p>Only committed months are shown on the other pages.</p>
 {%- endif %}
 {%- if lines %}
-<table>
+<table class="cards">
   <thead>
     <tr><th>Month</th><th>Person</th><th>State</th><th class="number">Statements</th><th class="number">Transactions</th><th class="number">Need a category</th></tr>
   </thead>
   <tbody>
     {%- for line in lines %}
     <tr>
-      <td class="date"><a href="{{ url_for('month', owner=line.owner, month=line.month.strftime('%Y-%m')) }}">{{ line.month.strftime("%Y-%m") }}</a></td>
-      <td>{{ line.owner }}</td>
-      <td>{{ "committed" if line.committed else "open" }}</td>
-      <td class="number">{{ line.statements }}</td>
-      <td class="number">{{ line.transactions }}</td>
-      <td class="number">{{ line.uncategorized or "" }}</td>
+      <td class="date lead"><a href="{{ url_for('month', owner=line.owner, month=line.month.strftime('%Y-%m')) }}">{{ line.month.strftime("%Y-%m") }}</a></td>
+      <td data-label="Person">{{ line.owner }}</td>
+      <td class="total">{{ "committed" if line.committed else "open" }}</td>
+      <td class="number" data-label="Statements">{{ line.statements }}</td>
+      <td class="number" data-label="Transactions">{{ line.transactions }}</td>
+      <td class="number" data-label="Need a category">{{ line.uncategorized or "" }}</td>
     </tr>
     {%- endfor %}
   </tbody>
