@@ -1,5 +1,5 @@
-"""`finanze import | commit | reopen | balance | prices | query | serve | password`: the
-database from the terminal.
+"""`finanze import | commit | reopen | balance | prices | query | serve | password | publish`:
+the database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
@@ -11,6 +11,7 @@ database from the terminal.
     finanze serve             show the database as web pages, on this machine only unless
                               `serve` in the config says otherwise
     finanze password          ask for a password and print its digest for `serve`
+    finanze publish [folder]  copy the database to the folder another machine shows it from
 
 `commit` and `reopen` take a second month to cover every month from the first to it.
 
@@ -21,8 +22,8 @@ committed like any other. What was read is printed, to be compared with the pape
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
-`prices`, `query` and `serve` are the exceptions: they are about both people. `prices` is the
-only command that uses the network (D9).
+`prices`, `query`, `serve` and `publish` are the exceptions: they are about both people.
+`prices` is the only command that uses the network (D9).
 
 `serve` listens on 127.0.0.1 and asks for no password, unless the config has (D18):
 
@@ -37,6 +38,13 @@ any of it: where the pages can be seen from is written down once, not typed.
 On a machine that only shows a copy of the database, `serve` also has `read_only: true`:
 the copy is never created, brought up to date or changed, wherever it lies, and the pages
 have no forms. A copy this code's schema does not fit is refused.
+
+`publish` is how the copy gets there: into the folder named, or `publish` in the config, which
+is that machine's share as it is mounted on this one. The database is never used over the
+share: a snapshot is made here, copied whole, and renamed over the copy published before as
+`finanze.db`. Only the database goes, whole: the config, the statements, the backups and the
+rules stay here. A folder that does not exist is not created, since a share that is not
+mounted is no folder.
 """
 
 from __future__ import annotations
@@ -64,6 +72,7 @@ from finanze import (
     networth,
     pipeline,
     prices,
+    publish,
     query,
     review,
 )
@@ -79,8 +88,19 @@ from finanze.validation import ReconciliationError
 from finanze.web import app as webapp
 from finanze.web import auth
 
-COMMANDS = ("import", "commit", "reopen", "balance", "prices", "query", "serve", "password")
-_READ_BOTH = ("prices", "query", "serve")  # commands that are not about one person's month
+COMMANDS = (
+    "import",
+    "commit",
+    "reopen",
+    "balance",
+    "prices",
+    "query",
+    "serve",
+    "password",
+    "publish",
+)
+# Commands that are not about one person's month.
+_READ_BOTH = ("prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -94,6 +114,7 @@ _ERRORS = (
     store.UnknownCategoryError,
     store.AccountMismatchError,
     query.QueryError,
+    publish.PublishError,
 )
 
 
@@ -192,6 +213,13 @@ def _parser() -> argparse.ArgumentParser:
         "rows naming a person go to that owner's rules.<owner>.yaml next to it",
     )
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
+    send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
+    send.add_argument(
+        "folder",
+        type=Path,
+        nargs="?",
+        help="the mounted folder the copy goes to (default: 'publish' in the config)",
+    )
     return parser
 
 
@@ -318,8 +346,13 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         else:
             _open(path, now).close()
         return _serve(path, args.port, webapp.Rules(args.rules, people), reach, out)
+    if args.command == "publish" and not path.is_file():
+        msg = f"{path}: no database to publish"
+        raise ConfigError(msg)
     conn = _open(path, now)
     try:
+        if args.command == "publish":
+            return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
         if args.command == "query":
             return _query(conn, args, out)
         if args.command == "prices":
@@ -459,6 +492,29 @@ def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: T
         read_only=reach.read_only,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
+    return OK
+
+
+def _publish(
+    conn: sqlite3.Connection, database: Path, folder: object, config: Path, out: TextIO
+) -> int:
+    """Copy the database to `folder`, and say what went: all of it, open months included."""
+    if folder is None:
+        msg = f"no folder to publish to: name one, or set 'publish' in {config}"
+        raise ConfigError(msg)
+    if not isinstance(folder, (str, Path)):
+        msg = f"{config}: 'publish' must be the folder the copy goes to"
+        raise ConfigError(msg)
+    done = publish.run(conn, database, Path(folder).expanduser())
+    out.write(
+        f"Published {done.path}: {done.size:,} bytes, {done.committed} committed transactions, "
+        f"schema version {done.version}.\n"
+    )
+    if done.open_months:
+        out.write(
+            f"  with it: {done.staged} transactions of {done.open_months} open "
+            f"month{'' if done.open_months == 1 else 's'}, which only the months pages show\n"
+        )
     return OK
 
 

@@ -775,6 +775,104 @@ def test_password_wants_twelve_characters_typed_the_same_twice(typed: Typed) -> 
     assert (code, printed) == (dbcli.FAILED, "error: the two do not match\n")
 
 
+# --------------------------------------------------------------------------------- publish
+
+
+@pytest.fixture
+def share(tmp_path: Path) -> Path:
+    """The other machine's folder, as it is mounted on this one."""
+    folder = tmp_path / "share"
+    folder.mkdir()
+    return folder
+
+
+def test_publish_copies_the_database_to_the_folder_and_says_what_went(
+    closed: Run, share: Path
+) -> None:
+    closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")  # no owner
+    assert closed("publish", str(share)) == dbcli.OK
+    copy = share / "finanze.db"
+    assert closed.output == (
+        f"Published {copy}: {copy.stat().st_size:,} bytes, 110 committed transactions, "
+        f"schema version {db.latest()}.\n"
+    )
+    # Only the database: not the config, the rules, the statements or the copies kept here.
+    assert [file.name for file in share.iterdir()] == ["finanze.db"]
+    assert (closed.database.parent / "backups").is_dir()
+    with db.reading(copy) as conn:
+        assert conn.execute("SELECT count(*) FROM committed_transactions").fetchone()[0] == 110
+
+
+def test_publish_says_what_the_copy_holds_of_months_that_are_not_committed(
+    run: Run, share: Path
+) -> None:
+    run.load_august()
+    assert run("publish", str(share)) == dbcli.OK
+    first, second = run.output.splitlines()
+    assert first.endswith(f" bytes, 0 committed transactions, schema version {db.latest()}.")
+    assert second == "  with it: 1 transactions of 1 open month, which only the months pages show"
+    run.load()
+    assert run("publish", str(share)) == dbcli.OK
+    assert " of 2 open months, which only the months pages show\n" in run.output
+
+
+def test_publish_takes_the_folder_from_the_config_unless_one_is_named(
+    closed: Run, share: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert closed("publish") == dbcli.FAILED
+    assert closed.output == (
+        f"error: no folder to publish to: name one, or set 'publish' in {closed.config}\n"
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with closed.config.open("a", encoding="utf-8") as config:
+        config.write("publish: ~/share\n")
+    assert closed("publish") == dbcli.OK
+    assert closed.output.startswith(f"Published {share / 'finanze.db'}: ")
+    other = tmp_path / "other"
+    other.mkdir()
+    assert closed("publish", str(other)) == dbcli.OK
+    assert (other / "finanze.db").exists()
+
+    closed.config.write_text(f"database: {closed.database}\npublish: [a, b]\n", encoding="utf-8")
+    assert closed("publish") == dbcli.FAILED
+    assert closed.output == (
+        f"error: {closed.config}: 'publish' must be the folder the copy goes to\n"
+    )
+
+
+def test_publish_refuses_a_folder_that_is_missing_or_holds_the_database(
+    closed: Run, share: Path
+) -> None:
+    unmounted = share / "nas"
+    assert closed("publish", str(unmounted)) == dbcli.FAILED
+    assert closed.output == (
+        f"error: {unmounted}: no such folder: nothing is published to a share that is not mounted\n"
+    )
+    assert not unmounted.exists()
+    assert closed("publish", str(closed.database.parent)) == dbcli.FAILED
+    assert "the database itself is kept there: publish its copy somewhere else" in closed.output
+
+
+def test_publish_does_not_make_a_database_where_there_is_none(run: Run, share: Path) -> None:
+    assert run("publish", str(share)) == dbcli.FAILED
+    assert run.output == f"error: {run.database}: no database to publish\n"
+    assert not run.database.parent.exists()
+    assert list(share.iterdir()) == []
+
+
+def test_what_publish_leaves_is_what_a_read_only_serve_shows(
+    closed: Run, share: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert closed("publish", str(share)) == dbcli.OK
+    shown = Run(share)  # the other machine: its own config, the copy and nothing else
+    shown.database = share / "finanze.db"
+    (how,) = serve_with(shown, monkeypatch, "{read_only: true}")
+    app = how["app"]
+    assert isinstance(app, Starlette)
+    assert app.state.database == share / "finanze.db"
+    assert shown.output.endswith("nothing here changes it\n")
+
+
 # ---------------------------------------------------------------------------------- prices
 
 
