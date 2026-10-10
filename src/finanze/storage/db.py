@@ -78,24 +78,36 @@ def migrations() -> list[tuple[int, str]]:
     return sorted(found)
 
 
+def latest() -> int:
+    """The schema version this code brings a database to, and expects of one it only reads."""
+    return max((version for version, _ in migrations()), default=0)
+
+
+def version(conn: sqlite3.Connection) -> int:
+    """The schema version the database is at, 0 before any migration; nothing is changed."""
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'schema_version'").fetchone():
+        return 0
+    return int(conn.execute("SELECT coalesce(max(version), 0) FROM schema_version").fetchone()[0])
+
+
 def migrate(conn: sqlite3.Connection, now: datetime) -> list[int]:
     """Apply the migrations the database has not seen yet; returns their versions."""
     conn.execute(_VERSION_TABLE)
-    current = conn.execute("SELECT coalesce(max(version), 0) FROM schema_version").fetchone()[0]
-    pending = [(version, sql) for version, sql in migrations() if version > current]
-    known = max((version for version, _ in migrations()), default=0)
+    current = version(conn)
+    pending = [(number, sql) for number, sql in migrations() if number > current]
+    known = latest()
     if current > known:
         msg = f"the database is at schema version {current}, this code knows up to {known}"
         raise MigrationError(msg)
-    for version, sql in pending:
+    for number, sql in pending:
         try:
             conn.executescript(f"BEGIN IMMEDIATE;\n{sql}")
-            conn.execute("INSERT INTO schema_version VALUES (?, ?)", (version, timestamp(now)))
+            conn.execute("INSERT INTO schema_version VALUES (?, ?)", (number, timestamp(now)))
         except BaseException:
             conn.execute("ROLLBACK")
             raise
         conn.execute("COMMIT")
-    return [version for version, _ in pending]
+    return [number for number, _ in pending]
 
 
 def backup(conn: sqlite3.Connection, target: Path) -> None:
@@ -104,5 +116,19 @@ def backup(conn: sqlite3.Connection, target: Path) -> None:
     copy = sqlite3.connect(target)
     try:
         conn.backup(copy)
+    finally:
+        copy.close()
+
+
+def snapshot(conn: sqlite3.Connection, target: Path) -> None:
+    """Save a consistent copy as `target` that is one file wherever it is read from.
+
+    A copy takes the journal mode of its source, and a database in WAL mode cannot be read
+    from a folder nothing can be written in: the copy keeps its journal in no file of its own.
+    """
+    copy = sqlite3.connect(target)
+    try:
+        conn.backup(copy)
+        copy.execute("PRAGMA journal_mode = DELETE")
     finally:
         copy.close()

@@ -107,6 +107,35 @@ def test_backup_copies_the_database(conn: sqlite3.Connection, tmp_path: Path) ->
     copy.close()
 
 
+def test_the_schema_version_can_be_read_without_changing_anything(
+    conn: sqlite3.Connection,
+) -> None:
+    assert db.latest() == len(db.migrations())
+    assert db.version(conn) == db.latest()
+    empty = db.connect(":memory:")
+    assert db.version(empty) == 0  # no migration has run on it
+    assert _tables(empty) == set()
+    empty.close()
+
+
+def test_a_snapshot_is_the_whole_database_in_one_file_that_stays_one(tmp_path: Path) -> None:
+    # In WAL mode a database is three files, and cannot be read where nothing can be written.
+    live = db.connect(tmp_path / "live.db")
+    assert live.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+    db.migrate(live, NOW)
+    live.execute("INSERT INTO owners (name) VALUES ('A')")
+    folder = tmp_path / "copy"
+    folder.mkdir()
+    db.snapshot(live, folder / "finanze.db")
+    live.close()
+    assert [file.name for file in folder.iterdir()] == ["finanze.db"]
+    with db.reading(folder / "finanze.db") as copy:
+        assert copy.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert copy.execute("SELECT name FROM owners").fetchone()[0] == "A"
+        assert db.version(copy) == db.latest()
+    assert [file.name for file in folder.iterdir()] == ["finanze.db"]
+
+
 def test_a_reading_connection_cannot_change_the_database(tmp_path: Path) -> None:
     path = tmp_path / "with space" / "finanze.db"
     path.parent.mkdir()
