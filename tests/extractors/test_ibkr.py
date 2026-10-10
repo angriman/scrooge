@@ -126,6 +126,28 @@ def test_long_asset_category_labels_are_read_as_their_short_form(result: Extract
     assert trades["WIDG"].kind is Kind.SECURITY_TRADE
 
 
+@pytest.mark.parametrize(
+    ("code", "described"),
+    [
+        ("O", "Buy to Open 20 ACME @ 112.4"),
+        ("O;P", "Buy to Open 20 ACME @ 112.4"),  # a partial fill still opens
+        ("A;C", "Buy to Close 20 ACME @ 112.4"),
+        ("C;O", "Buy to Close and Open 20 ACME @ 112.4"),  # through zero: short to long
+        ("", "Buy 20 ACME @ 112.4"),  # the statement does not say
+    ],
+)
+def test_a_trade_says_whether_it_opens_or_closes(code: str, described: str) -> None:
+    printed = ",-2248,-1,2249,0,0,0,O\n"
+    assert CSV.count(printed) == 1
+    content = CSV.replace(printed, f",-2248,-1,2249,0,0,0,{code}\n")
+    trades = {
+        t.ticker: t
+        for t in ibkr.extract(content, source_file="a.csv").transactions
+        if isinstance(t, SecurityTrade)
+    }
+    assert trades["ACME"].description == described
+
+
 def test_t_bill_purchase_is_a_security_trade_with_its_maturity(result: Extraction) -> None:
     bill = next(t for t in result.transactions if isinstance(t, SecurityTrade) and t.maturity)
     assert (bill.ticker, bill.maturity, bill.amount) == (
@@ -133,7 +155,7 @@ def test_t_bill_purchase_is_a_security_trade_with_its_maturity(result: Extractio
         date(2026, 12, 24),
         Decimal(-9850),
     )
-    assert bill.description == "Buy 10000 912797ZZ1 @ 98.5"
+    assert bill.description == "Buy to Open 10000 912797ZZ1 @ 98.5"
     assert bill.category == "Investimenti"
 
 
@@ -295,7 +317,7 @@ def test_a_futures_round_trip_books_its_result_once_on_the_closing_trade(
         (date(2026, 9, 22), Decimal(50), Kind.TRADING),
         (date(2026, 9, 22), Decimal("-0.62"), Kind.COMMISSION),
     ]
-    assert futures[1].description == "Buy 1 MESZ6 @ 6790: position closed"
+    assert futures[1].description == "Buy to Close 1 MESZ6 @ 6790: position closed"
 
 
 def test_a_futures_position_closed_in_parts_is_booked_when_the_last_part_goes() -> None:

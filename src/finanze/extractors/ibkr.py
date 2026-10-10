@@ -657,7 +657,7 @@ class _Parser:
             account=_account(row["Currency"]),
             amount=proceeds,
             currency=row["Currency"],
-            description=_describe(quantity, symbol, price),
+            description=_describe(quantity, symbol, price, row["Code"]),
             kind=Kind.SECURITY_TRADE,
             source_file=self._source_file,
             source_ref=ref,
@@ -692,12 +692,13 @@ class _Parser:
         if held != 0:
             return []
         del self._open_futures[symbol]
+        described = _describe(quantity, symbol, price, row["Code"])
         return [
             self._txn(
                 day=parse_iso_date(row["Date/Time"], "Trades"),
                 currency=row["Currency"],
                 amount=notional,
-                description=f"{_describe(quantity, symbol, price)}: position closed",
+                description=f"{described}: position closed",
                 kind=Kind.TRADING,
                 category="Trading",
                 ref=ref,
@@ -715,7 +716,7 @@ class _Parser:
                 day=parse_iso_date(row["Date/Time"], "Trades"),
                 currency=row["Currency"],
                 amount=proceeds,
-                description=_describe(quantity, row["Symbol"], price),
+                description=_describe(quantity, row["Symbol"], price, row["Code"]),
                 kind=Kind.TRADING,
                 category="Trading",
                 ref=ref,
@@ -751,6 +752,15 @@ class _Parser:
         ]
 
 
-def _describe(quantity: Decimal, symbol: str, price: Decimal) -> str:
+def _describe(quantity: Decimal, symbol: str, price: Decimal, code: str) -> str:
+    """ "Buy to Open 1 X @ 2.5": the side, and what the Code column says it does to the position.
+
+    `O` opens and `C` closes; a fill through zero has both, and the other codes (`P` partial,
+    `A` assignment, `Ep` expired...) say nothing about it.
+    """
     side = "Buy" if quantity > 0 else "Sell"
+    codes = set(code.split(";"))
+    effect = " and ".join(word for mark, word in (("C", "Close"), ("O", "Open")) if mark in codes)
+    if effect:
+        side = f"{side} to {effect}"
     return f"{side} {format(abs(quantity), 'f')} {symbol} @ {format(price, 'f')}"
