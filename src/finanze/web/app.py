@@ -1,8 +1,12 @@
-"""The web app: pages over the database, for this machine only (D18).
+"""The web app: pages over the database, for this machine only unless a password is set
+(D18).
 
 Handlers stay thin: read the query string or the form, call a service, render. Every page
 opens the database read-only; only the forms of a month's page (commit, reopen, category)
 open it to write. Nothing is loaded from another site, and a header tells the browser so.
+
+With a password (`web/auth.py`) every page but the one that asks for it wants a signed-in
+browser, and only then may the app be reached under other names than this machine's.
 """
 
 from __future__ import annotations
@@ -10,12 +14,12 @@ from __future__ import annotations
 import csv
 import io
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -42,10 +46,12 @@ from finanze import (
 from finanze.models import Kind
 from finanze.storage import db, store
 from finanze.validation import ReconciliationError
-from finanze.web import forms
+from finanze.web import auth, forms
 
-HOST = "127.0.0.1"  # the only address the app is ever served on
-_HOSTS = [HOST, "localhost"]
+HOST = "127.0.0.1"  # where the app is served unless `finanze.yaml` names another address
+_HOSTS = (HOST, "localhost")
+_SESSION = "finanze_session"  # the cookie of a signed-in browser
+_STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
     "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
@@ -68,7 +74,15 @@ _CSV = (
     "counterparty_owner",
     "id",
 )
-_templates = Jinja2Templates(directory=_HERE / "templates")
+
+
+def _everywhere(request: Request) -> dict[str, object]:
+    """What every page needs for the button that signs out."""
+    state = request.app.state
+    return {"signing": state.access is not None, "token": state.token}
+
+
+_templates = Jinja2Templates(directory=_HERE / "templates", context_processors=[_everywhere])
 
 
 def _money(amount: Decimal) -> str:
@@ -109,6 +123,36 @@ class _OwnAssetsOnly:
         await self.app(scope, receive, add_headers)
 
 
+class _SignedInOnly:
+    """Sends a browser that is not signed in to the page that asks for the password."""
+
+    def __init__(
+        self, app: ASGIApp, access: auth.Access | None, clock: Callable[[], datetime]
+    ) -> None:
+        self.app = app
+        self.access = access
+        self.clock = clock
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.access is None or scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)
+        path = request.url.path
+        session = request.cookies.get(_SESSION, "")
+        known = self.access.known(session, self.clock())
+        if known or path == "/login" or path.startswith(_STATIC):
+            await self.app(scope, receive, send)
+            return
+        response: Response
+        if request.method in ("GET", "HEAD"):
+            asked = path + (f"?{request.url.query}" if request.url.query else "")
+            response = RedirectResponse(f"/login?next={quote(asked, safe='')}", 303)
+        else:
+            response = PlainTextResponse("sign in first\n", status_code=401)
+        await response(scope, receive, send)
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -128,12 +172,25 @@ class Rules:
 
 
 def create_app(
-    database: Path, clock: Callable[[], datetime] = _utc_now, rules: Rules | None = None
+    database: Path,
+    clock: Callable[[], datetime] = _utc_now,
+    rules: Rules | None = None,
+    *,
+    names: Sequence[str] = (),
+    password: str = "",
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
 
     Without `rules` a category can only be chosen for the rows shown, not remembered.
+    `password` is the digest `auth.digest` wrote: with it every page wants a signed-in
+    browser. `names` are what other devices call this machine; without a password there
+    are no other devices, so they are refused (D18).
     """
+    if names and not password:
+        msg = "the app is not served under other names without a password"
+        raise ValueError(msg)
+    access = auth.Access(password) if password else None
+    hosts = (*_HOSTS, *names)
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
@@ -153,12 +210,16 @@ def create_app(
             ),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
+            Route("/login", _login_page, name="login"),
+            Route("/login", _login, methods=["POST"]),
+            Route("/logout", _logout, methods=["POST"], name="logout"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
         ],
         middleware=[
             # A page of another site cannot reach the app under a name of its own.
-            Middleware(TrustedHostMiddleware, allowed_hosts=_HOSTS),
+            Middleware(TrustedHostMiddleware, allowed_hosts=list(hosts)),
             Middleware(_OwnAssetsOnly),
+            Middleware(_SignedInOnly, access=access, clock=clock),
         ],
         exception_handlers={
             query.QueryError: _unknown_name,
@@ -168,6 +229,8 @@ def create_app(
     app.state.database = database
     app.state.clock = clock
     app.state.rules = rules
+    app.state.access = access
+    app.state.hosts = hosts
     # Sent back by every form of these pages: a page of another site cannot read it, so it
     # cannot make the browser change anything here.
     app.state.token = secrets.token_urlsafe(32)
@@ -228,7 +291,6 @@ def _month_page(
             "owner": owner,
             "month": months.checklist(conn, owner, month),
             "error": error,
-            "token": request.app.state.token,
             "choices": query.choices(conn, owner),
             "can_remember": request.app.state.rules is not None,
         }
@@ -240,7 +302,7 @@ async def _sent(request: Request) -> dict[str, list[str]]:
     # These pages ask for no referrer, so the browser says `Origin: null` for their own forms:
     # that says nothing either way, and the token below is what decides.
     origin = request.headers.get("origin", "null")
-    if origin != "null" and urlsplit(origin).hostname not in _HOSTS:
+    if origin != "null" and urlsplit(origin).hostname not in request.app.state.hosts:
         raise HTTPException(403)
     try:
         body = (await request.body()).decode()
@@ -494,6 +556,59 @@ def _transactions_csv(request: Request) -> Response:
     writer.writerows([getattr(row, column) for column in _CSV] for row in rows)
     headers = {"content-disposition": 'attachment; filename="transactions.csv"'}
     return Response(out.getvalue(), media_type="text/csv; charset=utf-8", headers=headers)
+
+
+def _next(asked: str) -> str:
+    """Where to go once signed in: a page of this app, never an address elsewhere."""
+    return asked if asked.startswith("/") and not asked.startswith(("//", "/\\")) else "/"
+
+
+def _login_form(request: Request, then: str, error: str = "", status: int = 200) -> Response:
+    if request.app.state.access is None:
+        raise HTTPException(404)
+    context = {"then": _next(then), "error": error}
+    return _templates.TemplateResponse(request, "login.html", context, status_code=status)
+
+
+def _login_page(request: Request) -> Response:
+    return _login_form(request, request.query_params.get("next", "/"))
+
+
+async def _login(request: Request) -> Response:
+    fields = await _sent(request)
+    state = request.app.state
+    then = fields.get("next", ["/"])[-1]
+    if state.access is None:
+        raise HTTPException(404)
+    password = fields.get("password", [""])[-1]
+    try:
+        # Off the event loop: working a digest out takes a moment, on purpose.
+        session = await run_in_threadpool(state.access.enter, password, state.clock())
+    except auth.TooSoonError as exc:
+        return _login_form(request, then, _sentence(exc), 429)
+    if session is None:
+        return _login_form(request, then, "That is not the password.", 401)
+    response = RedirectResponse(_next(then), 303)
+    response.set_cookie(
+        _SESSION,
+        session,
+        max_age=int(auth.LIFETIME.total_seconds()),
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+async def _logout(request: Request) -> Response:
+    await _sent(request)
+    access = request.app.state.access
+    if access is None:
+        raise HTTPException(404)
+    access.leave(request.cookies.get(_SESSION, ""))
+    response = RedirectResponse("/login", 303)
+    response.delete_cookie(_SESSION)
+    return response
 
 
 def _owner(request: Request) -> str | None:

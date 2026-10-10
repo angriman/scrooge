@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block header %}{% endblock %}
+{% block main %}
+{%- if error %}
+<p class="error" role="alert">{{ error }}</p>
+{%- endif %}
+<form method="post" action="{{ url_for('login') }}" class="login">
+  <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="next" value="{{ then }}">
+  <label>Password <input type="password" name="password" autocomplete="current-password" required autofocus></label>
+  <button>Sign in</button>
+</form>
+{% endblock %}

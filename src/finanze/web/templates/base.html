@@ -11,6 +11,7 @@
   {%- block head %}{% endblock %}
 </head>
 <body>
+  {%- block header %}
   <header>
     <nav aria-label="Pages">
       {%- for name, label in [("overview", "Overview"), ("networth", "Net worth"), ("holdings", "Holdings"), ("cashflow", "Cash flow"), ("transactions", "Transactions"), ("months", "Months")] %}
@@ -23,7 +24,14 @@
       <a href="{{ request.url.remove_query_params('page').include_query_params(owner=person.name) }}"{% if owner == person.name %} aria-current="true"{% endif %}>{{ person.name }}</a>
       {%- endfor %}
     </nav>
+    {%- if signing %}
+    <form method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button>Sign out</button>
+    </form>
+    {%- endif %}
   </header>
+  {%- endblock %}
   <main>
     <h1>{{ self.title() }}</h1>
     {% block main %}{% endblock %}

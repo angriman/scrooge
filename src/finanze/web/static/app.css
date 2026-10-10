@@ -351,3 +351,15 @@ figcaption {
   min-width: 4rem;
   width: 8%;
 }
+
+.login {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.login label {
+  display: grid;
+  gap: 0.2rem;
+}
