@@ -38,6 +38,13 @@ class NetWorthView:
     errors: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class HoldingsView:
+    owner: str | None
+    currency: str
+    errors: tuple[str, ...]
+
+
 def _text(params: Mapping[str, str], name: str) -> str | None:
     return params.get(name, "").strip() or None
 
@@ -109,13 +116,26 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
     return Parsed(wanted, tuple(errors))
 
 
-def networth_view(params: Mapping[str, str]) -> NetWorthView:
-    """`owner`, `currency` (euros when left out) and `by` (total, asset or owner)."""
-    errors: list[str] = []
+def _currency(params: Mapping[str, str], errors: list[str]) -> str:
+    """The currency a page is asked to show its figures in: euros when left out or unreadable."""
     currency = (_text(params, "currency") or networth.DEFAULT_CURRENCY).upper()
     if currency not in networth.CURRENCIES:
         errors.append(f"'{currency}' is not one of {', '.join(networth.CURRENCIES)}.")
-        currency = networth.DEFAULT_CURRENCY
+        return networth.DEFAULT_CURRENCY
+    return currency
+
+
+def holdings_view(params: Mapping[str, str]) -> HoldingsView:
+    """`owner` and `currency` (euros when left out)."""
+    errors: list[str] = []
+    currency = _currency(params, errors)
+    return HoldingsView(_text(params, "owner"), currency, tuple(errors))
+
+
+def networth_view(params: Mapping[str, str]) -> NetWorthView:
+    """`owner`, `currency` (euros when left out) and `by` (total, asset or owner)."""
+    errors: list[str] = []
+    currency = _currency(params, errors)
     by = _text(params, "by") or BREAKDOWNS[0]
     if by not in BREAKDOWNS:
         errors.append(f"'{by}' is not total, asset or owner.")

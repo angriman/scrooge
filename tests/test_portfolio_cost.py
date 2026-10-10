@@ -357,3 +357,82 @@ def test_shares_add_up_to_a_hundred(values: list[Decimal]) -> None:
     assert sum(shares.values()) == 100
     for position, share in shares.items():
         assert abs(share - position.value * 100 / sum(values)) < D("0.01")
+
+
+# ---------------------------------------------------------------------------------- page
+
+
+def test_the_kinds_of_asset_group_everyone_s_positions_largest_first(
+    conn: sqlite3.Connection,
+) -> None:
+    family(conn)
+    held = agrees_with_net_worth(conn, None, "USD")
+    groups = held.groups
+    assert [(group.asset, group.value, group.share) for group in groups] == [
+        (ETFS, D(1400), D("11.13")),
+        (STOCKS, D("1305.30"), D("10.38")),
+        (BILLS, D("9872.50"), D("78.49")),
+    ]
+    assert {group.asset: group.value for group in groups} == held.by_asset
+    assert sum(group.share for group in groups) == 100
+    assert [(p.owner, p.symbol, p.account) for p in groups[0].positions] == [
+        (OWNER, "BOLT", "IBKR USD"),  # worth the same: by symbol
+        (OWNER, "WIDG", "IBKR USD"),
+        (PARTNER, "WIDG", "IBKR USD"),
+        (PARTNER, "WIDG", "Revolut USD"),
+    ]
+    assert {p for group in groups for p in group.positions} == set(held.positions)
+    assert Portfolio("USD", None, (), ()).groups == ()
+
+
+def test_a_gain_is_also_a_part_of_what_was_paid(conn: sqlite3.Connection) -> None:
+    rows = [bought("WIDG", "10", "-500", day(15)), bought("GADG", "3", "-900", day(16))]
+    close(conn, ibkr(*rows, moved("FREE", "5", "0", day(17))))
+    price(conn, "WIDG", day(30), "53.5")
+    price(conn, "GADG", day(30), "290")
+    price(conn, "FREE", day(30), "10")
+    held = portfolio.run(conn, currency="USD").positions
+    # what cost nothing has no percentage
+    assert {p.symbol: (p.cost_native, p.gain_percent) for p in held} == {
+        "WIDG": (D(500), D("7.00")),
+        "GADG": (D(900), D("-3.33")),
+        "FREE": (D(0), None),
+    }
+
+
+def test_a_gain_that_is_not_known_has_no_percentage(conn: sqlite3.Connection) -> None:
+    base = ibkr(bought("WIDG", "4", "-200", day(15)))
+    printed = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=printed)))
+    [position] = portfolio.run(conn, currency="USD").positions
+    assert (position.cost_native, position.gain_percent) == (None, None)
+
+
+def test_the_cash_of_a_pension_account_is_what_its_line_holds_beyond_the_units(
+    conn: sqlite3.Connection,
+) -> None:
+    unit = bought(
+        "CH0000000001", "2", "-300", day(15), asset_tab="Funds", account="Pillar 3a", currency="CHF"
+    )
+    close(conn, account("finpension", "Pillar 3a", "CHF", "1000", unit))
+    close(
+        conn,
+        account("finpension", "Pillar 3a", "CHF", "250.55", filename="hers.csv"),
+        owner=PARTNER,
+    )
+    price(conn, "CH0000000001", day(15), "155")
+    rate(conn, "EUR", day(1), "0.9473")
+    for owner, cash in ((None, D("950.55")), (OWNER, D(700)), (PARTNER, D("250.55"))):
+        assert portfolio.run(conn, owner=owner, currency="CHF").pension_cash == cash
+    for owner in (None, OWNER, PARTNER):
+        held = portfolio.run(conn, owner=owner, currency="EUR")
+        lines = networth.run(conn, owner=owner, currency="EUR").lines
+        assert {line.asset for line in lines} == {PENSION}
+        # with the units it is the line of net worth, to the cent
+        assert held.pension_cash == sum(line.values[-1] for line in lines) - held.total
+
+
+def test_without_a_pension_account_there_is_no_cash_of_one(conn: sqlite3.Connection) -> None:
+    assert portfolio.run(conn).pension_cash is None
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15))))
+    assert portfolio.run(conn, currency="USD").pension_cash is None

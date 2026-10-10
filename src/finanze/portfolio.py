@@ -73,6 +73,14 @@ class Position:
     cost_native: Decimal | None = None
     gain_native: Decimal | None = None  # `value_native` less `cost_native`
 
+    @property
+    def gain_percent(self) -> Decimal | None:
+        """`gain_native` in percent of `cost_native`, to two decimals; None when either is
+        not known, or nothing was paid."""
+        if self.gain_native is None or not self.cost_native:
+            return None
+        return (self.gain_native * 100 / self.cost_native).quantize(_CENT)
+
 
 @dataclass(frozen=True, slots=True)
 class Rung:
@@ -83,6 +91,16 @@ class Rung:
 
 
 @dataclass(frozen=True, slots=True)
+class Group:
+    """The positions of one kind of asset, of everyone shown."""
+
+    asset: str
+    positions: tuple[Position, ...]  # by value (largest first), symbol, owner and account
+    value: Decimal  # what they add up to, in `Portfolio.currency`
+    share: Decimal  # of `Portfolio.total` in percent: the shares of its positions, added up
+
+
+@dataclass(frozen=True, slots=True)
 class Portfolio:
     currency: str
     day: date | None  # the last day of `networth.run` for the same people; None: no such day
@@ -90,6 +108,9 @@ class Portfolio:
     # symbol and account.
     positions: tuple[Position, ...]
     notes: tuple[str, ...]  # those of net worth that are about what is held
+    # The cash of the pension accounts, in `currency`: what the `Pillar 3a` lines of net worth
+    # hold beyond the fund units listed here, to the cent. None: nobody has such an account.
+    pension_cash: Decimal | None = None
 
     @property
     def total(self) -> Decimal:
@@ -118,6 +139,18 @@ class Portfolio:
             return dict.fromkeys(self.positions, Decimal(0))
         exact = [position.value * 100 / total for position in self.positions]
         return dict(zip(self.positions, _shared_out(exact), strict=True))
+
+    @property
+    def groups(self) -> tuple[Group, ...]:
+        """The positions by kind of asset, in the order of `networth.ASSETS`."""
+        shares = self.shares
+        groups = []
+        for asset, value in self.by_asset.items():
+            held = [position for position in self.positions if position.asset == asset]
+            held.sort(key=lambda p: (-p.value, p.symbol, p.owner, p.account))
+            share = sum((shares[position] for position in held), Decimal(0))
+            groups.append(Group(asset, tuple(held), value, share))
+        return tuple(groups)
 
     @property
     def ladder(self) -> tuple[Rung, ...]:
@@ -257,4 +290,20 @@ def run(
     positions.sort(
         key=lambda p: (p.owner, networth.ASSETS.index(p.asset), -p.value, p.symbol, p.account)
     )
-    return Portfolio(currency, valued.days[-1], tuple(positions), valued.security_notes)
+    # Each person's line as net worth adds it up and rounds it, less the units listed.
+    pension: dict[str, Decimal] = defaultdict(Decimal)
+    for series in valued.series:
+        if series.asset == networth.PENSION:
+            pension[series.owner] += networth.convert(
+                series.values[-1:], series.currency, currency, rates
+            )[0]
+    cash = sum((line.quantize(_CENT) for line in pension.values()), Decimal(0)) - sum(
+        (p.value for p in positions if p.asset == networth.PENSION), Decimal(0)
+    )
+    return Portfolio(
+        currency,
+        valued.days[-1],
+        tuple(positions),
+        valued.security_notes,
+        cash if pension else None,
+    )

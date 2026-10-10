@@ -335,3 +335,19 @@ figcaption {
   font-size: 0.85rem;
   opacity: 0.7;
 }
+
+/* ---- holdings: one table of positions, with a body for each kind of asset. */
+
+.kind th {
+  background: var(--soft);
+}
+
+.subtotal th,
+.subtotal td {
+  font-weight: 600;
+}
+
+.share {
+  min-width: 4rem;
+  width: 8%;
+}

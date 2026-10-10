@@ -29,7 +29,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from finanze import cashflow, classification, monthclose, months, networth, query
+from finanze import cashflow, classification, monthclose, months, networth, portfolio, query
 from finanze.models import Kind
 from finanze.storage import db, store
 from finanze.validation import ReconciliationError
@@ -67,7 +67,21 @@ def _money(amount: Decimal) -> str:
     return f"{amount:,.2f}"
 
 
+def _signed(amount: Decimal) -> str:
+    """`+1,234.50`: a gain or a loss, which its sign tells apart."""
+    return f"{amount:+,.2f}"
+
+
+def _exact(number: Decimal) -> str:
+    """`1,234.5`: a quantity or a price as it is stored, never rounded, without the zeros
+    that say nothing."""
+    written = f"{number:,f}"
+    return written.rstrip("0").rstrip(".") if "." in written else written
+
+
 _templates.env.filters["money"] = _money
+_templates.env.filters["signed"] = _signed
+_templates.env.filters["exact"] = _exact
 _templates.env.globals["days"] = cashflow.days
 
 
@@ -116,6 +130,7 @@ def create_app(
             Route("/", _overview, name="overview"),
             Route("/networth", _networth, name="networth"),
             Route("/networth.json", _networth_json, name="networth_json"),
+            Route("/holdings", _holdings, name="holdings"),
             Route("/cashflow", _cashflow, name="cashflow"),
             Route("/months", _months, name="months"),
             Route("/months/{owner}/{month}", _month, name="month"),
@@ -324,8 +339,7 @@ def _valued(
             result = networth.run(conn, owner=asked.owner, currency=asked.currency)
             checks = networth.checks(conn, owner=asked.owner) if checked else ()
         except networth.MissingRateError as exc:
-            message = str(exc)
-            return None, people, (), f"{message[0].upper()}{message[1:]}."
+            return None, people, (), _sentence(exc)
         return result, people, checks, ""
 
 
@@ -369,6 +383,27 @@ def _networth_json(request: Request) -> Response:
     )
 
 
+def _holdings(request: Request) -> Response:
+    asked = forms.holdings_view(request.query_params)
+    errors = list(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        people = query.people(conn)
+        try:
+            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency)
+        except networth.MissingRateError as exc:
+            errors.append(_sentence(exc))
+            held = None
+    context = {
+        "people": people,
+        "owner": asked.owner,
+        "asked": asked,
+        "currencies": networth.CURRENCIES,
+        "errors": errors,
+        "held": held,
+    }
+    return _templates.TemplateResponse(request, "holdings.html", context)
+
+
 def _cashflow(request: Request) -> Response:
     asked = forms.cashflow_range(request.query_params)
     with db.reading(request.app.state.database) as conn:
@@ -400,8 +435,7 @@ def _transactions(request: Request) -> Response:
         try:
             result = query.run(conn, wanted)
         except query.QueryError as exc:  # an account or category the form no longer offers
-            message = str(exc)
-            errors.append(f"{message[0].upper()}{message[1:]}.")
+            errors.append(_sentence(exc))
             result = query.Result((), (), (), ())
         people = query.people(conn)
         choices = query.choices(conn, wanted.owner)
@@ -443,6 +477,12 @@ def _transactions_csv(request: Request) -> Response:
 def _owner(request: Request) -> str | None:
     """Whose view this is: `?owner=Name`, or everyone's without it."""
     return request.query_params.get("owner") or None
+
+
+def _sentence(exc: Exception) -> str:
+    """What went wrong, as the page says it."""
+    message = str(exc)
+    return f"{message[0].upper()}{message[1:]}."
 
 
 def _unknown_name(_: Request, exc: Exception) -> Response:

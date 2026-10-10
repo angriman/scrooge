@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Holdings{% endblock %}
+{% macro known(amount) -%}
+{% if amount is none %}–{% else %}{{ amount|money }}{% endif %}
+{%- endmacro %}
+{% block main %}
+<form method="get" class="filter">
+  {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
+  <label>Currency
+    <select name="currency">
+      {%- for currency in currencies %}
+      <option{% if currency == asked.currency %} selected{% endif %}>{{ currency }}</option>
+      {%- endfor %}
+    </select>
+  </label>
+  <button>Show</button>
+</form>
+{%- for error in errors %}
+<p class="error" role="alert">{{ error }}</p>
+{%- endfor %}
+{%- if held and held.day %}
+{%- if held.positions %}
+{%- set shares = held.shares %}
+{%- set groups = held.groups %}
+{#- The columns before the value in the currency asked for: a subtotal's label spans them. #}
+{%- set before = 7 if owner else 8 %}
+<p class="headline"><strong>{{ held.total|money }} {{ held.currency }}</strong> in securities on {{ held.day }}</p>
+<table class="narrow">
+  <thead>
+    <tr><th></th><th class="number">{{ held.currency }}</th><th class="number">Share</th></tr>
+  </thead>
+  <tbody>
+    {%- for group in groups %}
+    <tr>
+      <td>{{ group.asset }}</td>
+      <td class="number">{{ group.value|money }}</td>
+      <td class="number">{{ group.share }}%</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th>All</th><td class="number">{{ held.total|money }}</td><td class="number">{{ groups|sum(attribute="share") }}%</td></tr>
+  </tfoot>
+</table>
+<h2>Positions</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Instrument</th>
+      {%- if not owner %}<th>Person</th>{% endif %}
+      <th>Account</th>
+      <th class="number">Quantity</th>
+      <th class="number">Price</th>
+      <th class="number">Value</th>
+      <th class="number">Cost</th>
+      <th class="number">Gain or loss</th>
+      <th class="number">Value in {{ held.currency }}</th>
+      <th class="number">Share</th>
+      <th></th>
+    </tr>
+  </thead>
+  {%- for group in groups %}
+  <tbody>
+    <tr class="kind"><th colspan="{{ before + 3 }}" scope="rowgroup">{{ group.asset }}</th></tr>
+    {%- for position in group.positions %}
+    <tr>
+      <td>{{ position.symbol }}{% if position.name %}<small>{{ position.name }}</small>{% endif %}</td>
+      {%- if not owner %}<td>{{ position.owner }}</td>{% endif %}
+      <td>{{ position.account }}</td>
+      <td class="number">{{ position.quantity|exact }}</td>
+      <td class="number">
+        {%- if position.price is none %}–{% else %}{{ position.price|exact }} {{ position.currency }}
+        {%- if position.price_is_trade %}<small>last trade{% if position.price_day != held.day %}, {{ position.price_day }}{% endif %}</small>
+        {%- elif position.price_day != held.day %}<small>close of {{ position.price_day }}</small>
+        {%- endif %}
+        {%- endif -%}
+      </td>
+      <td class="number">{{ position.value_native|money }} {{ position.currency }}</td>
+      <td class="number">{{ known(position.cost_native) }}</td>
+      <td class="number">
+        {%- if position.gain_native is none %}–{% else %}{{ position.gain_native|signed }}
+        {%- if position.gain_percent is not none %}<small>{{ position.gain_percent|signed }}%</small>{% endif %}
+        {%- endif -%}
+      </td>
+      <td class="number">{{ position.value|money }}</td>
+      <td class="number">{{ shares[position] }}%</td>
+      <td class="share"><meter min="0" max="100" value="{{ [shares[position], 0]|max }}" title="{{ shares[position] }}% of the total"></meter></td>
+    </tr>
+    {%- endfor %}
+    <tr class="subtotal">
+      <th colspan="{{ before }}">All {{ group.asset }}</th>
+      <td class="number">{{ group.value|money }}</td>
+      <td class="number">{{ group.share }}%</td>
+      <td class="share"><meter min="0" max="100" value="{{ [group.share, 0]|max }}" title="{{ group.share }}% of the total"></meter></td>
+    </tr>
+  </tbody>
+  {%- endfor %}
+  <tfoot>
+    <tr>
+      <th colspan="{{ before }}">All {{ held.positions|length }}</th>
+      <td class="number">{{ held.total|money }}</td>
+      <td class="number">{{ groups|sum(attribute="share") }}%</td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+<p class="note">
+  Price, value, cost and gain or loss are in the currency of the instrument; the last value
+  is in {{ held.currency }} at the exchange rate of {{ held.day }}. A day under a price is the
+  day it is from, when that is not {{ held.day }}; &ldquo;last trade&rdquo; is the price of
+  a trade standing in where no close is stored.
+</p>
+{%- if held.pension_cash is not none %}
+<p class="note">
+  Pillar 3a is the fund units only. The cash of the pension account,
+  {{ held.pension_cash|money }} {{ held.currency }}, is counted in the Pillar 3a line of the
+  net worth page and is not listed here.
+</p>
+{%- endif %}
+{%- set ladder = held.ladder %}
+{%- if ladder %}
+<h2>Bills by maturity</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Maturity</th>
+      <th class="number">Days to go</th>
+      <th>Bill</th>
+      {%- if not owner %}<th>Person</th>{% endif %}
+      <th>Account</th>
+      <th class="number">Face</th>
+      <th class="number">Cost</th>
+      <th class="number">Value today</th>
+      <th class="number">Value in {{ held.currency }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {%- for rung in ladder %}
+    {%- set position = rung.position %}
+    <tr>
+      <td class="date">{{ position.maturity or "–" }}</td>
+      <td class="number">
+        {%- if rung.days is none %}–
+        {%- elif rung.days < 0 %}due {{ -rung.days }} day{{ "" if rung.days == -1 else "s" }} ago, not yet repaid
+        {%- elif rung.days == 0 %}due today
+        {%- else %}{{ rung.days }}
+        {%- endif -%}
+      </td>
+      <td>{{ position.symbol }}{% if position.name %}<small>{{ position.name }}</small>{% endif %}</td>
+      {%- if not owner %}<td>{{ position.owner }}</td>{% endif %}
+      <td>{{ position.account }}</td>
+      <td class="number">{{ position.quantity|exact }} {{ position.currency }}</td>
+      <td class="number">{{ known(position.cost_native) }}</td>
+      <td class="number">{{ position.value_native|money }}</td>
+      <td class="number">{{ position.value|money }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- endif %}
+{%- else %}
+<p>No securities are held on {{ held.day }}.</p>
+{%- endif %}
+{%- for note in held.notes %}
+<p class="note">{{ note }}</p>
+{%- endfor %}
+<p class="note">
+  Options and futures are not counted as assets: what open positions are worth is not listed
+  here. Shares not yet moved to a broker that sends statements are not listed either.
+</p>
+<p class="note">
+  The cost is what the lots still held cost, the oldest sold first, without commissions.
+  Shares moved in from another broker cost what they were worth on the day they arrived.
+  A dash stands where the cost is not known.
+</p>
+{%- elif held %}
+<p>Nothing is committed yet.</p>
+{%- endif %}
+{% endblock %}

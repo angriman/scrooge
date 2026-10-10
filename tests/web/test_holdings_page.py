@@ -1,0 +1,431 @@
+"""The holdings page: what is held on the last committed day, position by position."""
+
+import re
+from dataclasses import replace
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+from starlette.testclient import TestClient
+
+from finanze.models import Holding, SecurityTrade
+from finanze.storage import db
+from finanze.web import app as webapp
+from tests.storage.helpers import OWNER, PARTNER
+from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate
+from tests.web.test_app import text
+from tests.web.test_cashflow_page import tables
+
+SITE = "http://127.0.0.1:8765"
+NONE = "\u2013"  # what a cell shows where there is no figure
+DUE = "912797WW4"  # a bill that matured two days before the last day and is not repaid yet
+FUND = "CH0000000001"
+
+
+@pytest.fixture(scope="module")
+def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
+    """September 2026, committed for both, in dollars; a dollar and a euro are 0.80 francs.
+
+    Lukas holds an ETF whose last close is of the 18th, a share with a close on the last day,
+    another with none at all, and two bills; Anna holds the same ETF.
+    """
+    path: Path = tmp_path_factory.mktemp("holdings") / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    close(
+        conn,
+        ibkr(
+            bought("WIDG", "10", "-500", day(15)),
+            bought("GADG", "3", "-900", day(16), asset_tab="Stocks"),
+            bought("SPRK", "20.50", "-410", day(16), asset_tab="Stocks"),
+            bill("10000", "-9850", day(15)),  # matures on 24 December
+            bought(
+                DUE,
+                "5000",
+                "-4950",
+                day(16),
+                asset_tab="Bonds",
+                price=Decimal(99),
+                maturity=date(2026, 9, 28),
+            ),
+            opening="50000",
+        ),
+    )
+    close(conn, ibkr(bought("WIDG", "7", "-350", day(10))), owner=PARTNER)
+    conn.execute("UPDATE instruments SET name = 'Widget <Index> Fund' WHERE symbol = 'WIDG'")
+    price(conn, "WIDG", day(15), "51")
+    price(conn, "WIDG", day(18), "53.5")
+    price(conn, "SPRK", day(30), "18")
+    rate(conn, "USD", day(1), "0.8")
+    rate(conn, "EUR", day(1), "0.8")
+    conn.close()
+    return TestClient(webapp.create_app(path), base_url=SITE)
+
+
+@pytest.fixture(scope="module")
+def odd(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
+    """Lukas alone: a pension account with fund units and cash, and shares of which six were
+    held before the history starts. A dollar is 0.80 francs; no rate is stored for the euro."""
+    path: Path = tmp_path_factory.mktemp("odd") / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    unit = bought(
+        FUND, "2", "-300", day(15), asset_tab="Funds", account="Pillar 3a", currency="CHF"
+    )
+    broker = ibkr(bought("WIDG", "4", "-200", day(15)))
+    printed = (Holding("IBKR USD", "WIDG", "USD", Decimal(10), Decimal(55), Decimal(550), "ETFs"),)
+    close(
+        conn,
+        account("finpension", "Pillar 3a", "CHF", "1000", unit),
+        replace(broker, extraction=replace(broker.extraction, holdings=printed)),
+    )
+    price(conn, FUND, day(30), "155")
+    rate(conn, "USD", day(1), "0.8")
+    conn.close()
+    return TestClient(webapp.create_app(path), base_url=SITE)
+
+
+@pytest.fixture
+def empty(tmp_path: Path) -> TestClient:
+    path = tmp_path / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    conn.close()
+    return TestClient(webapp.create_app(path), base_url=SITE)
+
+
+def headers(html: str) -> list[list[str]]:
+    """The column titles of every table on the page."""
+    heads = re.findall(r"<thead>(.*?)</thead>", html, re.DOTALL)
+    return [[text(cell) for cell in re.findall(r"<th[^>]*>(.*?)</th>", head)] for head in heads]
+
+
+def errors(html: str) -> list[str]:
+    found: list[str] = re.findall(r'<p class="error" role="alert">(.*?)</p>', html)
+    return found
+
+
+def test_everyone_s_positions_are_listed_by_kind_with_what_they_add_up_to(
+    client: TestClient,
+) -> None:
+    response = client.get("/holdings")
+    assert response.status_code == 200
+    page = response.text
+    assert "17,051.00 EUR in securities on 2026-09-30" in text(page)
+    summary, total, etfs, stocks, bills, everything, _ = tables(page)
+    assert summary == [
+        ["ETFs", "909.50", "5.34%"],
+        ["Stocks", "1,269.00", "7.44%"],
+        ["Bills", "14,872.50", "87.22%"],
+    ]
+    assert total == [["All", "17,051.00", "100.00%"]]
+    assert headers(page)[1] == [
+        "Instrument",
+        "Person",
+        "Account",
+        "Quantity",
+        "Price",
+        "Value",
+        "Cost",
+        "Gain or loss",
+        "Value in EUR",
+        "Share",
+        "",
+    ]
+    assert etfs == [
+        ["ETFs"],
+        [
+            "WIDG Widget &lt;Index&gt; Fund",
+            OWNER,
+            "IBKR USD",
+            "10",
+            "53.5 USD close of 2026-09-18",  # stale: the day the close is from
+            "535.00 USD",
+            "500.00",
+            "+35.00 +7.00%",
+            "535.00",
+            "3.14%",
+            "",
+        ],
+        [
+            "WIDG Widget &lt;Index&gt; Fund",
+            PARTNER,
+            "IBKR USD",
+            "7",
+            "53.5 USD close of 2026-09-18",
+            "374.50 USD",
+            "350.00",
+            "+24.50 +7.00%",
+            "374.50",
+            "2.20%",
+            "",
+        ],
+        ["All ETFs", "909.50", "5.34%", ""],
+    ]
+    assert [row[0] for row in stocks] == ["Stocks", "GADG", "SPRK", "All Stocks"]
+    # a close of the day shown needs no day; a quantity keeps its decimals but not its zeros
+    assert stocks[2][3:10] == [
+        "20.5",
+        "18 USD",
+        "369.00 USD",
+        "410.00",
+        "-41.00 -10.00%",
+        "369.00",
+        "2.16%",
+    ]
+    # a bill has no price; its quantity is its face
+    assert bills[1][:6] == ["912797ZZ1", OWNER, "IBKR USD", "10,000", NONE, "9,872.50 USD"]
+    assert bills[-1] == ["All Bills", "14,872.50", "87.22%", ""]
+    assert everything == [["All 6", "17,051.00", "100.00%", ""]]
+    assert "<script" not in page
+    assert " style=" not in page
+
+
+def test_the_columns_of_every_row_line_up(client: TestClient) -> None:
+    for owner, columns in ((None, 11), (OWNER, 10)):
+        page = client.get("/holdings", params={"owner": owner} if owner else {}).text
+        assert len(headers(page)[1]) == columns
+        body = page.partition("<h2>Positions</h2>")[2].partition("</table>")[0]
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.DOTALL):
+            spans = [int(n or 1) for n in re.findall(r"<t[dh](?: colspan=\"(\d+)\")?[ >]", row)]
+            assert sum(spans) == columns
+        ladder = page.partition("<h2>Bills by maturity</h2>")[2]
+        assert {len(row) for row in tables(ladder)[0]} == {len(headers(ladder)[0])} == {columns - 2}
+
+
+def test_a_price_that_is_only_that_of_a_trade_is_marked(client: TestClient) -> None:
+    page = client.get("/holdings").text
+    gadget = tables(page)[3][1]
+    assert gadget[3:8] == [
+        "3",
+        "300 USD last trade, 2026-09-16",
+        "900.00 USD",
+        "900.00",
+        "+0.00 +0.00%",
+    ]
+    assert "<small>last trade, 2026-09-16</small>" in page
+    assert (
+        "No close is stored for GADG: valued at the price of the last trade. "
+        "Run `finanze prices`." in text(page)
+    )
+
+
+def test_one_person_s_positions_need_no_column_for_the_person(client: TestClient) -> None:
+    response = client.get("/holdings", params={"owner": PARTNER})
+    assert response.status_code == 200
+    page = response.text
+    assert "374.50 EUR in securities on 2026-09-30" in text(page)
+    assert all("Person" not in titles for titles in headers(page))
+    summary, total, etfs, everything = tables(page)
+    assert (summary, total) == ([["ETFs", "374.50", "100.00%"]], [["All", "374.50", "100.00%"]])
+    assert etfs[1][:3] == ["WIDG Widget &lt;Index&gt; Fund", "IBKR USD", "7"]
+    assert everything == [["All 1", "374.50", "100.00%", ""]]
+    assert "Bills by maturity" not in page  # she holds none
+    assert f'<input type="hidden" name="owner" value="{PARTNER}">' in page
+
+
+def test_the_figures_are_in_the_currency_asked_for(client: TestClient) -> None:
+    response = client.get("/holdings", params={"currency": "chf"})
+    page = response.text
+    assert "13,640.80 CHF in securities on 2026-09-30" in text(page)
+    assert "<option selected>CHF</option>" in page
+    assert headers(page)[0] == ["", "CHF", "Share"]
+    assert headers(page)[1][8] == "Value in CHF"
+    # what is in the instrument's currency stays as it is
+    assert tables(page)[2][1][4:9] == [
+        "53.5 USD close of 2026-09-18",
+        "535.00 USD",
+        "500.00",
+        "+35.00 +7.00%",
+        "428.00",
+    ]
+    assert errors(page) == []
+
+
+def test_a_currency_that_cannot_be_read_is_reported_and_euros_shown(client: TestClient) -> None:
+    response = client.get("/holdings", params={"currency": "XAU"})
+    assert response.status_code == 200
+    assert errors(response.text) == ["&#39;XAU&#39; is not one of EUR, CHF, USD, GBP, JPY."]
+    assert "17,051.00 EUR in securities" in text(response.text)
+    assert "<option selected>EUR</option>" in response.text
+
+
+def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: TestClient) -> None:
+    page = client.get("/holdings", params={"currency": "CHF"}).text
+    assert headers(page)[2] == [
+        "Maturity",
+        "Days to go",
+        "Bill",
+        "Person",
+        "Account",
+        "Face",
+        "Cost",
+        "Value today",
+        "Value in CHF",
+    ]
+    assert tables(page)[-1] == [
+        [
+            "2026-09-28",
+            "due 2 days ago, not yet repaid",
+            DUE,
+            OWNER,
+            "IBKR USD",
+            "5,000 USD",
+            "4,950.00",
+            "5,000.00",
+            "4,000.00",
+        ],
+        [
+            "2026-12-24",
+            "85",
+            "912797ZZ1",
+            OWNER,
+            "IBKR USD",
+            "10,000 USD",
+            "9,850.00",
+            "9,872.50",
+            "7,898.00",
+        ],
+    ]
+    mine = client.get("/holdings", params={"owner": OWNER}).text
+    assert "Person" not in headers(mine)[2]
+    assert [row[:3] for row in tables(mine)[-1]] == [
+        ["2026-09-28", "due 2 days ago, not yet repaid", DUE],
+        ["2026-12-24", "85", "912797ZZ1"],
+    ]
+
+
+def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Path) -> None:
+    path = tmp_path / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+
+    def other(cusip: str, maturity: date) -> SecurityTrade:
+        return bought(
+            cusip, "5000", "-4950", day(16), asset_tab="Bonds", price=Decimal(99), maturity=maturity
+        )
+
+    close(
+        conn,
+        ibkr(
+            other("912797AA9", day(29)),
+            other("912797BB8", day(30)),
+            other("912797CC7", day(2, 10)),
+            opening="50000",
+        ),
+    )
+    conn.execute("UPDATE instruments SET maturity = NULL WHERE symbol = '912797CC7'")
+    conn.close()
+    page = TestClient(webapp.create_app(path), base_url=SITE).get("/holdings?currency=USD").text
+    assert [row[:3] for row in tables(page)[-1]] == [
+        ["2026-09-29", "due 1 day ago, not yet repaid", "912797AA9"],
+        ["2026-09-30", "due today", "912797BB8"],
+        [NONE, NONE, "912797CC7"],
+    ]
+
+
+def test_a_cost_that_is_not_known_is_a_dash(odd: TestClient) -> None:
+    page = odd.get("/holdings", params={"currency": "CHF", "owner": OWNER}).text
+    assert "750.00 CHF in securities on 2026-09-30" in text(page)
+    summary, _, etfs, pension, _ = tables(page)
+    assert summary == [["ETFs", "440.00", "58.67%"], ["Pillar 3a", "310.00", "41.33%"]]
+    assert etfs[1] == [
+        "WIDG",
+        "IBKR USD",
+        "10",
+        "55 USD",
+        "550.00 USD",
+        NONE,
+        NONE,
+        "440.00",
+        "58.67%",
+        "",
+    ]
+    assert pension[1][:7] == [
+        FUND,
+        "Pillar 3a",
+        "2",
+        "155 CHF",
+        "310.00 CHF",
+        "300.00",
+        "+10.00 +3.33%",
+    ]
+    assert "Bills by maturity" not in page
+    assert "A dash stands where the cost is not known." in text(page)
+
+
+def test_the_cash_of_a_pension_account_is_said_to_be_on_the_other_page(
+    odd: TestClient, client: TestClient
+) -> None:
+    said = "The cash of the pension account, 700.00 CHF, is counted in the Pillar 3a line"
+    assert said in text(odd.get("/holdings", params={"currency": "CHF"}).text)
+    assert "875.00 USD, is counted" in text(odd.get("/holdings", params={"currency": "USD"}).text)
+    assert "pension account" not in client.get("/holdings").text  # nobody has one
+
+
+def test_a_currency_without_a_rate_is_said_and_nothing_is_listed(odd: TestClient) -> None:
+    response = odd.get("/holdings")
+    assert response.status_code == 200
+    [error] = errors(response.text)
+    assert error.startswith("No exchange rate is stored for EUR")
+    assert error.endswith(".")
+    assert "<table" not in response.text
+    assert "Nothing is committed yet" not in response.text
+    assert "<option selected>EUR</option>" in response.text
+
+
+def test_the_fixed_notes_say_what_is_not_counted_and_what_a_cost_is(client: TestClient) -> None:
+    said = text(client.get("/holdings").text)
+    assert "Options and futures are not counted as assets" in said
+    assert "what the lots still held cost, the oldest sold first, without commissions" in said
+    assert "cost what they were worth on the day they arrived" in said
+
+
+def test_nothing_committed_is_said(empty: TestClient) -> None:
+    response = empty.get("/holdings")
+    assert response.status_code == 200
+    assert "Nothing is committed yet." in response.text
+    assert "<table" not in response.text
+    assert "Options and futures" not in response.text
+
+
+def test_cash_alone_is_no_securities_and_no_empty_table(tmp_path: Path) -> None:
+    path = tmp_path / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    conn.close()
+    page = TestClient(webapp.create_app(path), base_url=SITE).get("/holdings").text
+    assert "No securities are held on 2026-09-30." in page
+    assert "<table" not in page
+    assert "Nothing is committed yet" not in page
+    assert "Options and futures are not counted as assets" in text(page)
+
+
+def test_a_person_the_database_does_not_have_is_not_found(client: TestClient) -> None:
+    response = client.get("/holdings", params={"owner": "Zoe"})
+    assert response.status_code == 404
+    assert response.text == "no owner named 'Zoe'\n"
+
+
+def test_the_page_is_linked_after_net_worth_and_the_person_keeps_the_currency(
+    client: TestClient,
+) -> None:
+    home = client.get("/", params={"owner": PARTNER}).text.replace(SITE, "")
+    after = home.partition(f'<a href="/networth?owner={PARTNER}">Net worth</a>')[2]
+    assert after.lstrip().startswith(f'<a href="/holdings?owner={PARTNER}">Holdings</a>')
+    page = client.get("/holdings", params={"currency": "CHF"}).text.replace(SITE, "")
+    assert '<a href="/holdings" aria-current="page">Holdings</a>' in page
+    assert '<a href="/holdings?currency=CHF" aria-current="true">Everyone</a>' in page
+    for person in (OWNER, PARTNER):
+        assert f'<a href="/holdings?currency=CHF&amp;owner={person}">{person}</a>' in page
+    hers = client.get("/holdings", params={"currency": "CHF", "owner": PARTNER}).text
+    assert '<a href="/holdings?currency=CHF">Everyone</a>' in hers.replace(SITE, "")
+
+
+def test_the_page_forbids_loading_from_elsewhere(client: TestClient) -> None:
+    sent = client.get("/holdings").headers
+    assert sent["content-security-policy"] == "default-src 'self'; frame-ancestors 'none'"
+    assert sent["x-content-type-options"] == "nosniff"
+    assert sent["referrer-policy"] == "no-referrer"

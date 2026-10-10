@@ -88,3 +88,15 @@ def test_a_cash_flow_range_that_cannot_be_read_is_reported() -> None:
         Grouping.MONTH,
         ("'decade' is not week, month, quarter or year.", f"'May' {NOT_A_DAY}"),
     )
+
+
+def test_holdings_are_shown_in_euros_unless_asked() -> None:
+    assert forms.holdings_view({}) == forms.HoldingsView(None, "EUR", ())
+    asked = {"owner": " Lukas ", "currency": "chf", "by": "asset"}
+    assert forms.holdings_view(asked) == forms.HoldingsView("Lukas", "CHF", ())
+
+
+def test_a_currency_holdings_cannot_be_shown_in_is_reported() -> None:
+    assert forms.holdings_view({"currency": "xau"}) == forms.HoldingsView(
+        None, "EUR", ("'XAU' is not one of EUR, CHF, USD, GBP, JPY.",)
+    )
