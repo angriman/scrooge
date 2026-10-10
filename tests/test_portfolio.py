@@ -109,6 +109,8 @@ def test_shares_are_listed_with_the_close_they_are_valued_at(conn: sqlite3.Conne
                 maturity=None,
                 value_native=D("535.00"),
                 value=D("535.00"),
+                cost_native=D("500.00"),
+                gain_native=D("35.00"),
             ),
         ),
         (),
@@ -196,6 +198,8 @@ def test_a_bill_has_no_price_but_a_maturity(conn: sqlite3.Connection) -> None:
         maturity=date(2026, 12, 24),
         value_native=D("9872.50"),  # in a straight line from its cost to its face
         value=D("9872.50"),
+        cost_native=D("9850.00"),
+        gain_native=D("22.50"),  # the interest earned so far
     )
 
 

@@ -364,7 +364,7 @@ def _securities(
         for r in conn.execute("SELECT id, symbol, type, currency, maturity FROM instruments")
     }
     closes = _closes(conn)
-    lots = _bill_trades(conn)
+    lots = lot_trades(conn)
     unpriced: set[str] = set()
     series: list[Series] = []
     for holding in held:
@@ -455,38 +455,48 @@ def _share_values(
     return values
 
 
-def _bill_trades(conn: sqlite3.Connection) -> dict[tuple[int, int], list[tuple[date, Event]]]:
-    """(account, bill) -> its committed purchases and disposals, in the order lots close."""
+@dataclass(frozen=True, slots=True)
+class LotTrade:
+    """A committed purchase or disposal of an instrument in an account, as lots see it."""
+
+    day: date  # the booking date
+    event: Event
+    priced: bool  # false for shares moved in or out in kind without a price: no cost is known
+
+
+def lot_trades(conn: sqlite3.Connection) -> dict[tuple[int, int], list[LotTrade]]:
+    """(account, instrument) -> its committed purchases and disposals, in the order lots close."""
     rows = conn.execute(
-        "SELECT t.account_id, tr.instrument_id, t.booking_date, t.id, tr.quantity, tr.cost_nano "
+        "SELECT t.account_id, tr.instrument_id, t.booking_date, t.id, tr.quantity, tr.cost_nano, "
+        "tr.price IS NOT NULL "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
-        "JOIN accounts a ON a.id = t.account_id JOIN instruments i ON i.id = tr.instrument_id "
+        "JOIN accounts a ON a.id = t.account_id "
         "JOIN months m ON m.owner_id = a.owner_id AND m.status = 'committed' "
         "AND m.month = date(t.booking_date, 'start of month') "
-        "WHERE i.type IN ('bill', 'bond') "
+        # on one day, purchases come before disposals
         "ORDER BY t.booking_date, tr.quantity LIKE '-%', t.id"
     )
-    trades: dict[tuple[int, int], list[tuple[date, Event]]] = defaultdict(list)
-    for account, instrument, day, txn_id, quantity, cost in rows:
+    trades: dict[tuple[int, int], list[LotTrade]] = defaultdict(list)
+    for account, instrument, day, txn_id, quantity, cost, priced in rows:
         event = Event(str(txn_id), Decimal(quantity), int(cost))
-        trades[account, instrument].append((date.fromisoformat(day), event))
+        trades[account, instrument].append(LotTrade(date.fromisoformat(day), event, bool(priced)))
     return trades
 
 
 def _bill_values(
-    trades: Sequence[tuple[date, Event]], maturity: date | None, days: Sequence[date]
+    trades: Sequence[LotTrade], maturity: date | None, days: Sequence[date]
 ) -> list[Decimal]:
     """What the lots still held are worth each day: from cost towards face, in a straight line."""
-    bought_on = {event.txn_id: day for day, event in trades}
+    bought_on = {trade.event.txn_id: trade.day for trade in trades}
     values: list[Decimal] = []
     done = 0
     lots: list[tuple[str, Decimal, int]] = []
     for day in days:
         seen = done
-        while done < len(trades) and trades[done][0] <= day:
+        while done < len(trades) and trades[done].day <= day:
             done += 1
         if done != seen:
-            lots = open_lots(event for _, event in trades[:done])
+            lots = open_lots(trade.event for trade in trades[:done])
         worth = Decimal(0)
         for purchase, face, cost_nano in lots:
             cost, bought = from_nano(cost_nano), bought_on[purchase]
