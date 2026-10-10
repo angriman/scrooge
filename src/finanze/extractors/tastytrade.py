@@ -46,6 +46,14 @@ _MONEY_MOVEMENTS = {
     "Deposit": (Kind.TRANSFER, ""),  # wires in: the category is left for review
     "Withdrawal": (Kind.TRANSFER, ""),
 }
+# A fill is described as "Bought ..." or "Sold ...", whether it opens or closes a position:
+# the action says which, in the words the export itself uses for a future ("Buy to Open 1 ...").
+_FILLS = {
+    "BUY_TO_OPEN": ("Bought ", "Buy to Open "),
+    "BUY_TO_CLOSE": ("Bought ", "Buy to Close "),
+    "SELL_TO_OPEN": ("Sold ", "Sell to Open "),
+    "SELL_TO_CLOSE": ("Sold ", "Sell to Close "),
+}
 
 
 def extract(content: str, source_file: str) -> Extraction:
@@ -76,7 +84,7 @@ def extract(content: str, source_file: str) -> Extraction:
                     account=ACCOUNT,
                     amount=amount,
                     currency=CURRENCY,
-                    description=row["Description"],
+                    description=_description(row),
                     kind=leg_kind,
                     source_file=source_file,
                     source_ref=ref,
@@ -98,6 +106,15 @@ def extract(content: str, source_file: str) -> Extraction:
         controls=(ControlTotal(ACCOUNT, CURRENCY, total),),
         end=last,
     )
+
+
+def _description(row: dict[str, str]) -> str:
+    """The export's description, a fill's naming what it does to the position."""
+    printed, named = _FILLS.get(row["Action"], ("", ""))
+    text = row["Description"]
+    if printed and text.startswith(printed):
+        return named + text.removeprefix(printed)
+    return text
 
 
 def _amount(text: str, what: str) -> Decimal:

@@ -59,6 +59,25 @@ def test_share_trade_amount_comes_from_total_not_the_rounded_value(result: Extra
     assert (buy.amount, buy.kind) == (Decimal("-2010.88"), Kind.SECURITY_TRADE)
 
 
+def test_a_trade_says_whether_it_opens_or_closes(result: Extraction) -> None:
+    described = {t.source_ref: t.description for t in result.transactions}
+    assert described["1"] == "Sell to Open 1 /ZBZ6 OZBX6 10/23/26 Call 109'00 @ 0.234375"
+    assert described["1:fees"] == described["1"]
+    assert described["2"] == "Buy to Close 1 /ESZ6 E3AV6 10/02/26 Put 6000.00 @ 2.5"
+    assert described["18"] == "Buy to Open 23 WIDG @ 87.43"
+    # a futures fill is a plain SELL: the export does not say which, and neither do we
+    assert described["8"] == "Sold 1 /GCZ6 @ 4195.5"
+    # rows that are not fills keep the export's words
+    assert described["4:fees"] == "Removal of option due to expiration"
+
+
+def test_a_sale_that_closes_says_so() -> None:
+    content = CSV.replace("Sell to Open,SELL_TO_OPEN,ACME", "Sell to Close,SELL_TO_CLOSE,ACME")
+    assert content != CSV
+    described = {t.description for t in tastytrade.extract(content, "t.csv").transactions}
+    assert "Sell to Close 1 ACME 10/16/26 Put 100.00 @ 1.5" in described
+
+
 def test_shares_and_bills_are_security_trades_for_the_asset_tabs(result: Extraction) -> None:
     trades = [
         t
