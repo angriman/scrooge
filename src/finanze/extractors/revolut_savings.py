@@ -1,8 +1,9 @@
-"""Revolut Savings (Flexible Cash Funds) statement -> net interest only (D8).
+"""Revolut Savings (Flexible Cash Funds) statement -> interest and the fund's fee (D8).
 
-Daily `Return PAID` / `Interest PAID` and `Service Fee Charged` rows are the interest; fund
-BUY/SELL rows mirror transfers already seen on the current account and are ignored. The export
-prints no balance, so the account is reported as unreconciled.
+Daily `Return PAID` / `Interest PAID` rows are the interest and `Service Fee Charged` rows the
+commission taken from it; fund BUY/SELL rows mirror transfers already seen on the current
+account and are ignored. The export prints no balance, so the account is reported as
+unreconciled.
 """
 
 from __future__ import annotations
@@ -17,7 +18,10 @@ from finanze.models import Extraction, Kind, Transaction
 
 _DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_abbr) if name}
-_INTEREST = re.compile(r"(Return PAID|Interest PAID|Service Fee Charged)\b")
+_BOOKED = (
+    (re.compile(r"(Return PAID|Interest PAID)\b"), Kind.INTEREST, "Interessi"),
+    (re.compile(r"Service Fee Charged\b"), Kind.COMMISSION, "Commissioni"),
+)
 # Fund movements, incl. interest already counted when PAID and later moved to the current account
 _IGNORED = re.compile(
     r"(BUY|SELL|Interest Reinvested|Interest WITHDRAWN|Return Reinvested|Return WITHDRAWN)\b"
@@ -44,9 +48,7 @@ def extract(content: str, source_file: str) -> Extraction:
         days.append(day)
         if _IGNORED.match(description):
             continue
-        if not _INTEREST.match(description):
-            msg = f"Revolut Savings row {n}: unsupported row {description!r}"
-            raise UnsupportedStatementError(msg)
+        kind, category = _classify(description, n)
         transactions.append(
             Transaction(
                 date=day,
@@ -54,16 +56,24 @@ def extract(content: str, source_file: str) -> Extraction:
                 amount=parse_decimal(row[column], "Revolut Savings value"),
                 currency=currency,
                 description=description,
-                kind=Kind.INTEREST,
+                kind=kind,
                 source_file=source_file,
                 source_ref=str(n),
-                category="Interessi",
+                category=category,
             )
         )
     first, last = whole_months(days, "Revolut Savings statement")
     return Extraction(
         month=first, transactions=tuple(transactions), unreconciled=(account,), end=last
     )
+
+
+def _classify(description: str, n: int) -> tuple[Kind, str]:
+    for pattern, kind, category in _BOOKED:
+        if pattern.match(description):
+            return kind, category
+    msg = f"Revolut Savings row {n}: unsupported row {description!r}"
+    raise UnsupportedStatementError(msg)
 
 
 def _date(text: str) -> date:

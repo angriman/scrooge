@@ -21,12 +21,15 @@ def test_matches_golden_file(result: Extraction) -> None:
     assert_matches_golden(result, "revolut_savings")
 
 
-def test_only_net_interest_is_booked_on_revolut_eur(result: Extraction) -> None:
-    # Return/Interest PAID 0.0812 + 0.0574 + 0.04, Service Fee -0.0050 - 0.0036
-    assert sum(t.amount for t in result.transactions) == Decimal("0.17")
-    assert {(t.account, t.currency, t.kind, t.category) for t in result.transactions} == {
-        ("Revolut EUR", "EUR", Kind.INTEREST, "Interessi")
+def test_interest_and_the_fee_on_it_are_booked_on_revolut_eur(result: Extraction) -> None:
+    totals: dict[tuple[Kind, str], Decimal] = {}
+    for t in result.transactions:
+        totals[t.kind, t.category] = totals.get((t.kind, t.category), Decimal(0)) + t.amount
+    assert totals == {
+        (Kind.INTEREST, "Interessi"): Decimal("0.1786"),  # 0.0812 + 0.0574 + 0.04 PAID
+        (Kind.COMMISSION, "Commissioni"): Decimal("-0.0086"),  # Service Fee -0.0050 - 0.0036
     }
+    assert {(t.account, t.currency) for t in result.transactions} == {("Revolut EUR", "EUR")}
 
 
 def test_fund_movements_are_ignored(result: Extraction) -> None:

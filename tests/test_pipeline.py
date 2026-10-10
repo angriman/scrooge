@@ -89,7 +89,9 @@ def test_fully_classified_month_aggregates(folder: Path) -> None:
     assert entrate["Topup Revolut", "Revolut CHF"] == Decimal("230.00")
     assert entrate["Cashback", "Migros"] == Decimal("67.80")
     assert entrate["Stipendio", "Migros"] == Decimal("7200.00")
-    assert BudgetRow("Interessi", "Revolut EUR", Decimal("0.17")) in budget.entrate
+    # Revolut Savings: 0.1786 paid, 0.0086 of it taken as the fund's fee, each to the cent
+    assert BudgetRow("Interessi", "Revolut EUR", Decimal("0.18")) in budget.entrate
+    assert uscite["Commissioni", "Revolut EUR"] == Decimal("0.01")
     # D3: the card bill itself never reaches the sheet
     internal = [t for t in month.transactions if t.kind is Kind.INTERNAL and t.account == "Migros"]
     assert [t.amount for t in internal] == [Decimal("-1288.18")]
