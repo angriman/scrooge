@@ -49,8 +49,7 @@ hooks-run: ## Run every pre-commit hook over all files
 nas-app: ## The folder the NAS builds the web app's image from (deploy/README.md)
 	rm -rf $(NAS_APP)
 	mkdir -p $(NAS_APP)
-	git archive HEAD Dockerfile .dockerignore pyproject.toml src | tar -x -C $(NAS_APP)
-	cp uv.lock $(NAS_APP)/
+	git archive HEAD Dockerfile .dockerignore pyproject.toml uv.lock src | tar -x -C $(NAS_APP)
 	@echo "$(NAS_APP): commit $$(git rev-parse --short HEAD), to copy to the NAS"
 
 clean: ## Remove caches and coverage artifacts

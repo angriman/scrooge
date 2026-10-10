@@ -38,3 +38,4 @@ mutants/
 
 # Lock files
 *.lock
+!uv.lock
