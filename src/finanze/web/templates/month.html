@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ month.month.strftime("%B %Y") }}, {{ month.owner }}{% endblock %}
 {% macro act(name, label) %}
+{%- if not copy %}
 <form method="post" action="{{ url_for(name, owner=month.owner, month=month.month.strftime('%Y-%m')) }}">
   <input type="hidden" name="token" value="{{ token }}">
   <button>{{ label }}</button>
 </form>
+{%- endif %}
 {% endmacro %}
 {% block main %}
 {%- if error %}
@@ -13,7 +15,7 @@
 <section>
   <h2>State</h2>
   {%- if month.committed %}
-  <p>Committed on {{ month.committed_at[:10] }}. Reopen it to import its statements again.</p>
+  <p>Committed on {{ month.committed_at[:10] }}.{% if not copy %} Reopen it to import its statements again.{% endif %}</p>
   {{ act("reopen", "Reopen the month") }}
   {%- elif month.blocked_by %}
   <p>Open. It cannot be committed yet:</p>
@@ -23,8 +25,11 @@
     {%- endfor %}
   </ul>
   {%- else %}
-  <p>Open, and nothing stands in the way. A copy of the database is saved first.</p>
+  <p>Open, and nothing stands in the way.{% if not copy %} A copy of the database is saved first.{% endif %}</p>
   {{ act("commit", "Commit the month") }}
+  {%- endif %}
+  {%- if copy %}
+  <p class="note">{{ copy }}</p>
   {%- endif %}
 </section>
 <section>
@@ -69,7 +74,9 @@
           {%- endfor %}
         </td>
         <td>
-          {%- if month.committed %}
+          {%- if copy %}
+          Not set here.
+          {%- elif month.committed %}
           Reopen the month to set it.
           {%- else %}
           <form method="post" action="{{ url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="choice">

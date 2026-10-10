@@ -7,6 +7,9 @@ open it to write. Nothing is loaded from another site, and a header tells the br
 
 With a password (`web/auth.py`) every page but the one that asks for it wants a signed-in
 browser, and only then may the app be reached under other names than this machine's.
+
+Over a copy of the database (`read_only`) nothing opens it to write: the pages have no forms
+but the ones that sign in and out, and what the forms would send is refused.
 """
 
 from __future__ import annotations
@@ -58,6 +61,7 @@ _HEADERS = {
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
 }
+_COPY = "This is a copy: changes are made on the machine that holds the data."
 _PAGE = 200  # transactions shown at once
 _CSV = (
     "date",
@@ -77,9 +81,11 @@ _CSV = (
 
 
 def _everywhere(request: Request) -> dict[str, object]:
-    """What every page needs for the button that signs out."""
+    """What every page needs for the button that signs out, and to say so in place of its
+    forms when it shows a copy of the database."""
     state = request.app.state
-    return {"signing": state.access is not None, "token": state.token}
+    copy = _COPY if state.read_only else ""
+    return {"signing": state.access is not None, "token": state.token, "copy": copy}
 
 
 _templates = Jinja2Templates(directory=_HERE / "templates", context_processors=[_everywhere])
@@ -171,26 +177,30 @@ class Rules:
         return monthclose.Remember(self.shared, own, everyone, others)
 
 
-def create_app(
+def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per key of `serve`
     database: Path,
     clock: Callable[[], datetime] = _utc_now,
     rules: Rules | None = None,
     *,
     names: Sequence[str] = (),
     password: str = "",
+    read_only: bool = False,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
 
     Without `rules` a category can only be chosen for the rows shown, not remembered.
     `password` is the digest `auth.digest` wrote: with it every page wants a signed-in
     browser. `names` are what other devices call this machine; without a password there
-    are no other devices, so they are refused (D18).
+    are no other devices, so they are refused (D18). `read_only` is for a copy of the
+    database, which may lie where nothing can be written: no page offers to change it, and
+    nothing sent does.
     """
     if names and not password:
         msg = "the app is not served under other names without a password"
         raise ValueError(msg)
     access = auth.Access(password) if password else None
     hosts = (*_HOSTS, *names)
+    commit, reopen, categorize = (_copy,) * 3 if read_only else (_commit, _reopen, _categorize)
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
@@ -200,11 +210,11 @@ def create_app(
             Route("/cashflow", _cashflow, name="cashflow"),
             Route("/months", _months, name="months"),
             Route("/months/{owner}/{month}", _month, name="month"),
-            Route("/months/{owner}/{month}/commit", _commit, methods=["POST"], name="commit"),
-            Route("/months/{owner}/{month}/reopen", _reopen, methods=["POST"], name="reopen"),
+            Route("/months/{owner}/{month}/commit", commit, methods=["POST"], name="commit"),
+            Route("/months/{owner}/{month}/reopen", reopen, methods=["POST"], name="reopen"),
             Route(
                 "/months/{owner}/{month}/categorize",
-                _categorize,
+                categorize,
                 methods=["POST"],
                 name="categorize",
             ),
@@ -230,6 +240,7 @@ def create_app(
     app.state.clock = clock
     app.state.rules = rules
     app.state.access = access
+    app.state.read_only = read_only
     app.state.hosts = hosts
     # Sent back by every form of these pages: a page of another site cannot read it, so it
     # cannot make the browser change anything here.
@@ -313,6 +324,14 @@ async def _sent(request: Request) -> dict[str, list[str]]:
     if not secrets.compare_digest(token, request.app.state.token.encode()):
         raise HTTPException(403)
     return fields
+
+
+async def _copy(request: Request) -> Response:
+    """What a copy answers to a form that would change it, in place of the three handlers
+    below: 403, as the request is understood and nobody may make it here. Signing in and the
+    token are still asked for first, so the answer tells a stranger nothing."""
+    await _sent(request)
+    return PlainTextResponse(f"{_COPY}\n", status_code=403)
 
 
 async def _commit(request: Request) -> Response:
