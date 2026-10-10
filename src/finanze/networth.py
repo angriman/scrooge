@@ -28,6 +28,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import TypeVar
 
 from finanze import query
 from finanze.extractors.common import month_end
@@ -52,6 +53,7 @@ _ONE_DAY = timedelta(days=1)
 # Which close counts when a day has several: typed, printed by a statement, fetched; the
 # price of a trade only where there is nothing else.
 _TRADE_PRICE = 3
+_T = TypeVar("_T")
 
 
 class MissingRateError(Exception):
@@ -113,12 +115,26 @@ def _added(series: Iterable[Sequence[Decimal]]) -> tuple[Decimal, ...]:
 
 
 @dataclass(frozen=True, slots=True)
-class _Series:
+class Quote:
+    """The close a holding is valued at on a day: the last one on or before it."""
+
+    day: date  # the day the close is from; after the day valued where the first one stands in
+    close: Decimal
+    traded: bool  # no close is stored for that day: the price of a trade stands in
+
+
+@dataclass(frozen=True, slots=True)
+class Series:
+    """What one account's cash, or one instrument it holds, is worth day by day."""
+
     owner: str
     account_id: int
     asset: str
     currency: str
-    values: list[Decimal]  # one per day
+    values: list[Decimal]  # one per day, not rounded
+    instrument_id: int | None = None  # None: the cash of the account
+    quantity: Decimal | None = None  # of the instrument, held at the end of the last day
+    quote: Quote | None = None  # what the last day is valued at; None for cash and bills
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +148,13 @@ class _Account:
 
 
 @dataclass(frozen=True, slots=True)
-class _Valued:
+class Valued:
+    """Every series up to the last day, each in its own currency: what every figure is made of."""
+
     days: tuple[date, ...]
-    series: tuple[_Series, ...]
+    series: tuple[Series, ...]
     notes: tuple[str, ...]
+    security_notes: tuple[str, ...]  # those of `notes` that are about what is held
 
 
 def _days(first: date, last: date) -> tuple[date, ...]:
@@ -163,8 +182,11 @@ def _accounts(conn: sqlite3.Connection, owners: Iterable[str]) -> dict[int, _Acc
     }
 
 
-def _value(conn: sqlite3.Connection, owner: str | None) -> _Valued | None:
-    """Every series of `owner`, or of everyone, up to the last day all of them have committed."""
+def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
+    """Every series of `owner`, or of everyone, up to the last day all of them have committed.
+
+    None when nothing is committed, or nothing is known of what is.
+    """
     query.check_names(conn, query.Filter(owner=owner))
     last_days = _last_days(conn, owner)
     if not last_days:
@@ -186,8 +208,9 @@ def _value(conn: sqlite3.Connection, owner: str | None) -> _Valued | None:
     days = _days(min(starts), last)
     notes: list[str] = []
     series = _cash(accounts, flows, anchors, days, notes)
-    series += _securities(conn, accounts, held, days, notes)
-    return _Valued(days, tuple(series), tuple(notes))
+    security_notes: list[str] = []
+    series += _securities(conn, accounts, held, days, security_notes)
+    return Valued(days, tuple(series), (*notes, *security_notes), tuple(security_notes))
 
 
 # ---------------------------------------------------------------------------------- cash
@@ -266,8 +289,8 @@ def _cash(
     anchors: Mapping[int, Mapping[date, int]],
     days: Sequence[date],
     notes: list[str],
-) -> list[_Series]:
-    series: list[_Series] = []
+) -> list[Series]:
+    series: list[Series] = []
     for account in accounts.values():
         booked, known = flows.get(account.id, {}), anchors.get(account.id, {})
         if not booked and not known:
@@ -293,7 +316,7 @@ def _cash(
             asset = PENSION
         elif account.kind == _CARRIED_FLAT and account.source is not None:
             asset = PILLAR2
-        series.append(_Series(account.owner, account.id, asset, account.currency, values))
+        series.append(Series(account.owner, account.id, asset, account.currency, values))
     return series
 
 
@@ -335,7 +358,7 @@ def _securities(
     held: Sequence[holdings.Holding],
     days: Sequence[date],
     notes: list[str],
-) -> list[_Series]:
+) -> list[Series]:
     instruments = {
         int(r[0]): (str(r[1]), str(r[2]), str(r[3]), r[4] and date.fromisoformat(r[4]))
         for r in conn.execute("SELECT id, symbol, type, currency, maturity FROM instruments")
@@ -343,10 +366,11 @@ def _securities(
     closes = _closes(conn)
     lots = _bill_trades(conn)
     unpriced: set[str] = set()
-    series: list[_Series] = []
+    series: list[Series] = []
     for holding in held:
         account = accounts[holding.account_id]
         symbol, kind, currency, maturity = instruments[holding.instrument_id]
+        quote = None
         if kind in {"bill", "bond"}:
             trades = lots.get((holding.account_id, holding.instrument_id), [])
             values = _bill_values(trades, maturity, days)
@@ -355,6 +379,8 @@ def _securities(
         else:
             points = closes.get(holding.instrument_id, [])
             values = _share_values(holding, [(day, close) for day, _, close in points], days)
+            quoted = [(day, Quote(day, close, rank == _TRADE_PRICE)) for day, rank, close in points]
+            quote = _carried(quoted, days[-1:])[0] if quoted else None
             if any(values) and all(rank == _TRADE_PRICE for _, rank, _ in points):
                 unpriced.add(symbol)
             if not points and any(step.quantity for step in holding.steps):
@@ -362,7 +388,18 @@ def _securities(
         if not any(values):
             continue
         asset = PENSION if account.source == _PENSION_SOURCE else _BY_TYPE[kind]
-        series.append(_Series(account.owner, account.id, asset, currency, values))
+        series.append(
+            Series(
+                account.owner,
+                account.id,
+                asset,
+                currency,
+                values,
+                holding.instrument_id,
+                holding.on(days[-1]),
+                quote,
+            )
+        )
     if unpriced:
         notes.append(
             f"No close is stored for {', '.join(sorted(unpriced))}: valued at the price of the "
@@ -394,7 +431,7 @@ def _closes(conn: sqlite3.Connection) -> dict[int, list[tuple[date, int, Decimal
     }
 
 
-def _carried(points: Sequence[tuple[date, Decimal]], days: Sequence[date]) -> list[Decimal]:
+def _carried(points: Sequence[tuple[date, _T]], days: Sequence[date]) -> list[_T]:
     """For each day the value of the last of `points` on or before it; the first one stands
     in for the days before it. There must be a point."""
     when = [day for day, _ in points]
@@ -465,7 +502,7 @@ def _bill_values(
 # ----------------------------------------------------------------------------- currencies
 
 
-def _rates(conn: sqlite3.Connection, days: Sequence[date]) -> dict[str, list[Decimal]]:
+def rates_on(conn: sqlite3.Connection, days: Sequence[date]) -> dict[str, list[Decimal]]:
     """currency -> francs per unit on each day: the last rate on or before it."""
     best: dict[str, dict[date, tuple[int, Decimal]]] = defaultdict(dict)
     rows = conn.execute(
@@ -485,7 +522,7 @@ def _rates(conn: sqlite3.Connection, days: Sequence[date]) -> dict[str, list[Dec
     return rates
 
 
-def _converted(
+def convert(
     values: Sequence[Decimal],
     currency: str,
     into: str,
@@ -514,13 +551,13 @@ def run(
 
     For several people it ends on the last day all of them have committed.
     """
-    valued = _value(conn, owner)
+    valued = value(conn, owner)
     if valued is None:
         return NetWorth(currency, (), (), ())
-    rates = _rates(conn, valued.days)
+    rates = rates_on(conn, valued.days)
     sums: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
     for series in valued.series:
-        converted = _converted(series.values, series.currency, currency, rates)
+        converted = convert(series.values, series.currency, currency, rates)
         sums[series.owner, series.asset].append(converted)
     lines = tuple(
         Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)))
@@ -544,10 +581,10 @@ def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check
     shares awarded and not yet vested. What the statement counts and these pages do not
     (options, accruals) has nothing derived next to it, and shows in the total.
     """
-    valued = _value(conn, owner)
+    valued = value(conn, owner)
     if valued is None:
         return ()
-    rates = _rates(conn, valued.days)
+    rates = rates_on(conn, valued.days)
     index = {day: n for n, day in enumerate(valued.days)}
     accounts: dict[int, dict[int, str]] = {}
     found: list[Check] = []
@@ -577,7 +614,7 @@ def checks(conn: sqlite3.Connection, *, owner: str | None = None) -> tuple[Check
             that_day = {code: values[at : at + 1] for code, values in rates.items()}
             derived = sum(
                 (
-                    _converted(s.values[at : at + 1], s.currency, currency, that_day)[0]
+                    convert(s.values[at : at + 1], s.currency, currency, that_day)[0]
                     for s in valued.series
                     if s.account_id in of_file and s.asset in _PRINTED[label]
                 ),
