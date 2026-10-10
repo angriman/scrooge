@@ -15,6 +15,8 @@ FIXTURES = Path(__file__).parents[1] / "fixtures"
 def jsonable(value: Any) -> Any:
     if isinstance(value, Decimal | date):
         return str(value)
+    if isinstance(value, tuple):
+        return [jsonable(item) for item in value]
     if isinstance(value, dict):
         return {key: jsonable(item) for key, item in value.items()}
     return value

@@ -4,11 +4,19 @@ The certificate is a scan: `ocr.read_text` gives its text and `extract` parses t
 is pure. The one row taken is "Your retirement assets as at <date>", with the mandatory
 portion, the extra-mandatory portion and their total; the rows under it are projections. The
 two portions must add up to the total, which is what catches a misread digit.
+
+The certificate of 1 January prints the year behind it instead: "Retirement assets as at
+<date>" once for the day the year began (not on the first one) and once for the day it ended,
+with interest and credits in between. The later row is the certificate's; the earlier one is
+what the certificate of the year before stated, and is taken as the balance the year opened
+with (decided 2026-10-10): it must read as cleanly.
 """
 
 from __future__ import annotations
 
 import re
+from datetime import date
+from decimal import Decimal
 
 from finanze.errors import ExtractionError
 from finanze.extractors.common import only_match, parse_swiss_amount, parse_swiss_date
@@ -21,7 +29,7 @@ ADDS_UP = True  # the two portions must make the total: the figure is checked
 
 _TITLE = "Pension fund certificate"
 _ISSUER = re.compile(r"\bAXA\b")
-_ASSETS = re.compile(r"Your retirement assets as at[ \t]+(\S+)(.*)")
+_ASSETS = re.compile(r"^(?:Your r|R)etirement assets as at[ \t]+(\S+)(.*)", re.MULTILINE)
 _START = re.compile(r"Beginning of insurance[ \t]+(\S+)")
 
 
@@ -35,8 +43,27 @@ def extract(content: str) -> PensionCertificate:
     if not recognises(content):
         msg = f'AXA: no "{_TITLE}" heading'
         raise ExtractionError(msg)
-    row = only_match(_ASSETS, content, 'AXA: the row "Your retirement assets as at"')
-    as_of = parse_swiss_date(row[1], "AXA retirement assets date")
+    rows = sorted(_assets(found) for found in _ASSETS.finditer(content))
+    days = {day for day, _, _ in rows}
+    if len(rows) not in (1, 2) or len(days) != len(rows):
+        msg = (
+            f'AXA: the row "retirement assets as at": found {len(rows)} times on {len(days)} '
+            "days, expected once, or once each for the two days a year runs between"
+        )
+        raise ExtractionError(msg)
+    as_of, mandatory, total = rows[-1]
+    opened = None if len(rows) == 1 else (rows[0][0], rows[0][2])
+    start = only_match(_START, content, 'AXA: "Beginning of insurance"')
+    since = parse_swiss_date(start[1], "AXA beginning of insurance")
+    if since > as_of:
+        msg = f"AXA: the insurance begins on {since}, after the assets' date {as_of}"
+        raise ExtractionError(msg)
+    return PensionCertificate(SOURCE, as_of, CURRENCY, total, mandatory, since, opened)
+
+
+def _assets(row: re.Match[str]) -> tuple[date, Decimal, Decimal]:
+    """The day, the mandatory portion and the total of one row of retirement assets."""
+    day = parse_swiss_date(row[1], "AXA retirement assets date")
     figures = row[2].split()
     if len(figures) != 3:
         msg = f"AXA: the retirement assets row has {len(figures)} figures, expected 3: {row[0]!r}"
@@ -45,9 +72,4 @@ def extract(content: str) -> PensionCertificate:
     if mandatory + extra != total:
         msg = f"AXA: the portions {mandatory} and {extra} do not add up to the total {total}"
         raise ExtractionError(msg)
-    start = only_match(_START, content, 'AXA: "Beginning of insurance"')
-    since = parse_swiss_date(start[1], "AXA beginning of insurance")
-    if since > as_of:
-        msg = f"AXA: the insurance begins on {since}, after the assets' date {as_of}"
-        raise ExtractionError(msg)
-    return PensionCertificate(SOURCE, as_of, CURRENCY, total, mandatory, since)
+    return day, mandatory, total

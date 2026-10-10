@@ -1,0 +1,9 @@
+{
+  "source": "axa",
+  "as_of": "2026-01-01",
+  "currency": "CHF",
+  "balance": "37026.00",
+  "mandatory": "12345.65",
+  "insured_since": "2021-09-01",
+  "opened": ["2025-01-01", "30000.75"]
+}

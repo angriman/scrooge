@@ -23,6 +23,12 @@ def test_the_axa_scan_reads_as_its_golden_file(axa_text: str) -> None:
     assert_certificate_matches_golden(axa.extract(axa_text), "axa")
 
 
+def test_the_yearly_axa_scan_reads_as_its_golden_file() -> None:
+    text = ocr.read_text(FIXTURES / "axa_yearly" / "certificate.pdf")
+    assert axa.recognises(text)
+    assert_certificate_matches_golden(axa.extract(text), "axa_yearly")
+
+
 def test_the_servisa_scan_reads_as_its_golden_file() -> None:
     text = ocr.read_text(SERVISA)
     assert servisa.recognises(text)

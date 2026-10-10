@@ -145,6 +145,8 @@ class PensionCertificate:
     A certificate has no transactions and no period: `balance` is what the pension fund held
     for the person on `as_of`, a day of its own choosing (often the first of a month).
     `mandatory` is the part of `balance` under the legal minimum (BVG), never more than it.
+    `opened` is the day and the balance the year behind it began with, on a certificate that
+    prints them: what the certificate of that day stated, or would have.
     """
 
     source: str
@@ -153,6 +155,7 @@ class PensionCertificate:
     balance: Decimal
     mandatory: Decimal
     insured_since: date  # nothing was held there before this day
+    opened: tuple[date, Decimal] | None = None
 
 
 @dataclass(frozen=True, slots=True)

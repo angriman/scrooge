@@ -1,4 +1,4 @@
-"""Draws the scanned pension certificates under `tests/fixtures/` (axa, servisa).
+"""Draws the scanned pension certificates under `tests/fixtures/` (axa, axa_yearly, servisa).
 
 Run `uv run python -m tests.make_certificates` to make them again. Every name, number and
 amount is invented; only the labels and the layout are those of the real certificates, at the
@@ -98,6 +98,37 @@ _AXA: tuple[_Text, ...] = (
     (200, 3290, "page 1/1", 30, False),
 )
 _AXA_RULES = (700, 790, 1015, 1370)
+_AXA_ASSETS = 1468  # the line of the one row of retirement assets
+_LINE = 44
+# The certificate of 1 January prints the year behind it instead: label and three figures.
+_AXA_YEAR = (
+    ("Retirement assets as at 01.01.2025", "10'000.50", "20'000.25", "30'000.75"),
+    ("Interest (1.25%) for 2025", "125.00", "250.00", "375.00"),
+    ("Retirement credit for 2025", "2'220.15", "4'430.10", "6'650.25"),
+    ("Retirement assets as at 01.01.2026", "12'345.65", "24'680.35", "37'026.00"),
+)
+
+
+def _axa_yearly() -> tuple[_Text, ...]:
+    """The page of `_AXA` as it is issued on 1 January, with the rows of `_AXA_YEAR`."""
+    below = _LINE * (len(_AXA_YEAR) - 1)
+    kept: list[_Text] = [
+        (x, y + below if y > _AXA_ASSETS else y, text.replace("01.03.2026", "01.01.2026"), size, b)
+        for x, y, text, size, b in _AXA
+        if y != _AXA_ASSETS and text != "Retirement assets"
+    ]
+    year: list[_Text] = [
+        (200, _AXA_ASSETS - _LINE, "Development of retirement assets in 2025", 36, True)
+    ]
+    for line, (label, *figures) in enumerate(_AXA_YEAR):
+        y = _AXA_ASSETS + _LINE * line
+        year.append((200, y, label, 36, False))
+        year.extend(
+            (edge, y, figure, 36, False)
+            for edge, figure in zip((-1540, -2010, -2260), figures, strict=True)
+        )
+    return (*kept, *year)
+
 
 _SERVISA_LETTER: tuple[_Text, ...] = (
     (340, 300, "Servisa", 70, True),
@@ -209,6 +240,7 @@ def _save(pages: list[Image.Image], folder: str) -> None:
 
 def main() -> None:
     _save([_page(_AXA, _AXA_RULES, (200, 2270))], "axa")
+    _save([_page(_axa_yearly(), _AXA_RULES, (200, 2270))], "axa_yearly")
     letter = _page(_SERVISA_LETTER, (), (0, 0))
     _save([letter, _margin(_page(_SERVISA, _SERVISA_RULES, (340, 2190)))], "servisa")
 

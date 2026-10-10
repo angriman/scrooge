@@ -4,5 +4,6 @@
   "currency": "CHF",
   "balance": "35802.00",
   "mandatory": "12345.65",
-  "insured_since": "2021-09-01"
+  "insured_since": "2021-09-01",
+  "opened": null
 }
