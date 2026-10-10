@@ -191,10 +191,11 @@ code {
   --surface: Canvas;
   --series-1: #2a78d6;
   --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
-  --series-5: #e87ba4;
-  --series-6: #008300;
+  --series-3: #7a5cd6;
+  --series-4: #1baf7a;
+  --series-5: #eda100;
+  --series-6: #e87ba4;
+  --series-7: #008300;
   margin: 0 0 1.5rem;
 }
 
@@ -206,10 +207,11 @@ code {
     --tip: #262624;
     --series-1: #3987e5;
     --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-    --series-6: #008300;
+    --series-3: #9279e8;
+    --series-4: #199e70;
+    --series-5: #c98500;
+    --series-6: #d55181;
+    --series-7: #008300;
   }
 }
 
@@ -280,10 +282,11 @@ code {
 .slot-0 { background: currentColor; }
 .slot-1 { background: var(--series-1, #2a78d6); }
 .slot-2 { background: var(--series-2, #eb6834); }
-.slot-3 { background: var(--series-3, #1baf7a); }
-.slot-4 { background: var(--series-4, #eda100); }
-.slot-5 { background: var(--series-5, #e87ba4); }
-.slot-6 { background: var(--series-6, #008300); }
+.slot-3 { background: var(--series-3, #7a5cd6); }
+.slot-4 { background: var(--series-4, #1baf7a); }
+.slot-5 { background: var(--series-5, #eda100); }
+.slot-6 { background: var(--series-6, #e87ba4); }
+.slot-7 { background: var(--series-7, #008300); }
 
 .plot {
   min-height: 420px;

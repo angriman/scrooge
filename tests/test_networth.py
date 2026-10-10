@@ -12,7 +12,16 @@ from hypothesis import strategies as st
 
 from finanze import monthclose, networth, query
 from finanze.models import CashBalance, Holding, Kind, PrintedValue, SecurityTrade, Transaction
-from finanze.networth import BILLS, CARD, CASH, ETFS, PENSION, STOCKS, MissingRateError
+from finanze.networth import (
+    BILLS,
+    CARD,
+    CASH,
+    ETFS,
+    PENSION,
+    PILLAR2,
+    STOCKS,
+    MissingRateError,
+)
 from finanze.pipeline import Statement
 from finanze.storage import db, store
 from tests.storage.helpers import (
@@ -274,7 +283,7 @@ def test_an_account_that_is_only_typed_is_carried_flat_and_says_so(
     )
 
 
-def test_a_pension_fund_counts_as_cash_from_the_day_of_its_certificate(
+def test_a_pension_fund_is_a_line_of_its_own_from_the_day_of_its_certificate(
     conn: sqlite3.Connection,
 ) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
@@ -287,15 +296,16 @@ def test_a_pension_fund_counts_as_cash_from_the_day_of_its_certificate(
 
     result = networth.run(conn, currency="CHF")
     assert result.days == before.days
-    assert [x.asset for x in result.lines] == [CASH]  # no line of its own
-    cash = line(result, CASH)
-    assert [cash[d] for d in (day(1), day(4), day(5), day(19), day(20), day(30))] == [
-        D(1000),
-        D(1000),
-        D("36802.00"),
-        D("36802.00"),
-        D("37000.50"),
-        D("37000.50"),
+    assert [x.asset for x in result.lines] == [CASH, PILLAR2]
+    assert set(line(result, CASH).values()) == {D(1000)}
+    fund = line(result, PILLAR2)
+    assert [fund[d] for d in (day(1), day(4), day(5), day(19), day(20), day(30))] == [
+        D(0),
+        D(0),
+        D("35802.00"),
+        D("35802.00"),
+        D("36000.50"),
+        D("36000.50"),
     ]
     assert result.notes == (
         "Pillar 2 AXA of Lukas is carried at what its certificates state, the last one for "
@@ -311,8 +321,8 @@ def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Conne
     monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     result = networth.run(conn)
     assert result.days[0] == day(10)  # nothing is known before: no day before it
-    cash = line(result, CASH)
-    assert (cash[day(10)], cash[day(15)]) == (D("9894.74"), D("10000.00"))
+    fund = line(result, PILLAR2)
+    assert (fund[day(10)], fund[day(15)]) == (D("9894.74"), D("10000.00"))
 
 
 def test_the_pension_fund_of_one_person_is_not_the_others(conn: sqlite3.Connection) -> None:
@@ -323,8 +333,9 @@ def test_the_pension_fund_of_one_person_is_not_the_others(conn: sqlite3.Connecti
     monthclose.stage(conn, certified(scan, owner=PARTNER), NOW)
     monthclose.commit(conn, owner=PARTNER, month=SEPTEMBER, now=NOW)
     both = networth.run(conn, currency="CHF")
-    assert line(both, CASH, PARTNER)[day(1)] == D("4079.40")
-    assert line(both, CASH)[day(1)] == D(1000)
+    assert line(both, PILLAR2, PARTNER)[day(1)] == D("3579.40")
+    assert line(both, CASH, PARTNER)[day(1)] == D(500)
+    assert PILLAR2 not in {x.asset for x in both.lines if x.owner == OWNER}
     at = both.days.index(day(1))
     assert both.total[at - 1 : at + 1] == (D(1500), D("5079.40"))
     assert networth.run(conn, owner=OWNER, currency="CHF").notes == ()

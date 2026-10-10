@@ -8,9 +8,9 @@ into the currency asked for. Nothing here is stored and nothing here writes.
   since; an account starts with its first statement and counts for nothing before. Money
   set aside inside an account (Revolut's savings, D8) stays part of it. An account that is
   only ever typed is carried flat between the days it was typed for.
-- **A second-pillar pension fund** has no assets to follow: it counts as cash in francs,
-  nothing before the day of its first certificate, then what each certificate states until
-  the day of the next one (decided 2026-10-10).
+- **A second-pillar pension fund** has no assets to follow: it is valued like cash in francs,
+  on a line of its own (`Pillar 2`), nothing before the day of its first certificate, then
+  what each certificate states until the day of the next one (decided 2026-10-10).
 - **Shares, ETFs and funds** are the quantity held (`storage.holdings`) times the last close
   on or before the day: typed, then printed by a statement, then fetched. Without any close
   the price of the last trade stands in, and a note says so.
@@ -39,10 +39,11 @@ BASE = "CHF"  # every stored rate is francs per unit of the currency
 CURRENCIES = ("EUR", "CHF", "USD", "GBP", "JPY")  # what net worth can be shown in
 DEFAULT_CURRENCY = "EUR"
 CASH, ETFS, STOCKS, BILLS, PENSION, CARD = "Cash", "ETFs", "Stocks", "Bills", "Pillar 3a", "Card"
-ASSETS = (CASH, ETFS, STOCKS, BILLS, PENSION, CARD)  # in the order they are listed
+PILLAR2 = "Pillar 2"  # an occupational pension fund: only the figure its certificates state
+ASSETS = (CASH, ETFS, STOCKS, BILLS, PILLAR2, PENSION, CARD)  # in the order they are listed
 # From the bottom of a stacked chart up: what moves least first, so that the swings of the
 # rest do not shake it. A card is only ever owed: it comes last and hangs below zero.
-STACK = (CASH, BILLS, PENSION, ETFS, STOCKS, CARD)
+STACK = (CASH, BILLS, PILLAR2, PENSION, ETFS, STOCKS, CARD)
 _PENSION_SOURCE = "finpension"
 _CARRIED_FLAT = "manual"  # the kind of an account without rows: typed, or a pension fund's
 _BY_TYPE = {"etf": ETFS, "stock": STOCKS, "bill": BILLS, "bond": BILLS, "fund": PENSION}
@@ -293,6 +294,8 @@ def _cash(
             asset = CARD
         elif account.source == _PENSION_SOURCE:
             asset = PENSION
+        elif account.kind == _CARRIED_FLAT and account.source is not None:
+            asset = PILLAR2
         series.append(_Series(account.owner, account.id, asset, account.currency, values))
     return series
 
