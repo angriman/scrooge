@@ -1,0 +1,23 @@
+# Nothing reaches the image build unless it is named here: the config, the database and
+# its copies, statements, output, personal rules, internal docs, tests and caches all stay
+# out, and so does whatever is added to the folder later.
+*
+
+!pyproject.toml
+!uv.lock
+!src
+!src/**
+
+# Inside src: what is not source.
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.DS_Store
+
+# Never, wherever they turn up.
+**/finanze.yaml
+**/rules.local.yaml
+**/rules.*.yaml
+**/*.db
+**/*.db-*
+**/*.sqlite*
