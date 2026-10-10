@@ -387,10 +387,8 @@ def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.C
     result = networth.run(conn, currency="USD")
     cash = line(result, CASH)
     assert (min(cash), cash[day(3)], cash[day(30)]) == (day(3), D(5000), D(4880))
-    assert result.notes == (
-        f"Tastytrade of {OWNER} has no balance from any statement: its cash adds up from "
-        "nothing, so what was there before its first row is missing.",
-    )
+    # its first statement opens at zero, so there is nothing to warn about
+    assert result.notes == ()
 
 
 def test_rows_booked_before_the_first_balance_lead_up_to_it(conn: sqlite3.Connection) -> None:

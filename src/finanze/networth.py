@@ -274,10 +274,7 @@ def _cash(
             continue
         values = _balances(booked, known, days)
         if not known:
-            notes.append(
-                f"{account.name} of {account.owner} has no balance from any statement: its "
-                "cash adds up from nothing, so what was there before its first row is missing."
-            )
+            pass  # no statement prints a balance (Tastytrade): the cash adds up from its first row
         elif account.source is None:
             typed = max(known)
             notes.append(
