@@ -644,8 +644,9 @@ def test_a_password_alone_keeps_the_pages_on_this_machine_behind_it(
         (f"{{host: 0.0.0.0, password: {STORED}}}", "names: say what the devices call"),
         (f"{{host: finanze.home, password: {STORED}}}", "'finanze.home' is not an address"),
         (f"{{host: 192.168.1.20, names: a.home, password: {STORED}}}", "names: expected a list"),
-        (f"{{port: 80, password: {STORED}}}", "'serve' takes 'host', 'names' and 'password'"),
-        ("[192.168.1.20]", "'serve' takes 'host', 'names' and 'password'"),
+        (f"{{port: 80, password: {STORED}}}", "'serve' takes 'host', 'names', 'password' and"),
+        ("[192.168.1.20]", "'serve' takes 'host', 'names', 'password' and 'read_only'"),
+        ("{read_only: 1}", "serve: read_only: expected true or false, not 1"),
     ],
 )
 def test_serve_refuses_a_config_that_would_show_the_pages_unguarded_or_makes_no_sense(
@@ -654,6 +655,88 @@ def test_serve_refuses_a_config_that_would_show_the_pages_unguarded_or_makes_no_
     assert serve_with(run, monkeypatch, serve) == []
     assert run.output.startswith(f"error: {run.config}: ")
     assert why in run.output
+
+
+def test_serve_shows_a_copy_as_it_is_without_writing_anywhere(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run.database.parent.mkdir()
+    conn = db.connect(run.database)
+    db.migrate(conn, NOW)
+    conn.execute("DELETE FROM schema_version WHERE version > 1")  # as older code left it
+    conn.close()
+    assert serve_with(run, monkeypatch, "{read_only: true}") == []
+    assert run.output == (
+        f"error: {run.database}: schema version 1, where this code reads version "
+        f"{db.latest()}: publish it again, with the same version of finanze on both machines\n"
+    )
+    assert run.count("schema_version") == 1  # not brought up to date either
+
+    conn = db.connect(run.database)
+    conn.execute("INSERT INTO schema_version VALUES (?, 'x')", (db.latest(),))
+    conn.close()
+    before = run.database.read_bytes()
+    run.database.chmod(0o444)
+    run.database.parent.chmod(0o555)  # where nothing can be written, like a share mounted so
+    try:
+        (how,) = serve_with(run, monkeypatch, "{read_only: true}")
+    finally:
+        run.database.parent.chmod(0o755)
+        run.database.chmod(0o644)
+    app = how["app"]
+    assert isinstance(app, Starlette)
+    assert (app.state.read_only, app.state.database) == (True, run.database)
+    assert run.output == (
+        f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
+        "  a copy, shown as 'finanze publish' left it: nothing here changes it\n"
+    )
+    assert run.database.read_bytes() == before
+    assert [file.name for file in run.database.parent.iterdir()] == ["finanze.db"]
+
+    (how,) = serve_with(run, monkeypatch, "{read_only: false}")
+    assert isinstance(how["app"], Starlette)
+    assert how["app"].state.read_only is False
+
+
+def test_a_database_newer_than_this_code_is_refused_by_every_command(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run.database.parent.mkdir()
+    conn = db.connect(run.database)
+    db.migrate(conn, NOW)
+    conn.execute("INSERT INTO schema_version VALUES (99, 'x')")
+    conn.close()
+    newer = f"error: the database is at schema version 99, this code knows up to {db.latest()}\n"
+    assert run("query") == dbcli.FAILED
+    assert run.output == newer
+    assert serve_with(run, monkeypatch, "{}") == []
+    assert run.output == newer
+    assert serve_with(run, monkeypatch, "{read_only: true}") == []
+    assert f"{run.database}: schema version 99, where this code reads" in run.output
+
+
+def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert serve_with(run, monkeypatch, "{read_only: true}") == []
+    assert run.output == (
+        f"error: {run.database}: no copy of the database to show: run 'finanze publish' "
+        "where the data is\n"
+    )
+    assert not run.database.parent.exists()  # an unmounted share is not filled in
+
+    run.database.parent.mkdir()
+    run.database.write_text("half a file, or another one\n" * 40, encoding="utf-8")
+    assert serve_with(run, monkeypatch, "{read_only: true}") == []
+    assert run.output.startswith(f"error: {run.database}: not a database (file is not a database)")
+    assert run.output.endswith(
+        ": publish it again, with the same version of finanze on both machines\n"
+    )
+
+    run.database.write_bytes(b"")  # what SQLite takes for a database with nothing in it
+    assert serve_with(run, monkeypatch, "{read_only: true}") == []
+    assert f"{run.database}: schema version 0, where this code reads" in run.output
+    assert run.database.read_bytes() == b""
 
 
 @pytest.fixture

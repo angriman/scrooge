@@ -33,6 +33,10 @@ only command that uses the network (D9).
 
 Another address than this machine's own is refused without a password. There is no flag for
 any of it: where the pages can be seen from is written down once, not typed.
+
+On a machine that only shows a copy of the database, `serve` also has `read_only: true`:
+the copy is never created, brought up to date or changed, wherever it lies, and the pages
+have no forms. A copy this code's schema does not fit is refused.
 """
 
 from __future__ import annotations
@@ -307,22 +311,54 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     owner = "" if args.command in _READ_BOTH else _setting(args, config, "owner", "owner")
     path = Path(_setting(args, config, "db", "database")).expanduser()
     people = _people(config, args.config)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = db.connect(path)
+    if args.command == "serve":  # the pages open the database themselves, read-only
+        reach = _reach(config, args.config)
+        if reach.read_only:
+            _check_copy(path)
+        else:
+            _open(path, now).close()
+        return _serve(path, args.port, webapp.Rules(args.rules, people), reach, out)
+    conn = _open(path, now)
     try:
-        db.migrate(conn, now)
         if args.command == "query":
             return _query(conn, args, out)
         if args.command == "prices":
             return _prices(conn, args, console, now)
-        if args.command == "serve":
-            conn.close()  # the pages open the database themselves, read-only
-            reach = _reach(config, args.config)
-            return _serve(path, args.port, webapp.Rules(args.rules, people), reach, out)
         labels = _labels(config, args.config)
         return _for_owner(_Session(conn, path, owner, people, labels, console, now), args)
     finally:
         conn.close()
+
+
+def _open(path: Path, now: datetime) -> sqlite3.Connection:
+    """The database, created if there is none, with its schema brought up to date."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = db.connect(path)
+    try:
+        db.migrate(conn, now)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def _check_copy(path: Path) -> None:
+    """A copy is shown as it was published or not at all: nothing here writes to it or next
+    to it, so its schema must already be the one this code reads."""
+    again = "publish it again, with the same version of finanze on both machines"
+    if not path.is_file():
+        msg = f"{path}: no copy of the database to show: run 'finanze publish' where the data is"
+        raise ConfigError(msg)
+    try:
+        with db.reading(path) as conn:
+            found = db.version(conn)
+    except sqlite3.DatabaseError as exc:
+        msg = f"{path}: not a database ({exc}): {again}"
+        raise ConfigError(msg) from None
+    wanted = db.latest()
+    if found != wanted:
+        msg = f"{path}: schema version {found}, where this code reads version {wanted}: {again}"
+        raise ConfigError(msg)
 
 
 def _for_owner(session: _Session, args: argparse.Namespace) -> int:
@@ -362,16 +398,21 @@ class _Reach:
     host: str = webapp.HOST
     names: tuple[str, ...] = ()  # what other devices call this machine
     password: str = ""  # its digest; empty: nobody is asked
+    read_only: bool = False  # the database is a copy: shown, never written
 
 
 def _reach(config: dict[str, object], path: Path) -> _Reach:
-    """`serve: {host, names, password}`. Beyond this machine only with a password (D18)."""
+    """`serve: {host, names, password, read_only}`. Beyond this machine only with a password
+    (D18)."""
     serve = config.get("serve") or {}
-    if not isinstance(serve, dict) or set(serve) - {"host", "names", "password"}:
-        msg = f"{path}: 'serve' takes 'host', 'names' and 'password'"
+    if not isinstance(serve, dict) or set(serve) - {"host", "names", "password", "read_only"}:
+        msg = f"{path}: 'serve' takes 'host', 'names', 'password' and 'read_only'"
         raise ConfigError(msg)
     host, names = str(serve.get("host") or webapp.HOST), serve.get("names") or []
-    password = str(serve.get("password") or "")
+    password, read_only = str(serve.get("password") or ""), serve.get("read_only", False)
+    if not isinstance(read_only, bool):
+        msg = f"{path}: serve: read_only: expected true or false, not {read_only!r}"
+        raise ConfigError(msg)
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
@@ -398,7 +439,7 @@ def _reach(config: dict[str, object], path: Path) -> _Reach:
         raise ConfigError(msg)
     if not address.is_loopback and not address.is_unspecified:
         called.insert(0, host)
-    return _Reach(host, tuple(called), password)
+    return _Reach(host, tuple(called), password, read_only)
 
 
 def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: TextIO) -> int:
@@ -408,7 +449,15 @@ def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: T
     out.write(f"{database} is at http://{shown}:{port} (Ctrl-C to stop)\n")
     if reach.names:
         out.write(f"  for other devices, with the password: {', '.join(reach.names)}\n")
-    app = webapp.create_app(database, rules=rules, names=reach.names, password=reach.password)
+    if reach.read_only:
+        out.write("  a copy, shown as 'finanze publish' left it: nothing here changes it\n")
+    app = webapp.create_app(
+        database,
+        rules=rules,
+        names=reach.names,
+        password=reach.password,
+        read_only=reach.read_only,
+    )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
     return OK
 
