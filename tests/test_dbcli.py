@@ -1,4 +1,6 @@
+import getpass
 import io
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -10,10 +12,12 @@ from starlette.applications import Starlette
 from finanze import categories, cli, dbcli, networth, prices
 from finanze.extractors import ocr
 from finanze.storage import db
+from finanze.web import auth
 from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+Typed = Callable[..., tuple[int, str, list[str]]]
 CONFIG = """database: {database}
 owner: Lukas
 owners:
@@ -572,6 +576,120 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     with pytest.raises(SystemExit):
         run("serve", "--host", "0.0.0.0")  # noqa: S104  # the address that must be refused
     assert "unrecognized arguments: --host" in capsys.readouterr().err
+
+
+WORDS = "correct horse battery"
+STORED = auth.digest(WORDS, salt=bytes(16))
+
+
+def serve_with(run: Run, monkeypatch: pytest.MonkeyPatch, serve: str) -> list[dict[str, object]]:
+    """Run `serve` with that `serve:` in the config; how uvicorn was started, if it was."""
+    served: list[dict[str, object]] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **how: served.append({"app": app} | how))
+    run.config.write_text(f"database: {run.database}\nserve: {serve}\n", encoding="utf-8")
+    run("serve")
+    return served
+
+
+@pytest.mark.parametrize(
+    ("host", "names", "allowed"),
+    [
+        ("192.168.1.20", "[finanze.home]", ("192.168.1.20", "finanze.home")),
+        ("0.0.0.0", "[finanze.home]", ("finanze.home",)),  # noqa: S104  # asked for in the config
+        ("'::'", "[finanze.home]", ("finanze.home",)),
+        ("127.0.0.1", "[finanze.home]", ("finanze.home",)),  # behind a proxy
+        ("192.168.1.20", "", ("192.168.1.20",)),
+    ],
+)
+def test_serve_listens_where_the_config_says_once_it_has_a_password(
+    run: Run,
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+    names: str,
+    allowed: tuple[str, ...],
+) -> None:
+    config = f"{{host: {host}, names: {names or '[]'}, password: {STORED}}}"
+    (how,) = serve_with(run, monkeypatch, config)
+    address = host.strip("'")
+    assert how["host"] == address
+    printed = f"[{address}]" if ":" in address else address
+    app = how["app"]
+    assert isinstance(app, Starlette)
+    assert app.state.access is not None
+    assert app.state.hosts == ("127.0.0.1", "localhost", *allowed)
+    assert run.output == (
+        f"{run.database} is at http://{printed}:8765 (Ctrl-C to stop)\n"
+        f"  for other devices, with the password: {', '.join(allowed)}\n"
+    )
+
+
+def test_a_password_alone_keeps_the_pages_on_this_machine_behind_it(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (how,) = serve_with(run, monkeypatch, f"{{password: {STORED}}}")
+    assert how["host"] == "127.0.0.1"
+    app = how["app"]
+    assert isinstance(app, Starlette)
+    assert app.state.access is not None
+    assert run.output == f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
+
+
+@pytest.mark.parametrize(
+    ("serve", "why"),
+    [
+        ("{host: 192.168.1.20}", "not served beyond this machine without a password"),
+        ("{host: 0.0.0.0, names: [a.home]}", "not served beyond this machine without a password"),
+        ("{names: [a.home]}", "not served beyond this machine without a password"),
+        ("{host: 192.168.1.20, password: hunter2}", "password: not a digest written by"),
+        (f"{{host: 0.0.0.0, password: {STORED}}}", "names: say what the devices call"),
+        (f"{{host: finanze.home, password: {STORED}}}", "'finanze.home' is not an address"),
+        (f"{{host: 192.168.1.20, names: a.home, password: {STORED}}}", "names: expected a list"),
+        (f"{{port: 80, password: {STORED}}}", "'serve' takes 'host', 'names' and 'password'"),
+        ("[192.168.1.20]", "'serve' takes 'host', 'names' and 'password'"),
+    ],
+)
+def test_serve_refuses_a_config_that_would_show_the_pages_unguarded_or_makes_no_sense(
+    run: Run, monkeypatch: pytest.MonkeyPatch, serve: str, why: str
+) -> None:
+    assert serve_with(run, monkeypatch, serve) == []
+    assert run.output.startswith(f"error: {run.config}: ")
+    assert why in run.output
+
+
+@pytest.fixture
+def typed(monkeypatch: pytest.MonkeyPatch) -> Typed:
+    """Runs `finanze password` with those answers: its code, what it printed, what it asked."""
+
+    def run(*answers: str) -> tuple[int, str, list[str]]:
+        out, left, asked = io.StringIO(), list(answers), []
+
+        def secret(question: str) -> str:
+            asked.append(question)
+            return left.pop(0)
+
+        monkeypatch.setattr(getpass, "getpass", secret)
+        return dbcli.main(["password"], out), out.getvalue(), asked
+
+    return run
+
+
+def test_password_prints_the_line_for_the_config_and_never_the_password(typed: Typed) -> None:
+    code, printed, asked = typed(WORDS, WORDS)
+    assert code == dbcli.OK
+    assert asked == ["Password: ", "Once more: "]
+    first, line = printed.splitlines()
+    assert first == "Put this under 'serve' in finanze.yaml:"
+    assert line.startswith("  password: scrypt$")
+    assert auth.matches(WORDS, line.removeprefix("  password: "))
+    assert WORDS not in printed
+
+
+def test_password_wants_twelve_characters_typed_the_same_twice(typed: Typed) -> None:
+    code, printed, asked = typed("only eleven")
+    assert (code, printed) == (dbcli.FAILED, "error: a password has at least 12 characters\n")
+    assert asked == ["Password: "]
+    code, printed, _ = typed(WORDS, WORDS + "!")
+    assert (code, printed) == (dbcli.FAILED, "error: the two do not match\n")
 
 
 # ---------------------------------------------------------------------------------- prices

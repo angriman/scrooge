@@ -1,5 +1,5 @@
-"""`finanze import | commit | reopen | balance | prices | query | serve`: the database from the
-terminal.
+"""`finanze import | commit | reopen | balance | prices | query | serve | password`: the
+database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
@@ -8,7 +8,9 @@ terminal.
                               type what an account without statements held on a day
     finanze prices            fetch the closes, splits and exchange rates not stored yet
     finanze query [filters]   list the committed transactions that match, with their totals
-    finanze serve             show the database as web pages, on this machine only
+    finanze serve             show the database as web pages, on this machine only unless
+                              `serve` in the config says otherwise
+    finanze password          ask for a password and print its digest for `serve`
 
 `commit` and `reopen` take a second month to cover every month from the first to it.
 
@@ -21,11 +23,23 @@ come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--
 `account_labels` there names a further account at a broker by its account number.
 `prices`, `query` and `serve` are the exceptions: they are about both people. `prices` is the
 only command that uses the network (D9).
+
+`serve` listens on 127.0.0.1 and asks for no password, unless the config has (D18):
+
+    serve:
+      host: 192.168.1.20     # this machine's address the other devices reach; 0.0.0.0 for all
+      names: [finanze.home]  # what else they call it
+      password: scrypt$...   # the line `finanze password` prints
+
+Another address than this machine's own is refused without a password. There is no flag for
+any of it: where the pages can be seen from is written down once, not typed.
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
+import ipaddress
 import re
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
@@ -59,8 +73,9 @@ from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
 from finanze.web import app as webapp
+from finanze.web import auth
 
-COMMANDS = ("import", "commit", "reopen", "balance", "prices", "query", "serve")
+COMMANDS = ("import", "commit", "reopen", "balance", "prices", "query", "serve", "password")
 _READ_BOTH = ("prices", "query", "serve")  # commands that are not about one person's month
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
@@ -92,6 +107,8 @@ def main(
     """Run one command. `source` stands in for the network in tests."""
     args = _parser().parse_args(argv)
     try:
+        if args.command == "password":  # about no database and no config
+            return _password(out)
         return _run(args, _Console(out, ask, source), now())
     except _ERRORS as exc:
         out.write(f"error: {exc}\n")
@@ -170,6 +187,7 @@ def _parser() -> argparse.ArgumentParser:
         help="where a remembered category is saved as a rule (default: rules.local.yaml); "
         "rows naming a person go to that owner's rules.<owner>.yaml next to it",
     )
+    commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
     return parser
 
 
@@ -299,7 +317,8 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             return _prices(conn, args, console, now)
         if args.command == "serve":
             conn.close()  # the pages open the database themselves, read-only
-            return _serve(path, args.port, webapp.Rules(args.rules, people), out)
+            reach = _reach(config, args.config)
+            return _serve(path, args.port, webapp.Rules(args.rules, people), reach, out)
         labels = _labels(config, args.config)
         return _for_owner(_Session(conn, path, owner, people, labels, console, now), args)
     finally:
@@ -336,11 +355,75 @@ def _for_owner(session: _Session, args: argparse.Namespace) -> int:
     return OK
 
 
-def _serve(database: Path, port: int, rules: webapp.Rules, out: TextIO) -> int:
-    """Serve the pages until interrupted. There is no option to listen anywhere else (D18)."""
-    out.write(f"{database} is at http://{webapp.HOST}:{port} (Ctrl-C to stop)\n")
-    app = webapp.create_app(database, rules=rules)
-    uvicorn.run(app, host=webapp.HOST, port=port, log_level="warning")
+@dataclass(frozen=True, slots=True)
+class _Reach:
+    """Where the pages are served and who may see them: `serve` in the config."""
+
+    host: str = webapp.HOST
+    names: tuple[str, ...] = ()  # what other devices call this machine
+    password: str = ""  # its digest; empty: nobody is asked
+
+
+def _reach(config: dict[str, object], path: Path) -> _Reach:
+    """`serve: {host, names, password}`. Beyond this machine only with a password (D18)."""
+    serve = config.get("serve") or {}
+    if not isinstance(serve, dict) or set(serve) - {"host", "names", "password"}:
+        msg = f"{path}: 'serve' takes 'host', 'names' and 'password'"
+        raise ConfigError(msg)
+    host, names = str(serve.get("host") or webapp.HOST), serve.get("names") or []
+    password = str(serve.get("password") or "")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        msg = f"{path}: serve: host: {host!r} is not an address like 192.168.1.20"
+        raise ConfigError(msg) from None
+    if not isinstance(names, list):
+        msg = f"{path}: serve: names: expected a list of the names devices call this machine"
+        raise ConfigError(msg)
+    if password:
+        try:
+            auth.check(password)
+        except auth.MalformedDigestError as exc:
+            msg = f"{path}: serve: password: {exc}"
+            raise ConfigError(msg) from None
+    elif not address.is_loopback or names:
+        msg = (
+            f"{path}: serve: the pages are not served beyond this machine without a password: "
+            "run 'finanze password' and put its line under 'serve'"
+        )
+        raise ConfigError(msg)
+    called = [str(name) for name in names]
+    if address.is_unspecified and not called:
+        msg = f"{path}: serve: names: say what the devices call this machine: {host} is no name"
+        raise ConfigError(msg)
+    if not address.is_loopback and not address.is_unspecified:
+        called.insert(0, host)
+    return _Reach(host, tuple(called), password)
+
+
+def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: TextIO) -> int:
+    """Serve the pages until interrupted, where `serve` in the config says: there is no flag
+    to listen anywhere else (D18)."""
+    shown = f"[{reach.host}]" if ":" in reach.host else reach.host
+    out.write(f"{database} is at http://{shown}:{port} (Ctrl-C to stop)\n")
+    if reach.names:
+        out.write(f"  for other devices, with the password: {', '.join(reach.names)}\n")
+    app = webapp.create_app(database, rules=rules, names=reach.names, password=reach.password)
+    uvicorn.run(app, host=reach.host, port=port, log_level="warning")
+    return OK
+
+
+def _password(out: TextIO) -> int:
+    """Ask twice for a password and print the line that stands for it in the config."""
+    secret = getpass.getpass  # what is typed does not show on the screen
+    password = secret("Password: ")
+    if len(password) < auth.SHORTEST:
+        out.write(f"error: a password has at least {auth.SHORTEST} characters\n")
+        return FAILED
+    if secret("Once more: ") != password:
+        out.write("error: the two do not match\n")
+        return FAILED
+    out.write(f"Put this under 'serve' in finanze.yaml:\n  password: {auth.digest(password)}\n")
     return OK
 
 
