@@ -34,24 +34,24 @@
 </section>
 <section>
   <h2>Statements</h2>
-  <table>
+  <table class="cards">
     <thead>
       <tr><th>Source</th><th>File</th><th>Covers</th><th>Reconciled</th><th class="number">Transactions</th></tr>
     </thead>
     <tbody>
       {%- for file in month.files %}
       <tr>
-        <td>{{ file.source|replace("_", " ") }}</td>
-        <td>{{ file.filename }}</td>
-        <td class="date">{{ file.first }} to {{ file.last }}</td>
-        <td>{{ "yes" if file.checked else "nothing to check against" }}</td>
-        <td class="number">{{ file.transactions }}</td>
+        <td class="lead">{{ file.source|replace("_", " ") }}</td>
+        <td class="wide" data-label="File">{{ file.filename }}</td>
+        <td class="date wide" data-label="Covers">{{ file.first }} to {{ file.last }}</td>
+        <td data-label="Reconciled">{{ "yes" if file.checked else "nothing to check against" }}</td>
+        <td class="number" data-label="Transactions">{{ file.transactions }}</td>
       </tr>
       {%- endfor %}
       {%- for source in month.missing %}
       <tr>
-        <td>{{ source|replace("_", " ") }}</td>
-        <td colspan="4">No statement for this month, though there was one for the month before.</td>
+        <td class="lead">{{ source|replace("_", " ") }}</td>
+        <td colspan="4" class="wide">No statement for this month, though there was one for the month before.</td>
       </tr>
       {%- endfor %}
     </tbody>
@@ -60,20 +60,20 @@
 {%- if month.groups %}
 <section>
   <h2>Need a category</h2>
-  <table>
+  <table class="cards">
     <thead>
       <tr><th>Counterparty or description</th><th>Rows</th><th>Category</th></tr>
     </thead>
     <tbody>
       {%- for group in month.groups %}
       <tr>
-        <td>{{ group.name or "(no text)" }}<small>{{ "received" if group.incoming else "paid" }}{% if group.rows[0].description != group.name %} · {{ group.rows[0].description }}{% endif %}</small></td>
-        <td>
+        <td class="lead wide">{{ group.name or "(no text)" }}<small>{{ "received" if group.incoming else "paid" }}{% if group.rows[0].description != group.name %} · {{ group.rows[0].description }}{% endif %}</small></td>
+        <td class="wide">
           {%- for row in group.rows %}
           <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
           {%- endfor %}
         </td>
-        <td>
+        <td class="wide">
           {%- if copy %}
           Not set here.
           {%- elif month.committed %}

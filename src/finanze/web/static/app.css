@@ -363,3 +363,293 @@ figcaption {
   display: grid;
   gap: 0.2rem;
 }
+
+/* ---- on a phone. The page never scrolls sideways: the navigation scrolls in its own
+   strip, a table of many columns (.cards, .entries) becomes one card per row, each value
+   under the name of its column, and any other table too wide scrolls inside itself. */
+
+@media (max-width: 40rem) {
+  body {
+    padding: 0 0.75rem 3rem;
+  }
+
+  header {
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+    padding: 0.5rem 0;
+  }
+
+  header nav {
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  header nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The pages on a line of their own, from edge to edge. */
+  header nav:first-child {
+    flex: 1 0 100%;
+    margin: 0 -0.75rem;
+    padding: 0 0.75rem;
+  }
+
+  header nav:nth-child(2) {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  nav a {
+    padding: 0.45rem 0.7rem; /* room for a finger */
+  }
+
+  h1 {
+    font-size: 1.25rem;
+    margin: 1rem 0 0.75rem;
+  }
+
+  /* 16px: below that a phone zooms into a field when it is touched. */
+  input,
+  select,
+  button {
+    font-size: 16px;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .filter {
+    display: grid;
+    gap: 0.6rem 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter input:not([type="checkbox"]),
+  .filter select {
+    box-sizing: border-box;
+    max-width: none;
+    width: 100%;
+  }
+
+  .filter .check {
+    grid-column: 1 / -1;
+  }
+
+  .headline {
+    font-size: 1.1rem;
+  }
+
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  th,
+  td {
+    padding: 0.35rem 0.4rem;
+  }
+
+  th:first-child,
+  td:first-child {
+    padding-left: 0;
+  }
+
+  th:last-child,
+  td:last-child {
+    padding-right: 0;
+  }
+
+  th.number:not(.date) {
+    white-space: normal;
+  }
+
+  .tight {
+    font-size: 0.85rem;
+  }
+
+  .tight td:first-child {
+    white-space: nowrap;
+  }
+
+  /* The bars repeat the figures beside them. */
+  .bars,
+  .share {
+    display: none;
+  }
+
+  .plot {
+    min-height: 300px;
+  }
+
+  .tip {
+    font-size: 0.75rem;
+  }
+
+  /* ---- a card per row */
+
+  .cards thead,
+  .entries thead {
+    /* Kept for a screen reader, which the cards give no column names otherwise. */
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+  }
+
+  .cards,
+  .entries,
+  .cards tbody,
+  .entries tbody,
+  .cards tfoot {
+    display: block;
+    overflow: visible;
+  }
+
+  .cards tr,
+  .entries tr {
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 0.3rem 0.75rem;
+    padding: 0.6rem 0;
+  }
+
+  .cards th,
+  .cards td,
+  .entries td {
+    border: 0;
+    overflow-wrap: anywhere;
+    padding: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .cards tr {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cards .lead {
+    font-weight: 600;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .cards .total {
+    font-weight: 600;
+    grid-column: 2 / -1;
+    grid-row: 1;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* A figure is not broken in two: on the narrowest phone it may reach into the gap. */
+  .cards .number {
+    overflow-wrap: normal;
+  }
+
+  .cards .wide {
+    grid-column: 1 / -1;
+  }
+
+  .cards .lead.wide {
+    grid-column: 1 / -1;
+  }
+
+  .cards td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    opacity: 0.65;
+  }
+
+  .cards .total[data-label]::before {
+    display: inline;
+    font-weight: 400;
+    margin-right: 0.4rem;
+  }
+
+  .cards td:empty {
+    display: none;
+  }
+
+  .cards .kind {
+    padding: 0;
+  }
+
+  .cards .kind th {
+    grid-column: 1 / -1;
+    padding: 0.35rem 0.5rem;
+  }
+
+  /* A subtotal is its name and its amount: the shares are in the table above. */
+  .cards .subtotal td[data-label="Share"],
+  .cards tfoot td[data-label="Share"] {
+    display: none;
+  }
+
+  .cards tfoot tr {
+    border-bottom: 0;
+    border-top: 2px solid var(--line);
+  }
+
+  /* The currency a card's amount is in, which the column's heading said. */
+  .cards .total[data-unit]::after {
+    content: " " attr(data-unit);
+    font-size: 0.75rem;
+    font-weight: 400;
+    opacity: 0.65;
+  }
+
+  .cards .choice select {
+    max-width: 100%;
+  }
+
+  /* A transaction: who and how much, then what it is and when, then where. */
+  .entries tr {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .entries .what {
+    font-weight: 600;
+    grid-area: 1 / 1;
+  }
+
+  .entries .what small {
+    font-weight: 400;
+  }
+
+  .entries .amount {
+    font-weight: 600;
+    grid-area: 1 / 2;
+    text-align: right;
+  }
+
+  .entries .category {
+    grid-area: 2 / 1;
+  }
+
+  .entries .category small {
+    display: inline;
+  }
+
+  .entries .category small::before {
+    content: " · ";
+  }
+
+  .entries .date {
+    grid-area: 2 / 2;
+    text-align: right;
+  }
+
+  .entries .account {
+    grid-area: 3 / 1;
+    opacity: 0.65;
+  }
+
+  .entries .person {
+    grid-area: 3 / 2;
+    opacity: 0.65;
+    text-align: right;
+  }
+}

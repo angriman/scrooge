@@ -33,7 +33,7 @@
 {%- set most = [balances|map(attribute="income")|max, -(balances|map(attribute="expenses")|min), 1]|max %}
 <section>
   <h2>{{ currency }}</h2>
-  <table>
+  <table class="cards">
     <thead>
       <tr><th>Period</th><th class="number">Income</th><th class="number">Expenses</th><th></th><th class="number">Left</th><th class="number">Investing</th></tr>
     </thead>
@@ -41,26 +41,26 @@
       {%- for item in balances|reverse %}
       {%- set first, last = days(item.period) %}
       <tr>
-        <td class="date"><a href="{{ listed(first, last) }}">{{ item.period }}</a></td>
-        <td class="number">{{ item.income|money }}</td>
-        <td class="number">{{ item.expenses|money }}</td>
+        <td class="date lead"><a href="{{ listed(first, last) }}">{{ item.period }}</a></td>
+        <td class="number" data-label="Income">{{ item.income|money }}</td>
+        <td class="number" data-label="Expenses">{{ item.expenses|money }}</td>
         <td class="bars">
           <meter class="income" min="0" max="{{ most }}" value="{{ [item.income, 0]|max }}" title="Income {{ item.income|money }}"></meter>
           <meter class="expenses" min="0" max="{{ most }}" value="{{ [-item.expenses, 0]|max }}" title="Expenses {{ item.expenses|money }}"></meter>
         </td>
-        <td class="number">{{ item.net|money }}</td>
-        <td class="number">{{ item.investing|money }}</td>
+        <td class="number total" data-label="Left">{{ item.net|money }}</td>
+        <td class="number" data-label="Investing">{{ item.investing|money }}</td>
       </tr>
       {%- endfor %}
     </tbody>
     <tfoot>
       <tr>
-        <th>All {{ balances|length }}</th>
-        <td class="number">{{ balances|sum(attribute="income")|money }}</td>
-        <td class="number">{{ balances|sum(attribute="expenses")|money }}</td>
+        <th class="lead">All {{ balances|length }}</th>
+        <td class="number" data-label="Income">{{ balances|sum(attribute="income")|money }}</td>
+        <td class="number" data-label="Expenses">{{ balances|sum(attribute="expenses")|money }}</td>
         <td></td>
-        <td class="number">{{ balances|sum(attribute="net")|money }}</td>
-        <td class="number">{{ balances|sum(attribute="investing")|money }}</td>
+        <td class="number total" data-label="Left">{{ balances|sum(attribute="net")|money }}</td>
+        <td class="number" data-label="Investing">{{ balances|sum(attribute="investing")|money }}</td>
       </tr>
     </tfoot>
   </table>

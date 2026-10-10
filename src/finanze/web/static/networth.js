@@ -11,7 +11,8 @@
   if (!figure || typeof uPlot === "undefined") return;
   const plot = figure.querySelector(".plot");
   const DAY = 86400;
-  const HEIGHT = 420;
+  // Lower on a phone, where the page is narrow: the stylesheet has the same width.
+  const HEIGHT = matchMedia("(max-width: 40rem)").matches ? 300 : 420;
 
   // Colours come from the stylesheet, so that light and dark are chosen in one place. They
   // are read off an element, which turns whatever the stylesheet says into what a canvas takes.
