@@ -180,7 +180,9 @@ def _months(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         query.check_names(conn, query.Filter(owner=owner))
         lines = months.listing(conn, owner)
-        context = {"people": query.people(conn), "owner": owner, "lines": lines}
+        people = query.people(conn)
+    shown = [person for person in people if owner in (None, person.name)]
+    context = {"people": people, "shown": shown, "owner": owner, "lines": lines}
     return _templates.TemplateResponse(request, "months.html", context)
 
 

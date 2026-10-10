@@ -84,6 +84,19 @@ def test_the_months_are_listed_newest_first_and_link_to_their_page(client: TestC
     assert client.get("/months", params={"owner": "Zoe"}).status_code == 404
 
 
+def test_the_months_page_starts_with_what_each_person_has_committed(client: TestClient) -> None:
+    response = client.get("/months")
+    summary, listed = tables(response.text)
+    assert summary == [
+        ["Anna", "none", "0", "1"],
+        ["Lukas", "2026-08 to 2026-08 (1)", "2", "1"],
+    ]
+    assert len(listed) == 3
+    assert "Only committed months are shown on the other pages." in response.text
+    only = tables(client.get("/months", params={"owner": "Lukas"}).text)[0]
+    assert only == [["Lukas", "2026-08 to 2026-08 (1)", "2", "1"]]
+
+
 def test_an_empty_database_says_how_to_start(tmp_path: Path) -> None:
     path = tmp_path / "empty.db"
     conn = db.connect(path)
@@ -91,6 +104,7 @@ def test_an_empty_database_says_how_to_start(tmp_path: Path) -> None:
     conn.close()
     page = TestClient(webapp.create_app(path), base_url=SITE).get("/months").text
     assert "Nothing is imported yet" in page
+    assert "<table" not in page
 
 
 def test_an_open_month_says_what_blocks_it_and_has_no_commit_button(client: TestClient) -> None:
