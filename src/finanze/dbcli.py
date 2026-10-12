@@ -72,8 +72,8 @@ import uvicorn
 import yaml
 
 from finanze import (
-    categories,
     classification,
+    importing,
     marketdata,
     monthclose,
     networth,
@@ -87,7 +87,7 @@ from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
 from finanze.extractors.common import month_end, month_start, months_between
 from finanze.models import Kind
-from finanze.monthclose import Batch, MonthCloseError, People
+from finanze.monthclose import MonthCloseError, People
 from finanze.storage import db, originals, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
@@ -636,45 +636,17 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
-    certificates, files = pipeline.load_certificates(_files(args.paths))
-    statements, skipped = pipeline.load_files(files, database=True)
-    instruments = classification.load_instruments(args.instruments)
-    statements = pipeline.resolve_holdings(
-        pipeline.relabel(statements, session.labels), instruments
-    )
-    owner, people = session.owner, session.people
     shared = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
-    own = classification.personal_file(shared[0], owner)
-    rule_files = [own, *shared]
-
-    categories_file = shared[0].with_name(categories.FILE)
-
-    others = [pattern for name, patterns in people.items() if name != owner for pattern in patterns]
-    everyone = [pattern for patterns in people.values() for pattern in patterns]
-
-    def process() -> pipeline.Month:
-        known = categories.names(categories.load(categories_file))
-        rules = classification.between_people(classification.load_rules(rule_files, known), others)
-        extractions = [(s.source, s.extraction) for s in statements]
-        return pipeline.process(extractions, rules, instruments, skipped, database=True)
-
-    if statements or not certificates:
-        month = process()
-    else:  # certificates alone: no statement, no row, the month of the earliest one
-        earliest = min(certificate.stated.as_of for certificate in certificates)
-        month = pipeline.Month(month_start(earliest), (), (), tuple(skipped))
-    if args.review and month.uncategorized:
+    setup = importing.Setup(shared, args.instruments, session.people, session.labels)
+    found = importing.read(session.owner, _files(args.paths), setup)
+    if args.review and found.month.uncategorized:
+        everyone = [pattern for patterns in session.people.values() for pattern in patterns]
+        personal = (setup.own(session.owner), everyone)
         ask = session.console.ask
-        review.ask_categories(month.uncategorized, shared[0], out, ask, (own, everyone))
-        month = process()
-    added = categories.load(categories_file)
-    batch = Batch(session.owner, statements, month, session.people, added, certificates)
-    staged = monthclose.stage(session.conn, batch, session.now)
-    # After the rows are in: a file is kept because the database points to it. `finanze keep`
-    # makes up for a copy that failed here.
-    originals.keep(
-        originals.folder_of(session.path), _files(args.paths), store.statement_names(session.conn)
-    )
+        review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
+        found = importing.again(found, setup)
+    staged = importing.stage(session.conn, session.path, found, setup, session.now)
+    month, statements, certificates = found.month, found.statements, found.certificates
     first, last = month.period
     if statements:
         out.write(
