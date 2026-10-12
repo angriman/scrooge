@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Import{% endblock %}
+{% block main %}
+{%- if error %}
+<p class="error" role="alert">{{ error }}</p>
+{%- endif %}
+{%- if done %}
+{%- set found = done.found %}
+<section>
+  <h2>Staged</h2>
+  {%- if found.statements %}
+  <p>{{ found.month.period[0].strftime("%B %Y") }}{% if done.months|length > 1 %} to {{ found.month.period[1].strftime("%B %Y") }}{% endif %} for {{ found.owner }}: {{ found.statements|length }} statement{{ "" if found.statements|length == 1 else "s" }} reconciled, {{ done.staged.transactions }} transactions staged.</p>
+  <table class="cards">
+    <thead>
+      <tr><th>Source</th><th>File</th><th>Covers</th><th class="number">Transactions</th></tr>
+    </thead>
+    <tbody>
+      {%- for statement in found.statements %}
+      <tr>
+        <td class="lead">{{ statement.source|replace("_", " ") }}</td>
+        <td class="wide" data-label="File">{{ statement.filename }}</td>
+        <td class="date wide" data-label="Covers">{{ statement.extraction.period[0] }} to {{ statement.extraction.period[1] }}</td>
+        <td class="number" data-label="Transactions">{{ statement.extraction.transactions|length }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+  {%- for certificate in found.certificates %}
+  <p>{{ certificate.account }} of {{ found.owner }}: {{ certificate.stated.balance|money }} {{ certificate.stated.currency }} on {{ certificate.stated.as_of }}, read off {{ certificate.filename }}.{% if not certificate.adds_up %} Nothing on this certificate adds up to that figure: compare it with the paper.{% endif %}</p>
+  {%- endfor %}
+  <ul>
+    {%- for path in found.skipped %}
+    <li>{{ path.name }} is not a statement and was left out.</li>
+    {%- endfor %}
+    {%- for account in found.month.unreconciled %}
+    <li>{{ account }} includes rows with no balance to check against.</li>
+    {%- endfor %}
+    {%- for gap in done.staged.gaps %}
+    <li>Missing: {{ gap }}</li>
+    {%- endfor %}
+    {%- if done.staged.uncategorized %}
+    <li>{{ done.staged.uncategorized }} transaction{{ " needs" if done.staged.uncategorized == 1 else "s need" }} a category: set it on the month's page.</li>
+    {%- endif %}
+  </ul>
+  <p>Nothing shows on the other pages until its month is committed:
+    {%- for month in done.months %}
+    <a href="{{ url_for('month', owner=found.owner, month=month.strftime('%Y-%m')) }}">{{ month.strftime("%Y-%m") }}</a>
+    {%- endfor %}
+  </p>
+</section>
+{%- endif %}
+<section>
+  <h2>Statements</h2>
+  <form method="post" action="{{ url_for('import') }}" enctype="multipart/form-data" class="filter">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label>Whose
+      <select name="owner" required>
+        {%- for name in owners %}
+        <option{% if name == (done.found.owner if done else owner) %} selected{% endif %}>{{ name }}</option>
+        {%- endfor %}
+      </select>
+    </label>
+    <label>Files <input type="file" name="file" multiple required></label>
+    <button>Import</button>
+  </form>
+  <p class="note">A file may cover a month, a year or several years. Every file is reconciled before anything is stored, and kept as it was sent. A month already committed is refused until it is reopened.</p>
+</section>
+{% endblock %}

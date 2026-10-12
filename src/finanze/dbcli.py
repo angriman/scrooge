@@ -10,7 +10,8 @@ publish`: the database from the terminal.
     finanze prices            fetch the closes, splits and exchange rates not stored yet
     finanze query [filters]   list the committed transactions that match, with their totals
     finanze serve             show the database as web pages, on this machine only unless
-                              `serve` in the config says otherwise
+                              `serve` in the config says otherwise; its Import page takes
+                              statements as `import` does, for the person chosen there
     finanze password          ask for a password and print its digest for `serve`
     finanze publish [folder]  copy the database to the folder another machine shows it from
 
@@ -228,6 +229,12 @@ def _parser() -> argparse.ArgumentParser:
         help="where a remembered category is saved as a rule (default: rules.local.yaml); "
         "rows naming a person go to that owner's rules.<owner>.yaml next to it",
     )
+    serve.add_argument(
+        "--instruments",
+        type=Path,
+        default=Path("instruments.yaml"),
+        help="what the import page reads about instruments (default: instruments.yaml)",
+    )
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
@@ -361,7 +368,12 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _check_copy(path)
         else:
             _open(path, now).close()
-        return _serve(path, args.port, webapp.Rules(args.rules, people), reach, out)
+        # What the import page reads, as `finanze import` would here: the rules both share,
+        # then the generic ones next to them.
+        shared = [args.rules, args.rules.with_name("rules.yaml")]
+        imports = importing.Setup(shared, args.instruments, people, _labels(config, args.config))
+        pages = _Pages(webapp.Rules(args.rules, people), imports)
+        return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
         msg = f"{path}: no database to publish"
         raise ConfigError(msg)
@@ -493,7 +505,15 @@ def _reach(config: dict[str, object], path: Path) -> _Reach:
     return _Reach(host, tuple(called), password, read_only)
 
 
-def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: TextIO) -> int:
+@dataclass(frozen=True, slots=True)
+class _Pages:
+    """What the pages that change the database read and write besides it."""
+
+    rules: webapp.Rules
+    imports: importing.Setup
+
+
+def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
     """Serve the pages until interrupted, where `serve` in the config says: there is no flag
     to listen anywhere else (D18)."""
     shown = f"[{reach.host}]" if ":" in reach.host else reach.host
@@ -504,7 +524,8 @@ def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: T
         out.write("  a copy, shown as 'finanze publish' left it: nothing here changes it\n")
     app = webapp.create_app(
         database,
-        rules=rules,
+        rules=pages.rules,
+        imports=pages.imports,
         names=reach.names,
         password=reach.password,
         read_only=reach.read_only,

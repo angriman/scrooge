@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import io
 import secrets
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -26,6 +27,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -45,6 +47,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from finanze import (
     cashflow,
     classification,
+    importing,
     monthclose,
     months,
     networth,
@@ -52,8 +55,12 @@ from finanze import (
     portfolio,
     query,
 )
+from finanze.classification import UnknownInstrumentError
+from finanze.errors import ConfigError, ExtractionError
+from finanze.extractors.common import month_start, months_between
 from finanze.models import Kind
 from finanze.storage import db, originals, store
+from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
 from finanze.web import auth, forms
 
@@ -69,6 +76,18 @@ _HEADERS = {
 }
 _COPY = "This is a copy: changes are made on the machine that holds the data."
 _PAGE = 200  # transactions shown at once
+_UPLOADS = 200  # files taken by one import: a year of monthly statements of every source
+# What stops an import: nothing is stored, and the page says why.
+_REFUSED = (
+    ExtractionError,
+    ReconciliationError,
+    ConfigError,
+    UnknownInstrumentError,
+    monthclose.MonthCloseError,
+    PrecisionError,
+    store.UnknownCategoryError,
+    store.AccountMismatchError,
+)
 _CSV = (
     "date",
     "booking_date",
@@ -91,7 +110,12 @@ def _everywhere(request: Request) -> dict[str, object]:
     forms when it shows a copy of the database."""
     state = request.app.state
     copy = _COPY if state.read_only else ""
-    return {"signing": state.access is not None, "token": state.token, "copy": copy}
+    return {
+        "signing": state.access is not None,
+        "token": state.token,
+        "copy": copy,
+        "importing": state.imports is not None,
+    }
 
 
 _templates = Jinja2Templates(directory=_HERE / "templates", context_processors=[_everywhere])
@@ -188,6 +212,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     clock: Callable[[], datetime] = _utc_now,
     rules: Rules | None = None,
     *,
+    imports: importing.Setup | None = None,
     names: Sequence[str] = (),
     password: str = "",
     read_only: bool = False,
@@ -195,6 +220,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     """The app over `database`, whose schema is already up to date.
 
     Without `rules` a category can only be chosen for the rows shown, not remembered.
+    `imports` is what an import reads besides the statements: with it the app has the page
+    that takes them, unless the database is a copy.
     `password` is the digest `auth.digest` wrote: with it every page wants a signed-in
     browser. `names` are what other devices call this machine; without a password there
     are no other devices, so they are refused (D18). `read_only` is for a copy of the
@@ -214,6 +241,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/networth.json", _networth_json, name="networth_json"),
             Route("/holdings", _holdings, name="holdings"),
             Route("/cashflow", _cashflow, name="cashflow"),
+            Route("/import", _import_page, name="import"),
+            Route("/import", _import, methods=["POST"]),
             Route("/months", _months, name="months"),
             Route("/months/{owner}/{month}", _month, name="month"),
             Route("/months/{owner}/{month}/commit", commit, methods=["POST"], name="commit"),
@@ -247,6 +276,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.database = database
     app.state.clock = clock
     app.state.rules = rules
+    app.state.imports = None if read_only else imports
     app.state.access = access
     app.state.read_only = read_only
     app.state.hosts = hosts
@@ -275,6 +305,93 @@ def _overview(request: Request) -> Response:
         "shown": shown,
     }
     return _templates.TemplateResponse(request, "overview.html", context)
+
+
+@dataclass(frozen=True, slots=True)
+class _Imported:
+    """What an import staged, as its page says it."""
+
+    found: importing.Read
+    staged: monthclose.Staged
+
+    @property
+    def months(self) -> list[date]:
+        first, last = self.found.month.period
+        covered = set(months_between(first, last)) if self.found.statements else set()
+        return sorted(covered | {month_start(c.stated.as_of) for c in self.found.certificates})
+
+
+def _import_form(
+    request: Request, error: str = "", done: _Imported | None = None, status: int = 200
+) -> Response:
+    setup = request.app.state.imports
+    if setup is None:
+        raise HTTPException(404)
+    with db.reading(request.app.state.database) as conn:
+        people = query.people(conn)
+    context = {
+        "people": people,
+        "owner": _owner(request),
+        "owners": list(setup.people),
+        "error": error,
+        "done": done,
+    }
+    return _templates.TemplateResponse(request, "import.html", context, status_code=status)
+
+
+def _import_page(request: Request) -> Response:
+    return _import_form(request)
+
+
+async def _import(request: Request) -> Response:
+    """Stage the statements sent for one person; what does not reconcile stores nothing."""
+    _own_origin(request)
+    state = request.app.state
+    if state.imports is None:
+        raise HTTPException(404)
+    async with request.form(max_files=_UPLOADS) as form:
+        _own_token(request, str(form.get("token", "")))
+        owner = str(form.get("owner", ""))
+        sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
+        uploads = [(Path(part.filename).name, await part.read()) for part in sent if part.filename]
+    if owner not in state.imports.people:
+        error = f"{owner or 'Nobody'} is nobody the config names."
+        return await run_in_threadpool(_import_form, request, error, None, 400)
+    if not uploads:
+        error = "Choose at least one file."
+        return await run_in_threadpool(_import_form, request, error, None, 400)
+
+    def stage() -> _Imported:
+        with tempfile.TemporaryDirectory() as folder:
+            files = _saved(Path(folder), uploads)
+            found = importing.read(owner, files, state.imports)
+            conn = db.connect(state.database)
+            try:
+                now = state.clock()
+                staged = importing.stage(conn, state.database, found, state.imports, now)
+            finally:
+                conn.close()
+        return _Imported(found, staged)
+
+    try:
+        done = await run_in_threadpool(stage)
+    except _REFUSED as exc:
+        error = f"Nothing was imported: {exc}."
+        return await run_in_threadpool(_import_form, request, error, None, 409)
+    return await run_in_threadpool(_import_form, request, "", done)
+
+
+def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
+    """Write each upload under the name it came with. Files that share a name each go in a
+    numbered folder of their own, which is how the import tells them apart."""
+    names = [name for name, _ in uploads]
+    files: list[Path] = []
+    for number, (name, content) in enumerate(uploads, start=1):
+        path = folder / str(number) / name if names.count(name) > 1 else folder / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(content)
+        files.append(path)
+    return files
 
 
 def _months(request: Request) -> Response:
@@ -318,20 +435,28 @@ def _month_page(
 
 async def _sent(request: Request) -> dict[str, list[str]]:
     """The fields of a form of these pages, each with all its values; anything else is refused."""
-    # These pages ask for no referrer, so the browser says `Origin: null` for their own forms:
-    # that says nothing either way, and the token below is what decides.
-    origin = request.headers.get("origin", "null")
-    if origin != "null" and urlsplit(origin).hostname not in request.app.state.hosts:
-        raise HTTPException(403)
+    _own_origin(request)
     try:
         body = (await request.body()).decode()
     except UnicodeDecodeError:
         raise HTTPException(400) from None
     fields = parse_qs(body, keep_blank_values=True)
-    token = fields.get("token", [""])[-1].encode()  # bytes: any text can be compared
-    if not secrets.compare_digest(token, request.app.state.token.encode()):
-        raise HTTPException(403)
+    _own_token(request, fields.get("token", [""])[-1])
     return fields
+
+
+def _own_origin(request: Request) -> None:
+    # These pages ask for no referrer, so the browser says `Origin: null` for their own forms:
+    # that says nothing either way, and the token is what decides.
+    origin = request.headers.get("origin", "null")
+    if origin != "null" and urlsplit(origin).hostname not in request.app.state.hosts:
+        raise HTTPException(403)
+
+
+def _own_token(request: Request, sent: str) -> None:
+    # bytes: any text can be compared
+    if not secrets.compare_digest(sent.encode(), request.app.state.token.encode()):
+        raise HTTPException(403)
 
 
 async def _copy(request: Request) -> Response:
