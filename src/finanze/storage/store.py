@@ -202,6 +202,12 @@ def upsert_statement_file(  # noqa: PLR0913  # one argument per column
     return int(row[0])
 
 
+def statement_names(conn: sqlite3.Connection) -> dict[str, str]:
+    """The digest and the name of every statement file stored, whoever it belongs to."""
+    found = conn.execute("SELECT sha256, filename FROM statement_files ORDER BY id").fetchall()
+    return {str(row[0]): str(row[1]) for row in found}
+
+
 def delete_statement_rows(
     conn: sqlite3.Connection, source: str, accounts: Collection[int], period: tuple[date, date]
 ) -> set[int]:

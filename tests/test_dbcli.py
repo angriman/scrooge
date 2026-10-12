@@ -1,5 +1,7 @@
 import getpass
+import hashlib
 import io
+import shutil
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -13,7 +15,7 @@ from finanze import categories, cli, dbcli, networth, prices
 from finanze.extractors import ocr
 from finanze.storage import db
 from finanze.web import auth
-from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
+from tests.conftest import FILES, FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -923,3 +925,41 @@ def test_prices_uses_the_real_source_unless_given_another(
     assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.NEEDS_REVIEW
     assert len(made) == 1
     assert made[0].asked
+
+
+def kept(run: Run) -> list[str]:
+    folder = run.database.parent / "originals"
+    return sorted(path.name for path in folder.iterdir()) if folder.is_dir() else []
+
+
+def test_import_keeps_the_file_of_every_statement_under_its_digest(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    digests = {
+        hashlib.sha256((run.folder / name).read_bytes()).hexdigest() + Path(name).suffix
+        for name in FILES
+    }
+    assert set(kept(run)) == digests  # the statements, and none of the files skipped
+    assert run.load() == dbcli.OK  # the same files again: nothing more to keep
+    assert set(kept(run)) == digests
+
+
+def test_an_import_that_stores_nothing_keeps_nothing(run: Run) -> None:
+    migros = run.folder / "Migros.csv"
+    text = migros.read_text(encoding="utf-8")
+    migros.write_text(text.replace("-1288.18", "-1288.19"), encoding="utf-8")
+    assert run.load() == dbcli.FAILED
+    assert kept(run) == []
+
+
+def test_keep_takes_in_the_files_of_statements_imported_earlier(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    shutil.rmtree(run.database.parent / "originals")  # as after an import of before
+    assert run("keep", str(run.folder / "Migros.csv"), str(run.folder / "notes.txt")) == dbcli.OK
+    assert f"1 of 2 files kept in {run.database.parent / 'originals'}." in run.output
+    assert "  no original: IBKR.csv\n" in run.output
+    assert "no original: Migros.csv" not in run.output
+    assert len(kept(run)) == 1
+    assert run("keep", str(run.folder)) == dbcli.OK
+    assert run.output.startswith("5 of ")  # the sixth is kept already
+    assert "no original" not in run.output
+    assert len(kept(run)) == len(FILES)

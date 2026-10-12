@@ -1,11 +1,12 @@
-"""`finanze import | commit | reopen | balance | prices | query | serve | password | publish`:
-the database from the terminal.
+"""`finanze import | commit | reopen | balance | keep | prices | query | serve | password |
+publish`: the database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
+    finanze keep <path>...    keep the files of statements imported before originals were kept
     finanze prices            fetch the closes, splits and exchange rates not stored yet
     finanze query [filters]   list the committed transactions that match, with their totals
     finanze serve             show the database as web pages, on this machine only unless
@@ -19,10 +20,16 @@ the database from the terminal.
 fund's account the balance it states for its day, in the month of that day, which is
 committed like any other. What was read is printed, to be compared with the paper.
 
+`import` keeps every file it stages in the folder `originals` next to the database, under its
+SHA-256: the rows of the database say which file they came from, and that file is there.
+`keep` does the same for statements imported earlier: of the files named it keeps those the
+database was filled from, and says which statements still have no original.
+
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
-`prices`, `query`, `serve` and `publish` are the exceptions: they are about both people.
+`keep`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
+people.
 `prices` is the only command that uses the network (D9).
 
 `serve` listens on 127.0.0.1 and asks for no password, unless the config has (D18):
@@ -81,7 +88,7 @@ from finanze.errors import ConfigError, ExtractionError
 from finanze.extractors.common import month_end, month_start, months_between
 from finanze.models import Kind
 from finanze.monthclose import Batch, MonthCloseError, People
-from finanze.storage import db, store
+from finanze.storage import db, originals, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
@@ -93,6 +100,7 @@ COMMANDS = (
     "commit",
     "reopen",
     "balance",
+    "keep",
     "prices",
     "query",
     "serve",
@@ -100,7 +108,7 @@ COMMANDS = (
     "publish",
 )
 # Commands that are not about one person's month.
-_READ_BOTH = ("prices", "query", "serve", "publish")
+_READ_BOTH = ("keep", "prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -190,6 +198,14 @@ def _parser() -> argparse.ArgumentParser:
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
     typed.add_argument("currency", help="CHF, EUR, ...")
+    keep = commands.add_parser("keep", parents=[files], help="keep the files of stored statements")
+    keep.add_argument(
+        "paths",
+        type=Path,
+        nargs="+",
+        metavar="path",
+        help="statement files, or folders holding them (subfolders are not searched)",
+    )
     fetch = commands.add_parser("prices", parents=[files], help="fetch closes and rates")
     fetch.add_argument(
         "--through",
@@ -355,6 +371,8 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
         if args.command == "query":
             return _query(conn, args, out)
+        if args.command == "keep":
+            return _keep(conn, path, _files(args.paths), out)
         if args.command == "prices":
             return _prices(conn, args, console, now)
         labels = _labels(config, args.config)
@@ -652,6 +670,11 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
     added = categories.load(categories_file)
     batch = Batch(session.owner, statements, month, session.people, added, certificates)
     staged = monthclose.stage(session.conn, batch, session.now)
+    # After the rows are in: a file is kept because the database points to it. `finanze keep`
+    # makes up for a copy that failed here.
+    originals.keep(
+        originals.folder_of(session.path), _files(args.paths), store.statement_names(session.conn)
+    )
     first, last = month.period
     if statements:
         out.write(
@@ -677,6 +700,19 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
     covered = set(months_between(first, last)) if statements else set()
     stated = {month_start(certificate.stated.as_of) for certificate in certificates}
     out.writelines(f"Next: finanze commit {each:%Y-%m}\n" for each in sorted(stated - covered))
+    return OK
+
+
+def _keep(conn: sqlite3.Connection, database: Path, files: Sequence[Path], out: TextIO) -> int:
+    """Keep those of `files` the database was filled from, and say what is still not kept."""
+    folder = originals.folder_of(database)
+    known = store.statement_names(conn)
+    kept = originals.keep(folder, files, known)
+    out.write(f"{len(kept)} of {len(files)} files kept in {folder}.\n")
+    without = sorted(
+        name for digest, name in known.items() if originals.find(folder, digest, name) is None
+    )
+    out.writelines(f"  no original: {name}\n" for name in without)
     return OK
 
 
