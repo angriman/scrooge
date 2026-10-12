@@ -143,17 +143,17 @@ def test_transactions_are_listed_newest_first_with_their_totals(client: TestClie
     response = client.get("/transactions")
     assert response.status_code == 200
     assert rows(response.text) == [
-        ["2026-08-25", "Lukas", "Migros", "Stipendio income", "KONSUM", "6,000.00 CHF"],
+        ["2026-08-25", "Lukas", "Migros file", "Stipendio income", "KONSUM", "6,000.00 CHF"],
         [
             "2026-07-31 booked 2026-08-02",
             "Lukas",
-            "Migros",
+            "Migros file",
             "Ristoranti expense",
             BAKERY,
             "-80.00 CHF",
         ],
-        ["2026-07-12", "Anna", "Migros", "Spesa expense", "KONSUM", "-60.00 CHF"],
-        ["2026-07-03", "Lukas", "Migros", "Spesa expense", "KONSUM", "-45.20 CHF"],
+        ["2026-07-12", "Anna", "Migros file", "Spesa expense", "KONSUM", "-60.00 CHF"],
+        ["2026-07-03", "Lukas", "Migros file", "Spesa expense", "KONSUM", "-45.20 CHF"],
     ]
     assert "4 transactions · 5,814.80 CHF · CSV" in text(response.text)
     assert "By month 2026-07 -185.20 CHF 3 2026-08 6,000.00 CHF 1" in text(response.text)
@@ -165,7 +165,7 @@ def test_the_filter_narrows_the_list_and_stays_in_the_form(client: TestClient) -
     asked = {"category": "Ristoranti e bar", "from": "2026-08", "booking": "1", "owner": "Lukas"}
     response = client.get("/transactions", params=asked)
     assert rows(response.text) == [
-        ["2026-08-02 real 2026-07-31", "Migros", "Ristoranti expense", BAKERY, "-80.00 CHF"]
+        ["2026-08-02 real 2026-07-31", "Migros file", "Ristoranti expense", BAKERY, "-80.00 CHF"]
     ]
     assert "1 transaction · -80.00 CHF" in text(response.text)
     assert "By month" not in response.text

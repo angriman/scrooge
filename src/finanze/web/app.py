@@ -30,7 +30,13 @@ from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -47,7 +53,7 @@ from finanze import (
     query,
 )
 from finanze.models import Kind
-from finanze.storage import db, store
+from finanze.storage import db, originals, store
 from finanze.validation import ReconciliationError
 from finanze.web import auth, forms
 
@@ -218,6 +224,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
                 methods=["POST"],
                 name="categorize",
             ),
+            Route("/statements/{number:int}", _statement, name="statement"),
+            Route("/statements/{number:int}/original", _original, name="original"),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
             Route("/login", _login_page, name="login"),
@@ -528,6 +536,33 @@ def _cashflow(request: Request) -> Response:
         ),
     }
     return _templates.TemplateResponse(request, "cashflow.html", context)
+
+
+def _stored(request: Request) -> tuple[months.Statement, Path | None]:
+    """The statement a page is about, and its original when that is kept here."""
+    with db.reading(request.app.state.database) as conn:
+        statement = months.statement(conn, request.path_params["number"])
+    if statement is None:
+        raise HTTPException(404)
+    folder = originals.folder_of(request.app.state.database)
+    return statement, originals.find(folder, statement.sha256, statement.filename)
+
+
+def _statement(request: Request) -> Response:
+    statement, original = _stored(request)
+    with db.reading(request.app.state.database) as conn:
+        people = query.people(conn)
+    context = {"people": people, "owner": None, "statement": statement, "kept": bool(original)}
+    return _templates.TemplateResponse(request, "statement.html", context)
+
+
+def _original(request: Request) -> Response:
+    """The file as it was imported, under the name it came with."""
+    statement, original = _stored(request)
+    if original is None:
+        raise HTTPException(404)
+    name = Path(statement.filename).name
+    return FileResponse(original, filename=name, media_type="application/octet-stream")
 
 
 def _transactions(request: Request) -> Response:

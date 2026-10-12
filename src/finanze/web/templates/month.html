@@ -42,7 +42,7 @@
       {%- for file in month.files %}
       <tr>
         <td class="lead">{{ file.source|replace("_", " ") }}</td>
-        <td class="wide" data-label="File">{{ file.filename }}</td>
+        <td class="wide" data-label="File"><a href="{{ url_for('statement', number=file.id) }}">{{ file.filename }}</a></td>
         <td class="date wide" data-label="Covers">{{ file.first }} to {{ file.last }}</td>
         <td data-label="Reconciled">{{ "yes" if file.checked else "nothing to check against" }}</td>
         <td class="number" data-label="Transactions">{{ file.transactions }}</td>

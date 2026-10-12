@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ statement.filename }}{% endblock %}
+{% block main %}
+<section>
+  <h2>Statement</h2>
+  <table class="narrow">
+    <tbody>
+      <tr><th>Person</th><td>{{ statement.owner }}</td></tr>
+      <tr><th>Source</th><td>{{ statement.source|replace("_", " ") }}</td></tr>
+      <tr><th>Covers</th><td class="date">{{ statement.first }} to {{ statement.last }}</td></tr>
+      <tr><th>Reconciled</th><td>{{ "yes" if statement.checked else "nothing to check against" }}</td></tr>
+      <tr><th>Rows</th><td>{{ statement.transactions }} transaction{{ "" if statement.transactions == 1 else "s" }}</td></tr>
+      <tr><th>Imported</th><td>Imported {{ statement.imported_at[:10] }}</td></tr>
+      <tr><th>SHA-256</th><td><code>{{ statement.sha256 }}</code></td></tr>
+    </tbody>
+  </table>
+  {%- if kept %}
+  <p><a href="{{ url_for('original', number=statement.id) }}">Download the file</a>, as it was imported.</p>
+  {%- else %}
+  <p class="note">The file itself is not kept here: it was imported before originals were kept, or this is a copy of the database. <code>finanze keep</code> takes it in where the data is.</p>
+  {%- endif %}
+</section>
+<section>
+  <h2>Months</h2>
+  <p>
+    {%- for month in statement.months %}
+    <a href="{{ url_for('month', owner=statement.owner, month=month.strftime('%Y-%m')) }}">{{ month.strftime("%Y-%m") }}</a>
+    {%- endfor %}
+  </p>
+</section>
+{% endblock %}
