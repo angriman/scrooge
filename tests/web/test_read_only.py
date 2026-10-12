@@ -34,6 +34,7 @@ FORMS = [
     "/months/Lukas/2026-08/reopen",
     "/months/Anna/2026-09/commit",
     "/months/Lukas/2026-09/categorize",
+    "/months/Lukas/2026-09/category",
 ]
 
 

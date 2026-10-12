@@ -21,7 +21,7 @@ from decimal import Decimal
 from itertools import pairwise
 from pathlib import Path
 
-from finanze import classification
+from finanze import categories, classification
 from finanze.categories import Extra
 from finanze.classification import Patterns, names
 from finanze.extractors.common import month_end, month_start, months_between
@@ -44,6 +44,7 @@ _KINDS = {"ibkr": "broker_cash", "tastytrade": "broker_cash", "finpension": "bro
 _KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
+_NOT_WAITING = "are no longer waiting for a category"
 # An account that only certificates feed: carried flat from each balance to the next, as a
 # typed account is, and outside the chain of balances (`store.anchors`).
 _CARRIED_FLAT = "manual"
@@ -351,6 +352,7 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     category: str,
     now: datetime,
     remember: Remember | None,
+    change: bool = False,
 ) -> int:
     """Give `category` to rows of an open month that have none. Returns how many.
 
@@ -358,15 +360,21 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     the rows, so the next import makes it again. Without, it is kept as an override of these
     rows alone. A transfer category makes an income or expense a transfer, as a rule would.
     Rule files are left as they were when anything fails.
+
+    With `change` the rows are instead ones that have a category, which was wrong: money in
+    or out, nothing a statement categorizes itself. The choice is always kept as an override
+    of these rows, and a rule to remember it goes before the rules already there, the wrong
+    one among them. A transfer given another kind of category is income or an expense again.
     """
     with _rules_kept() as before, db.transaction(conn):
         owner_id, status = _month(conn, owner, month)
         if status == "committed":
             msg = f"{month:%Y-%m} is committed for {owner}: reopen it first"
             raise MonthCommittedError(msg)
-        rows = store.waiting(conn, owner_id, (month, month_end(month)), ids)
+        rows = store.waiting(conn, owner_id, (month, month_end(month)), ids, change=change)
         if not rows or len(rows) != len(set(ids)):
-            msg = "those rows are no longer waiting for a category: load the page again"
+            state = "cannot be given another category" if change else _NOT_WAITING
+            msg = f"those rows {state}: load the page again"
             raise MonthCloseError(msg)
         leaves = store.leaf_categories(conn)
         flows = {kind.value for kind in _BETWEEN_OWNERS}
@@ -376,19 +384,25 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
             if chosen is None:
                 msg = "no category was chosen"
                 raise MonthCloseError(msg)
-            moved = ("transfer", category) in leaves and row.kind in flows
-            kind = Kind.TRANSFER.value if moved else row.kind
-            store.set_category(conn, row.id, chosen, "rule" if remember else "manual", kind)
-            if remember is None:
-                changed = kind if moved else None
+            transfer = ("transfer", category) in leaves
+            kind = row.kind
+            if transfer and row.kind in flows:
+                kind = Kind.TRANSFER.value
+            elif not transfer and row.kind == Kind.TRANSFER.value:
+                kind = (Kind.INCOME if row.amount_nano > 0 else Kind.EXPENSE).value
+            kept = remember is None or change  # as an override of this row
+            store.set_category(conn, row.id, chosen, "manual" if kept else "rule", kind)
+            if kept:
+                changed = kind if kind != row.kind else None
                 store.set_override(conn, row.id, chosen, changed, db.timestamp(now))
+            if remember is None:
                 continue
             name = (row.counterparty or row.description).strip()
             if not name:
                 msg = "a row without any text cannot become a rule: choose 'just these rows'"
                 raise MonthCloseError(msg)
             text = f"{row.description}\n{row.counterparty}"
-            if moved and any(pattern.search(text) for pattern in remember.others):
+            if transfer and any(pattern.search(text) for pattern in remember.others):
                 msg = (
                     f"a rule cannot make money to or from another person a transfer ({name}): "
                     "choose 'just these rows'"
@@ -400,8 +414,41 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
         for (name, flow), where in rules.items():
             if where not in before:
                 before[where] = where.read_text(encoding="utf-8") if where.exists() else None
-            classification.append_rule(where, name, flow, category)
+            classification.append_rule(where, name, flow, category, first=change)
         return len(rows)
+
+
+def add_category(
+    conn: sqlite3.Connection, file: Path, *, name: str, side: str, group: str
+) -> Extra:
+    """Add a category to the taxonomy: in `file` (`categories.yaml`), which every import
+    reads, and in the database. Returns it.
+
+    `side` is `uscite` or `entrate`. An expense goes under `group`, one of the top-level
+    categories there are, or under a new one named like itself when no group is given.
+    """
+    name = " ".join(name.split())
+    if not name:
+        msg = "a category needs a name"
+        raise MonthCloseError(msg)
+    if side not in categories.SIDES:
+        msg = "a category is added to the expenses or to the income"
+        raise MonthCloseError(msg)
+    with _rules_kept() as before, db.transaction(conn):
+        extras = categories.load(file)
+        store.seed_categories(conn, extras)
+        leaves = store.leaf_categories(conn)
+        if (side, name) in leaves or ("transfer", name) in leaves:
+            msg = f"there is already a category {name!r}"
+            raise MonthCloseError(msg)
+        if side == "uscite" and group and group not in categories.groups(extras):
+            msg = f"no group of categories named {group!r}"
+            raise MonthCloseError(msg)
+        extra = Extra(name, side, (group or name) if side == "uscite" else "")
+        before[file] = file.read_text(encoding="utf-8") if file.exists() else None
+        categories.add(file, extra)
+        store.seed_categories(conn, categories.load(file))
+        return extra
 
 
 def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how much

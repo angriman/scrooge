@@ -305,3 +305,26 @@ def test_no_rule_makes_a_transfer_of_money_from_the_other_person(tmp_path: Path)
         ("Rimborsi", Kind.EXPENSE),
         ("Giroconto", Kind.FX),
     ]
+
+
+@pytest.mark.parametrize(
+    ("existing", "expected"),
+    [
+        (None, 'rules:\n  - {match: "(?m)^KIOSK$", category: "Regali", direction: out}\n'),
+        ("rules: []\n", 'rules:\n  - {match: "(?m)^KIOSK$", category: "Regali", direction: out}\n'),
+        (
+            "# mine\nrules:\n  - {match: 'KIOSK', category: Spesa}\n",
+            '# mine\nrules:\n  - {match: "(?m)^KIOSK$", category: "Regali", direction: out}\n'
+            "  - {match: 'KIOSK', category: Spesa}\n",
+        ),
+    ],
+)
+def test_a_rule_can_be_put_before_the_ones_already_there(
+    tmp_path: Path, existing: str | None, expected: str
+) -> None:
+    path = tmp_path / "rules.yaml"
+    if existing is not None:
+        path.write_text(existing, encoding="utf-8")
+    append_rule(path, "KIOSK", "out", "Regali", first=True)
+    assert path.read_text(encoding="utf-8") == expected
+    assert load_rules([path])[0].category == "Regali"  # the first to match wins

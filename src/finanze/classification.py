@@ -79,11 +79,15 @@ def direction(txn: Transaction) -> str:
     return "in" if txn.amount > 0 else "out"
 
 
-def append_rule(path: Path, counterparty: str, flow: str, category: str) -> None:
+def append_rule(
+    path: Path, counterparty: str, flow: str, category: str, *, first: bool = False
+) -> None:
     """Save a reviewed choice as a rule at the end of `path` (created if missing).
 
     The rule matches `counterparty` as a whole description or counterparty, not as a substring,
-    so it covers the rows the user was shown and nothing else.
+    so it covers the rows the user was shown and nothing else. `first` puts it before the
+    rules already in the file instead: the first rule to match wins, so that is where a
+    choice that corrects one of them belongs.
     """
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if "rules:" not in text:
@@ -95,8 +99,9 @@ def append_rule(path: Path, counterparty: str, flow: str, category: str) -> None
         json.dumps(f"(?m)^{re.escape(counterparty)}$", ensure_ascii=False),
     )
     name = json.dumps(category, ensure_ascii=False)
-    text += f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
-    path.write_text(text, encoding="utf-8")
+    rule = f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
+    head, key, rest = text.partition("rules:\n") if first else (text, "", "")
+    path.write_text(head + key + rule + rest, encoding="utf-8")
 
 
 def _load(path: Path, key: str) -> object:

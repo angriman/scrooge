@@ -129,6 +129,8 @@ class Choices:
     categories: tuple[tuple[str, tuple[str, ...]], ...]
     # The same without the top-level names: what a transaction can be given.
     leaves: tuple[tuple[str, tuple[str, ...]], ...]
+    # The top-level categories of the expenses: what a new expense category can go under.
+    groups: tuple[str, ...] = ()
 
 
 def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
@@ -156,6 +158,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         tuple(r["name"] for r in accounts),
         tuple((heading, tuple(names)) for heading, names in groups.items()),
         tuple((heading, tuple(names)) for heading, names in leaves.items()),
+        tuple(r["name"] for r in found if r["side"] == "uscite" and r["parent"] is None),
     )
 
 

@@ -114,10 +114,13 @@ def test_an_open_month_says_what_blocks_it_and_has_no_commit_button(client: Test
     assert "September 2026, Lukas" in page
     assert "It cannot be committed yet: 1 transaction still needs a category" in page
     assert "<button>Commit" not in response.text
-    statements, pending, totals = tables(response.text)
+    statements, pending, changeable, totals = tables(response.text)
     assert statements == [["migros", "migros.csv", "2026-08-01 to 2026-09-30", "yes", "2"]]
     assert [row[:2] for row in pending] == [
         ["&lt;i&gt;Kiosk&lt;/i&gt; paid · KONSUM", "2026-09-05 · Migros · -80.00 CHF"]
+    ]
+    assert [row[:3] for row in changeable] == [
+        ["KONSUM paid", "2026-09-04 · Migros · -1,000.00 CHF", "Giroconto"]
     ]
     assert totals == [["Giroconto transfer", "-1,000.00 CHF", "1"]]
     assert f'<a href="{SITE}/months?owner=Lukas" aria-current="page">Months</a>' in response.text
@@ -173,7 +176,7 @@ def test_a_reconciliation_failure_cannot_be_committed_from_the_page(
     conn.close()
     page = client.get("/months/Anna/2026-09").text
     assert "Migros (CHF): no statement covers the days after 2026-09-30" in page
-    assert "<button>" not in page
+    assert "<button>Commit" not in page  # the one button left changes a category
     response = client.post("/months/Anna/2026-09/commit", data={"token": token_of(client)})
     assert response.status_code == 409
     assert "Not committed: Migros (CHF): no statement covers" in text(response.text)
@@ -323,3 +326,66 @@ def test_rows_of_a_committed_or_missing_month_cannot_be_categorized(client: Test
     assert client.post("/months/Zoe/2026-08/categorize", data=form).status_code == 404
     forged = client.post("/months/Lukas/2026-08/categorize", data=form | {"token": "x"})
     assert forged.status_code == 403
+
+
+def categorized(database: Path) -> str:
+    """The id of the September row of Lukas that has a category."""
+    conn = sqlite3.connect(database)
+    found = conn.execute(
+        "SELECT id FROM transactions WHERE category_id IS NOT NULL AND booking_date >= '2026-09'"
+        " AND account_id = (SELECT min(id) FROM accounts)"
+    ).fetchone()
+    conn.close()
+    return str(found[0])
+
+
+def test_a_category_that_was_wrong_is_changed_from_the_page(
+    client: TestClient, database: Path
+) -> None:
+    row = categorized(database)
+    page = client.get("/months/Lukas/2026-09").text
+    assert "<h2>Change a category</h2>" in page
+    assert '<input type="hidden" name="change" value="1">' in page
+    form = {"token": token(page), "id": row, "category": "Regali", "remember": "rows"}
+    wrong = client.post("/months/Lukas/2026-09/categorize", data=form)  # not said to be a change
+    assert wrong.status_code == 409
+    assert "those rows are no longer waiting for a category" in wrong.text
+    response = client.post("/months/Lukas/2026-09/categorize", data=form | {"change": "1"})
+    assert response.status_code == 303
+    assert stored(database, row) == ("Regali", "manual")
+    assert '<td data-label="Now">Regali</td>' in client.get("/months/Lukas/2026-09").text
+
+
+def test_a_committed_month_offers_no_change_of_category(client: TestClient) -> None:
+    page = client.get("/months/Lukas/2026-08").text
+    assert "Change a category" not in page
+    assert "Add a category" not in page
+
+
+def test_a_category_is_added_from_the_page_and_can_then_be_chosen(
+    database: Path, tmp_path: Path
+) -> None:
+    rules = webapp.Rules(tmp_path / "rules.local.yaml", PEOPLE)
+    app = webapp.create_app(database, rules=rules)
+    client = TestClient(app, base_url=SITE, follow_redirects=False)
+    page = client.get("/months/Lukas/2026-09").text
+    assert "<h2>Add a category</h2>" in page
+    assert '<option value="uscite:Casa">Expenses, Casa</option>' in page
+    assert "<option>Animali</option>" not in page
+    form = {"token": token(page), "name": "Animali", "under": "uscite:Casa"}
+    response = client.post("/months/Lukas/2026-09/category", data=form)
+    assert response.status_code == 303
+    assert response.headers["location"] == f"{SITE}/months/Lukas/2026-09"
+    assert "<option>Animali</option>" in client.get("/months/Lukas/2026-09").text
+    added = (tmp_path / "categories.yaml").read_text(encoding="utf-8")
+    assert added == "categories:\n  uscite:\n    Casa:\n    - Animali\n  entrate: []\n"
+    again = client.post("/months/Lukas/2026-09/category", data=form)
+    assert again.status_code == 409
+    assert "No category was added: there is already a category &#39;Animali&#39;." in again.text
+
+
+def test_without_a_rules_file_no_category_can_be_added(client: TestClient) -> None:
+    page = client.get("/months/Lukas/2026-09").text
+    assert "Add a category" not in page
+    form = {"token": token(page), "name": "Animali", "under": "entrate:"}
+    assert client.post("/months/Lukas/2026-09/category", data=form).status_code == 404

@@ -591,7 +591,7 @@ def uncategorized(conn: sqlite3.Connection, owner: int, period: tuple[date, date
 
 @dataclass(frozen=True, slots=True)
 class Waiting:
-    """A row without a category, with what a choice for it depends on."""
+    """A row to give a category to, with what a choice for it depends on."""
 
     id: str
     amount_nano: int
@@ -600,16 +600,31 @@ class Waiting:
     counterparty: str
 
 
+# What can be given another category: money in or out as the statement books it, whose
+# category a rule or a choice gave. The rest (trades, dividends, the interest split off a
+# bill) is categorized by what it is.
+CHANGEABLE = (
+    "t.category_id IS NOT NULL AND t.kind IN ('income', 'expense', 'transfer') "
+    "AND t.split_of IS NULL"
+)
+
+
 def waiting(
-    conn: sqlite3.Connection, owner: int, period: tuple[date, date], ids: Collection[str]
+    conn: sqlite3.Connection,
+    owner: int,
+    period: tuple[date, date],
+    ids: Collection[str],
+    *,
+    change: bool = False,
 ) -> list[Waiting]:
-    """Those of `ids` that are rows of the owner booked in the period and still need a category."""
+    """Those of `ids` that are rows of the owner booked in the period and still need a category;
+    with `change`, those that have one which can be changed."""
     marks = ", ".join("?" * len(ids))
     rows = conn.execute(
         "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks and the fixed text above are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        f"AND {WAITING} AND t.id IN ({marks}) ORDER BY t.id",
+        f"AND {CHANGEABLE if change else WAITING} AND t.id IN ({marks}) ORDER BY t.id",
         (owner, period[0].isoformat(), period[1].isoformat(), *ids),
     ).fetchall()
     return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]

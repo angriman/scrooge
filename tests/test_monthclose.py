@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import classification, monthclose, pipeline
+from finanze import categories, classification, monthclose, pipeline
 from finanze.categories import Extra
 from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
@@ -1392,11 +1392,11 @@ def test_rules_files_are_left_as_they_were_when_a_choice_fails(
     append = classification.append_rule
     saved: list[Path] = []
 
-    def full_disk(path: Path, *rule: str) -> None:
+    def full_disk(path: Path, *rule: str, first: bool) -> None:
         if len(saved) == 2:  # the third rule cannot be saved
             raise OSError("no space left")
         saved.append(path)
-        append(path, *rule)
+        append(path, *rule, first=first)
 
     monkeypatch.setattr(classification, "append_rule", full_disk)
     with pytest.raises(OSError, match="no space left"):
@@ -1448,3 +1448,147 @@ def test_rows_of_a_committed_or_unknown_month_cannot_be_categorized(
         choose(conn, ["x"], "Regali")
     with pytest.raises(monthclose.NothingStagedError):
         choose(conn, ["x"], "Regali", month=OCTOBER)
+
+
+def change(
+    conn: sqlite3.Connection,
+    ids: list[str],
+    category: str,
+    remember: monthclose.Remember | None = None,
+) -> int:
+    return monthclose.categorize(
+        conn,
+        owner=OWNER,
+        month=SEPTEMBER,
+        ids=ids,
+        category=category,
+        now=LATER,
+        remember=remember,
+        change=True,
+    )
+
+
+def test_a_row_that_has_a_category_can_be_given_another_which_an_import_keeps(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    assert category_of(conn, ids["DONE7"]) == ("Spesa", "uscite", "rule", "expense")
+    assert change(conn, [ids["DONE7"]], "Regali") == 1
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+    assert waiting_month(conn) == ids  # imported again, with the category the statement gave
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+
+
+def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    ids = waiting_month(conn)
+    shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    shared.write_text("rules:\n  - {match: 'DONE', category: Spesa}\n", encoding="utf-8")
+    remember = monthclose.Remember(shared, own, [])
+    assert change(conn, [ids["DONE7"]], "Regali", remember) == 1
+    assert shared.read_text(encoding="utf-8") == (
+        "rules:\n"
+        '  - {match: "(?m)^DONE$", category: "Regali", direction: out}\n'
+        "  - {match: 'DONE', category: Spesa}\n"
+    )
+    # These rows keep it whatever the rules say on the next import.
+    assert rows(conn, "SELECT transaction_id, kind FROM overrides") == [(ids["DONE7"], None)]
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+
+
+def test_a_transfer_given_an_expense_category_is_an_expense_again(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    choose(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], "Giroconto")
+    assert category_of(conn, ids["KIOSK3"])[3] == "transfer"
+    assert change(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], "Regali") == 2
+    assert category_of(conn, ids["TO SAVINGS5"]) == ("Regali", "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK3"]) == ("Regali", "uscite", "manual", "income")
+    assert rows(conn, "SELECT kind FROM overrides ORDER BY kind") == [("expense",), ("income",)]
+
+
+def test_only_rows_that_have_a_category_and_are_money_in_or_out_can_be_changed(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    with pytest.raises(monthclose.MonthCloseError, match="cannot be given another category"):
+        change(conn, [ids["KIOSK1"]], "Regali")  # it has none yet
+    bought = trade("-1012.50", "WIDG", "10", date=date(2026, 9, 15))
+    monthclose.stage(conn, batch(statement("ibkr", [bought])), NOW)
+    (trade_id,) = rows(conn, "SELECT id FROM transactions WHERE kind = 'security_trade'")
+    with pytest.raises(monthclose.MonthCloseError, match="cannot be given another category"):
+        change(conn, [trade_id[0]], "Regali")
+
+
+def added(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
+    return rows(
+        conn,
+        "SELECT c.name, c.side, p.name FROM categories c "
+        "LEFT JOIN categories p ON p.id = c.parent_id WHERE c.name IN ('Prestiti', 'Animali')",
+    )
+
+
+def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_income(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    waiting_month(conn)
+    file = tmp_path / "categories.yaml"
+    monthclose.add_category(conn, file, name="  Prestiti ", side="uscite", group="")
+    monthclose.add_category(conn, file, name="Animali", side="uscite", group="Casa")
+    monthclose.add_category(conn, file, name="Prestiti", side="entrate", group="")
+    assert sorted(added(conn), key=str) == sorted(
+        [
+            ("Prestiti", "uscite", None),  # the group
+            ("Prestiti", "uscite", "Prestiti"),  # and its one leaf
+            ("Animali", "uscite", "Casa"),
+            ("Prestiti", "entrate", None),
+        ],
+        key=str,
+    )
+    assert categories.load(file) == (
+        categories.Extra("Prestiti", "uscite", "Prestiti"),
+        categories.Extra("Animali", "uscite", "Casa"),
+        categories.Extra("Prestiti", "entrate"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("wanted", "message"),
+    [
+        ((" ", "uscite", ""), "a category needs a name"),
+        (("Spesa", "uscite", "Casa"), "there is already a category 'Spesa'"),
+        (("Stipendio", "entrate", ""), "there is already a category 'Stipendio'"),
+        (("Giroconto", "uscite", ""), "there is already a category 'Giroconto'"),
+        (("Animali", "uscite", "Zoo"), "no group of categories named 'Zoo'"),
+        (("Animali", "transfer", ""), "a category is added to the expenses or to the income"),
+    ],
+)
+def test_a_category_that_cannot_be_added_changes_nothing(
+    conn: sqlite3.Connection, tmp_path: Path, wanted: tuple[str, str, str], message: str
+) -> None:
+    name, side, group = wanted
+    waiting_month(conn)
+    file = tmp_path / "categories.yaml"
+    before = dump(conn)
+    with pytest.raises(monthclose.MonthCloseError, match=message):
+        monthclose.add_category(conn, file, name=name, side=side, group=group)
+    assert dump(conn) == before
+    assert not file.exists()
+
+
+def test_a_category_the_database_refuses_is_not_left_in_the_file(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waiting_month(conn)
+    file = tmp_path / "categories.yaml"
+    file.write_text("# ours\ncategories:\n  entrate: [Prestiti]\n", encoding="utf-8")
+
+    def broken(*_: object) -> None:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(store, "seed_categories", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        monthclose.add_category(conn, file, name="Animali", side="uscite", group="Casa")
+    assert file.read_text(encoding="utf-8") == "# ours\ncategories:\n  entrate: [Prestiti]\n"

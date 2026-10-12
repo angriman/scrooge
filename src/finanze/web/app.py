@@ -46,6 +46,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from finanze import (
     cashflow,
+    categories,
     classification,
     importing,
     monthclose,
@@ -234,6 +235,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     access = auth.Access(password) if password else None
     hosts = (*_HOSTS, *names)
     commit, reopen, categorize = (_copy,) * 3 if read_only else (_commit, _reopen, _categorize)
+    category = _copy if read_only else _add_category
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
@@ -255,6 +257,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             ),
             Route("/statements/{number:int}", _statement, name="statement"),
             Route("/statements/{number:int}/original", _original, name="original"),
+            Route("/months/{owner}/{month}/category", category, methods=["POST"], name="category"),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
             Route("/login", _login_page, name="login"),
@@ -506,6 +509,7 @@ async def _categorize(request: Request) -> Response:
                 category=fields.get("category", [""])[-1],
                 now=state.clock(),
                 remember=state.rules.of(owner) if wanted else None,
+                change=fields.get("change", [""])[-1] == "1",
             )
         finally:
             conn.close()
@@ -516,6 +520,36 @@ async def _categorize(request: Request) -> Response:
         if isinstance(exc, monthclose.NothingStagedError):
             raise
         error = f"No category was set: {exc}."
+        return await run_in_threadpool(_month_page, request, owner, month, error, 409)
+    return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
+
+
+async def _add_category(request: Request) -> Response:
+    """One more category in the taxonomy, from the page of the month that needs it."""
+    fields = await _sent(request)
+    owner, month = _which(request)
+    state = request.app.state
+    if state.rules is None:  # nowhere to write it down for the next import
+        raise HTTPException(404)
+    side, _, group = fields.get("under", [""])[-1].partition(":")
+
+    def add() -> None:
+        conn = db.connect(state.database)
+        try:
+            monthclose.add_category(
+                conn,
+                state.rules.shared.with_name(categories.FILE),
+                name=fields.get("name", [""])[-1],
+                side=side,
+                group=group,
+            )
+        finally:
+            conn.close()
+
+    try:
+        await run_in_threadpool(add)
+    except (monthclose.MonthCloseError, ConfigError) as exc:
+        error = f"No category was added: {exc}."
         return await run_in_threadpool(_month_page, request, owner, month, error, 409)
     return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
 
