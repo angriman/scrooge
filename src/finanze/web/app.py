@@ -76,6 +76,10 @@ _HEADERS = {
 }
 _COPY = "This is a copy: changes are made on the machine that holds the data."
 _PAGE = 200  # transactions shown at once
+_STALE = (
+    "Nothing was imported: this page was loaded before the app was last started. "
+    "Choose the files again and send them from here."
+)
 _UPLOADS = 200  # files taken by one import: a year of monthly statements of every source
 # What stops an import: nothing is stored, and the page says why.
 _REFUSED = (
@@ -346,10 +350,16 @@ async def _import(request: Request) -> Response:
     if state.imports is None:
         raise HTTPException(404)
     async with request.form(max_files=_UPLOADS) as form:
-        _own_token(request, str(form.get("token", "")))
+        token = str(form.get("token", ""))
         owner = str(form.get("owner", ""))
         sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
         uploads = [(Path(part.filename).name, await part.read()) for part in sent if part.filename]
+    try:
+        _own_token(request, token)
+    except HTTPException:
+        # Most often a page left open while the app was started again, which gave it a new
+        # token: the page sent back has it, and says what to do.
+        return await run_in_threadpool(_import_form, request, _STALE, None, 403)
     if owner not in state.imports.people:
         error = f"{owner or 'Nobody'} is nobody the config names."
         return await run_in_threadpool(_import_form, request, error, None, 400)

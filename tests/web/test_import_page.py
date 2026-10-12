@@ -154,7 +154,10 @@ def test_two_files_of_one_name_are_told_apart(site: Site) -> None:
 
 def test_a_form_from_elsewhere_or_without_the_token_is_refused(site: Site) -> None:
     files = site.uploads("Migros.csv")
-    assert site.send(files, token="guessed").status_code == 403  # noqa: S106  # not a password
+    stale = site.send(files, token="of-an-earlier-start")  # noqa: S106  # not a password
+    assert stale.status_code == 403
+    assert "this page was loaded before the app was last started" in text(stale.text)
+    assert f'name="token" value="{site.token}"' in stale.text  # sending from here works
     form = {"token": site.token, "owner": "Lukas"}
     elsewhere = {"origin": "https://evil.example"}
     assert site.client.post("/import", data=form, files=files, headers=elsewhere).status_code == 403
