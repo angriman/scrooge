@@ -9,7 +9,7 @@
 <section>
   <h2>Staged</h2>
   {%- if found.statements %}
-  <p>{{ found.month.period[0].strftime("%B %Y") }}{% if done.months|length > 1 %} to {{ found.month.period[1].strftime("%B %Y") }}{% endif %} for {{ found.owner }}: {{ found.statements|length }} statement{{ "" if found.statements|length == 1 else "s" }} reconciled, {{ done.staged.transactions }} transactions staged.</p>
+  <p>{{ found.month.period[0].strftime("%B %Y") }}{% if found.month.end %} to {{ found.month.period[1].strftime("%B %Y") }}{% endif %} for {{ found.owner }}: {{ found.statements|length }} statement{{ "" if found.statements|length == 1 else "s" }} reconciled, {{ done.staged.transactions }} transactions staged.</p>
   <table class="cards">
     <thead>
       <tr><th>Source</th><th>File</th><th>Covers</th><th class="number">Transactions</th></tr>
@@ -36,6 +36,15 @@
     {%- for account in found.month.unreconciled %}
     <li>{{ account }} includes rows with no balance to check against.</li>
     {%- endfor %}
+    {%- if done.staged.already %}
+    <li>{{ done.staged.already }} row{{ " is" if done.staged.already == 1 else "s are" }} booked in committed months and stored there: left as {{ "it is" if done.staged.already == 1 else "they are" }}.</li>
+    {%- endif %}
+    {%- for line in done.staged.differences %}
+    <li class="error">Differs: {{ line }}.</li>
+    {%- endfor %}
+    {%- if done.staged.differences %}
+    <li>Nothing was changed in the committed months: reopen them to import these rows.</li>
+    {%- endif %}
     {%- for gap in done.staged.gaps %}
     <li>Missing: {{ gap }}</li>
     {%- endfor %}
@@ -43,11 +52,15 @@
     <li>{{ done.staged.uncategorized }} transaction{{ " needs" if done.staged.uncategorized == 1 else "s need" }} a category: set it on the month's page.</li>
     {%- endif %}
   </ul>
+  {%- if done.staged.months %}
   <p>Nothing shows on the other pages until its month is committed:
-    {%- for month in done.months %}
+    {%- for month in done.staged.months %}
     <a href="{{ url_for('month', owner=found.owner, month=month.strftime('%Y-%m')) }}">{{ month.strftime("%Y-%m") }}</a>
     {%- endfor %}
   </p>
+  {%- else %}
+  <p>Nothing new: every month these files cover is committed.</p>
+  {%- endif %}
 </section>
 {%- endif %}
 <section>
@@ -64,6 +77,6 @@
     <label>Files <input type="file" name="file" multiple required></label>
     <button>Import</button>
   </form>
-  <p class="note">A file may cover a month, a year or several years. Every file is reconciled before anything is stored, and kept as it was sent. A month already committed is refused until it is reopened.</p>
+  <p class="note">A file may cover a month, a year or several years. Every file is reconciled before anything is stored, and kept as it was sent. Months already committed are left as they are: rows booked in them are only compared with what is stored, and what differs is listed.</p>
 </section>
 {% endblock %}

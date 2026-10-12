@@ -110,14 +110,27 @@ def test_what_does_not_reconcile_is_refused_whole(site: Site) -> None:
     assert site.kept() == 0
 
 
-def test_a_committed_month_is_refused_until_it_is_reopened(site: Site) -> None:
+def test_a_committed_month_is_left_as_it_is_and_what_differs_is_said(site: Site) -> None:
     assert site.send(site.uploads("Revolut Savings.tsv")).status_code == 200
     conn = db.connect(site.database)
     monthclose.commit(conn, owner="Lukas", month=date(2026, 9, 1), now=CLICKED)
     conn.close()
-    response = site.send(site.uploads("Revolut Savings.tsv"))
-    assert response.status_code == 409
-    assert "2026-09 is committed for Lukas: reopen it first" in text(response.text)
+    before = site.count("transactions")
+    same = text(site.send(site.uploads("Revolut Savings.tsv")).text)
+    assert "0 transactions staged" in same
+    assert "5 rows are booked in committed months and stored there: left as they are." in same
+    assert "Nothing new: every month these files cover is committed." in same
+    assert "Differs" not in same
+
+    savings = site.folder / "Revolut Savings.tsv"
+    lines = savings.read_text(encoding="utf-8").splitlines(keepends=True)
+    without = [line for line in lines if not line.startswith("Sep 29, 2026, 2:09")]  # rows short
+    savings.write_text("".join(without), encoding="utf-8")
+    short = site.send(site.uploads("Revolut Savings.tsv"))
+    assert short.status_code == 200
+    assert "is committed and is not in Revolut Savings.tsv." in text(short.text)
+    assert "Nothing was changed in the committed months" in text(short.text)
+    assert site.count("transactions") == before
 
 
 def test_the_form_needs_a_person_and_a_file(site: Site) -> None:

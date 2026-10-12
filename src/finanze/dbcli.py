@@ -681,16 +681,25 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         for account in month.unreconciled
     )
     out.writelines(f"  missing: {gap}\n" for gap in staged.gaps)
+    if staged.already:
+        out.write(
+            f"  {staged.already} rows are booked in committed months and are stored there: "
+            "left as they are\n"
+        )
+    out.writelines(f"  differs: {line}\n" for line in staged.differences)
+    if staged.differences:
+        out.write("  nothing was changed in the committed months: reopen them to import these\n")
     if staged.uncategorized:
         out.write(
             f"{staged.uncategorized} transactions need a category: "
             "import again with --review, or add rules by hand.\n"
         )
         return NEEDS_REVIEW
-    through = "" if month.end is None else f" {last:%Y-%m}"
-    if statements:
-        out.write(f"Next: finanze commit {first:%Y-%m}{through}\n")
     covered = set(months_between(first, last)) if statements else set()
+    opened = [each for each in staged.months if each in covered]  # not the committed ones
+    if opened:
+        through = "" if opened[0] == opened[-1] else f" {opened[-1]:%Y-%m}"
+        out.write(f"Next: finanze commit {opened[0]:%Y-%m}{through}\n")
     stated = {month_start(certificate.stated.as_of) for certificate in certificates}
     out.writelines(f"Next: finanze commit {each:%Y-%m}\n" for each in sorted(stated - covered))
     return OK

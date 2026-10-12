@@ -239,6 +239,24 @@ def delete_statement_rows(
     return touched
 
 
+def statement_rows(
+    conn: sqlite3.Connection, source: str, accounts: Collection[int], period: tuple[date, date]
+) -> dict[str, str]:
+    """The rows statements of `source` gave these accounts, booked in the period: id -> what
+    it is, to be read. Without the interest split off a bill, which no statement prints."""
+    marks = ", ".join("?" * len(accounts))
+    found = conn.execute(
+        "SELECT t.id, a.name, t.booking_date, t.description "  # noqa: S608  # only "?" marks are interpolated
+        "FROM transactions t JOIN accounts a ON a.id = t.account_id "
+        f"WHERE t.account_id IN ({marks}) AND t.booking_date BETWEEN ? AND ? "
+        "AND t.split_of IS NULL "
+        "AND t.statement_file_id IN (SELECT id FROM statement_files WHERE source = ?) "
+        "ORDER BY t.booking_date, t.id",
+        (*accounts, period[0].isoformat(), period[1].isoformat(), source),
+    ).fetchall()
+    return {str(r[0]): f"{r[1]} {r[2]}: {r[3]}" for r in found}
+
+
 def drop_unused_files(conn: sqlite3.Connection, files: Iterable[int]) -> None:
     """Forget statement files that nothing points to any more (a re-export replaced them)."""
     for file_id in files:

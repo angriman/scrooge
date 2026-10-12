@@ -123,8 +123,14 @@ def test_commit_saves_a_copy_first_and_reopen_undoes_it(run: Run) -> None:
     assert "already committed" in run.output
     assert not copy.exists()
 
-    assert run.load() == dbcli.FAILED
-    assert "error: 2026-09 is committed for Lukas: reopen it first" in run.output
+    # A committed month is left as it is: the same statements again find their rows there.
+    assert run.load() == dbcli.OK
+    assert "0 transactions staged" in run.output
+    # One row less than is committed: the interest split off the bill is in no statement.
+    assert f"  {staged - 1} rows are booked in committed months and are stored" in run.output
+    assert "differs" not in run.output
+    assert "Next:" not in run.output
+    assert run.count("committed_transactions") == staged
     assert run("reopen", "2026-09") == dbcli.OK
     assert run.output == "September 2026 is open again for Lukas.\n"
     assert run.count("committed_transactions") == 0
@@ -965,3 +971,18 @@ def test_keep_takes_in_the_files_of_statements_imported_earlier(run: Run) -> Non
     assert run.output.startswith("5 of ")  # the sixth is kept already
     assert "no original" not in run.output
     assert len(kept(run)) == len(FILES)
+
+
+def test_an_export_that_disagrees_with_a_committed_month_says_where(run: Run) -> None:
+    savings = run.folder / "old" / "savings" / "Revolut Savings.tsv"
+    savings.parent.mkdir(parents=True)
+    lines = (run.folder / "Revolut Savings.tsv").read_text(encoding="utf-8").splitlines(True)
+    savings.write_text("".join(lines), encoding="utf-8")
+    assert run.load(folder=savings.parent) == dbcli.OK
+    assert run("commit", "2026-09") == dbcli.OK
+    short = [line for line in lines if not line.startswith("Sep 29, 2026, 2:09")]
+    savings.write_text("".join(short), encoding="utf-8")
+    assert run.load(folder=savings.parent) == dbcli.OK
+    assert "  differs: Revolut EUR 2026-09-29: " in run.output
+    assert "is committed and is not in Revolut Savings.tsv\n" in run.output
+    assert "nothing was changed in the committed months: reopen them" in run.output

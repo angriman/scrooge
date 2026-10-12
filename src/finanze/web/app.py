@@ -58,7 +58,6 @@ from finanze import (
 )
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
-from finanze.extractors.common import month_start, months_between
 from finanze.models import Kind
 from finanze.storage import db, originals, store
 from finanze.storage.money import PrecisionError
@@ -316,12 +315,6 @@ class _Imported:
 
     found: importing.Read
     staged: monthclose.Staged
-
-    @property
-    def months(self) -> list[date]:
-        first, last = self.found.month.period
-        covered = set(months_between(first, last)) if self.found.statements else set()
-        return sorted(covered | {month_start(c.stated.as_of) for c in self.found.certificates})
 
 
 def _import_form(
