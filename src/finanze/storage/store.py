@@ -202,6 +202,12 @@ def upsert_statement_file(  # noqa: PLR0913  # one argument per column
     return int(row[0])
 
 
+def statement_names(conn: sqlite3.Connection) -> dict[str, str]:
+    """The digest and the name of every statement file stored, whoever it belongs to."""
+    found = conn.execute("SELECT sha256, filename FROM statement_files ORDER BY id").fetchall()
+    return {str(row[0]): str(row[1]) for row in found}
+
+
 def delete_statement_rows(
     conn: sqlite3.Connection, source: str, accounts: Collection[int], period: tuple[date, date]
 ) -> set[int]:
@@ -231,6 +237,24 @@ def delete_statement_rows(
         touched |= {int(row[0]) for row in found}
         conn.execute(f"DELETE {rows}", args)
     return touched
+
+
+def statement_rows(
+    conn: sqlite3.Connection, source: str, accounts: Collection[int], period: tuple[date, date]
+) -> dict[str, str]:
+    """The rows statements of `source` gave these accounts, booked in the period: id -> what
+    it is, to be read. Without the interest split off a bill, which no statement prints."""
+    marks = ", ".join("?" * len(accounts))
+    found = conn.execute(
+        "SELECT t.id, a.name, t.booking_date, t.description "  # noqa: S608  # only "?" marks are interpolated
+        "FROM transactions t JOIN accounts a ON a.id = t.account_id "
+        f"WHERE t.account_id IN ({marks}) AND t.booking_date BETWEEN ? AND ? "
+        "AND t.split_of IS NULL "
+        "AND t.statement_file_id IN (SELECT id FROM statement_files WHERE source = ?) "
+        "ORDER BY t.booking_date, t.id",
+        (*accounts, period[0].isoformat(), period[1].isoformat(), source),
+    ).fetchall()
+    return {str(r[0]): f"{r[1]} {r[2]}: {r[3]}" for r in found}
 
 
 def drop_unused_files(conn: sqlite3.Connection, files: Iterable[int]) -> None:
@@ -585,7 +609,7 @@ def uncategorized(conn: sqlite3.Connection, owner: int, period: tuple[date, date
 
 @dataclass(frozen=True, slots=True)
 class Waiting:
-    """A row without a category, with what a choice for it depends on."""
+    """A row to give a category to, with what a choice for it depends on."""
 
     id: str
     amount_nano: int
@@ -594,16 +618,31 @@ class Waiting:
     counterparty: str
 
 
+# What can be given another category: money in or out as the statement books it, whose
+# category a rule or a choice gave. The rest (trades, dividends, the interest split off a
+# bill) is categorized by what it is.
+CHANGEABLE = (
+    "t.category_id IS NOT NULL AND t.kind IN ('income', 'expense', 'transfer') "
+    "AND t.split_of IS NULL"
+)
+
+
 def waiting(
-    conn: sqlite3.Connection, owner: int, period: tuple[date, date], ids: Collection[str]
+    conn: sqlite3.Connection,
+    owner: int,
+    period: tuple[date, date],
+    ids: Collection[str],
+    *,
+    change: bool = False,
 ) -> list[Waiting]:
-    """Those of `ids` that are rows of the owner booked in the period and still need a category."""
+    """Those of `ids` that are rows of the owner booked in the period and still need a category;
+    with `change`, those that have one which can be changed."""
     marks = ", ".join("?" * len(ids))
     rows = conn.execute(
         "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks and the fixed text above are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        f"AND {WAITING} AND t.id IN ({marks}) ORDER BY t.id",
+        f"AND {CHANGEABLE if change else WAITING} AND t.id IN ({marks}) ORDER BY t.id",
         (owner, period[0].isoformat(), period[1].isoformat(), *ids),
     ).fetchall()
     return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]

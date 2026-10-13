@@ -8,6 +8,35 @@
 </form>
 {%- endif %}
 {% endmacro %}
+{% macro choose(group, change) %}
+          <form method="post" action="{{ url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="choice">
+            <input type="hidden" name="token" value="{{ token }}">
+            {%- if change %}
+            <input type="hidden" name="change" value="1">
+            {%- endif %}
+            {%- for row in group.rows %}
+            <input type="hidden" name="id" value="{{ row.id }}">
+            {%- endfor %}
+            <select name="category" required aria-label="Category for {{ group.name }}">
+              <option value="">Choose</option>
+              {%- for heading, names in choices.leaves %}
+              <optgroup label="{{ heading }}">
+                {%- for name in names %}
+                <option>{{ name }}</option>
+                {%- endfor %}
+              </optgroup>
+              {%- endfor %}
+            </select>
+            {%- if can_remember and group.name %}
+            <label><input type="radio" name="remember" value="rule" checked> always (save a rule)</label>
+            <label><input type="radio" name="remember" value="rows"> just these rows</label>
+            {%- else %}
+            <input type="hidden" name="remember" value="rows">
+            <small>For these rows only.</small>
+            {%- endif %}
+            <button>Set</button>
+          </form>
+{% endmacro %}
 {% block main %}
 {%- if error %}
 <p class="error" role="alert">{{ error }}</p>
@@ -42,7 +71,7 @@
       {%- for file in month.files %}
       <tr>
         <td class="lead">{{ file.source|replace("_", " ") }}</td>
-        <td class="wide" data-label="File">{{ file.filename }}</td>
+        <td class="wide" data-label="File"><a href="{{ url_for('statement', number=file.id) }}">{{ file.filename }}</a></td>
         <td class="date wide" data-label="Covers">{{ file.first }} to {{ file.last }}</td>
         <td data-label="Reconciled">{{ "yes" if file.checked else "nothing to check against" }}</td>
         <td class="number" data-label="Transactions">{{ file.transactions }}</td>
@@ -79,30 +108,7 @@
           {%- elif month.committed %}
           Reopen the month to set it.
           {%- else %}
-          <form method="post" action="{{ url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="choice">
-            <input type="hidden" name="token" value="{{ token }}">
-            {%- for row in group.rows %}
-            <input type="hidden" name="id" value="{{ row.id }}">
-            {%- endfor %}
-            <select name="category" required aria-label="Category for {{ group.name }}">
-              <option value="">Choose</option>
-              {%- for heading, names in choices.leaves %}
-              <optgroup label="{{ heading }}">
-                {%- for name in names %}
-                <option>{{ name }}</option>
-                {%- endfor %}
-              </optgroup>
-              {%- endfor %}
-            </select>
-            {%- if can_remember and group.name %}
-            <label><input type="radio" name="remember" value="rule" checked> always (save a rule)</label>
-            <label><input type="radio" name="remember" value="rows"> just these rows</label>
-            {%- else %}
-            <input type="hidden" name="remember" value="rows">
-            <small>For these rows only.</small>
-            {%- endif %}
-            <button>Set</button>
-          </form>
+          {{ choose(group, false) }}
           {%- endif %}
         </td>
       </tr>
@@ -110,6 +116,55 @@
     </tbody>
   </table>
 </section>
+{%- endif %}
+{%- if not copy and not month.committed %}
+{%- if month.changeable %}
+<section>
+  <h2>Change a category</h2>
+  <details>
+    <summary>{{ month.categorized|length }} row{{ "" if month.categorized|length == 1 else "s" }} of money in or out, by counterparty and category</summary>
+    <table class="cards">
+      <thead>
+        <tr><th>Counterparty or description</th><th>Rows</th><th>Now</th><th>Category</th></tr>
+      </thead>
+      <tbody>
+        {%- for group in month.changeable %}
+        <tr>
+          <td class="lead wide">{{ group.name or "(no text)" }}<small>{{ "received" if group.incoming else "paid" }}</small></td>
+          <td class="wide">
+            {%- for row in group.rows %}
+            <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
+            {%- endfor %}
+          </td>
+          <td data-label="Now">{{ group.category }}</td>
+          <td class="wide">{{ choose(group, true) }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </details>
+</section>
+{%- endif %}
+{%- if can_remember %}
+<section>
+  <h2>Add a category</h2>
+  <form method="post" action="{{ url_for('category', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="filter">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label>Name <input name="name" required maxlength="60" size="24"></label>
+    <label>Under
+      <select name="under">
+        <option value="uscite:">Expenses, a group of its own</option>
+        {%- for name in choices.groups %}
+        <option value="uscite:{{ name }}">Expenses, {{ name }}</option>
+        {%- endfor %}
+        <option value="entrate:">Income</option>
+      </select>
+    </label>
+    <button>Add</button>
+  </form>
+  <p class="note">For a row that fits none of the categories. It is there for every import from now on.</p>
+</section>
+{%- endif %}
 {%- endif %}
 <section>
   <h2>By category</h2>

@@ -21,7 +21,7 @@ from decimal import Decimal
 from itertools import pairwise
 from pathlib import Path
 
-from finanze import classification
+from finanze import categories, classification
 from finanze.categories import Extra
 from finanze.classification import Patterns, names
 from finanze.extractors.common import month_end, month_start, months_between
@@ -44,6 +44,7 @@ _KINDS = {"ibkr": "broker_cash", "tastytrade": "broker_cash", "finpension": "bro
 _KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})
+_NOT_WAITING = "are no longer waiting for a category"
 # An account that only certificates feed: carried flat from each balance to the next, as a
 # typed account is, and outside the chain of balances (`store.anchors`).
 _CARRIED_FLAT = "manual"
@@ -91,27 +92,34 @@ class Batch:
 
 @dataclass(frozen=True, slots=True)
 class Staged:
-    """What `stage` stored."""
+    """What an import left in the database."""
 
-    month: date  # the first month, when the statements cover several
+    month: date  # the first month staged; the first one covered when nothing was
     transactions: int
     uncategorized: int
     # What an earlier statement would settle: it blocks the commit, not the import.
     gaps: tuple[str, ...] = ()
+    # Rows of the statements booked in months that are committed: found there and left alone.
+    already: int = 0
+    # Where the statements and those committed months disagree. Nothing was changed there.
+    differences: tuple[str, ...] = ()
+    months: tuple[date, ...] = ()  # the months it staged, which are open now
 
 
 def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
-    """Store the month for its owner, replacing an earlier import of the same statements."""
+    """Store the month for its owner, replacing an earlier import of the same statements.
+
+    A statement may reach back into months that are committed, as an export of the year so
+    far does: those months are left as they are, its rows booked in them are only compared
+    with what is stored (`Staged.differences`), and the rest is staged from the first month
+    that is not committed. A committed month after an open one is refused, as is a
+    certificate of a committed month: reopen it first.
+    """
     owner, statements, month, people = batch.owner, batch.statements, batch.month, batch.people
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
-        months = {m for s in statements for m in months_between(*s.extraction.period)}
-        months |= {month_start(c.stated.as_of) for c in batch.certificates}
-        for covered in sorted(months):
-            if store.month_status(conn, owner_id, covered) == "committed":
-                msg = f"{covered:%Y-%m} is committed for {owner}: reopen it first"
-                raise MonthCommittedError(msg)
-            store.set_month(conn, owner_id, covered, "open", None)
+        starts = {s.filename: _first_open(conn, owner, owner_id, s) for s in statements}
+        months = _open_months(conn, owner_id, batch, starts)
         store.seed_categories(conn, batch.categories)
         others = {
             store.ensure_owner(conn, name): patterns
@@ -126,12 +134,35 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
             s.filename: _accounts(conn, owner_id, s, by_file[s.filename]) for s in statements
         }
         _refuse_duplicates(statements, accounts)
-
-        replaced: set[int] = set()
+        rows = [(s.source, txn) for s in statements for txn in by_file[s.filename]]
+        # Ids come from all the rows: the counter among identical ones must not depend on
+        # which months are committed.
+        numbered = list(zip(transaction_ids(owner, rows), (txn for _, txn in rows), strict=True))
+        new = [
+            (txn_id, txn)
+            for txn_id, txn in numbered
+            if (start := starts[txn.source_file]) is not None and txn.booking_date >= start
+        ]
+        already = len(numbered) - len(new)
+        differences: list[str] = []
         for statement in statements:
-            ids = accounts[statement.filename].values()
-            period = statement.extraction.period
-            replaced |= store.delete_statement_rows(conn, statement.source, ids, period)
+            start = starts[statement.filename]
+            old = [
+                (txn_id, txn)
+                for txn_id, txn in numbered
+                if txn.source_file == statement.filename
+                and (start is None or txn.booking_date < start)
+            ]
+            unknown, absent = _compare(conn, statement, accounts[statement.filename], old, start)
+            already -= len(unknown)
+            differences += [*unknown, *absent]
+
+        staged = [s for s in statements if starts[s.filename] is not None]
+        replaced: set[int] = set()
+        for statement in staged:
+            numbers = accounts[statement.filename].values()
+            period = (starts[statement.filename] or month.month, statement.extraction.period[1])
+            replaced |= store.delete_statement_rows(conn, statement.source, numbers, period)
         files = {
             s.filename: store.upsert_statement_file(
                 conn,
@@ -139,17 +170,16 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 source=s.source,
                 filename=s.filename,
                 sha256=s.sha256,
-                period=s.extraction.period,
+                period=(starts[s.filename] or month.month, s.extraction.period[1]),
                 reconciled="yes" if _has_figures(s) else "nothing_to_check",
                 imported_at=db.timestamp(now),
                 holdings=s.extraction.holdings is not None,
             )
-            for s in statements
+            for s in staged
         }
 
         leaves = store.leaf_categories(conn)
-        rows = [(s.source, txn) for s in statements for txn in by_file[s.filename]]
-        for txn_id, (_, txn) in zip(transaction_ids(owner, rows), rows, strict=True):
+        for txn_id, txn in new:
             store.insert_transaction(
                 conn,
                 txn_id,
@@ -159,14 +189,9 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
                 counterparty_owner=_counterparty_owner(txn, others),
                 statement_file=files[txn.source_file],
             )
-        for statement in statements:
-            first, last = statement.extraction.period
-            for balance in statement.extraction.balances:
-                account = accounts[statement.filename][balance.account]
-                file_id = files[statement.filename]
-                before = first - timedelta(days=1)
-                store.set_closing_balance(conn, account, last, balance.closing, file_id)
-                store.set_opening_balance(conn, account, before, balance.opening, file_id)
+        for statement in staged:
+            whole = starts[statement.filename] == statement.extraction.period[0]
+            _store_balances(conn, statement, accounts[statement.filename], files, opening=whole)
             _store_valuation(conn, statement, accounts[statement.filename], files)
         stored, dropped = _store_certificates(conn, owner_id, batch.certificates, now)
         replaced |= dropped
@@ -176,7 +201,106 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
         store.apply_overrides(conn)
         pairs.mark(conn)
         pending = store.uncategorized(conn, owner_id, month.period)
-        return Staged(month.month, len(rows), pending, gaps)
+        opened = tuple(sorted(months))
+        first_staged = opened[0] if opened else month.month
+        return Staged(first_staged, len(new), pending, gaps, already, tuple(differences), opened)
+
+
+def _open_months(
+    conn: sqlite3.Connection, owner_id: int, batch: Batch, starts: Mapping[str, date | None]
+) -> set[date]:
+    """Open the months the batch stages: each statement's from its first open one, and each
+    certificate's, which must not be committed."""
+    months = {
+        m
+        for s in batch.statements
+        if (start := starts[s.filename]) is not None
+        for m in months_between(start, s.extraction.period[1])
+    }
+    for certificate in batch.certificates:
+        stated = month_start(certificate.stated.as_of)
+        if store.month_status(conn, owner_id, stated) == "committed":
+            raise MonthCommittedError(_committed(stated, batch.owner))
+        months.add(stated)
+    for covered in sorted(months):
+        store.set_month(conn, owner_id, covered, "open", None)
+    return months
+
+
+def _store_balances(
+    conn: sqlite3.Connection,
+    statement: Statement,
+    accounts: Mapping[str, int],
+    files: Mapping[str, int],
+    *,
+    opening: bool,
+) -> None:
+    """The balances the statement closes on and, with `opening`, the ones it started from.
+    Not when it starts in a committed month, whose own balances stand: the chain from them
+    to its closing balances is what is checked."""
+    first, last = statement.extraction.period
+    file_id = files[statement.filename]
+    for balance in statement.extraction.balances:
+        account = accounts[balance.account]
+        store.set_closing_balance(conn, account, last, balance.closing, file_id)
+        if opening:
+            before = first - timedelta(days=1)
+            store.set_opening_balance(conn, account, before, balance.opening, file_id)
+
+
+def _committed(month: date, owner: str) -> str:
+    return f"{month:%Y-%m} is committed for {owner}: reopen it first"
+
+
+def _first_open(
+    conn: sqlite3.Connection, owner: str, owner_id: int, statement: Statement
+) -> date | None:
+    """The first month of the statement that is not committed; None when they all are.
+
+    The committed months must come first: one after an open month is refused.
+    """
+    start: date | None = None
+    for covered in months_between(*statement.extraction.period):
+        committed = store.month_status(conn, owner_id, covered) == "committed"
+        if committed and start is not None:
+            raise MonthCommittedError(_committed(covered, owner))
+        if not committed and start is None:
+            start = covered
+    return start
+
+
+def _compare(
+    conn: sqlite3.Connection,
+    statement: Statement,
+    accounts: Mapping[str, int],
+    old: Sequence[tuple[str, Transaction]],
+    start: date | None,
+) -> tuple[list[str], list[str]]:
+    """How the statement's rows booked in committed months differ from what those months hold:
+    the rows of the statement that are not stored, and the stored rows it does not have.
+
+    A row is the same row when its id is (D15). What is stored is looked at from the day of
+    the statement's first row: an export may begin in the middle of a month.
+    """
+    if not old:
+        return [], []
+    first = min(txn.booking_date for _, txn in old)
+    last = max(txn.booking_date for _, txn in old) if start is None else start - timedelta(days=1)
+    stored = store.statement_rows(conn, statement.source, accounts.values(), (first, last))
+    found = {txn_id for txn_id, _ in old}
+    name = statement.filename
+    unknown = [
+        f"{txn.account} {txn.booking_date}: {txn.description} ({txn.amount} {txn.currency}) "
+        f"is in {name} and is not in the committed {txn.booking_date:%Y-%m}"
+        for txn_id, txn in old
+        if txn_id not in stored
+    ]
+    absent = [
+        f"{what} is committed and is not in {name}"
+        for txn_id, what in stored.items()
+        if txn_id not in found
+    ]
+    return unknown, absent
 
 
 def _store_certificates(
@@ -351,6 +475,7 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     category: str,
     now: datetime,
     remember: Remember | None,
+    change: bool = False,
 ) -> int:
     """Give `category` to rows of an open month that have none. Returns how many.
 
@@ -358,15 +483,21 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     the rows, so the next import makes it again. Without, it is kept as an override of these
     rows alone. A transfer category makes an income or expense a transfer, as a rule would.
     Rule files are left as they were when anything fails.
+
+    With `change` the rows are instead ones that have a category, which was wrong: money in
+    or out, nothing a statement categorizes itself. The choice is always kept as an override
+    of these rows, and a rule to remember it goes before the rules already there, the wrong
+    one among them. A transfer given another kind of category is income or an expense again.
     """
     with _rules_kept() as before, db.transaction(conn):
         owner_id, status = _month(conn, owner, month)
         if status == "committed":
             msg = f"{month:%Y-%m} is committed for {owner}: reopen it first"
             raise MonthCommittedError(msg)
-        rows = store.waiting(conn, owner_id, (month, month_end(month)), ids)
+        rows = store.waiting(conn, owner_id, (month, month_end(month)), ids, change=change)
         if not rows or len(rows) != len(set(ids)):
-            msg = "those rows are no longer waiting for a category: load the page again"
+            state = "cannot be given another category" if change else _NOT_WAITING
+            msg = f"those rows {state}: load the page again"
             raise MonthCloseError(msg)
         leaves = store.leaf_categories(conn)
         flows = {kind.value for kind in _BETWEEN_OWNERS}
@@ -376,19 +507,25 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
             if chosen is None:
                 msg = "no category was chosen"
                 raise MonthCloseError(msg)
-            moved = ("transfer", category) in leaves and row.kind in flows
-            kind = Kind.TRANSFER.value if moved else row.kind
-            store.set_category(conn, row.id, chosen, "rule" if remember else "manual", kind)
-            if remember is None:
-                changed = kind if moved else None
+            transfer = ("transfer", category) in leaves
+            kind = row.kind
+            if transfer and row.kind in flows:
+                kind = Kind.TRANSFER.value
+            elif not transfer and row.kind == Kind.TRANSFER.value:
+                kind = (Kind.INCOME if row.amount_nano > 0 else Kind.EXPENSE).value
+            kept = remember is None or change  # as an override of this row
+            store.set_category(conn, row.id, chosen, "manual" if kept else "rule", kind)
+            if kept:
+                changed = kind if kind != row.kind else None
                 store.set_override(conn, row.id, chosen, changed, db.timestamp(now))
+            if remember is None:
                 continue
             name = (row.counterparty or row.description).strip()
             if not name:
                 msg = "a row without any text cannot become a rule: choose 'just these rows'"
                 raise MonthCloseError(msg)
             text = f"{row.description}\n{row.counterparty}"
-            if moved and any(pattern.search(text) for pattern in remember.others):
+            if transfer and any(pattern.search(text) for pattern in remember.others):
                 msg = (
                     f"a rule cannot make money to or from another person a transfer ({name}): "
                     "choose 'just these rows'"
@@ -400,8 +537,41 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
         for (name, flow), where in rules.items():
             if where not in before:
                 before[where] = where.read_text(encoding="utf-8") if where.exists() else None
-            classification.append_rule(where, name, flow, category)
+            classification.append_rule(where, name, flow, category, first=change)
         return len(rows)
+
+
+def add_category(
+    conn: sqlite3.Connection, file: Path, *, name: str, side: str, group: str
+) -> Extra:
+    """Add a category to the taxonomy: in `file` (`categories.yaml`), which every import
+    reads, and in the database. Returns it.
+
+    `side` is `uscite` or `entrate`. An expense goes under `group`, one of the top-level
+    categories there are, or under a new one named like itself when no group is given.
+    """
+    name = " ".join(name.split())
+    if not name:
+        msg = "a category needs a name"
+        raise MonthCloseError(msg)
+    if side not in categories.SIDES:
+        msg = "a category is added to the expenses or to the income"
+        raise MonthCloseError(msg)
+    with _rules_kept() as before, db.transaction(conn):
+        extras = categories.load(file)
+        store.seed_categories(conn, extras)
+        leaves = store.leaf_categories(conn)
+        if (side, name) in leaves or ("transfer", name) in leaves:
+            msg = f"there is already a category {name!r}"
+            raise MonthCloseError(msg)
+        if side == "uscite" and group and group not in categories.groups(extras):
+            msg = f"no group of categories named {group!r}"
+            raise MonthCloseError(msg)
+        extra = Extra(name, side, (group or name) if side == "uscite" else "")
+        before[file] = file.read_text(encoding="utf-8") if file.exists() else None
+        categories.add(file, extra)
+        store.seed_categories(conn, categories.load(file))
+        return extra
 
 
 def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how much

@@ -1,5 +1,7 @@
 import getpass
+import hashlib
 import io
+import shutil
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -13,7 +15,7 @@ from finanze import categories, cli, dbcli, networth, prices
 from finanze.extractors import ocr
 from finanze.storage import db
 from finanze.web import auth
-from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
+from tests.conftest import FILES, FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -121,8 +123,14 @@ def test_commit_saves_a_copy_first_and_reopen_undoes_it(run: Run) -> None:
     assert "already committed" in run.output
     assert not copy.exists()
 
-    assert run.load() == dbcli.FAILED
-    assert "error: 2026-09 is committed for Lukas: reopen it first" in run.output
+    # A committed month is left as it is: the same statements again find their rows there.
+    assert run.load() == dbcli.OK
+    assert "0 transactions staged" in run.output
+    # One row less than is committed: the interest split off the bill is in no statement.
+    assert f"  {staged - 1} rows are booked in committed months and are stored" in run.output
+    assert "differs" not in run.output
+    assert "Next:" not in run.output
+    assert run.count("committed_transactions") == staged
     assert run("reopen", "2026-09") == dbcli.OK
     assert run.output == "September 2026 is open again for Lukas.\n"
     assert run.count("committed_transactions") == 0
@@ -571,6 +579,8 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert app.state.database == run.database
     assert app.state.rules.shared == Path("rules.local.yaml")
     assert app.state.rules.people == {}
+    assert app.state.imports.rules == [Path("rules.local.yaml"), Path("rules.yaml")]
+    assert app.state.imports.instruments == Path("instruments.yaml")
     assert run.count("schema_version") == len(db.migrations())
 
     with pytest.raises(SystemExit):
@@ -923,3 +933,56 @@ def test_prices_uses_the_real_source_unless_given_another(
     assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.NEEDS_REVIEW
     assert len(made) == 1
     assert made[0].asked
+
+
+def kept(run: Run) -> list[str]:
+    folder = run.database.parent / "originals"
+    return sorted(path.name for path in folder.iterdir()) if folder.is_dir() else []
+
+
+def test_import_keeps_the_file_of_every_statement_under_its_digest(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    digests = {
+        hashlib.sha256((run.folder / name).read_bytes()).hexdigest() + Path(name).suffix
+        for name in FILES
+    }
+    assert set(kept(run)) == digests  # the statements, and none of the files skipped
+    assert run.load() == dbcli.OK  # the same files again: nothing more to keep
+    assert set(kept(run)) == digests
+
+
+def test_an_import_that_stores_nothing_keeps_nothing(run: Run) -> None:
+    migros = run.folder / "Migros.csv"
+    text = migros.read_text(encoding="utf-8")
+    migros.write_text(text.replace("-1288.18", "-1288.19"), encoding="utf-8")
+    assert run.load() == dbcli.FAILED
+    assert kept(run) == []
+
+
+def test_keep_takes_in_the_files_of_statements_imported_earlier(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    shutil.rmtree(run.database.parent / "originals")  # as after an import of before
+    assert run("keep", str(run.folder / "Migros.csv"), str(run.folder / "notes.txt")) == dbcli.OK
+    assert f"1 of 2 files kept in {run.database.parent / 'originals'}." in run.output
+    assert "  no original: IBKR.csv\n" in run.output
+    assert "no original: Migros.csv" not in run.output
+    assert len(kept(run)) == 1
+    assert run("keep", str(run.folder)) == dbcli.OK
+    assert run.output.startswith("5 of ")  # the sixth is kept already
+    assert "no original" not in run.output
+    assert len(kept(run)) == len(FILES)
+
+
+def test_an_export_that_disagrees_with_a_committed_month_says_where(run: Run) -> None:
+    savings = run.folder / "old" / "savings" / "Revolut Savings.tsv"
+    savings.parent.mkdir(parents=True)
+    lines = (run.folder / "Revolut Savings.tsv").read_text(encoding="utf-8").splitlines(True)
+    savings.write_text("".join(lines), encoding="utf-8")
+    assert run.load(folder=savings.parent) == dbcli.OK
+    assert run("commit", "2026-09") == dbcli.OK
+    short = [line for line in lines if not line.startswith("Sep 29, 2026, 2:09")]
+    savings.write_text("".join(short), encoding="utf-8")
+    assert run.load(folder=savings.parent) == dbcli.OK
+    assert "  differs: Revolut EUR 2026-09-29: " in run.output
+    assert "is committed and is not in Revolut Savings.tsv\n" in run.output
+    assert "nothing was changed in the committed months: reopen them" in run.output

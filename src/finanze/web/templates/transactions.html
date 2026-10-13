@@ -76,7 +76,7 @@
     <tr>
       <td class="date">{{ row.booking_date if wanted.booking else row.date }}{% if row.date != row.booking_date %}<small>{{ "real" if wanted.booking else "booked" }} {{ row.date if wanted.booking else row.booking_date }}</small>{% endif %}</td>
       {%- if not owner %}<td class="person">{{ row.owner }}</td>{% endif %}
-      <td class="account">{{ row.account }}</td>
+      <td class="account">{{ row.account }}{% if row.file %}<small><a href="{{ url_for('statement', number=row.file) }}" title="The statement this row came from">file</a></small>{% endif %}</td>
       <td class="category">{{ row.category or "" }}<small>{{ row.kind.value|replace("_", " ") }}</small></td>
       <td class="what">{{ row.counterparty or row.description }}{% if row.counterparty and row.description != row.counterparty %}<small>{{ row.description }}</small>{% endif %}</td>
       <td class="number amount">{{ row.amount|money }} {{ row.currency }}</td>

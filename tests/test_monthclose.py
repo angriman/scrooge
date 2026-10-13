@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import classification, monthclose, pipeline
+from finanze import categories, classification, monthclose, pipeline
 from finanze.categories import Extra
 from finanze.models import CashBalance, Kind
 from finanze.monthclose import Batch
@@ -95,7 +95,9 @@ FIRST = "2026-09-01"  # for queries that look at September only
 def test_every_transaction_of_the_month_is_stored(conn: sqlite3.Connection, folder: Path) -> None:
     september = fixture_batch(folder)
     staged = stage_september(conn, folder)
-    assert staged == monthclose.Staged(SEPTEMBER, len(september.month.transactions), 0)
+    assert staged == monthclose.Staged(
+        SEPTEMBER, len(september.month.transactions), 0, months=(SEPTEMBER,)
+    )
     # one row more than the statements have: the interest split off the matured bill
     stored_rows = rows(conn, "SELECT count(*) FROM transactions WHERE booking_date >= ?", FIRST)
     assert stored_rows == [(staged.transactions + 1,)]
@@ -187,12 +189,13 @@ def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> 
 def test_a_committed_month_must_be_reopened_before_importing_again(
     conn: sqlite3.Connection, folder: Path
 ) -> None:
-    stage_september(conn, folder)
+    first = stage_september(conn, folder)
     monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
     before = dump(conn)
-    with pytest.raises(monthclose.MonthCommittedError, match="2026-09 is committed for Lukas"):
-        monthclose.stage(conn, fixture_batch(folder), LATER)
-    assert dump(conn) == before
+    again = monthclose.stage(conn, fixture_batch(folder), LATER)
+    assert dump(conn) == before  # the same statements: found there, nothing touched
+    assert (again.transactions, again.already, again.months) == (0, first.transactions, ())
+    assert again.differences == ()
 
     monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
     assert rows(conn, "SELECT DISTINCT status, committed_at FROM months") == [("open", None)]
@@ -694,7 +697,9 @@ def test_a_certificate_gives_its_account_a_balance_and_no_rows(conn: sqlite3.Con
     axa = certificate(MARCH, "35802.00")
     servisa = certificate(date(2026, 1, 15), "3579.40", issuer="Servisa")
     staged = monthclose.stage(conn, certified(axa, servisa), NOW)
-    assert staged == monthclose.Staged(date(2026, 1, 1), 0, 0)
+    assert staged == monthclose.Staged(
+        date(2026, 1, 1), 0, 0, months=(date(2026, 1, 1), date(2026, 3, 1))
+    )
     assert rows(conn, "SELECT name, kind, currency, source FROM accounts ORDER BY name") == [
         ("Pillar 2 AXA", "manual", "CHF", "axa"),
         ("Pillar 2 Servisa", "manual", "CHF", "servisa"),
@@ -778,7 +783,9 @@ def test_statements_and_certificates_are_staged_together_or_not_at_all(
         monthclose.stage(conn, both, LATER)
     assert dump(conn) == before
     later = replace(september, certificates=(certificate(date(2026, 9, 1), "36000"),))
-    assert monthclose.stage(conn, later, LATER) == monthclose.Staged(SEPTEMBER, 1, 0)
+    assert monthclose.stage(conn, later, LATER) == monthclose.Staged(
+        SEPTEMBER, 1, 0, months=(SEPTEMBER,)
+    )
     assert rows(conn, "SELECT count(*) FROM balances") == [(5,)]
     assert rows(conn, "SELECT count(*) FROM statement_files") == [(3,)]
 
@@ -1392,11 +1399,11 @@ def test_rules_files_are_left_as_they_were_when_a_choice_fails(
     append = classification.append_rule
     saved: list[Path] = []
 
-    def full_disk(path: Path, *rule: str) -> None:
+    def full_disk(path: Path, *rule: str, first: bool) -> None:
         if len(saved) == 2:  # the third rule cannot be saved
             raise OSError("no space left")
         saved.append(path)
-        append(path, *rule)
+        append(path, *rule, first=first)
 
     monkeypatch.setattr(classification, "append_rule", full_disk)
     with pytest.raises(OSError, match="no space left"):
@@ -1448,3 +1455,252 @@ def test_rows_of_a_committed_or_unknown_month_cannot_be_categorized(
         choose(conn, ["x"], "Regali")
     with pytest.raises(monthclose.NothingStagedError):
         choose(conn, ["x"], "Regali", month=OCTOBER)
+
+
+def change(
+    conn: sqlite3.Connection,
+    ids: list[str],
+    category: str,
+    remember: monthclose.Remember | None = None,
+) -> int:
+    return monthclose.categorize(
+        conn,
+        owner=OWNER,
+        month=SEPTEMBER,
+        ids=ids,
+        category=category,
+        now=LATER,
+        remember=remember,
+        change=True,
+    )
+
+
+def test_a_row_that_has_a_category_can_be_given_another_which_an_import_keeps(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    assert category_of(conn, ids["DONE7"]) == ("Spesa", "uscite", "rule", "expense")
+    assert change(conn, [ids["DONE7"]], "Regali") == 1
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+    assert waiting_month(conn) == ids  # imported again, with the category the statement gave
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+
+
+def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    ids = waiting_month(conn)
+    shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    shared.write_text("rules:\n  - {match: 'DONE', category: Spesa}\n", encoding="utf-8")
+    remember = monthclose.Remember(shared, own, [])
+    assert change(conn, [ids["DONE7"]], "Regali", remember) == 1
+    assert shared.read_text(encoding="utf-8") == (
+        "rules:\n"
+        '  - {match: "(?m)^DONE$", category: "Regali", direction: out}\n'
+        "  - {match: 'DONE', category: Spesa}\n"
+    )
+    # These rows keep it whatever the rules say on the next import.
+    assert rows(conn, "SELECT transaction_id, kind FROM overrides") == [(ids["DONE7"], None)]
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+
+
+def test_a_transfer_given_an_expense_category_is_an_expense_again(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    choose(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], "Giroconto")
+    assert category_of(conn, ids["KIOSK3"])[3] == "transfer"
+    assert change(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], "Regali") == 2
+    assert category_of(conn, ids["TO SAVINGS5"]) == ("Regali", "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK3"]) == ("Regali", "uscite", "manual", "income")
+    assert rows(conn, "SELECT kind FROM overrides ORDER BY kind") == [("expense",), ("income",)]
+
+
+def test_only_rows_that_have_a_category_and_are_money_in_or_out_can_be_changed(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    with pytest.raises(monthclose.MonthCloseError, match="cannot be given another category"):
+        change(conn, [ids["KIOSK1"]], "Regali")  # it has none yet
+    bought = trade("-1012.50", "WIDG", "10", date=date(2026, 9, 15))
+    monthclose.stage(conn, batch(statement("ibkr", [bought])), NOW)
+    (trade_id,) = rows(conn, "SELECT id FROM transactions WHERE kind = 'security_trade'")
+    with pytest.raises(monthclose.MonthCloseError, match="cannot be given another category"):
+        change(conn, [trade_id[0]], "Regali")
+
+
+def added(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
+    return rows(
+        conn,
+        "SELECT c.name, c.side, p.name FROM categories c "
+        "LEFT JOIN categories p ON p.id = c.parent_id WHERE c.name IN ('Prestiti', 'Animali')",
+    )
+
+
+def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_income(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    waiting_month(conn)
+    file = tmp_path / "categories.yaml"
+    monthclose.add_category(conn, file, name="  Prestiti ", side="uscite", group="")
+    monthclose.add_category(conn, file, name="Animali", side="uscite", group="Casa")
+    monthclose.add_category(conn, file, name="Prestiti", side="entrate", group="")
+    assert sorted(added(conn), key=str) == sorted(
+        [
+            ("Prestiti", "uscite", None),  # the group
+            ("Prestiti", "uscite", "Prestiti"),  # and its one leaf
+            ("Animali", "uscite", "Casa"),
+            ("Prestiti", "entrate", None),
+        ],
+        key=str,
+    )
+    assert categories.load(file) == (
+        categories.Extra("Prestiti", "uscite", "Prestiti"),
+        categories.Extra("Animali", "uscite", "Casa"),
+        categories.Extra("Prestiti", "entrate"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("wanted", "message"),
+    [
+        ((" ", "uscite", ""), "a category needs a name"),
+        (("Spesa", "uscite", "Casa"), "there is already a category 'Spesa'"),
+        (("Stipendio", "entrate", ""), "there is already a category 'Stipendio'"),
+        (("Giroconto", "uscite", ""), "there is already a category 'Giroconto'"),
+        (("Animali", "uscite", "Zoo"), "no group of categories named 'Zoo'"),
+        (("Animali", "transfer", ""), "a category is added to the expenses or to the income"),
+    ],
+)
+def test_a_category_that_cannot_be_added_changes_nothing(
+    conn: sqlite3.Connection, tmp_path: Path, wanted: tuple[str, str, str], message: str
+) -> None:
+    name, side, group = wanted
+    waiting_month(conn)
+    file = tmp_path / "categories.yaml"
+    before = dump(conn)
+    with pytest.raises(monthclose.MonthCloseError, match=message):
+        monthclose.add_category(conn, file, name=name, side=side, group=group)
+    assert dump(conn) == before
+    assert not file.exists()
+
+
+def test_a_category_the_database_refuses_is_not_left_in_the_file(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waiting_month(conn)
+    file = tmp_path / "categories.yaml"
+    file.write_text("# ours\ncategories:\n  entrate: [Prestiti]\n", encoding="utf-8")
+
+    def broken(*_: object) -> None:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(store, "seed_categories", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        monthclose.add_category(conn, file, name="Animali", side="uscite", group="Casa")
+    assert file.read_text(encoding="utf-8") == "# ours\ncategories:\n  entrate: [Prestiti]\n"
+
+
+# ------------------------------------------------- statements that reach into committed months
+
+
+def year_so_far(*extra: Any, first: str = "-10") -> Batch:
+    """An export of July to September: July as `migros` above stores it, then two months."""
+    found = [
+        txn(first, date=date(2026, 7, 10), source_ref="1"),
+        txn("-5", date=date(2026, 7, 10), source_ref="2"),
+        txn("-20", date=date(2026, 8, 10), source_ref="3"),
+        txn("-30", date=date(2026, 9, 10), source_ref="4"),
+        *extra,
+    ]
+    closing = Decimal(100) + sum((row.amount for row in found), Decimal(0))
+    balance = CashBalance("Migros", "CHF", Decimal(100), closing)
+    last = date(2026, 9, 30)
+    export = statement("migros", found, [balance], month=JULY, end=last, content="year")
+    return batch(export, month=JULY, end=last)
+
+
+def committed_july(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
+    monthclose.stage(conn, batch(migros("100", "-10", "-5", month=JULY), month=JULY), NOW)
+    monthclose.commit(conn, owner=OWNER, month=JULY, now=NOW)
+    return dump(conn)
+
+
+def of_july(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
+    return rows(conn, "SELECT * FROM transactions WHERE booking_date < '2026-08' ORDER BY id")
+
+
+def test_a_statement_that_reaches_into_committed_months_stages_only_the_rest(
+    conn: sqlite3.Connection,
+) -> None:
+    before = committed_july(conn)
+    staged = monthclose.stage(conn, year_so_far(), LATER)
+    assert (staged.month, staged.months) == (AUGUST, (AUGUST, SEPTEMBER))
+    assert (staged.transactions, staged.already, staged.differences) == (2, 2, ())
+    assert staged.gaps == ()  # July's closing balance leads to the new one
+    assert of_july(conn) == before["transactions"]
+    assert rows(conn, "SELECT month, status FROM months ORDER BY 1") == [
+        ("2026-07-01", "committed"),
+        ("2026-08-01", "open"),
+        ("2026-09-01", "open"),
+    ]
+    assert rows(conn, "SELECT period_start, period_end FROM statement_files ORDER BY 1") == [
+        ("2026-07-01", "2026-07-31"),
+        ("2026-08-01", "2026-09-30"),  # what the export was taken for
+    ]
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
+        ("2026-06-30", 100_000_000_000),
+        ("2026-07-31", 85_000_000_000),
+        ("2026-09-30", 35_000_000_000),
+    ]
+    assert monthclose.stage(conn, year_so_far(), LATER) == staged  # and again: the same
+
+
+def test_rows_that_disagree_with_a_committed_month_stop_an_import_whose_balances_show_it(
+    conn: sqlite3.Connection,
+) -> None:
+    before = committed_july(conn)
+    with pytest.raises(ChainMismatchError, match="off by 1"):
+        monthclose.stage(conn, year_so_far(first="-11"), LATER)
+    assert dump(conn) == before
+
+
+def broker(*found: Any, month: date = JULY, end: date | None = None) -> Batch:
+    """A statement without balances, as a broker's list of transactions is."""
+    listed = [replace(row, source_file="ytd.csv") for row in found]
+    export = statement("tastytrade", listed, month=month, end=end, content=str(found))
+    return batch(export, month=month, end=end)
+
+
+def test_rows_that_disagree_with_a_committed_month_are_said_and_change_nothing(
+    conn: sqlite3.Connection,
+) -> None:
+    early = txn("-7", date=date(2026, 7, 3), source_ref="0", description="FEE")
+    last = txn("-5", date=date(2026, 7, 31), source_ref="1", description="FEE")
+    monthclose.stage(conn, broker(early, last), NOW)
+    monthclose.commit(conn, owner=OWNER, month=JULY, now=NOW)
+    before = of_july(conn)
+
+    august = txn("-9", date=date(2026, 8, 4), source_ref="2")
+    # The export begins on 31 July: what was booked before that day is not its business.
+    same = monthclose.stage(conn, broker(last, august, end=date(2026, 8, 31)), LATER)
+    assert (same.transactions, same.already, same.differences) == (1, 1, ())
+
+    other = replace(last, amount=Decimal(-6))
+    staged = monthclose.stage(conn, broker(other, august, end=date(2026, 8, 31)), LATER)
+    assert staged.differences == (
+        "Migros 2026-07-31: FEE (-6 CHF) is in ytd.csv and is not in the committed 2026-07",
+        "Migros 2026-07-31: FEE is committed and is not in ytd.csv",
+    )
+    assert (staged.transactions, staged.already, staged.months) == (1, 0, (AUGUST,))
+    assert of_july(conn) == before
+
+
+def test_a_statement_of_committed_months_alone_stores_nothing(conn: sqlite3.Connection) -> None:
+    before = committed_july(conn)
+    again = statement("migros", [txn("-10", date=date(2026, 7, 10))], month=JULY, content="x")
+    staged = monthclose.stage(conn, batch(again, month=JULY), LATER)
+    assert dump(conn) == before
+    assert (staged.month, staged.months, staged.transactions) == (JULY, (), 0)
+    (difference,) = staged.differences  # the second row of July is not in this file
+    assert difference == "Migros 2026-07-10: KONSUM is committed and is not in migros.csv"

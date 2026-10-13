@@ -62,6 +62,7 @@ class Row:
     category: str | None  # None only for rows of kind `internal`
     category_parent: str | None
     counterparty_owner: str | None
+    file: int | None = None  # the statement file it came from; None for a row typed by hand
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +129,8 @@ class Choices:
     categories: tuple[tuple[str, tuple[str, ...]], ...]
     # The same without the top-level names: what a transaction can be given.
     leaves: tuple[tuple[str, tuple[str, ...]], ...]
+    # The top-level categories of the expenses: what a new expense category can go under.
+    groups: tuple[str, ...] = ()
 
 
 def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
@@ -155,6 +158,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         tuple(r["name"] for r in accounts),
         tuple((heading, tuple(names)) for heading, names in groups.items()),
         tuple((heading, tuple(names)) for heading, names in leaves.items()),
+        tuple(r["name"] for r in found if r["side"] == "uscite" and r["parent"] is None),
     )
 
 
@@ -190,7 +194,9 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
     where = " AND ".join(["1", *(sql for sql, _ in used)])
     found = conn.execute(
         "SELECT id, owner, account, date, booking_date, amount_nano, currency, description, "  # noqa: S608  # only the fixed conditions above are interpolated
-        "counterparty, kind, category, category_parent, counterparty_owner "
+        "counterparty, kind, category, category_parent, counterparty_owner, "
+        "(SELECT t.statement_file_id FROM transactions t "
+        "WHERE t.id = committed_transactions.id) AS file "
         f"FROM committed_transactions WHERE {where} ORDER BY {column}, id",
         [value for _, value in used],
     ).fetchall()
@@ -250,6 +256,7 @@ def _row(r: sqlite3.Row) -> Row:
         category=r["category"],
         category_parent=r["category_parent"],
         counterparty_owner=r["counterparty_owner"],
+        file=r["file"],
     )
 
 

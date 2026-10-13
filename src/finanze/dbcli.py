@@ -1,15 +1,17 @@
-"""`finanze import | commit | reopen | balance | prices | query | serve | password | publish`:
-the database from the terminal.
+"""`finanze import | commit | reopen | balance | keep | prices | query | serve | password |
+publish`: the database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage their months
     finanze commit <YYYY-MM>  make a staged month visible to the dashboards
     finanze reopen <YYYY-MM>  take a committed month back, to import it again
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
+    finanze keep <path>...    keep the files of statements imported before originals were kept
     finanze prices            fetch the closes, splits and exchange rates not stored yet
     finanze query [filters]   list the committed transactions that match, with their totals
     finanze serve             show the database as web pages, on this machine only unless
-                              `serve` in the config says otherwise
+                              `serve` in the config says otherwise; its Import page takes
+                              statements as `import` does, for the person chosen there
     finanze password          ask for a password and print its digest for `serve`
     finanze publish [folder]  copy the database to the folder another machine shows it from
 
@@ -19,10 +21,16 @@ the database from the terminal.
 fund's account the balance it states for its day, in the month of that day, which is
 committed like any other. What was read is printed, to be compared with the paper.
 
+`import` keeps every file it stages in the folder `originals` next to the database, under its
+SHA-256: the rows of the database say which file they came from, and that file is there.
+`keep` does the same for statements imported earlier: of the files named it keeps those the
+database was filled from, and says which statements still have no original.
+
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
-`prices`, `query`, `serve` and `publish` are the exceptions: they are about both people.
+`keep`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
+people.
 `prices` is the only command that uses the network (D9).
 
 `serve` listens on 127.0.0.1 and asks for no password, unless the config has (D18):
@@ -65,8 +73,8 @@ import uvicorn
 import yaml
 
 from finanze import (
-    categories,
     classification,
+    importing,
     marketdata,
     monthclose,
     networth,
@@ -80,8 +88,8 @@ from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
 from finanze.extractors.common import month_end, month_start, months_between
 from finanze.models import Kind
-from finanze.monthclose import Batch, MonthCloseError, People
-from finanze.storage import db, store
+from finanze.monthclose import MonthCloseError, People
+from finanze.storage import db, originals, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
@@ -93,6 +101,7 @@ COMMANDS = (
     "commit",
     "reopen",
     "balance",
+    "keep",
     "prices",
     "query",
     "serve",
@@ -100,7 +109,7 @@ COMMANDS = (
     "publish",
 )
 # Commands that are not about one person's month.
-_READ_BOTH = ("prices", "query", "serve", "publish")
+_READ_BOTH = ("keep", "prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -190,6 +199,14 @@ def _parser() -> argparse.ArgumentParser:
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
     typed.add_argument("currency", help="CHF, EUR, ...")
+    keep = commands.add_parser("keep", parents=[files], help="keep the files of stored statements")
+    keep.add_argument(
+        "paths",
+        type=Path,
+        nargs="+",
+        metavar="path",
+        help="statement files, or folders holding them (subfolders are not searched)",
+    )
     fetch = commands.add_parser("prices", parents=[files], help="fetch closes and rates")
     fetch.add_argument(
         "--through",
@@ -211,6 +228,12 @@ def _parser() -> argparse.ArgumentParser:
         default=Path("rules.local.yaml"),
         help="where a remembered category is saved as a rule (default: rules.local.yaml); "
         "rows naming a person go to that owner's rules.<owner>.yaml next to it",
+    )
+    serve.add_argument(
+        "--instruments",
+        type=Path,
+        default=Path("instruments.yaml"),
+        help="what the import page reads about instruments (default: instruments.yaml)",
     )
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
@@ -345,7 +368,12 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _check_copy(path)
         else:
             _open(path, now).close()
-        return _serve(path, args.port, webapp.Rules(args.rules, people), reach, out)
+        # What the import page reads, as `finanze import` would here: the rules both share,
+        # then the generic ones next to them.
+        shared = [args.rules, args.rules.with_name("rules.yaml")]
+        imports = importing.Setup(shared, args.instruments, people, _labels(config, args.config))
+        pages = _Pages(webapp.Rules(args.rules, people), imports)
+        return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
         msg = f"{path}: no database to publish"
         raise ConfigError(msg)
@@ -355,6 +383,8 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
         if args.command == "query":
             return _query(conn, args, out)
+        if args.command == "keep":
+            return _keep(conn, path, _files(args.paths), out)
         if args.command == "prices":
             return _prices(conn, args, console, now)
         labels = _labels(config, args.config)
@@ -475,7 +505,15 @@ def _reach(config: dict[str, object], path: Path) -> _Reach:
     return _Reach(host, tuple(called), password, read_only)
 
 
-def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: TextIO) -> int:
+@dataclass(frozen=True, slots=True)
+class _Pages:
+    """What the pages that change the database read and write besides it."""
+
+    rules: webapp.Rules
+    imports: importing.Setup
+
+
+def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
     """Serve the pages until interrupted, where `serve` in the config says: there is no flag
     to listen anywhere else (D18)."""
     shown = f"[{reach.host}]" if ":" in reach.host else reach.host
@@ -486,7 +524,8 @@ def _serve(database: Path, port: int, rules: webapp.Rules, reach: _Reach, out: T
         out.write("  a copy, shown as 'finanze publish' left it: nothing here changes it\n")
     app = webapp.create_app(
         database,
-        rules=rules,
+        rules=pages.rules,
+        imports=pages.imports,
         names=reach.names,
         password=reach.password,
         read_only=reach.read_only,
@@ -618,40 +657,17 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
-    certificates, files = pipeline.load_certificates(_files(args.paths))
-    statements, skipped = pipeline.load_files(files, database=True)
-    instruments = classification.load_instruments(args.instruments)
-    statements = pipeline.resolve_holdings(
-        pipeline.relabel(statements, session.labels), instruments
-    )
-    owner, people = session.owner, session.people
     shared = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
-    own = classification.personal_file(shared[0], owner)
-    rule_files = [own, *shared]
-
-    categories_file = shared[0].with_name(categories.FILE)
-
-    others = [pattern for name, patterns in people.items() if name != owner for pattern in patterns]
-    everyone = [pattern for patterns in people.values() for pattern in patterns]
-
-    def process() -> pipeline.Month:
-        known = categories.names(categories.load(categories_file))
-        rules = classification.between_people(classification.load_rules(rule_files, known), others)
-        extractions = [(s.source, s.extraction) for s in statements]
-        return pipeline.process(extractions, rules, instruments, skipped, database=True)
-
-    if statements or not certificates:
-        month = process()
-    else:  # certificates alone: no statement, no row, the month of the earliest one
-        earliest = min(certificate.stated.as_of for certificate in certificates)
-        month = pipeline.Month(month_start(earliest), (), (), tuple(skipped))
-    if args.review and month.uncategorized:
+    setup = importing.Setup(shared, args.instruments, session.people, session.labels)
+    found = importing.read(session.owner, _files(args.paths), setup)
+    if args.review and found.month.uncategorized:
+        everyone = [pattern for patterns in session.people.values() for pattern in patterns]
+        personal = (setup.own(session.owner), everyone)
         ask = session.console.ask
-        review.ask_categories(month.uncategorized, shared[0], out, ask, (own, everyone))
-        month = process()
-    added = categories.load(categories_file)
-    batch = Batch(session.owner, statements, month, session.people, added, certificates)
-    staged = monthclose.stage(session.conn, batch, session.now)
+        review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
+        found = importing.again(found, setup)
+    staged = importing.stage(session.conn, session.path, found, setup, session.now)
+    month, statements, certificates = found.month, found.statements, found.certificates
     first, last = month.period
     if statements:
         out.write(
@@ -665,18 +681,40 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         for account in month.unreconciled
     )
     out.writelines(f"  missing: {gap}\n" for gap in staged.gaps)
+    if staged.already:
+        out.write(
+            f"  {staged.already} rows are booked in committed months and are stored there: "
+            "left as they are\n"
+        )
+    out.writelines(f"  differs: {line}\n" for line in staged.differences)
+    if staged.differences:
+        out.write("  nothing was changed in the committed months: reopen them to import these\n")
     if staged.uncategorized:
         out.write(
             f"{staged.uncategorized} transactions need a category: "
             "import again with --review, or add rules by hand.\n"
         )
         return NEEDS_REVIEW
-    through = "" if month.end is None else f" {last:%Y-%m}"
-    if statements:
-        out.write(f"Next: finanze commit {first:%Y-%m}{through}\n")
     covered = set(months_between(first, last)) if statements else set()
+    opened = [each for each in staged.months if each in covered]  # not the committed ones
+    if opened:
+        through = "" if opened[0] == opened[-1] else f" {opened[-1]:%Y-%m}"
+        out.write(f"Next: finanze commit {opened[0]:%Y-%m}{through}\n")
     stated = {month_start(certificate.stated.as_of) for certificate in certificates}
     out.writelines(f"Next: finanze commit {each:%Y-%m}\n" for each in sorted(stated - covered))
+    return OK
+
+
+def _keep(conn: sqlite3.Connection, database: Path, files: Sequence[Path], out: TextIO) -> int:
+    """Keep those of `files` the database was filled from, and say what is still not kept."""
+    folder = originals.folder_of(database)
+    known = store.statement_names(conn)
+    kept = originals.keep(folder, files, known)
+    out.write(f"{len(kept)} of {len(files)} files kept in {folder}.\n")
+    without = sorted(
+        name for digest, name in known.items() if originals.find(folder, digest, name) is None
+    )
+    out.writelines(f"  no original: {name}\n" for name in without)
     return OK
 
 

@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 
 from finanze import monthclose
-from finanze.extractors.common import month_end
+from finanze.extractors.common import month_end, months_between
 from finanze.storage import store
 from finanze.storage.money import from_nano
 from finanze.validation import ReconciliationError
@@ -36,12 +36,34 @@ class MonthLine:
 class File:
     """A statement that covers the month."""
 
+    id: int
     source: str
     filename: str
     first: date
     last: date
     checked: bool  # False: the statement prints nothing to reconcile against
     transactions: int  # of this file, booked in the month
+
+
+@dataclass(frozen=True, slots=True)
+class Statement:
+    """One stored statement file: where rows say they came from."""
+
+    id: int
+    owner: str
+    source: str
+    filename: str
+    sha256: str  # of the file, which is how its original is kept
+    first: date
+    last: date
+    checked: bool
+    imported_at: str
+    transactions: int  # every row that came from it
+
+    @property
+    def months(self) -> tuple[date, ...]:
+        """The first day of every month it covers."""
+        return tuple(months_between(self.first, self.last))
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +77,7 @@ class Pending:
     currency: str
     counterparty: str
     description: str
+    category: str = ""  # of a row that has one, which can be changed
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +87,7 @@ class Group:
     name: str  # the counterparty, or the description without one; "" when the rows have no text
     incoming: bool
     rows: tuple[Pending, ...]
+    category: str = ""  # what the rows have now, when they have one
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,15 +115,19 @@ class Checklist:
     gaps: tuple[str, ...]
     uncategorized: tuple[Pending, ...]
     totals: tuple[CategoryTotal, ...]  # by booking date, as the month is closed
+    # Rows of an open month whose category can be changed: money in or out, by the category
+    # a rule or a choice gave it. Empty once the month is committed.
+    categorized: tuple[Pending, ...] = ()
 
     @property
     def groups(self) -> tuple[Group, ...]:
         """The waiting rows as `--review` asks about them: per counterparty and direction."""
-        found: dict[tuple[str, bool], list[Pending]] = {}
-        for row in self.uncategorized:
-            name = (row.counterparty or row.description).strip()
-            found.setdefault((name, row.amount > 0), []).append(row)
-        return tuple(Group(name, incoming, tuple(rows)) for (name, incoming), rows in found.items())
+        return _grouped(self.uncategorized)
+
+    @property
+    def changeable(self) -> tuple[Group, ...]:
+        """The rows that have a category, per counterparty, direction and category."""
+        return _grouped(self.categorized)
 
     @property
     def blocked_by(self) -> tuple[str, ...]:
@@ -146,7 +174,7 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
         raise monthclose.NothingStagedError(msg)
     span = (month.isoformat(), month_end(month).isoformat())
     files = conn.execute(
-        "SELECT f.source, f.filename, f.period_start, f.period_end, f.reconciled, "
+        "SELECT f.id, f.source, f.filename, f.period_start, f.period_end, f.reconciled, "
         "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id "
         "AND t.booking_date BETWEEN ?1 AND ?2) "
         "FROM statement_files f WHERE f.owner_id = ?3 AND f.period_start <= ?2 "
@@ -161,13 +189,21 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
         "AND kind = 'manual' AND source IS NOT NULL) ORDER BY source",
         (owner_id, span[0]),
     ).fetchall()
-    present = {f[0] for f in files}
+    present = {f[1] for f in files}
     pending = conn.execute(
         "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description "  # noqa: S608  # only fixed text of `store` is interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
         f"AND {store.WAITING} ORDER BY t.date, t.id",
         (owner_id, *span),
+    ).fetchall()
+    categorized = conn.execute(
+        "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description, "  # noqa: S608  # only fixed text of `store` is interpolated
+        "c.name FROM transactions t JOIN accounts a ON a.id = t.account_id "
+        "JOIN categories c ON c.id = t.category_id "
+        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND ? = 'open' "
+        f"AND {store.CHANGEABLE} ORDER BY t.date, t.id",
+        (owner_id, *span, row["status"]),
     ).fetchall()
     totals = conn.execute(
         "SELECT c.side, c.name, t.currency, count(*), sum(t.amount_nano) "
@@ -183,7 +219,7 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
         committed=row["status"] == "committed",
         committed_at=row["committed_at"],
         files=tuple(
-            File(f[0], f[1], _day(f[2]), _day(f[3]), checked=f[4] == "yes", transactions=f[5])
+            File(f[0], f[1], f[2], _day(f[3]), _day(f[4]), checked=f[5] == "yes", transactions=f[6])
             for f in files
         ),
         missing=tuple(r[0] for r in before if r[0] not in present),
@@ -192,6 +228,46 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
             Pending(r[0], _day(r[1]), r[2], from_nano(r[3]), r[4], r[5], r[6]) for r in pending
         ),
         totals=tuple(CategoryTotal(r[0], r[1], r[2], r[3], from_nano(r[4])) for r in totals),
+        categorized=tuple(
+            Pending(r[0], _day(r[1]), r[2], from_nano(r[3]), r[4], r[5], r[6], r[7])
+            for r in categorized
+        ),
+    )
+
+
+def _grouped(rows: tuple[Pending, ...]) -> tuple[Group, ...]:
+    found: dict[tuple[str, bool, str], list[Pending]] = {}
+    for row in rows:
+        name = (row.counterparty or row.description).strip()
+        found.setdefault((name, row.amount > 0, row.category), []).append(row)
+    return tuple(
+        Group(name, incoming, tuple(rows), category)
+        for (name, incoming, category), rows in found.items()
+    )
+
+
+def statement(conn: sqlite3.Connection, number: int) -> Statement | None:
+    """The stored statement file with this id; None when there is none."""
+    found = conn.execute(
+        "SELECT f.id, o.name, f.source, f.filename, f.sha256, f.period_start, f.period_end, "
+        "f.reconciled, f.imported_at, "
+        "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id) "
+        "FROM statement_files f JOIN owners o ON o.id = f.owner_id WHERE f.id = ?",
+        (number,),
+    ).fetchone()
+    if found is None:
+        return None
+    return Statement(
+        id=found[0],
+        owner=found[1],
+        source=found[2],
+        filename=found[3],
+        sha256=found[4],
+        first=_day(found[5]),
+        last=_day(found[6]),
+        checked=found[7] == "yes",
+        imported_at=found[8],
+        transactions=found[9],
     )
 
 

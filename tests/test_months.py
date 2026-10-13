@@ -66,8 +66,8 @@ def test_an_open_month_lists_its_statements_and_what_needs_a_category(
     september = months.checklist(conn, OWNER, SEPTEMBER)
     assert (september.committed, september.committed_at) == (False, None)
     assert september.files == (
-        months.File("migros", "migros.csv", AUGUST, date(2026, 9, 30), True, 4),
-        months.File("revolut", "revolut.tsv", AUGUST, date(2026, 9, 30), True, 0),
+        months.File(1, "migros", "migros.csv", AUGUST, date(2026, 9, 30), True, 4),
+        months.File(2, "revolut", "revolut.tsv", AUGUST, date(2026, 9, 30), True, 0),
     )
     first, second = september.uncategorized
     assert first == months.Pending(
@@ -186,7 +186,7 @@ def test_a_pension_certificate_is_a_statement_of_its_month_and_expected_in_no_ot
     monthclose.stage(conn, certified(scan), CLOSED_AT)
     september = months.checklist(conn, OWNER, SEPTEMBER)
     assert september.files == (
-        months.File("axa", "scan.pdf", SEPTEMBER, SEPTEMBER, True, 0),
+        months.File(september.files[0].id, "axa", "scan.pdf", SEPTEMBER, SEPTEMBER, True, 0),
         *before.files,
     )
     assert (september.missing, september.gaps) == ((), ())
