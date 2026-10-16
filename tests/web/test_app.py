@@ -10,7 +10,8 @@ from starlette.testclient import TestClient
 from finanze.models import Kind
 from finanze.storage import db
 from finanze.web import app as webapp
-from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
+from tests.storage.helpers import OWNER, PARTNER, txn
+from tests.web.builders import BUILT, close, stage_rows
 
 WEB = Path(webapp.__file__).parent
 LUKAS = [
@@ -34,13 +35,20 @@ ANNA = [txn("-60", date=date(2026, 7, 12), source_ref="1")]
 
 @pytest.fixture(scope="module")
 def database(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Lukas with July and August committed and September open; Anna with July committed."""
+    """Lukas with July and August committed and September staged; Anna with July committed."""
     path = tmp_path_factory.mktemp("web") / "finanze.db"
     conn = db.connect(path)
-    db.migrate(conn, CLOSED_AT)
+    db.migrate(conn, BUILT)
     july = date(2026, 7, 1)
-    close(conn, OWNER, (july, date(2026, 9, 30)), date(2026, 8, 1), ("migros", LUKAS))
-    close(conn, PARTNER, (july, date(2026, 7, 31)), july, ("migros", ANNA))
+    close(conn, OWNER, (july, date(2026, 8, 31)), ("migros", [LUKAS[0], LUKAS[1], LUKAS[3]]))
+    stage_rows(
+        conn,
+        OWNER,
+        (date(2026, 9, 1), date(2026, 9, 30)),
+        ("migros", [LUKAS[2]]),
+        opening="5874.80",
+    )
+    close(conn, PARTNER, (july, date(2026, 7, 31)), ("migros", ANNA))
     conn.close()
     return path
 
@@ -65,16 +73,28 @@ def text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
-def test_the_months_page_says_what_each_person_has_committed(client: TestClient) -> None:
+def test_the_months_page_says_how_far_each_account_is_committed(client: TestClient) -> None:
+    from tests.web.test_cashflow_page import tables  # noqa: PLC0415  # it imports this module
+
     response = client.get("/months")
     assert response.status_code == 200
-    body = response.text.partition("</tbody>")[0]  # the first table of the page
-    assert rows(body) == [
-        ["Anna", "2026-07 to 2026-07 (1)", "1", "0"],
-        ["Lukas", "2026-07 to 2026-08 (2)", "3", "1"],
+    coverage, people, listed = tables(response.text)
+    assert coverage == [
+        ["Anna", "Migros", "Migros Bank account statement", "2026-07-31", ""],
+        ["Lukas", "Migros", "Migros Bank account statement", "2026-08-31", "staged to 2026-09-30"],
     ]
-    only = client.get("/months", params={"owner": "Anna"}).text.partition("</tbody>")[0]
-    assert [row[0] for row in rows(only)] == ["Anna"]
+    assert people == [
+        ["Anna", "2026-07-01 to 2026-07-31 (1 statement)", "1", "0"],
+        ["Lukas", "2026-07-01 to 2026-08-31 (1 statement)", "3", "1"],
+    ]
+    assert [row[:2] for row in listed] == [
+        ["2026-08", "Lukas"],
+        ["2026-07", "Anna"],
+        ["2026-07", "Lukas"],
+    ]
+    assert "Only committed statements are shown" in response.text
+    only = tables(client.get("/months", params={"owner": "Anna"}).text)[1]
+    assert [row[0] for row in only] == ["Anna"]
 
 
 def test_the_view_is_everyone_or_one_person(client: TestClient) -> None:

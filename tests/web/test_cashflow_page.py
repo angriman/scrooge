@@ -8,7 +8,8 @@ from starlette.testclient import TestClient
 from finanze.models import Kind
 from finanze.storage import db
 from finanze.web import app as webapp
-from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
+from tests.storage.helpers import OWNER, PARTNER, txn
+from tests.web.builders import BUILT, close
 from tests.web.test_app import text
 
 SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
@@ -43,10 +44,10 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """July and August 2026, committed for both."""
     path: Path = tmp_path_factory.mktemp("cashflow") / "finanze.db"
     conn = db.connect(path)
-    db.migrate(conn, CLOSED_AT)
+    db.migrate(conn, BUILT)
     span = (date(2026, 7, 1), date(2026, 8, 31))
-    close(conn, OWNER, span, span[1], ("migros", LUKAS), ("revolut", LUKAS_EUR))
-    close(conn, PARTNER, span, span[1], ("migros", ANNA))
+    close(conn, OWNER, span, ("migros", LUKAS), ("revolut", LUKAS_EUR))
+    close(conn, PARTNER, span, ("migros", ANNA))
     conn.close()
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
 

@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from finanze import monthclose, networth, portfolio, query
+from finanze import networth, portfolio, query, staging
 from finanze.models import Holding, Kind
 from finanze.networth import BILLS, ETFS, PENSION, STOCKS, MissingRateError
 from finanze.portfolio import Portfolio, Position
@@ -19,10 +19,10 @@ from tests.storage.helpers import (
     OCTOBER,
     OWNER,
     PARTNER,
-    SEPTEMBER,
     batch,
     certificate,
     certified,
+    take_back,
 )
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate
 
@@ -60,7 +60,7 @@ def agrees_with_net_worth(conn: sqlite3.Connection, owner: str | None, currency:
 
 def test_nothing_committed_is_nothing_held(conn: sqlite3.Connection) -> None:
     assert portfolio.run(conn) == Portfolio("EUR", None, (), ())
-    monthclose.stage(conn, batch(ibkr(bought("WIDG", "10", "-500", day(15)))), NOW)
+    staging.stage(conn, batch(ibkr(bought("WIDG", "10", "-500", day(15)))), NOW)
     assert portfolio.run(conn, currency="CHF") == Portfolio("CHF", None, (), ())
 
 
@@ -71,12 +71,12 @@ def test_an_unknown_person_is_refused(conn: sqlite3.Connection) -> None:
 
 def test_cash_alone_is_no_position(conn: sqlite3.Connection) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
-    monthclose.type_balance(
+    staging.type_balance(
         conn, owner=OWNER, account="Old bank", day=day(5), amount=D(250), currency="CHF"
     )
-    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
-    monthclose.stage(conn, certified(certificate(day(5), "35802.00")), NOW)
-    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    take_back(conn, OWNER)
+    staging.stage(conn, certified(certificate(day(5), "35802.00")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     assert len(networth.run(conn, currency="CHF").notes) == 2
     # neither the bank, nor what is typed, nor the pension fund; and none of their notes
     assert portfolio.run(conn, currency="CHF") == Portfolio("CHF", day(30), (), ())
@@ -265,7 +265,7 @@ def test_the_cents_of_the_positions_add_up_to_the_cents_of_net_worth(
         ("WIDG", D("0.00"), D("0.01")),  # the first of two that lost as much
         ("GADG", D("0.00"), D("0.00")),
     ]
-    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
+    take_back(conn, OWNER)
     close(conn, ibkr(*rows))
     held = agrees_with_net_worth(conn, None, "USD")
     assert sorted(p.value for p in held.positions) == [D("0.00"), D("0.01"), D("0.01")]

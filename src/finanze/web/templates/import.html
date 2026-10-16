@@ -1,82 +1,205 @@
 {% extends "base.html" %}
+{% from "forms.html" import options, choose, add_category %}
 {% block title %}Import{% endblock %}
+{% block head %}
+  <script src="{{ url_for('static', path='draft.js') }}" defer></script>
+{% endblock %}
 {% block main %}
 {%- if error %}
 <p class="error" role="alert">{{ error }}</p>
 {%- endif %}
+{%- if committed is not none %}
+<p class="done" role="status">{{ committed }} statement{{ "" if committed == 1 else "s" }} committed{% if committed %}: the other pages show them now{% endif %}.</p>
+{%- endif %}
 {%- if done %}
-{%- set found = done.found %}
-<section>
-  <h2>Staged</h2>
-  {%- if found.statements %}
-  <p>{{ found.month.period[0].strftime("%B %Y") }}{% if found.month.end %} to {{ found.month.period[1].strftime("%B %Y") }}{% endif %} for {{ found.owner }}: {{ found.statements|length }} statement{{ "" if found.statements|length == 1 else "s" }} reconciled, {{ done.staged.transactions }} transactions staged.</p>
+{%- set found = done %}
+<section id="uploaded">
+  <h2>This upload</h2>
   <table class="cards">
     <thead>
-      <tr><th>Source</th><th>File</th><th>Covers</th><th class="number">Transactions</th></tr>
+      <tr><th>File</th><th>Kind</th><th>What became of it</th></tr>
     </thead>
     <tbody>
-      {%- for statement in found.statements %}
+      {%- for file in found.files %}
       <tr>
-        <td class="lead">{{ statement.source|replace("_", " ") }}</td>
-        <td class="wide" data-label="File">{{ statement.filename }}</td>
-        <td class="date wide" data-label="Covers">{{ statement.extraction.period[0] }} to {{ statement.extraction.period[1] }}</td>
-        <td class="number" data-label="Transactions">{{ statement.extraction.transactions|length }}</td>
+        <td class="lead wide">{{ file.name }}</td>
+        <td data-label="Kind">{{ file.label }}</td>
+        <td class="wide{% if file.problem %} error{% endif %}" data-label="Result">
+          {%- if file.problem %}Refused: {{ file.problem }}
+          {%- elif not file.source %}Not recognised: it is not a statement and was left out.
+          {%- elif file.staged %}Staged.
+          {%- else %}Nothing new: all of it is committed already.
+          {%- endif %}</td>
       </tr>
       {%- endfor %}
     </tbody>
   </table>
-  {%- endif %}
   {%- for certificate in found.certificates %}
   <p>{{ certificate.account }} of {{ found.owner }}: {{ certificate.stated.balance|money }} {{ certificate.stated.currency }} on {{ certificate.stated.as_of }}, read off {{ certificate.filename }}.{% if not certificate.adds_up %} Nothing on this certificate adds up to that figure: compare it with the paper.{% endif %}</p>
   {%- endfor %}
   <ul>
-    {%- for path in found.skipped %}
-    <li>{{ path.name }} is not a statement and was left out.</li>
-    {%- endfor %}
     {%- for account in found.month.unreconciled %}
     <li>{{ account }} includes rows with no balance to check against.</li>
     {%- endfor %}
     {%- if done.staged.already %}
-    <li>{{ done.staged.already }} row{{ " is" if done.staged.already == 1 else "s are" }} booked in committed months and stored there: left as {{ "it is" if done.staged.already == 1 else "they are" }}.</li>
+    <li>{{ done.staged.already }} row{{ " is" if done.staged.already == 1 else "s are" }} booked on days already committed and stored there: left as {{ "it is" if done.staged.already == 1 else "they are" }}.</li>
     {%- endif %}
     {%- for line in done.staged.differences %}
     <li class="error">Differs: {{ line }}.</li>
     {%- endfor %}
     {%- if done.staged.differences %}
-    <li>Nothing was changed in the committed months: reopen them to import these rows.</li>
+    <li>Nothing was changed in what is committed: take the statement back to import these rows again.</li>
     {%- endif %}
-    {%- for gap in done.staged.gaps %}
-    <li>Missing: {{ gap }}</li>
-    {%- endfor %}
-    {%- if done.staged.uncategorized %}
-    <li>{{ done.staged.uncategorized }} transaction{{ " needs" if done.staged.uncategorized == 1 else "s need" }} a category: set it on the month's page.</li>
+    {%- if done.staged.later %}
+    <li>{{ done.staged.later }} row{{ " is" if done.staged.later == 1 else "s are" }} booked today or later: left for the next import.</li>
     {%- endif %}
   </ul>
-  {%- if done.staged.months %}
-  <p>Nothing shows on the other pages until its month is committed:
-    {%- for month in done.staged.months %}
-    <a href="{{ url_for('month', owner=found.owner, month=month.strftime('%Y-%m')) }}">{{ month.strftime("%Y-%m") }}</a>
-    {%- endfor %}
-  </p>
-  {%- else %}
-  <p>Nothing new: every month these files cover is committed.</p>
-  {%- endif %}
 </section>
 {%- endif %}
+{%- if owners %}
 <section>
-  <h2>Statements</h2>
+  <h2>Upload statements</h2>
   <form method="post" action="{{ url_for('import') }}" enctype="multipart/form-data" class="filter">
     <input type="hidden" name="token" value="{{ token }}">
     <label>Whose
       <select name="owner" required>
         {%- for name in owners %}
-        <option{% if name == (done.found.owner if done else owner) %} selected{% endif %}>{{ name }}</option>
+        <option{% if name == owner %} selected{% endif %}>{{ name }}</option>
         {%- endfor %}
       </select>
     </label>
     <label>Files <input type="file" name="file" multiple required></label>
     <button>Import</button>
   </form>
-  <p class="note">A file may cover a month, a year or several years. Every file is reconciled before anything is stored, and kept as it was sent. Months already committed are left as they are: rows booked in them are only compared with what is stored, and what differs is listed.</p>
+  <p class="note">Choose as many files as you have, of any source: each is recognised on its own, reconciled and kept as it was sent. One that fails does not stop the others. Rows on days already committed are left as they are.</p>
 </section>
+{%- endif %}
+<section id="staged">
+  <h2>Waiting to be committed, {{ owner }}</h2>
+  {%- if not draft.files %}
+  <p>Nothing is staged for {{ owner }}.</p>
+  {%- else %}
+  <table class="cards">
+    <thead>
+      <tr><th>Kind</th><th>File</th><th>Covers</th><th class="number">Rows</th><th>Remove</th></tr>
+    </thead>
+    <tbody>
+      {%- for file in draft.files %}
+      <tr>
+        <td class="lead">{{ file.label }}</td>
+        <td class="wide" data-label="File"><a href="{{ url_for('statement', number=file.id) }}">{{ file.filename }}</a></td>
+        <td class="date wide" data-label="Covers">{{ file.first }} to {{ file.last }}</td>
+        <td class="number" data-label="Rows">{{ file.transactions }}</td>
+        <td class="wide">
+          {%- if not copy %}
+          <form method="post" action="{{ url_for('discard', number=file.id) }}">
+            <input type="hidden" name="token" value="{{ token }}">
+            <button>Remove</button>
+          </form>
+          {%- endif %}
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if draft.blocked_by %}
+  <p>It cannot be committed yet:</p>
+  <ul id="blocked">
+    {%- for reason in draft.blocked_by %}
+    <li>{{ reason }}</li>
+    {%- endfor %}
+  </ul>
+  {%- else %}
+  <p>Nothing stands in the way.{% if not copy %} A copy of the database is saved first.{% endif %}</p>
+  {%- endif %}
+  {%- endif %}
+</section>
+{%- if draft.files %}
+<section id="totals">
+  <h2>By category</h2>
+  <table class="cards">
+    <thead>
+      <tr><th>Category</th><th class="number">Total</th><th class="number">Rows</th></tr>
+    </thead>
+    <tbody>
+      {%- for line in draft.totals %}
+      <tr data-side="{{ line.side }}" data-category="{{ line.category }}" data-currency="{{ line.currency }}">
+        <td class="lead">{% if line.category %}{{ line.category }}{% if line.side == "transfer" %}<small>transfer</small>{% endif %}{% else %}Waiting for a category{% endif %}</td>
+        <td class="number total sum" data-unit="{{ line.currency }}">{{ line.total|money }} {{ line.currency }}</td>
+        <td class="number count" data-label="Rows">{{ line.count }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  <p class="note">What the other pages will show, by category. Changing a category below updates these figures at once; they are saved with Save categories or Commit.</p>
+</section>
+{%- if draft.groups and not copy %}
+<section id="waiting">
+  <h2>Need a category</h2>
+  <table class="cards">
+    <thead>
+      <tr><th>Counterparty or description</th><th>Rows</th><th>Category</th></tr>
+    </thead>
+    <tbody>
+      {%- for group in draft.groups %}
+      <tr>
+        <td class="lead wide">{{ group.name or "(no text)" }}<small>{{ "received" if group.incoming else "paid" }}{% if group.rows[0].description != group.name %} · {{ group.rows[0].description }}{% endif %}</small></td>
+        <td class="wide">
+          {%- for row in group.rows %}
+          <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
+          {%- endfor %}
+        </td>
+        <td class="wide">{{ choose(group, false, url_for('group'), owner, token, choices, can_remember) }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</section>
+{%- endif %}
+<section id="rows">
+  <h2>Every transaction</h2>
+  {%- if not copy %}
+  <form method="post" action="{{ url_for('save') }}" id="draft-form">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="owner" value="{{ owner }}">
+  {%- endif %}
+    <table class="entries">
+      <thead>
+        <tr><th>Date</th><th>Account</th><th>Counterparty and description</th><th class="number">Amount</th><th>Category</th></tr>
+      </thead>
+      <tbody>
+        {%- for row in draft.rows %}
+        <tr data-id="{{ row.id }}" data-amount="{{ row.amount|plain }}" data-currency="{{ row.currency }}" data-side="{{ row.side }}" data-category="{{ row.category }}">
+          <td class="date">{{ row.date }}</td>
+          <td class="account">{{ row.account }}</td>
+          <td class="what">{{ row.counterparty or row.description }}{% if row.counterparty and row.description != row.counterparty %}<small>{{ row.description }}</small>{% endif %}{% if row.statement %}<small><a href="{{ url_for('statement', number=row.statement) }}">statement</a></small>{% endif %}</td>
+          <td class="number amount">{{ row.amount|money }} {{ row.currency }}</td>
+          <td class="category">
+            {%- if (row.waiting or row.changeable) and not copy %}
+            <select name="category:{{ row.id }}" aria-label="Category of {{ row.counterparty or row.description }}">
+              <option value="">{{ row.category or "Choose" }}</option>
+              {{- options(choices) }}
+            </select>
+            {%- else %}{{ row.category or "Waiting for a category" }}
+            {%- endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  {%- if not copy %}
+    <p class="actions">
+      <button formaction="{{ url_for('save') }}">Save categories</button>
+      <button formaction="{{ url_for('commit_draft') }}" class="primary">Commit {{ draft.files|length }} statement{{ "" if draft.files|length == 1 else "s" }}</button>
+    </p>
+  </form>
+  {%- endif %}
+</section>
+{%- if can_remember and not copy %}
+<section>
+  <h2>Add a category</h2>
+  {{ add_category(url_for('add_category'), owner, token, choices) }}
+  <p class="note">For a row that fits none of the categories. It is there for every import from now on.</p>
+</section>
+{%- endif %}
+{%- endif %}
 {% endblock %}

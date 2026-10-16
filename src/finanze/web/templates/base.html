@@ -14,12 +14,12 @@
   {%- block header %}
   <header>
     <nav aria-label="Pages">
+      {%- if importing %}
+      <a href="{{ url_for('import') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}" class="import"{% if request.url.path == url_for('import').path %} aria-current="page"{% endif %}>Import</a>
+      {%- endif %}
       {%- for name, label in [("overview", "Overview"), ("networth", "Net worth"), ("holdings", "Holdings"), ("cashflow", "Cash flow"), ("transactions", "Transactions"), ("months", "Months")] %}
       <a href="{{ url_for(name) }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}"{% if request.url.path == url_for(name).path or (name == "months" and request.url.path.startswith("/months/")) %} aria-current="page"{% endif %}>{{ label }}</a>
       {%- endfor %}
-      {%- if importing %}
-      <a href="{{ url_for('import') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}"{% if request.url.path == url_for('import').path %} aria-current="page"{% endif %}>Import</a>
-      {%- endif %}
     </nav>
     <nav aria-label="Whose">
       <a href="{{ request.url.remove_query_params(['owner', 'page']) }}"{% if not owner %} aria-current="true"{% endif %}>Everyone</a>

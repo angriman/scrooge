@@ -4,21 +4,16 @@ nothing, wherever the copy lies."""
 import os
 import sqlite3
 from collections.abc import Iterator
-from datetime import date
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import monthclose
-from finanze.models import CashBalance
 from finanze.storage import db
 from finanze.web import app as webapp
-from tests.storage.helpers import AUGUST, CLOSED_AT, OWNER, PARTNER, batch, close, statement
+from tests.web.builders import BUILT, SITE, committed_files, file_id, household
 from tests.web.test_app import text
 from tests.web.test_login import STORED, sign_in
-from tests.web.test_month_page import ANNA, LUKAS, SITE, status
 
 COPY = "This is a copy: changes are made on the machine that holds the data."
 PAGES = [  # in francs, the one currency of these rows: no exchange rate is needed
@@ -31,21 +26,20 @@ PAGES = [  # in francs, the one currency of these rows: no exchange rate is need
 ]
 MONTHS = ["/months/Lukas/2026-08", "/months/Lukas/2026-09", "/months/Anna/2026-09"]
 FORMS = [
-    "/months/Lukas/2026-08/reopen",
-    "/months/Anna/2026-09/commit",
-    "/months/Lukas/2026-09/categorize",
-    "/months/Lukas/2026-09/category",
+    "/import/save",
+    "/import/commit",
+    "/import/group",
+    "/import/category",
+    "/months/Lukas/2026-08/categorize",
+    "/months/Lukas/2026-08/category",
+    "/statements/1/discard",
+    "/statements/1/uncommit",
 ]
 
 
 def fill(path: Path) -> None:
-    """Lukas: August committed, September open with a row to categorize. Anna: September open."""
-    conn = db.connect(path)
-    db.migrate(conn, CLOSED_AT)
-    close(conn, OWNER, (AUGUST, date(2026, 9, 30)), AUGUST, ("migros", LUKAS))
-    hers = statement("migros", ANNA, [CashBalance("Migros", "CHF", Decimal(0), Decimal(-60))])
-    monthclose.stage(conn, batch(hers, owner=PARTNER), CLOSED_AT)
-    conn.close()
+    """Lukas: August committed, September staged. Anna: September staged."""
+    household(path)
 
 
 @pytest.fixture
@@ -81,34 +75,46 @@ def test_a_copy_shows_a_month_without_the_forms_that_change_it(
     assert "<form" not in response.text
     assert "<button" not in response.text
     assert "<select" not in response.text
-    assert text(response.text).count(COPY) == 1
-    assert "Reopen" not in response.text
-    assert "is saved first" not in response.text
+    assert "Add a category" not in response.text
 
 
-def test_a_copy_still_says_what_a_month_is_waiting_for(client: TestClient) -> None:
-    page = text(client.get("/months/Lukas/2026-09").text)
-    assert "It cannot be committed yet: 1 transaction still needs a category" in page
-    assert "2026-09-05 · Migros · -80.00 CHF Not set here." in page
-    assert "Committed on 2026-10-08." in text(client.get("/months/Lukas/2026-08").text)
-    assert "Open, and nothing stands in the way." in text(client.get("/months/Anna/2026-09").text)
+def test_a_copy_has_no_import_page_and_no_link_to_one(client: TestClient) -> None:
+    assert client.get("/import").status_code == 404
+    assert "Import</a>" not in client.get("/months").text
+    assert client.post("/import", data={"token": "x"}).status_code == 404
+
+
+def test_a_copy_shows_a_statement_without_the_forms_that_change_it(
+    client: TestClient, database: Path
+) -> None:
+    for committed in (True, False):
+        page = client.get(f"/statements/{file_id(database, 'Lukas', committed=committed)}")
+        assert page.status_code == 200
+        assert "<form" not in page.text
+        assert "Take it back" not in page.text
+        assert "Remove it" not in page.text
+
+
+def test_a_copy_still_says_how_far_each_account_is_committed(client: TestClient) -> None:
+    page = text(client.get("/months").text)
+    assert "Lukas Migros Migros Bank account statement 2026-08-31 staged to 2026-09-30" in page
+    assert "Committed on 2026-10-08" in text(client.get(f"/statements/{1}").text)
 
 
 def test_the_app_that_holds_the_data_does_not_call_itself_a_copy(database: Path) -> None:
     client = TestClient(webapp.create_app(database), base_url=SITE)
-    for path in MONTHS:
-        page = client.get(path).text
-        assert "<form" in page
-        assert "copy:" not in page
+    assert "<form" in client.get("/import?owner=Lukas").text
+    assert "Import</a>" in client.get("/months").text
+    assert "copy:" not in client.get("/import?owner=Lukas").text
 
 
 @pytest.mark.parametrize("path", FORMS)
 def test_a_copy_refuses_every_form_that_would_change_it(
     client: TestClient, database: Path, path: str
 ) -> None:
-    before = status(database), database.read_bytes()
+    before = committed_files(database), database.read_bytes()
     good = {"token": client.app.state.token}  # type: ignore[attr-defined]  # the Starlette app
-    form = good | {"id": "x", "category": "Regali", "remember": "rows"}
+    form = good | {"id": "x", "category": "Regali", "remember": "rows", "owner": "Lukas"}
     response = client.post(path, data=form)
     assert response.status_code == 403
     assert response.text == f"{COPY}\n"
@@ -116,7 +122,7 @@ def test_a_copy_refuses_every_form_that_would_change_it(
     assert client.post(path, data=form | {"token": "guessed"}).text == "Forbidden"
     elsewhere = client.post(path, data=form, headers={"origin": "https://evil.example"})
     assert elsewhere.text == "Forbidden"
-    assert (status(database), database.read_bytes()) == before
+    assert (committed_files(database), database.read_bytes()) == before
     assert [file.name for file in database.parent.iterdir()] == ["finanze.db"]  # no backup
 
 
@@ -157,9 +163,9 @@ def test_a_copy_replaced_while_the_app_runs_is_what_the_next_page_shows(
     assert "Lukas" in client.get("/months").text
     newer = tmp_path / "newer.db"  # as `finanze publish` brings it: whole, then renamed over
     conn = db.connect(newer)
-    db.migrate(conn, CLOSED_AT)
+    db.migrate(conn, BUILT)
     conn.close()
     newer.replace(database)
     after = client.get("/months").text
     assert "Lukas" not in after
-    assert "Nothing is imported yet" in after
+    assert "Nothing is committed yet" in after

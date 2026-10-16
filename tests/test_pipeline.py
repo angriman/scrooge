@@ -381,3 +381,23 @@ def test_scans_among_the_statements_are_skipped_unopened(
     extractions, skipped = _load(folder)
     month = pipeline.process(extractions, load_rules([_rules(folder)]), INSTRUMENTS, skipped)
     assert not any("Pillar" in txn.account for txn in month.transactions)
+
+
+def test_a_file_named_pdf_that_is_no_pdf_is_not_a_statement(tmp_path: Path) -> None:
+    broken = tmp_path / "invoice.pdf"
+    broken.write_bytes(b"%PDF-1.7 and nothing a reader can parse")
+    assert router.load(broken) is None
+
+
+def test_a_card_invoice_is_recognised_by_its_text_whatever_its_name(
+    folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = (folder / "swisscard.pdf").read_text(encoding="utf-8")
+    monkeypatch.setattr(swisscard, "read_text", lambda path: text)
+    monkeypatch.setattr(ocr, "is_scan", lambda path: False)
+    (folder / "Rechnung 2026-09.pdf").write_bytes(b"%PDF-1.7 ...")
+    loaded = router.load(folder / "Rechnung 2026-09.pdf")
+    assert loaded is not None
+    assert loaded[0] == "swisscard"
+    monkeypatch.setattr(swisscard, "read_text", lambda path: "A letter from the dentist")
+    assert router.load(folder / "Rechnung 2026-09.pdf") is None

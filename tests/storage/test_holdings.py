@@ -7,14 +7,24 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import monthclose
+from finanze import staging
 from finanze.models import CashBalance, Holding, SecurityTrade
 from finanze.pipeline import Statement
 from finanze.storage import holdings, store
 from finanze.storage.holdings import Change, Mismatch, Step, timeline
 from finanze.validation import HoldingsMismatchError
-from tests.storage.conftest import NOW
-from tests.storage.helpers import AUGUST, OCTOBER, OWNER, SEPTEMBER, batch, statement, trade
+from tests.storage.helpers import (
+    AUGUST,
+    OCTOBER,
+    OWNER,
+    SEPTEMBER,
+    batch,
+    statement,
+    trade,
+)
+from tests.storage.helpers import (
+    CLOSED_AT as NOW,
+)
 
 SPLIT, TRADE, PRINTED = 0, 1, 2
 D = Decimal
@@ -137,8 +147,8 @@ def ibkr(
     return replace(base, extraction=replace(base.extraction, holdings=printed))
 
 
-def stage(conn: sqlite3.Connection, month: date, *statements: Statement) -> monthclose.Staged:
-    return monthclose.stage(conn, batch(*statements, month=month), NOW)
+def stage(conn: sqlite3.Connection, month: date, *statements: Statement) -> staging.Staged:
+    return staging.stage(conn, batch(*statements, month=month), NOW)
 
 
 def buy(quantity: str, on: date, ticker: str = "WIDG") -> SecurityTrade:
@@ -164,13 +174,13 @@ def test_a_statement_that_does_not_follow_blocks_the_commit(conn: sqlite3.Connec
         "is not stored)",
     )
     owner = store.owner_id(conn, OWNER) or 0
-    [refused] = monthclose.would_refuse(conn, owner)
+    [refused] = staging.would_refuse(conn, owner)
     assert isinstance(refused, HoldingsMismatchError)
     assert (refused.account, refused.symbol, refused.day) == ("IBKR USD", "WIDG", day(30))
     assert (refused.expected, refused.actual) == (D(20), D(14))
     with pytest.raises(HoldingsMismatchError):
-        monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
-    assert store.month_status(conn, owner, SEPTEMBER) == "open"
+        staging.commit(conn, owner=OWNER, now=NOW)
+    assert store.statement_files(conn, owner, staged=False) == []
 
 
 def test_an_instrument_a_statement_does_not_list_is_not_held(conn: sqlite3.Connection) -> None:
@@ -208,14 +218,14 @@ def test_a_stored_split_is_applied_to_what_is_held(conn: sqlite3.Connection) -> 
     assert [held.on(d) for d in (day(9), day(10))] == [10, 40]
 
 
-def test_only_committed_months_are_read_for_the_dashboards(conn: sqlite3.Connection) -> None:
+def test_only_committed_statements_are_read_for_the_dashboards(conn: sqlite3.Connection) -> None:
     stage(conn, AUGUST, ibkr(AUGUST, {"WIDG": "10"}))
-    stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "14"}, buy("4", day(15))))
     assert holdings.held(conn, committed=True) == []
-    monthclose.commit(conn, owner=OWNER, month=AUGUST, now=NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "14"}, buy("4", day(15))))
     [held] = holdings.held(conn, committed=True)
     assert held.on(day(30)) == 10  # September is not committed: neither its trade nor its statement
-    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     [held] = holdings.held(conn, committed=True)
     assert held.on(day(30)) == 14
 
@@ -223,7 +233,7 @@ def test_only_committed_months_are_read_for_the_dashboards(conn: sqlite3.Connect
 def test_each_person_has_holdings_of_their_own(conn: sqlite3.Connection) -> None:
     stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "14"}, buy("4", day(15))))
     other = batch(ibkr(OCTOBER, {"WIDG": "1"}), owner="Anna", month=OCTOBER)
-    monthclose.stage(conn, other, NOW)
+    staging.stage(conn, other, NOW)
     assert len(holdings.held(conn)) == 2
     mine = store.owner_id(conn, OWNER)
     [held] = holdings.held(conn, owner_id=mine)

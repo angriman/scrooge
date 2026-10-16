@@ -8,7 +8,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from finanze import marketdata, monthclose
+from finanze import marketdata, staging
 from finanze.marketdata import Refreshed
 from finanze.models import CashBalance, Holding, SecurityTrade
 from finanze.prices import Split
@@ -37,7 +37,7 @@ def hold(conn: sqlite3.Connection, *trades: SecurityTrade) -> None:
     """Stage an IBKR statement with these trades (their cash is not the point here)."""
     total = sum((row.amount for row in trades), start=trades[0].amount * 0)
     balance = CashBalance("IBKR USD", "USD", total * 0, total)
-    monthclose.stage(conn, batch(statement("ibkr", trades, [balance])), NOW)
+    staging.stage(conn, batch(statement("ibkr", trades, [balance])), NOW)
 
 
 def bought(ticker: str, quantity: str, on: date, **fields: object) -> SecurityTrade:
@@ -147,7 +147,7 @@ def test_a_typed_symbol_wins_over_the_one_found_before(conn: sqlite3.Connection)
 
 def test_a_fund_named_by_its_isin_is_looked_up(conn: sqlite3.Connection) -> None:
     fund = bought("CH0000000001", "2.5", day(15), asset_tab="Funds", currency="CHF")
-    monthclose.stage(
+    staging.stage(
         conn,
         batch(
             statement(
@@ -216,7 +216,7 @@ def test_an_empty_database_asks_for_nothing(conn: sqlite3.Connection) -> None:
 def test_shares_held_from_before_the_history_starts_are_priced(conn: sqlite3.Connection) -> None:
     base = statement("ibkr", [], [CashBalance("IBKR USD", "USD", D(0), D(0))], month=SEPTEMBER)
     held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
-    monthclose.stage(
+    staging.stage(
         conn, batch(replace(base, extraction=replace(base.extraction, holdings=held))), NOW
     )
     source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
@@ -230,10 +230,10 @@ def test_a_statement_that_says_none_was_held_yet_is_not_the_first_day(
     cash = [CashBalance("IBKR USD", "USD", D(0), D(0))]
     before = statement("ibkr", [], cash, filename="august.csv", month=AUGUST)
     nothing = replace(before, extraction=replace(before.extraction, holdings=()))
-    monthclose.stage(conn, batch(nothing, month=AUGUST), NOW)
+    staging.stage(conn, batch(nothing, month=AUGUST), NOW)
     after = statement("ibkr", [bought("WIDG", "10", day(15))], cash)
     held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
-    monthclose.stage(
+    staging.stage(
         conn, batch(replace(after, extraction=replace(after.extraction, holdings=held))), NOW
     )
     source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
@@ -256,7 +256,7 @@ def test_days_before_the_first_stored_are_fetched_when_older_history_is_imported
         filename="j.csv",
         month=july,
     )
-    monthclose.stage(conn, batch(older, month=july), NOW)
+    staging.stage(conn, batch(older, month=july), NOW)
     early = [(day(20, 7), "40"), (day(21, 7), "41")]
     split = [Split(day(10, 8), 2, 1)]
     source = FakeSource(

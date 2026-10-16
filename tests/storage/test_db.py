@@ -45,9 +45,14 @@ def test_foreign_keys_are_enforced(conn: sqlite3.Connection) -> None:
 
 def test_dates_must_be_real_iso_dates(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
-    for bad in ("2026-09-31", "30.09.2026", "2026-09-15"):  # the last is not a month start
+    for bad in ("2026-09-31", "30.09.2026"):
         with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
-            conn.execute("INSERT INTO months VALUES (1, ?, 'open', NULL)", (bad,))
+            conn.execute(
+                "INSERT INTO statement_files (owner_id, source, filename, sha256, period_start, "
+                "period_end, reconciled, imported_at) VALUES (1, 'x', 'f', 's', ?, '2026-10-01', "
+                "'yes', 'x')",
+                (bad,),
+            )
 
 
 def test_a_failing_migration_leaves_nothing_behind(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -148,3 +153,54 @@ def test_a_reading_connection_cannot_change_the_database(tmp_path: Path) -> None
             conn.execute("INSERT INTO owners (name) VALUES ('Lukas')")
     with pytest.raises(sqlite3.ProgrammingError, match="closed"):
         conn.execute("SELECT 1")
+
+
+def test_migration_0003_commits_the_statements_of_committed_months(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:2])
+    assert db.migrate(conn, NOW) == [1, 2]
+    monkeypatch.undo()
+
+    conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
+    conn.execute("INSERT INTO currencies VALUES ('CHF', 2)")
+    conn.execute(
+        "INSERT INTO accounts (id, owner_id, name, kind, currency, source) "
+        "VALUES (1, 1, 'Migros', 'bank', 'CHF', 'migros')"
+    )
+    conn.executescript(
+        """
+        INSERT INTO months VALUES (1, '2026-08-01', 'committed', '2026-09-02T08:00:00+00:00');
+        INSERT INTO months VALUES (1, '2026-09-01', 'committed', '2026-10-02T08:00:00+00:00');
+        INSERT INTO months VALUES (1, '2026-10-01', 'open', NULL);
+        INSERT INTO source_waivers VALUES (1, '2026-10-01', 'revolut', '');
+        INSERT INTO statement_files (id, owner_id, source, filename, sha256, period_start,
+            period_end, reconciled, imported_at) VALUES
+            (1, 1, 'migros', 'august', 'a', '2026-08-01', '2026-08-31', 'yes', 'x'),
+            (2, 1, 'migros', 'both', 'b', '2026-08-15', '2026-09-30', 'yes', 'x'),
+            (3, 1, 'migros', 'open', 'c', '2026-10-01', '2026-10-31', 'yes', 'x'),
+            (4, 1, 'migros', 'across', 'd', '2026-09-20', '2026-10-10', 'yes', 'x');
+        INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency,
+            description, kind, statement_file_id) VALUES
+            ('t1', 1, '2026-08-05', '2026-08-05', -1000000000, 'CHF', 'x', 'expense', 1),
+            ('t3', 1, '2026-10-05', '2026-10-05', -2000000000, 'CHF', 'y', 'expense', 3);
+        INSERT INTO balances VALUES (1, '2026-09-30', 5, 'statement', 2);
+        """
+    )
+
+    assert db.migrate(conn, NOW) == [3]
+    stored = conn.execute("SELECT filename, committed_at FROM statement_files ORDER BY id")
+    assert [tuple(row) for row in stored] == [
+        ("august", "2026-09-02T08:00:00+00:00"),
+        ("both", "2026-10-02T08:00:00+00:00"),  # the latest commit of the months it covers
+        ("open", None),  # October is open: staged
+        ("across", None),  # touches it
+    ]
+    linked = conn.execute("SELECT statement_file_id FROM statement_accounts ORDER BY 1")
+    assert [row[0] for row in linked] == [1, 2, 3]  # the accounts the files fed
+    visible = conn.execute("SELECT id FROM committed_transactions")
+    assert [row[0] for row in visible] == ["t1"]
+    assert _tables(conn).isdisjoint({"months", "source_waivers"})
+    conn.close()

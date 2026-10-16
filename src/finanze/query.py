@@ -1,6 +1,6 @@
 """Find stored transactions: the one function behind `finanze query` and the transactions page.
 
-Only committed months are read (the `committed_transactions` view). Amounts stay in their
+Only committed statements are read (the `committed_transactions` view). Amounts stay in their
 own currency, so every total is per currency: nothing is converted here.
 """
 
@@ -88,23 +88,24 @@ class Person:
     """One person and how much of their history the pages can show."""
 
     name: str
-    committed: int  # months
-    first: date | None  # the first and last committed month; None when there is none
+    committed: int  # statements
+    first: date | None  # the first and last day committed statements cover; None: there is none
     last: date | None
-    open: int  # months staged and not yet committed
-    transactions: int  # in committed months
+    staged: int  # statements staged and not yet committed
+    transactions: int  # of committed statements
 
 
 def people(conn: sqlite3.Connection) -> tuple[Person, ...]:
     """Everyone in the database, by name."""
     found = conn.execute(
         "SELECT o.name, "
-        "count(m.month) FILTER (WHERE m.status = 'committed') AS committed, "
-        "min(m.month) FILTER (WHERE m.status = 'committed') AS first, "
-        "max(m.month) FILTER (WHERE m.status = 'committed') AS last, "
-        "count(m.month) FILTER (WHERE m.status = 'open') AS open, "
+        "count(f.id) FILTER (WHERE f.committed_at IS NOT NULL) AS committed, "
+        "min(f.period_start) FILTER (WHERE f.committed_at IS NOT NULL) AS first, "
+        "max(f.period_end) FILTER (WHERE f.committed_at IS NOT NULL) AS last, "
+        "count(f.id) FILTER (WHERE f.committed_at IS NULL) AS staged, "
         "(SELECT count(*) FROM committed_transactions t WHERE t.owner = o.name) AS transactions "
-        "FROM owners o LEFT JOIN months m ON m.owner_id = o.id GROUP BY o.id ORDER BY o.name"
+        "FROM owners o LEFT JOIN statement_files f ON f.owner_id = o.id "
+        "GROUP BY o.id ORDER BY o.name"
     ).fetchall()
     return tuple(
         Person(
@@ -112,7 +113,7 @@ def people(conn: sqlite3.Connection) -> tuple[Person, ...]:
             committed=r["committed"],
             first=r["first"] and date.fromisoformat(r["first"]),
             last=r["last"] and date.fromisoformat(r["last"]),
-            open=r["open"],
+            staged=r["staged"],
             transactions=r["transactions"],
         )
         for r in found

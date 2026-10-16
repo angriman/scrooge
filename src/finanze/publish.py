@@ -6,7 +6,7 @@ and only then renamed over the copy that was there. Whoever reads there finds th
 or the new one, never half of one.
 
 The database is all that goes: no config, statements, backups or rules. It goes whole, with
-the months that are staged and not committed; `Published` says how much of it that is.
+the statements that are staged and not committed; `Published` says how much of it that is.
 """
 
 from __future__ import annotations
@@ -34,9 +34,9 @@ class Published:
     path: Path
     size: int  # bytes
     version: int  # of the schema: the code that shows the copy must read the same
-    committed: int  # transactions of committed months, which the pages show
-    staged: int  # transactions of the months still open, which the copy holds too
-    open_months: int
+    committed: int  # transactions of committed statements, which the pages show
+    staged: int  # transactions of staged statements, which the copy holds too
+    staged_files: int
 
 
 def run(conn: sqlite3.Connection, database: Path, folder: Path) -> Published:
@@ -58,7 +58,9 @@ def run(conn: sqlite3.Connection, database: Path, folder: Path) -> Published:
             version = db.version(copy)
             rows = copy.execute("SELECT count(*) FROM transactions").fetchone()[0]
             committed = copy.execute("SELECT count(*) FROM committed_transactions").fetchone()[0]
-            waiting = copy.execute("SELECT count(*) FROM months WHERE status = 'open'").fetchone()
+            waiting = copy.execute(
+                "SELECT count(*) FROM statement_files WHERE committed_at IS NULL"
+            ).fetchone()
         size = snapshot.stat().st_size
         path = _deliver(snapshot, folder)
     return Published(path, size, version, committed, rows - committed, waiting[0])

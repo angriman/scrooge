@@ -2,8 +2,9 @@
 (D18).
 
 Handlers stay thin: read the query string or the form, call a service, render. Every page
-opens the database read-only; only the forms of a month's page (commit, reopen, category)
-open it to write. Nothing is loaded from another site, and a header tells the browser so.
+opens the database read-only; only the forms (the import page's, a statement's page, a
+month's change of a category) open it to write. Nothing is loaded from another site, and a
+header tells the browser so.
 
 With a password (`web/auth.py`) every page but the one that asks for it wants a signed-in
 browser, and only then may the app be reached under other names than this machine's.
@@ -18,7 +19,7 @@ import csv
 import io
 import secrets
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -27,7 +28,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import UploadFile
+from starlette.datastructures import State, UploadFile
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -49,12 +50,12 @@ from finanze import (
     categories,
     classification,
     importing,
-    monthclose,
     months,
     networth,
     overview,
     portfolio,
     query,
+    staging,
 )
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
@@ -87,7 +88,7 @@ _REFUSED = (
     ReconciliationError,
     ConfigError,
     UnknownInstrumentError,
-    monthclose.MonthCloseError,
+    staging.StagingError,
     PrecisionError,
     store.UnknownCategoryError,
     store.AccountMismatchError,
@@ -118,7 +119,7 @@ def _everywhere(request: Request) -> dict[str, object]:
         "signing": state.access is not None,
         "token": state.token,
         "copy": copy,
-        "importing": state.imports is not None,
+        "importing": not state.read_only,
     }
 
 
@@ -145,6 +146,7 @@ def _exact(number: Decimal) -> str:
 _templates.env.filters["money"] = _money
 _templates.env.filters["signed"] = _signed
 _templates.env.filters["exact"] = _exact
+_templates.env.filters["plain"] = lambda number: format(number, "f")
 _templates.env.globals["days"] = cashflow.days
 
 
@@ -199,16 +201,16 @@ def _utc_now() -> datetime:
 
 @dataclass(frozen=True, slots=True)
 class Rules:
-    """Where the month page saves a remembered choice of category (plan 5.4)."""
+    """Where a remembered choice of category is saved as a rule (plan 5.4)."""
 
     shared: Path  # the rules both people share; each person's own file sits next to it
-    people: monthclose.People  # what recognises each person as a counterparty
+    people: staging.People  # what recognises each person as a counterparty
 
-    def of(self, owner: str) -> monthclose.Remember:
+    def of(self, owner: str) -> staging.Remember:
         everyone = [pattern for patterns in self.people.values() for pattern in patterns]
         others = [p for name, patterns in self.people.items() if name != owner for p in patterns]
         own = classification.personal_file(self.shared, owner)
-        return monthclose.Remember(self.shared, own, everyone, others)
+        return staging.Remember(self.shared, own, everyone, others)
 
 
 def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per key of `serve`
@@ -237,8 +239,12 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
         raise ValueError(msg)
     access = auth.Access(password) if password else None
     hosts = (*_HOSTS, *names)
-    commit, reopen, categorize = (_copy,) * 3 if read_only else (_commit, _reopen, _categorize)
-    category = _copy if read_only else _add_category
+
+    def writing(
+        handler: Callable[[Request], Awaitable[Response]],
+    ) -> Callable[..., Awaitable[Response]]:
+        return _copy if read_only else handler
+
     app = Starlette(
         routes=[
             Route("/", _overview, name="overview"),
@@ -248,19 +254,40 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/cashflow", _cashflow, name="cashflow"),
             Route("/import", _import_page, name="import"),
             Route("/import", _import, methods=["POST"]),
+            Route("/import/save", writing(_save), methods=["POST"], name="save"),
+            Route("/import/commit", writing(_commit), methods=["POST"], name="commit_draft"),
+            Route("/import/group", writing(_group), methods=["POST"], name="group"),
+            Route(
+                "/import/category", writing(_new_category), methods=["POST"], name="add_category"
+            ),
             Route("/months", _months, name="months"),
             Route("/months/{owner}/{month}", _month, name="month"),
-            Route("/months/{owner}/{month}/commit", commit, methods=["POST"], name="commit"),
-            Route("/months/{owner}/{month}/reopen", reopen, methods=["POST"], name="reopen"),
             Route(
                 "/months/{owner}/{month}/categorize",
-                categorize,
+                writing(_change),
                 methods=["POST"],
                 name="categorize",
             ),
+            Route(
+                "/months/{owner}/{month}/category",
+                writing(_month_category),
+                methods=["POST"],
+                name="category",
+            ),
             Route("/statements/{number:int}", _statement, name="statement"),
             Route("/statements/{number:int}/original", _original, name="original"),
-            Route("/months/{owner}/{month}/category", category, methods=["POST"], name="category"),
+            Route(
+                "/statements/{number:int}/discard",
+                writing(_discard),
+                methods=["POST"],
+                name="discard",
+            ),
+            Route(
+                "/statements/{number:int}/uncommit",
+                writing(_uncommit),
+                methods=["POST"],
+                name="uncommit",
+            ),
             Route("/transactions", _transactions, name="transactions"),
             Route("/transactions.csv", _transactions_csv, name="transactions_csv"),
             Route("/login", _login_page, name="login"),
@@ -276,7 +303,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
         ],
         exception_handlers={
             query.QueryError: _unknown_name,
-            monthclose.NothingStagedError: _unknown_name,
+            staging.NothingStagedError: _unknown_name,
         },
     )
     app.state.database = database
@@ -313,29 +340,35 @@ def _overview(request: Request) -> Response:
     return _templates.TemplateResponse(request, "overview.html", context)
 
 
-@dataclass(frozen=True, slots=True)
-class _Imported:
-    """What an import staged, as its page says it."""
-
-    found: importing.Read
-    staged: monthclose.Staged
-
-
 def _import_form(
-    request: Request, error: str = "", done: _Imported | None = None, status: int = 200
+    request: Request,
+    owner: str | None = None,
+    error: str = "",
+    done: importing.Read | None = None,
+    status: int = 200,
 ) -> Response:
-    setup = request.app.state.imports
-    if setup is None:
+    """The page of the import: what was just uploaded, and everything staged for one person."""
+    state = request.app.state
+    if state.read_only:  # a copy is shown, not worked on
         raise HTTPException(404)
-    with db.reading(request.app.state.database) as conn:
+    committed = request.query_params.get("committed", "")
+    with db.reading(state.database) as conn:
         people = query.people(conn)
-    context = {
-        "people": people,
-        "owner": _owner(request),
-        "owners": list(setup.people),
-        "error": error,
-        "done": done,
-    }
+        owners = list(state.imports.people) if state.imports else [p.name for p in people]
+        owner = owner or _owner(request) or next(iter(owners), "")
+        if owner not in owners:
+            raise HTTPException(404)
+        context = {
+            "people": people,
+            "owner": owner,
+            "owners": list(state.imports.people) if state.imports else [],
+            "error": error,
+            "done": done,
+            "draft": months.draft(conn, owner),
+            "choices": query.choices(conn, owner),
+            "can_remember": state.rules is not None,
+            "committed": int(committed) if committed.isdecimal() else None,
+        }
     return _templates.TemplateResponse(request, "import.html", context, status_code=status)
 
 
@@ -344,7 +377,8 @@ def _import_page(request: Request) -> Response:
 
 
 async def _import(request: Request) -> Response:
-    """Stage the statements sent for one person; what does not reconcile stores nothing."""
+    """Stage the statements sent for one person; a file that fails stores nothing of itself
+    and stops no other."""
     _own_origin(request)
     state = request.app.state
     if state.imports is None:
@@ -359,32 +393,30 @@ async def _import(request: Request) -> Response:
     except HTTPException:
         # Most often a page left open while the app was started again, which gave it a new
         # token: the page sent back has it, and says what to do.
-        return await run_in_threadpool(_import_form, request, _STALE, None, 403)
+        return await run_in_threadpool(_import_form, request, None, _STALE, None, 403)
     if owner not in state.imports.people:
         error = f"{owner or 'Nobody'} is nobody the config names."
-        return await run_in_threadpool(_import_form, request, error, None, 400)
+        return await run_in_threadpool(_import_form, request, None, error, None, 400)
     if not uploads:
         error = "Choose at least one file."
-        return await run_in_threadpool(_import_form, request, error, None, 400)
+        return await run_in_threadpool(_import_form, request, owner, error, None, 400)
 
-    def stage() -> _Imported:
+    def stage() -> importing.Read:
         with tempfile.TemporaryDirectory() as folder:
             files = _saved(Path(folder), uploads)
             found = importing.read(owner, files, state.imports)
             conn = db.connect(state.database)
             try:
-                now = state.clock()
-                staged = importing.stage(conn, state.database, found, state.imports, now)
+                return importing.stage(conn, state.database, found, state.imports, state.clock())
             finally:
                 conn.close()
-        return _Imported(found, staged)
 
     try:
         done = await run_in_threadpool(stage)
     except _REFUSED as exc:
         error = f"Nothing was imported: {exc}."
-        return await run_in_threadpool(_import_form, request, error, None, 409)
-    return await run_in_threadpool(_import_form, request, "", done)
+        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
+    return await run_in_threadpool(_import_form, request, owner, "", done)
 
 
 def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
@@ -400,14 +432,51 @@ def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
     return files
 
 
+_BEHIND = 35  # days an account may end before the newest day committed for its person
+# Pension certificates come once or twice a year: such an account is never behind.
+_NOT_MONTHLY = frozenset({"axa", "servisa"})
+
+
+@dataclass(frozen=True, slots=True)
+class _Account:
+    """How far an account is committed, and whether it lags behind the person's others."""
+
+    coverage: months.Coverage
+    behind: bool
+
+
+def _accounts(lines: Sequence[months.Coverage]) -> list[_Account]:
+    newest: dict[str, date] = {}
+    for line in lines:
+        if line.committed:
+            newest[line.owner] = max(newest.get(line.owner, line.committed), line.committed)
+    return [
+        _Account(
+            line,
+            line.committed is not None
+            and line.source not in _NOT_MONTHLY
+            and (newest[line.owner] - line.committed).days > _BEHIND,
+        )
+        for line in lines
+    ]
+
+
 def _months(request: Request) -> Response:
     owner = _owner(request)
     with db.reading(request.app.state.database) as conn:
         query.check_names(conn, query.Filter(owner=owner))
         lines = months.listing(conn, owner)
+        accounts = _accounts(months.coverage(conn, owner))
         people = query.people(conn)
     shown = [person for person in people if owner in (None, person.name)]
-    context = {"people": people, "shown": shown, "owner": owner, "lines": lines}
+    context = {
+        "people": people,
+        "shown": shown,
+        "owner": owner,
+        "lines": lines,
+        "coverage": accounts,
+        "behind": _BEHIND,
+    }
     return _templates.TemplateResponse(request, "months.html", context)
 
 
@@ -473,102 +542,179 @@ async def _copy(request: Request) -> Response:
     return PlainTextResponse(f"{_COPY}\n", status_code=403)
 
 
-async def _commit(request: Request) -> Response:
-    await _sent(request)
-    owner, month = _which(request)
-    state = request.app.state
+class _Unsaved(Exception):
+    """A category chosen on the draft could not be given."""
 
-    def commit() -> None:
-        conn = db.connect(state.database)
-        try:
-            now = state.clock()
-            monthclose.commit_with_copy(conn, state.database, owner=owner, month=month, now=now)
-        finally:
-            conn.close()
 
+def _to_import(request: Request, owner: str, **flags: int) -> Response:
+    return RedirectResponse(
+        request.url_for("import").include_query_params(owner=owner, **flags), 303
+    )
+
+
+def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> str:
+    """Give the categories chosen on the draft's rows; "" when all went in, else why not.
+
+    A row whose category was chosen again is left alone. Rows going to the same category, all
+    waiting or all already categorized, are one call.
+    """
+    chosen = {
+        name.removeprefix("category:"): values[-1]
+        for name, values in fields.items()
+        if name.startswith("category:") and values[-1]
+    }
+    if not chosen:
+        return ""
+    conn = db.connect(state.database)
     try:
-        await run_in_threadpool(commit)
-    except (monthclose.UncategorizedRowsError, ReconciliationError) as exc:
-        # Nothing was committed, and nothing here can override it: the page says why.
-        error = f"Not committed: {exc}."
-        return await run_in_threadpool(_month_page, request, owner, month, error, 409)
-    return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
-
-
-async def _categorize(request: Request) -> Response:
-    fields = await _sent(request)
-    owner, month = _which(request)
-    state = request.app.state
-    wanted = fields.get("remember", [""])[-1] == "rule" and state.rules is not None
-
-    def categorize() -> None:
-        conn = db.connect(state.database)
-        try:
-            monthclose.categorize(
+        rows = {row.id: row for row in months.draft(conn, owner).rows}
+        groups: dict[tuple[str, bool], list[str]] = {}
+        for row_id, category in chosen.items():
+            row = rows.get(row_id)
+            if row is None:
+                return (
+                    "No category was set: those rows are not staged any more: load the page again."
+                )
+            if category != row.category:
+                groups.setdefault((category, bool(row.category)), []).append(row_id)
+        for (category, change), ids in groups.items():
+            staging.categorize(
                 conn,
                 owner=owner,
-                month=month,
-                ids=fields.get("id", []),
-                category=fields.get("category", [""])[-1],
+                ids=ids,
+                category=category,
                 now=state.clock(),
-                remember=state.rules.of(owner) if wanted else None,
-                change=fields.get("change", [""])[-1] == "1",
+                remember=None,
+                change=change,
             )
-        finally:
-            conn.close()
-
-    try:
-        await run_in_threadpool(categorize)
-    except (monthclose.MonthCloseError, store.UnknownCategoryError) as exc:
-        if isinstance(exc, monthclose.NothingStagedError):
-            raise
-        error = f"No category was set: {exc}."
-        return await run_in_threadpool(_month_page, request, owner, month, error, 409)
-    return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
+    except (staging.StagingError, store.UnknownCategoryError) as exc:
+        return f"No category was set: {exc}."
+    finally:
+        conn.close()
+    return ""
 
 
-async def _add_category(request: Request) -> Response:
-    """One more category in the taxonomy, from the page of the month that needs it."""
+async def _save(request: Request) -> Response:
+    """Apply the categories chosen on the draft, and stay on the page."""
     fields = await _sent(request)
-    owner, month = _which(request)
-    state = request.app.state
-    if state.rules is None:  # nowhere to write it down for the next import
-        raise HTTPException(404)
-    side, _, group = fields.get("under", [""])[-1].partition(":")
+    owner = fields.get("owner", [""])[-1]
+    error = await run_in_threadpool(_apply, request.app.state, owner, fields)
+    if error:
+        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
+    return _to_import(request, owner)
 
-    def add() -> None:
+
+async def _commit(request: Request) -> Response:
+    """Apply the categories chosen, then commit what is staged for the person."""
+    fields = await _sent(request)
+    owner = fields.get("owner", [""])[-1]
+    state = request.app.state
+
+    def commit() -> int:
+        error = _apply(state, owner, fields)
+        if error:
+            raise _Unsaved(error)
         conn = db.connect(state.database)
         try:
-            monthclose.add_category(
-                conn,
-                state.rules.shared.with_name(categories.FILE),
-                name=fields.get("name", [""])[-1],
-                side=side,
-                group=group,
+            files, _ = staging.commit_with_copy(
+                conn, state.database, owner=owner, now=state.clock()
             )
         finally:
             conn.close()
+        return len(files)
 
     try:
-        await run_in_threadpool(add)
-    except (monthclose.MonthCloseError, ConfigError) as exc:
-        error = f"No category was added: {exc}."
+        count = await run_in_threadpool(commit)
+    except _Unsaved as exc:
+        return await run_in_threadpool(_import_form, request, owner, str(exc), None, 409)
+    except (staging.UncategorizedRowsError, ReconciliationError) as exc:
+        # Nothing was committed, and nothing here can override it: the page says why.
+        error = f"Not committed: {exc}."
+        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
+    return _to_import(request, owner, committed=count)
+
+
+def _choose(state: State, owner: str, fields: dict[str, list[str]]) -> str:
+    """Give one category to the rows of a form; "" when it went in, else why not."""
+    wanted = fields.get("remember", [""])[-1] == "rule" and state.rules is not None
+    conn = db.connect(state.database)
+    try:
+        staging.categorize(
+            conn,
+            owner=owner,
+            ids=fields.get("id", []),
+            category=fields.get("category", [""])[-1],
+            now=state.clock(),
+            remember=state.rules.of(owner) if wanted else None,
+            change=fields.get("change", [""])[-1] == "1",
+        )
+    except (staging.StagingError, store.UnknownCategoryError) as exc:
+        return f"No category was set: {exc}."
+    finally:
+        conn.close()
+    return ""
+
+
+async def _group(request: Request) -> Response:
+    """One category for the waiting rows of a counterparty, from the draft."""
+    fields = await _sent(request)
+    owner = fields.get("owner", [""])[-1]
+    error = await run_in_threadpool(_choose, request.app.state, owner, fields)
+    if error:
+        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
+    return _to_import(request, owner)
+
+
+async def _change(request: Request) -> Response:
+    """Another category for committed rows, from a month's page."""
+    fields = await _sent(request)
+    owner, month = _which(request)
+    error = await run_in_threadpool(_choose, request.app.state, owner, fields)
+    if error:
         return await run_in_threadpool(_month_page, request, owner, month, error, 409)
     return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
 
 
-async def _reopen(request: Request) -> Response:
-    await _sent(request)
+def _added(state: State, fields: dict[str, list[str]]) -> str:
+    """One more category in the taxonomy; "" when it was added, else why not."""
+    side, _, group = fields.get("under", [""])[-1].partition(":")
+    conn = db.connect(state.database)
+    try:
+        staging.add_category(
+            conn,
+            state.rules.shared.with_name(categories.FILE),
+            name=fields.get("name", [""])[-1],
+            side=side,
+            group=group,
+        )
+    except (staging.StagingError, ConfigError) as exc:
+        return f"No category was added: {exc}."
+    finally:
+        conn.close()
+    return ""
+
+
+async def _new_category(request: Request) -> Response:
+    """One more category, from the import page."""
+    fields = await _sent(request)
+    owner = fields.get("owner", [""])[-1]
+    if request.app.state.rules is None:  # nowhere to write it down for the next import
+        raise HTTPException(404)
+    error = await run_in_threadpool(_added, request.app.state, fields)
+    if error:
+        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
+    return _to_import(request, owner)
+
+
+async def _month_category(request: Request) -> Response:
+    """One more category, from the page of a month."""
+    fields = await _sent(request)
     owner, month = _which(request)
-
-    def reopen() -> None:
-        conn = db.connect(request.app.state.database)
-        try:
-            monthclose.reopen(conn, owner=owner, month=month)
-        finally:
-            conn.close()
-
-    await run_in_threadpool(reopen)
+    if request.app.state.rules is None:
+        raise HTTPException(404)
+    error = await run_in_threadpool(_added, request.app.state, fields)
+    if error:
+        return await run_in_threadpool(_month_page, request, owner, month, error, 409)
     return RedirectResponse(request.url_for("month", owner=owner, month=f"{month:%Y-%m}"), 303)
 
 
@@ -710,12 +856,52 @@ def _stored(request: Request) -> tuple[months.Statement, Path | None]:
     return statement, originals.find(folder, statement.sha256, statement.filename)
 
 
-def _statement(request: Request) -> Response:
+def _statement(request: Request, error: str = "", status: int = 200) -> Response:
     statement, original = _stored(request)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
-    context = {"people": people, "owner": None, "statement": statement, "kept": bool(original)}
-    return _templates.TemplateResponse(request, "statement.html", context)
+    context = {
+        "people": people,
+        "owner": None,
+        "statement": statement,
+        "kept": bool(original),
+        "error": error,
+    }
+    return _templates.TemplateResponse(request, "statement.html", context, status_code=status)
+
+
+async def _remove(request: Request, action: Callable[..., object]) -> Response:
+    """Discard a staged statement or take back a committed one, then go to its person's
+    import page, where it is staged."""
+    await _sent(request)
+    state = request.app.state
+
+    def act() -> tuple[str, str]:
+        with db.reading(state.database) as conn:
+            statement = months.statement(conn, request.path_params["number"])
+        if statement is None:
+            raise HTTPException(404)
+        conn = db.connect(state.database)
+        try:
+            action(conn, owner=statement.owner, file_id=statement.id)
+        except staging.StagingError as exc:
+            return statement.owner, f"Nothing was changed: {exc}."
+        finally:
+            conn.close()
+        return statement.owner, ""
+
+    owner, error = await run_in_threadpool(act)
+    if error:
+        return await run_in_threadpool(_statement, request, error, 409)
+    return _to_import(request, owner)
+
+
+async def _discard(request: Request) -> Response:
+    return await _remove(request, staging.discard)
+
+
+async def _uncommit(request: Request) -> Response:
+    return await _remove(request, staging.uncommit)
 
 
 def _original(request: Request) -> Response:

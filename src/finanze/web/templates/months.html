@@ -2,42 +2,63 @@
 {% block title %}Months{% endblock %}
 {% block main %}
 {%- if shown %}
-<table>
-  <thead>
-    <tr><th>Person</th><th>Committed months</th><th class="number">Transactions</th><th class="number">Open months</th></tr>
-  </thead>
-  <tbody>
-    {%- for person in shown %}
-    <tr>
-      <td>{{ person.name }}</td>
-      <td>{% if person.committed %}{{ person.first.strftime("%Y-%m") }} to {{ person.last.strftime("%Y-%m") }} ({{ person.committed }}){% else %}none{% endif %}</td>
-      <td class="number">{{ person.transactions }}</td>
-      <td class="number">{{ person.open }}</td>
-    </tr>
-    {%- endfor %}
-  </tbody>
-</table>
-<p>Only committed months are shown on the other pages.</p>
+<section>
+  <h2>How far each account is committed</h2>
+  <table class="cards">
+    <thead>
+      <tr><th>Person</th><th>Account</th><th>Source</th><th>Committed to</th><th>Staged to</th></tr>
+    </thead>
+    <tbody>
+      {%- for line in coverage %}
+      <tr{% if line.behind %} class="behind"{% endif %}>
+        <td class="lead">{{ line.coverage.owner }}</td>
+        <td data-label="Account">{{ line.coverage.account }}</td>
+        <td data-label="Source">{{ line.coverage.label }}</td>
+        <td class="date" data-label="Committed to">{{ line.coverage.committed or "nothing" }}{% if line.behind %} <strong>behind</strong>{% endif %}</td>
+        <td class="date" data-label="Staged to">{% if line.coverage.staged %}staged to {{ line.coverage.staged }}{% endif %}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  <p class="note">An account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person: a statement is probably missing.</p>
+  <table class="cards">
+    <thead>
+      <tr><th>Person</th><th>Committed</th><th class="number">Transactions</th><th class="number">Staged</th></tr>
+    </thead>
+    <tbody>
+      {%- for person in shown %}
+      <tr>
+        <td class="lead">{{ person.name }}</td>
+        <td data-label="Committed">{% if person.committed %}{{ person.first }} to {{ person.last }} ({{ person.committed }} statement{{ "" if person.committed == 1 else "s" }}){% else %}none{% endif %}</td>
+        <td class="number" data-label="Transactions">{{ person.transactions }}</td>
+        <td class="number" data-label="Staged">{% if person.staged %}<a href="{{ url_for('import') }}?owner={{ person.name|urlencode }}">{{ person.staged }}</a>{% else %}0{% endif %}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  <p>Only committed statements are shown on the other pages.</p>
+</section>
 {%- endif %}
 {%- if lines %}
-<table class="cards">
-  <thead>
-    <tr><th>Month</th><th>Person</th><th>State</th><th class="number">Statements</th><th class="number">Transactions</th><th class="number">Need a category</th></tr>
-  </thead>
-  <tbody>
-    {%- for line in lines %}
-    <tr>
-      <td class="date lead"><a href="{{ url_for('month', owner=line.owner, month=line.month.strftime('%Y-%m')) }}">{{ line.month.strftime("%Y-%m") }}</a></td>
-      <td data-label="Person">{{ line.owner }}</td>
-      <td class="total">{{ "committed" if line.committed else "open" }}</td>
-      <td class="number" data-label="Statements">{{ line.statements }}</td>
-      <td class="number" data-label="Transactions">{{ line.transactions }}</td>
-      <td class="number" data-label="Need a category">{{ line.uncategorized or "" }}</td>
-    </tr>
-    {%- endfor %}
-  </tbody>
-</table>
+<section>
+  <h2>Months</h2>
+  <table class="cards">
+    <thead>
+      <tr><th>Month</th><th>Person</th><th class="number">Statements</th><th class="number">Transactions</th></tr>
+    </thead>
+    <tbody>
+      {%- for line in lines %}
+      <tr>
+        <td class="date lead"><a href="{{ url_for('month', owner=line.owner, month=line.month.strftime('%Y-%m')) }}">{{ line.month.strftime("%Y-%m") }}</a></td>
+        <td data-label="Person">{{ line.owner }}</td>
+        <td class="number" data-label="Statements">{{ line.statements }}</td>
+        <td class="number" data-label="Transactions">{{ line.transactions }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</section>
 {%- else %}
-<p>Nothing is imported yet: <code>finanze import</code> stages a month.</p>
+<p>Nothing is committed yet: <a href="{{ url_for('import') }}">import</a> statements and commit them.</p>
 {%- endif %}
 {% endblock %}

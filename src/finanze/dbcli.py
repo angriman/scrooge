@@ -1,9 +1,11 @@
-"""`finanze import | commit | reopen | balance | keep | prices | query | serve | password |
-publish`: the database from the terminal.
+"""`finanze import | commit | statements | uncommit | discard | balance | keep | prices | query |
+serve | password | publish`: the database from the terminal.
 
-    finanze import <path>...  reconcile and classify the statements, then stage their months
-    finanze commit <YYYY-MM>  make a staged month visible to the dashboards
-    finanze reopen <YYYY-MM>  take a committed month back, to import it again
+    finanze import <path>...  reconcile and classify the statements, then stage them
+    finanze commit            make what is staged visible to the dashboards
+    finanze statements        list the statements stored, staged ones first, with their ids
+    finanze uncommit <id>     take a committed statement back: it is staged again
+    finanze discard <id>      remove a staged statement and everything it staged
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
     finanze keep <path>...    keep the files of statements imported before originals were kept
@@ -15,11 +17,16 @@ publish`: the database from the terminal.
     finanze password          ask for a password and print its digest for `serve`
     finanze publish [folder]  copy the database to the folder another machine shows it from
 
-`commit` and `reopen` take a second month to cover every month from the first to it.
+There are no months to close (decided 2026-10-16): statements of any period are imported
+whenever they are at hand, and `commit` commits what is staged. Of an account, what is
+committed already is left as it is: a statement is staged from the day after. A file that is
+not recognised, does not reconcile or is of another person's account is refused on its own,
+and the others are staged. What a statement books on the day of the import waits for the
+next one, since that day is not over.
 
 `import` also takes the scan of a second-pillar pension certificate: it gives the pension
-fund's account the balance it states for its day, in the month of that day, which is
-committed like any other. What was read is printed, to be compared with the paper.
+fund's account the balance it states for its day, committed like any other statement. What
+was read is printed, to be compared with the paper.
 
 `import` keeps every file it stages in the folder `originals` next to the database, under its
 SHA-256: the rows of the database say which file they came from, and that file is there.
@@ -76,19 +83,19 @@ from finanze import (
     classification,
     importing,
     marketdata,
-    monthclose,
     networth,
     pipeline,
     prices,
     publish,
     query,
     review,
+    router,
+    staging,
 )
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
-from finanze.extractors.common import month_end, month_start, months_between
 from finanze.models import Kind
-from finanze.monthclose import MonthCloseError, People
+from finanze.staging import People, StagingError
 from finanze.storage import db, originals, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
@@ -99,7 +106,9 @@ from finanze.web import auth
 COMMANDS = (
     "import",
     "commit",
-    "reopen",
+    "statements",
+    "uncommit",
+    "discard",
     "balance",
     "keep",
     "prices",
@@ -108,7 +117,7 @@ COMMANDS = (
     "password",
     "publish",
 )
-# Commands that are not about one person's month.
+# Commands that are not about one person's statements.
 _READ_BOTH = ("keep", "prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 _AMOUNT = 3  # the column `query` prints flush right
@@ -117,7 +126,7 @@ _ERRORS = (
     ReconciliationError,
     ConfigError,
     UnknownInstrumentError,
-    MonthCloseError,
+    StagingError,
     MigrationError,
     PrecisionError,
     store.UnknownCategoryError,
@@ -149,24 +158,16 @@ def main(
         return FAILED
 
 
-def _month(text: str) -> date:
-    try:
-        return date.fromisoformat(f"{text}-01")
-    except ValueError:
-        msg = f"{text!r} is not a month like 2026-09"
-        raise argparse.ArgumentTypeError(msg) from None
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="finanze", description=__doc__)
     files = argparse.ArgumentParser(add_help=False)
     files.add_argument("--config", type=Path, default=Path("finanze.yaml"))
     files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
     shared = argparse.ArgumentParser(add_help=False, parents=[files])
-    shared.add_argument("--owner", help="whose month this is (default: 'owner' in the config)")
+    shared.add_argument("--owner", help="whose statements (default: 'owner' in the config)")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    load = commands.add_parser("import", parents=[shared], help="stage a month of statements")
+    load = commands.add_parser("import", parents=[shared], help="stage statements")
     load.add_argument(
         "paths",
         type=Path,
@@ -188,12 +189,14 @@ def _parser() -> argparse.ArgumentParser:
         help="ask for the category of unmatched rows and save the answers as rules; new "
         "categories go in categories.yaml, next to the first rules file",
     )
-    for name, text in (("commit", "commit a staged month"), ("reopen", "reopen a committed month")):
+    commands.add_parser("commit", parents=[shared], help="commit what is staged")
+    commands.add_parser("statements", parents=[shared], help="list the statements stored")
+    for name, text in (
+        ("uncommit", "take a committed statement back"),
+        ("discard", "remove a staged statement"),
+    ):
         command = commands.add_parser(name, parents=[shared], help=text)
-        command.add_argument("month", type=_month, help="the month, as YYYY-MM")
-        command.add_argument(
-            "through", type=_month, nargs="?", help="the last month, to cover several"
-        )
+        command.add_argument("id", type=int, help="the statement, as `finanze statements` lists it")
     typed = commands.add_parser("balance", parents=[shared], help="type an account's balance")
     typed.add_argument("account", help="name of an account that has no statements")
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
@@ -425,32 +428,33 @@ def _check_copy(path: Path) -> None:
 
 
 def _for_owner(session: _Session, args: argparse.Namespace) -> int:
-    """The commands about one person's months."""
+    """The commands about one person's statements."""
     conn, owner, out = session.conn, session.owner, session.console.out
     if args.command == "import":
         return _import(session, args)
-    if args.command == "balance":
-        currency = args.currency.upper()
-        monthclose.type_balance(
-            conn,
-            owner=owner,
-            account=args.account,
-            day=args.day,
-            amount=args.amount,
-            currency=currency,
-        )
-        out.write(f"{args.account} of {owner}: {args.amount} {currency} on {args.day}.\n")
-        return OK
-    last = args.through or args.month
-    if last < args.month:
-        msg = f"{last:%Y-%m} is before {args.month:%Y-%m}"
-        raise ConfigError(msg)
-    months = months_between(args.month, last)
     if args.command == "commit":
-        return _commit(session, months)
-    for month in months:
-        monthclose.reopen(conn, owner=owner, month=month)
-    out.write(f"{_span(months[0], months[-1])} is open again for {owner}.\n")
+        return _commit(session)
+    if args.command == "statements":
+        return _statements(session)
+    if args.command == "uncommit":
+        taken = staging.uncommit(conn, owner=owner, file_id=args.id)
+        out.write(f"{taken.filename} is staged again for {owner}.\n")
+        return OK
+    if args.command == "discard":
+        gone = staging.discard(conn, owner=owner, file_id=args.id)
+        out.write(f"{gone.filename} and what it staged are removed; its original is kept.\n")
+        return OK
+    # what is left: `balance`
+    currency = args.currency.upper()
+    staging.type_balance(
+        conn,
+        owner=owner,
+        account=args.account,
+        day=args.day,
+        amount=args.amount,
+        currency=currency,
+    )
+    out.write(f"{args.account} of {owner}: {args.amount} {currency} on {args.day}.\n")
     return OK
 
 
@@ -537,7 +541,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
 def _publish(
     conn: sqlite3.Connection, database: Path, folder: object, config: Path, out: TextIO
 ) -> int:
-    """Copy the database to `folder`, and say what went: all of it, open months included."""
+    """Copy the database to `folder`, and say what went: all of it, staged rows included."""
     if folder is None:
         msg = f"no folder to publish to: name one, or set 'publish' in {config}"
         raise ConfigError(msg)
@@ -549,10 +553,10 @@ def _publish(
         f"Published {done.path}: {done.size:,} bytes, {done.committed} committed transactions, "
         f"schema version {done.version}.\n"
     )
-    if done.open_months:
+    if done.staged_files:
         out.write(
-            f"  with it: {done.staged} transactions of {done.open_months} open "
-            f"month{'' if done.open_months == 1 else 's'}, which only the months pages show\n"
+            f"  with it: {done.staged} transactions of {done.staged_files} staged "
+            f"statement{'' if done.staged_files == 1 else 's'}, which the pages do not show\n"
         )
     return OK
 
@@ -666,42 +670,66 @@ def _import(session: _Session, args: argparse.Namespace) -> int:
         ask = session.console.ask
         review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
         found = importing.again(found, setup)
-    staged = importing.stage(session.conn, session.path, found, setup, session.now)
-    month, statements, certificates = found.month, found.statements, found.certificates
-    first, last = month.period
-    if statements:
-        out.write(
-            f"{_span(first, last)} for {session.owner}: {len(statements)} statements "
-            f"reconciled, {staged.transactions} transactions staged.\n"
-        )
-    _print_certificates(certificates, session.owner, out)
-    out.writelines(f"  skipped {path.name} (not a statement)\n" for path in month.skipped)
+    found = importing.stage(session.conn, session.path, found, setup, session.now)
+    staged = found.staged or staging.Staged((), 0, 0)
+    for file in found.files:
+        out.write(f"{_outcome(file)}\n")
+    _print_certificates(found.certificates, session.owner, out)
     out.writelines(
         f"  note: {account} includes rows with no balance to check against\n"
-        for account in month.unreconciled
+        for account in found.month.unreconciled
     )
+    out.write(f"{staged.transactions} transactions staged for {session.owner}.\n")
+    if staged.later:
+        out.write(f"  {staged.later} booked today or later wait for the next import\n")
     out.writelines(f"  missing: {gap}\n" for gap in staged.gaps)
     if staged.already:
-        out.write(
-            f"  {staged.already} rows are booked in committed months and are stored there: "
-            "left as they are\n"
-        )
+        out.write(f"  {staged.already} rows are committed already: left as they are\n")
     out.writelines(f"  differs: {line}\n" for line in staged.differences)
     if staged.differences:
-        out.write("  nothing was changed in the committed months: reopen them to import these\n")
+        out.write(
+            "  nothing committed was changed: take the statement back (finanze uncommit) "
+            "to import it again\n"
+        )
     if staged.uncategorized:
         out.write(
             f"{staged.uncategorized} transactions need a category: "
             "import again with --review, or add rules by hand.\n"
         )
         return NEEDS_REVIEW
-    covered = set(months_between(first, last)) if statements else set()
-    opened = [each for each in staged.months if each in covered]  # not the committed ones
-    if opened:
-        through = "" if opened[0] == opened[-1] else f" {opened[-1]:%Y-%m}"
-        out.write(f"Next: finanze commit {opened[0]:%Y-%m}{through}\n")
-    stated = {month_start(certificate.stated.as_of) for certificate in certificates}
-    out.writelines(f"Next: finanze commit {each:%Y-%m}\n" for each in sorted(stated - covered))
+    if found.refused:
+        return FAILED
+    if staged.files and not staged.gaps:
+        out.write("Next: finanze commit\n")
+    return OK
+
+
+def _outcome(file: importing.File) -> str:
+    """One line per file: what it is and what became of it."""
+    if file.problem:
+        return f"  refused {file.name} ({file.label}): {file.problem}"
+    if not file.recognised:
+        return f"  skipped {file.name} (not a statement)"
+    if file.nothing_new:
+        return f"  {file.name} ({file.label}): committed already, nothing new"
+    return f"  staged {file.name} ({file.label})"
+
+
+def _statements(session: _Session) -> int:
+    """The person's statements, those staged first, then the committed ones, oldest first."""
+    owner_id = store.owner_id(session.conn, session.owner)
+    files = [] if owner_id is None else store.statement_files(session.conn, owner_id)
+    out = session.console.out
+    for staged in (True, False):
+        for file in (f for f in files if (f.committed_at is None) == staged):
+            first, last = file.period
+            state = "staged" if staged else "committed"
+            out.write(
+                f"{file.id:>5}  {state:<9}  {first} to {last}  "
+                f"{router.LABELS.get(file.source, file.source)}: {file.filename}\n"
+            )
+    if not files:
+        out.write(f"No statements for {session.owner}.\n")
     return OK
 
 
@@ -754,32 +782,16 @@ def _files(paths: Sequence[Path]) -> list[Path]:
     return files
 
 
-def _span(first: date, last: date) -> str:
-    """`September 2026`, or `September 2022 to July 2026` for several months."""
-    if last <= month_end(first):
-        return f"{first:%B %Y}"
-    return f"{first:%B %Y} to {last:%B %Y}"
-
-
-def _commit(session: _Session, months: Sequence[date]) -> int:
+def _commit(session: _Session) -> int:
     """Commit after saving a copy of the database; the copy is dropped if nothing changed."""
     path, owner, now, out = session.path, session.owner, session.now, session.console.out
-    copy = monthclose.copy_before(session.conn, path, now)
-    done: list[date] = []
-    try:
-        for month in months:
-            if monthclose.commit(session.conn, owner=owner, month=month, now=now):
-                done.append(month)
-    except BaseException:
-        if done:  # each month is its own transaction: those before the failure stay committed
-            out.write(f"{_span(done[0], done[-1])} committed for {owner}, then:\n")
-        else:
-            copy.unlink()
-        raise
-    span = _span(months[0], months[-1])
+    done, copy = staging.commit_with_copy(session.conn, path, owner=owner, now=now)
     if not done:
-        copy.unlink()
-        out.write(f"{span} was already committed for {owner}.\n")
+        out.write(f"Nothing is staged for {owner}.\n")
         return OK
-    out.write(f"{span} committed for {owner}. Copy from before: {copy}\n")
+    for file in done:
+        first, last = file.period
+        out.write(f"  committed {file.filename} ({first} to {last})\n")
+    many = f"{len(done)} statement{'' if len(done) == 1 else 's'}"
+    out.write(f"{many} committed for {owner}. Copy from before: {copy}\n")
     return OK

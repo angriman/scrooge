@@ -9,7 +9,7 @@ from starlette.testclient import TestClient
 from finanze.storage import db
 from finanze.web import app as webapp
 from finanze.web import auth
-from tests.storage.helpers import CLOSED_AT
+from tests.web.builders import BUILT
 
 SITE = "http://127.0.0.1:8765"
 WORDS = "correct horse battery"
@@ -31,7 +31,7 @@ class Clock:
 def database(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("login") / "finanze.db"
     conn = db.connect(path)
-    db.migrate(conn, CLOSED_AT)
+    db.migrate(conn, BUILT)
     conn.close()
     return path
 
@@ -80,7 +80,7 @@ def test_the_page_asked_for_is_kept_with_its_query(client: TestClient) -> None:
     assert 'name="next" value="/transactions?owner=Anna&amp;text=a%26b"' in page.text
 
 
-@pytest.mark.parametrize("path", ["/months/Lukas/2026-09/commit", "/logout", "/"])
+@pytest.mark.parametrize("path", ["/import/commit", "/logout", "/"])
 def test_nothing_is_changed_by_a_browser_that_is_not_signed_in(
     client: TestClient, path: str
 ) -> None:

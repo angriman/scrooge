@@ -1,4 +1,4 @@
-"""Builders for month-close tests: statements and months made by hand, no files needed."""
+"""Builders for staging tests: statements and batches made by hand, no files needed."""
 
 import hashlib
 import re
@@ -8,8 +8,8 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from finanze import monthclose
-from finanze.extractors.common import month_start, months_between
+from finanze import staging
+from finanze.extractors.common import month_start
 from finanze.models import (
     CashBalance,
     Extraction,
@@ -18,15 +18,17 @@ from finanze.models import (
     SecurityTrade,
     Transaction,
 )
-from finanze.monthclose import Batch
 from finanze.pipeline import Certificate, Month, Statement
+from finanze.staging import Batch
+from finanze.storage import store
 
 AUGUST = date(2026, 8, 1)
 SEPTEMBER = date(2026, 9, 1)
 OCTOBER = date(2026, 10, 1)
 OWNER = "Lukas"
 PARTNER = "Anna"
-CLOSED_AT = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+# After every day the fixtures cover: the days of a statement are all over.
+CLOSED_AT = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
 PEOPLE = {OWNER: [re.compile("LUKAS MEIER")], PARTNER: [re.compile("ANNA MEIER", re.IGNORECASE)]}
 
 
@@ -177,8 +179,10 @@ def close(
     committed: date,
     *files: tuple[str, Sequence[Transaction]],
 ) -> None:
-    """Stage statements that cover `span`, and commit the months up to `committed`."""
+    """Stage statements that cover `span`, and commit them (`committed`: the last day, kept
+    so that callers say what they expect to be committed)."""
     first, last = span
+    assert committed == last
     statements = []
     for source, rows in files:
         closing = sum((row.amount for row in rows), Decimal(0))
@@ -186,6 +190,14 @@ def close(
         statements.append(statement(source, rows, [balance], month=first, end=last))
     every = tuple(row for _, rows in files for row in rows)
     month = Month(first, every, (), (), last)
-    monthclose.stage(conn, Batch(owner, statements, month, PEOPLE), CLOSED_AT)
-    for each in months_between(first, committed):
-        monthclose.commit(conn, owner=owner, month=each, now=CLOSED_AT)
+    staging.stage(conn, Batch(owner, statements, month, PEOPLE), CLOSED_AT)
+    staging.commit(conn, owner=owner, now=CLOSED_AT)
+
+
+def take_back(conn: sqlite3.Connection, owner: str) -> None:
+    """Take back every committed statement of `owner`, the latest first."""
+    owner_id = store.owner_id(conn, owner)
+    assert owner_id is not None
+    committed = [f for f in store.statement_files(conn, owner_id) if f.committed_at]
+    for file in sorted(committed, key=lambda f: (f.period[1], f.id), reverse=True):
+        staging.uncommit(conn, owner=owner, file_id=file.id)

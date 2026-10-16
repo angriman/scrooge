@@ -123,7 +123,7 @@ def load_files(paths: Iterable[Path]) -> tuple[list[Statement], list[Path]]:
     """
     statements: list[Statement] = []
     skipped: list[Path] = []
-    for path, name in sorted(_names(paths).items()):
+    for path, name in sorted(names(paths).items()):
         try:
             loaded = router.load(path, name)
         except ExtractionError as exc:
@@ -145,7 +145,7 @@ def load_certificates(paths: Iterable[Path]) -> tuple[list[Certificate], list[Pa
     """
     certificates: list[Certificate] = []
     others: list[Path] = []
-    for path, name in sorted(_names(paths).items()):
+    for path, name in sorted(names(paths).items()):
         try:
             scanned = router.load_certificate(path)
         except ExtractionError as exc:
@@ -160,17 +160,19 @@ def load_certificates(paths: Iterable[Path]) -> tuple[list[Certificate], list[Pa
     return certificates, others
 
 
-def _names(paths: Iterable[Path]) -> dict[Path, str]:
-    names = {path: path.name for path in paths}  # a path given twice counts once
+def names(paths: Iterable[Path]) -> dict[Path, str]:
+    """path -> a name of its own: the file's name, with as many of its folders in front as it
+    takes to tell it from the others."""
+    named = {path: path.name for path in paths}  # a path given twice counts once
     depth = 1
-    while len(set(names.values())) < len(names):  # two paths always differ somewhere
+    while len(set(named.values())) < len(named):  # two paths always differ somewhere
         depth += 1
-        counts = Counter(names.values())
-        for path, name in names.items():
+        counts = Counter(named.values())
+        for path, name in named.items():
             parts = path.parts[-depth:]
             if counts[name] > 1 and len(parts) == depth:
-                names[path] = "/".join(parts)
-    return names
+                named[path] = "/".join(parts)
+    return named
 
 
 def process(

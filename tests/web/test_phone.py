@@ -11,7 +11,8 @@ from starlette.testclient import TestClient
 from finanze.models import Kind
 from finanze.storage import db
 from finanze.web import app as webapp
-from tests.storage.helpers import CLOSED_AT, OWNER, close, txn
+from tests.storage.helpers import OWNER, txn
+from tests.web.builders import BUILT, close, household
 
 WEB = Path(webapp.__file__).parent
 ROWS = [
@@ -25,10 +26,17 @@ PAGES = ["/", "/networth", "/holdings", "/cashflow", "/transactions", "/months"]
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     path = tmp_path_factory.mktemp("phone") / "finanze.db"
     conn = db.connect(path)
-    db.migrate(conn, CLOSED_AT)
+    db.migrate(conn, BUILT)
     august = date(2026, 8, 1)
-    close(conn, OWNER, (august, date(2026, 8, 31)), august, ("migros", ROWS))
+    close(conn, OWNER, (august, date(2026, 8, 31)), ("migros", ROWS))
     conn.close()
+    return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
+
+
+@pytest.fixture
+def draft(tmp_path: Path) -> TestClient:
+    path = tmp_path / "finanze.db"
+    household(path)
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
 
 
@@ -70,14 +78,26 @@ def test_a_period_of_the_cash_flow_says_what_each_figure_is(client: TestClient) 
     ]
 
 
-def test_a_month_of_the_list_and_a_statement_say_what_each_figure_is(client: TestClient) -> None:
+def test_the_import_page_is_as_wide_as_the_screen_it_is_on(draft: TestClient) -> None:
+    page = draft.get("/import", params={"owner": "Lukas"})
+    assert page.status_code == 200
+    assert '<meta name="viewport" content="width=device-wi' in page.text
+
+
+def test_an_account_and_a_month_of_the_list_say_what_each_figure_is(client: TestClient) -> None:
     assert cells(client.get("/months").text, "cards") == [
+        '<td class="lead">',
+        '<td data-label="Account">',
+        '<td data-label="Source">',
+        '<td class="date" data-label="Committed to">',
+        '<td class="date" data-label="Staged to">',
+    ]
+    page = client.get("/months").text
+    assert cells(page.partition("</table>")[2].partition("</table>")[2], "cards") == [
         '<td class="date lead">',
         '<td data-label="Person">',
-        '<td class="total">',
         '<td class="number" data-label="Statements">',
         '<td class="number" data-label="Transactions">',
-        '<td class="number" data-label="Need a category">',
     ]
     assert cells(client.get("/months/Lukas/2026-08").text, "cards") == [
         '<td class="lead">',
@@ -85,6 +105,35 @@ def test_a_month_of_the_list_and_a_statement_say_what_each_figure_is(client: Tes
         '<td class="date wide" data-label="Covers">',
         '<td data-label="Reconciled">',
         '<td class="number" data-label="Transactions">',
+    ]
+
+
+def test_the_draft_names_its_cells_for_the_cards_they_become(draft: TestClient) -> None:
+    page = draft.get("/import", params={"owner": "Lukas"}).text
+    assert cells(page, "cards") == [  # the staged statements
+        '<td class="lead">',
+        '<td class="wide" data-label="File">',
+        '<td class="date wide" data-label="Covers">',
+        '<td class="number" data-label="Rows">',
+        '<td class="wide">',
+    ]
+    totals = page.partition('<section id="totals">')[2]
+    assert cells(totals, "cards") == [
+        '<td class="lead">',
+        '<td class="number total sum" data-unit="CHF">',
+        '<td class="number count" data-label="Rows">',
+    ]
+    assert cells(page.partition('<section id="waiting">')[2], "cards") == [
+        '<td class="lead wide">',
+        '<td class="wide">',
+        '<td class="wide">',
+    ]
+    assert cells(page.partition('<section id="rows">')[2], "entries") == [
+        '<td class="date">',
+        '<td class="account">',
+        '<td class="what">',
+        '<td class="number amount">',
+        '<td class="category">',
     ]
 
 
