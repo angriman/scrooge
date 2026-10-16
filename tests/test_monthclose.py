@@ -146,7 +146,9 @@ def test_accounts_trades_and_statement_files_are_stored(
     assert set(files) == {"ibkr", "migros", "revolut", "revolut_savings", "swisscard", "tastytrade"}
     # every buy and sell, plus the bill that matured at each broker and the shares moved in
     trades = rows(conn, "SELECT count(*) FROM trades")
-    assert trades == [(len(fixture_batch(folder).month.trades) + 3,)]
+    month = fixture_batch(folder).month
+    bought = [t for t in month.transactions if t.kind is Kind.SECURITY_TRADE]
+    assert trades == [(len(bought) + 3,)]
     bills = rows(conn, "SELECT symbol, maturity FROM instruments WHERE type = 'bill' ORDER BY 1")
     assert ("912797ZZ1", "2026-12-24") in bills
 

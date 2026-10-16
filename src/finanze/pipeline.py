@@ -11,7 +11,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from finanze import classification, router
-from finanze.aggregate import Budget, aggregate
 from finanze.classification import Instrument, Rule
 from finanze.errors import ExtractionError
 from finanze.extractors.common import month_end, month_start
@@ -41,28 +40,6 @@ class Month:
     @property
     def uncategorized(self) -> tuple[Transaction, ...]:
         return classification.uncategorized(self.transactions)
-
-    @property
-    def trades(self) -> tuple[SecurityTrade, ...]:
-        """Buys and sells, for the asset tabs. A bill maturity is income and is not listed."""
-        return tuple(
-            t
-            for t in self.transactions
-            if isinstance(t, SecurityTrade) and t.kind is Kind.SECURITY_TRADE
-        )
-
-    def budget(self) -> Budget:
-        """Raises `UncategorizedError` while any row still lacks a category."""
-        return aggregate(self.month, self.transactions)
-
-    def renamed(self, names: Mapping[str, str]) -> Month:
-        """Use the destination's own account names (config `accounts`) where they differ."""
-        if not names:
-            return self
-        renamed = tuple(
-            replace(txn, account=names.get(txn.account, txn.account)) for txn in self.transactions
-        )
-        return replace(self, transactions=renamed)
 
 
 @dataclass(frozen=True, slots=True)

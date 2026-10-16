@@ -5,11 +5,17 @@ from pathlib import Path
 import pytest
 
 from finanze import pipeline, router
-from finanze.aggregate import BudgetRow, UncategorizedError
 from finanze.classification import Rule, UnknownInstrumentError, load_rules
 from finanze.errors import ExtractionError
 from finanze.extractors import ocr, swisscard
-from finanze.models import CashBalance, Extraction, Kind, PensionCertificate, Transaction
+from finanze.models import (
+    CashBalance,
+    Extraction,
+    Kind,
+    PensionCertificate,
+    SecurityTrade,
+    Transaction,
+)
 from finanze.validation import (
     BalanceMismatchError,
     CardBillMismatchError,
@@ -18,6 +24,14 @@ from finanze.validation import (
 )
 from tests.conftest import FIXTURES, INSTRUMENTS
 from tests.conftest import write_rules as _rules
+
+
+def _trades(month: pipeline.Month) -> list[SecurityTrade]:
+    return [
+        t
+        for t in month.transactions
+        if isinstance(t, SecurityTrade) and t.kind is Kind.SECURITY_TRADE
+    ]
 
 
 def _rules_of(folder: Path) -> tuple[Rule, ...]:
@@ -55,15 +69,13 @@ def test_month_without_rules_reconciles_and_lists_what_needs_review(folder: Path
     assert month.unreconciled == ("Revolut EUR",)
     assert [path.name for path in month.skipped] == ["ibkr.pdf", "notes.txt"]
     assert len(month.uncategorized) > 10
-    assert [(t.account, t.ticker, t.asset_tab, t.maturity) for t in month.trades] == [
+    assert [(t.account, t.ticker, t.asset_tab, t.maturity) for t in _trades(month)] == [
         ("IBKR USD", "ACME", "Stocks", None),
         ("IBKR USD", "WIDG", "ETFs", None),
         ("IBKR USD", "912797ZZ1", "Bonds", date(2026, 12, 24)),
         ("Tastytrade", "912797ZZ1", "Bonds", date(2026, 12, 24)),
         ("Tastytrade", "WIDG", "ETFs", None),
     ]
-    with pytest.raises(UncategorizedError):
-        month.budget()
 
 
 def test_instrument_the_statements_cannot_place_blocks(folder: Path) -> None:
@@ -72,30 +84,13 @@ def test_instrument_the_statements_cannot_place_blocks(folder: Path) -> None:
         pipeline.process(extractions, (), {})
 
 
-def test_fully_classified_month_aggregates(folder: Path) -> None:
+def test_fully_classified_month_has_nothing_left_to_review(folder: Path) -> None:
     extractions, _ = pipeline.load_folder(folder)
     month = pipeline.process(extractions, load_rules([_rules(folder)]), INSTRUMENTS)
     assert month.uncategorized == ()
-    budget = month.budget()
-    uscite = {(r.category, r.account): r.amount for r in budget.uscite}
-    entrate = {(r.category, r.account): r.amount for r in budget.entrate}
-    assert uscite["Affitto", "Migros"] == Decimal("1850.00")
-    # Migros: Konsum 25.40; Swisscard: Frischmarkt 41.85; Revolut: Konsum 20
-    assert uscite["Spesa", "Migros"] == Decimal("67.25")
-    assert uscite["Spesa", "Revolut CHF"] == Decimal("20.00")
-    assert uscite["Revolut Metal", "Revolut CHF"] == Decimal("18.99")
-    # Migros 150 + 200 by transfer, plus 100 by credit card (Swisscard)
-    assert uscite["Topup Revolut", "Migros"] == Decimal("450.00")
-    assert entrate["Topup Revolut", "Revolut CHF"] == Decimal("230.00")
-    assert entrate["Cashback", "Migros"] == Decimal("67.80")
-    assert entrate["Stipendio", "Migros"] == Decimal("7200.00")
-    # Revolut Savings: 0.1786 paid, 0.0086 of it taken as the fund's fee, each to the cent
-    assert BudgetRow("Interessi", "Revolut EUR", Decimal("0.18")) in budget.entrate
-    assert uscite["Commissioni", "Revolut EUR"] == Decimal("0.01")
-    # D3: the card bill itself never reaches the sheet
+    # D3: the card bill itself is no spending, it is the bank's debit for the card
     internal = [t for t in month.transactions if t.kind is Kind.INTERNAL and t.account == "Migros"]
     assert [t.amount for t in internal] == [Decimal("-1288.18")]
-    assert Decimal("1288.18") not in uscite.values()
 
 
 def test_card_invoice_must_match_the_bank_debit(folder: Path) -> None:
@@ -165,7 +160,7 @@ def test_a_statement_of_several_months_is_processed_as_one_period(tmp_path: Path
     assert (month.month, month.end) == (date(2026, 7, 1), date(2026, 9, 30))
     assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
     assert month.uncategorized == ()
-    assert {t.asset_tab for t in month.trades} == {"Funds"}
+    assert {t.asset_tab for t in _trades(month)} == {"Funds"}
 
 
 def test_a_garbled_byte_order_mark_does_not_hide_the_format(tmp_path: Path) -> None:
@@ -330,7 +325,7 @@ def test_a_bill_gets_its_maturity_from_another_row_of_the_same_bill(folder: Path
     extractions, skipped = pipeline.load_folder(folder)
     without = {"WIDG": INSTRUMENTS["WIDG"]}
     month = pipeline.process(extractions, (), without, skipped)
-    bought = [t for t in month.trades if t.ticker == "912797ZZ1"]
+    bought = [t for t in _trades(month) if t.ticker == "912797ZZ1"]
     assert {t.account for t in bought} == {"IBKR USD", "Tastytrade"}
     assert {t.maturity for t in bought} == {date(2026, 12, 24)}
 

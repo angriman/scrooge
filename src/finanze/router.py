@@ -6,7 +6,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-from finanze import records
 from finanze.errors import ExtractionError
 from finanze.extractors import (
     axa,
@@ -39,8 +38,6 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
 # A UTF-8 byte-order mark that was read as Latin-1 and saved again (seen on re-saved exports).
 _GARBLED_MARK = "\u00ef\u00bb\u00bf"
 _TEXT_SUFFIXES = {".csv", ".tsv"}
-# Header of a `--dump` file: older runs saved it next to the statements.
-_OWN_DUMP = ",".join(records.FIELDS)
 
 
 class Scanned(NamedTuple):
@@ -117,7 +114,5 @@ def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Ex
     for source, starts, extract in _TEXT_SOURCES:
         if text.startswith(starts):
             return source, extract(text, name)
-    if text.startswith(_OWN_DUMP):
-        return None
     msg = "not a statement format this parser knows: export it again or move it out of the folder"
     raise ExtractionError(msg)
