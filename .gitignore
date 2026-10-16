@@ -2,7 +2,7 @@
 statements/*
 !statements/.gitkeep
 transactions_*.csv
-# Generated: files to paste into the sheet, and the transactions behind them
+# Generated: the NAS image folder, caches of runs
 output/
 # Personal: merchant rules naming people, account names
 rules.local.yaml

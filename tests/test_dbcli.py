@@ -986,3 +986,11 @@ def test_an_export_that_disagrees_with_a_committed_month_says_where(run: Run) ->
     assert "  differs: Revolut EUR 2026-09-29: " in run.output
     assert "is committed and is not in Revolut Savings.tsv\n" in run.output
     assert "nothing was changed in the committed months: reopen them" in run.output
+
+
+def test_keys_of_an_older_config_are_ignored(run: Run) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + "locale: it\naccounts:\n  Tastytrade: Tasty\n",
+        encoding="utf-8",
+    )
+    assert run.load() == dbcli.OK

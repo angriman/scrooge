@@ -1,4 +1,4 @@
-"""Normalized transaction: the contract between extractors and sheet writers."""
+"""Normalized transaction: the contract between extractors and the database."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class Kind(StrEnum):
     TAX = "tax"
     SECURITY_TRADE = "security_trade"
     # Moves money inside one sheet account (or is replaced by another source, like the Swisscard
-    # debit on Migros): needed to reconcile the statement, never written to the sheet.
+    # debit on Migros): needed to reconcile the statement, never a row of income or expenses.
     INTERNAL = "internal"
 
 
@@ -36,8 +36,8 @@ class Transaction:
     """One normalized transaction. `amount` is signed, in the native currency.
 
     D19: `date` is the day it really happened (viewing, querying); `booking_date` is the day
-    it counts on for its statement, always inside the statement period (reconciliation, paste
-    files). They differ only where an extractor says so, e.g. card purchases billed later.
+    it counts on for its statement, always inside the statement period (reconciliation
+    and booking). They differ only where an extractor says so, e.g. card purchases billed later.
     """
 
     date: date

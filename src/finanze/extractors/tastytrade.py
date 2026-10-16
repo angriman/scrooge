@@ -166,7 +166,7 @@ def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
     if row["Type"] in {"Trade", "Receive Deliver"}:
         if row["Instrument Type"] in _SECURITIES:
             # Principal back. The export has no cost to split the interest out (D13): the
-            # database does it from the stored purchases, the paste files book it whole.
+            # database does it from the stored purchases.
             if row["Sub Type"] == "Maturity":
                 return Kind.INCOME, "Investimenti"
             return Kind.SECURITY_TRADE, "Investimenti"
