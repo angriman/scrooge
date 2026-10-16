@@ -54,7 +54,7 @@ class Read:
 def read(owner: str, files: Sequence[Path], setup: Setup) -> Read:
     """Extract and reconcile `files` as statements of `owner`. Any failure raises."""
     certificates, others = pipeline.load_certificates(files)
-    loaded, skipped = pipeline.load_files(others, database=True)
+    loaded, skipped = pipeline.load_files(others)
     instruments = classification.load_instruments(setup.instruments)
     statements = pipeline.resolve_holdings(pipeline.relabel(loaded, setup.labels), instruments)
     return Read(
@@ -92,7 +92,7 @@ def _classified(
     rules = classification.between_people(classification.load_rules(rule_files, known), others)
     extractions = [(s.source, s.extraction) for s in statements]
     instruments = classification.load_instruments(setup.instruments)
-    return pipeline.process(extractions, rules, instruments, skipped, database=True)
+    return pipeline.process(extractions, rules, instruments, skipped)
 
 
 def stage(

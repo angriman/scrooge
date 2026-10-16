@@ -82,27 +82,24 @@ def load_certificate(path: Path) -> Scanned | None:
     return None
 
 
-def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Extraction] | None:
+def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
     """Extract one statement file. Returns None for files that are not statements.
 
     `name` is what the transactions call their source file: the file's own name unless given.
-    For the `database`, a card invoice is a statement of the card's own account; for the
-    files to paste, its purchases are booked on the bank account (D3).
+    A card invoice is a statement of the card's own account.
 
     A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
     skipping it would drop a whole account from the month without a word.
 
     A pension certificate is no statement of a month and is not read here: every PDF but a
-    card invoice is skipped unopened, so a certificate never reaches the files to paste.
-    `load_certificate` reads one, for the database.
+    card invoice is skipped unopened. `load_certificate` reads one.
     """
     name = name or path.name
     suffix = path.suffix.lower()
     if _named_pdf(path):
         if "swisscard" not in path.name.lower():
             return None  # e.g. the PDF copy of the IBKR statement
-        read = swisscard.extract_account if database else swisscard.extract
-        return "swisscard", read(swisscard.read_text(path), name)
+        return "swisscard", swisscard.extract_account(swisscard.read_text(path), name)
     if suffix not in _TEXT_SUFFIXES:
         return None
     try:

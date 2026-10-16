@@ -146,7 +146,7 @@ def test_a_holding_in_a_currency_without_cash_gets_an_account(conn: sqlite3.Conn
 
 
 def test_a_second_account_at_the_broker_holds_under_its_own_name(folder: Path) -> None:
-    statements, _ = pipeline.load_statements(folder, database=True)
+    statements, _ = pipeline.load_statements(folder)
     renamed = pipeline.relabel(statements, {"U12345678": "IBKR 2"})
     [broker] = [s for s in renamed if s.source == "ibkr"]
     assert {h.account for h in broker.extraction.holdings or ()} == {"IBKR 2 USD"}
@@ -155,7 +155,7 @@ def test_a_second_account_at_the_broker_holds_under_its_own_name(folder: Path) -
 
 
 def test_instruments_yaml_names_and_types_what_is_held(folder: Path) -> None:
-    statements, _ = pipeline.load_statements(folder, database=True)
+    statements, _ = pipeline.load_statements(folder)
     instruments = INSTRUMENTS | {"ACME": Instrument(tab="ETFs", ticker="ACMX")}
     resolved = pipeline.resolve_holdings(statements, instruments)
     [broker] = [s for s in resolved if s.source == "ibkr"]

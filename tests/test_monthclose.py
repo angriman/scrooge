@@ -67,13 +67,12 @@ def month_of(month: date, opening: str, *amounts: str) -> Batch:
 
 def fixture_batch(folder: Path, rules: Path | None = None) -> Batch:
     """September 2026 from the redacted fixtures, through the real pipeline."""
-    statements, skipped = pipeline.load_statements(folder, database=True)
+    statements, skipped = pipeline.load_statements(folder)
     month = pipeline.process(
         [(s.source, s.extraction) for s in statements],
         classification.load_rules([rules or write_rules(folder)]),
         INSTRUMENTS,
         skipped,
-        database=True,
     )
     return Batch(OWNER, statements, month, PEOPLE)
 
@@ -939,9 +938,9 @@ PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
 def pension_batch(folder: Path) -> Batch:
     """The pillar 3a fixture (July to September 2026)."""
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
-    statements, skipped = pipeline.load_statements(folder, database=True)
+    statements, skipped = pipeline.load_statements(folder)
     extractions = [(s.source, s.extraction) for s in statements]
-    month = pipeline.process(extractions, (), {}, skipped, database=True)
+    month = pipeline.process(extractions, (), {}, skipped)
     return Batch(OWNER, statements, month, PEOPLE)
 
 

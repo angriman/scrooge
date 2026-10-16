@@ -20,7 +20,6 @@ from finanze.validation import (
     BalanceMismatchError,
     CardBillMismatchError,
     check_balances,
-    check_card_bill,
 )
 from tests.conftest import FIXTURES, INSTRUMENTS
 from tests.conftest import write_rules as _rules
@@ -34,12 +33,17 @@ def _trades(month: pipeline.Month) -> list[SecurityTrade]:
     ]
 
 
+def _load(folder: Path) -> tuple[list[tuple[str, Extraction]], list[Path]]:
+    statements, skipped = pipeline.load_statements(folder)
+    return [(s.source, s.extraction) for s in statements], skipped
+
+
 def _rules_of(folder: Path) -> tuple[Rule, ...]:
     return load_rules([_rules(folder)])
 
 
 def test_router_detects_every_source_and_skips_the_rest(folder: Path) -> None:
-    extractions, skipped = pipeline.load_folder(folder)
+    extractions, skipped = _load(folder)
     assert [source for source, _ in extractions] == [
         "ibkr",
         "migros",
@@ -59,11 +63,11 @@ def test_router_detects_every_source_and_skips_the_rest(folder: Path) -> None:
 def test_unrecognised_csv_blocks_instead_of_dropping_an_account(folder: Path) -> None:
     (folder / "other.csv").write_text("a,b\n1,2\n", encoding="utf-8")
     with pytest.raises(ExtractionError, match=r"other\.csv: not a statement format"):
-        pipeline.load_folder(folder)
+        _load(folder)
 
 
 def test_month_without_rules_reconciles_and_lists_what_needs_review(folder: Path) -> None:
-    extractions, skipped = pipeline.load_folder(folder)
+    extractions, skipped = _load(folder)
     month = pipeline.process(extractions, (), INSTRUMENTS, skipped)
     assert month.month == date(2026, 9, 1)
     assert month.unreconciled == ("Revolut EUR",)
@@ -79,13 +83,13 @@ def test_month_without_rules_reconciles_and_lists_what_needs_review(folder: Path
 
 
 def test_instrument_the_statements_cannot_place_blocks(folder: Path) -> None:
-    extractions, _ = pipeline.load_folder(folder)
+    extractions, _ = _load(folder)
     with pytest.raises(UnknownInstrumentError, match=r"WIDG|912797ZZ1"):
         pipeline.process(extractions, (), {})
 
 
 def test_fully_classified_month_has_nothing_left_to_review(folder: Path) -> None:
-    extractions, _ = pipeline.load_folder(folder)
+    extractions, _ = _load(folder)
     month = pipeline.process(extractions, load_rules([_rules(folder)]), INSTRUMENTS)
     assert month.uncategorized == ()
     # D3: the card bill itself is no spending, it is the bank's debit for the card
@@ -93,37 +97,8 @@ def test_fully_classified_month_has_nothing_left_to_review(folder: Path) -> None
     assert [t.amount for t in internal] == [Decimal("-1288.18")]
 
 
-def test_card_invoice_must_match_the_bank_debit(folder: Path) -> None:
-    migros = folder / "Migros.csv"
-    text = migros.read_text(encoding="utf-8")
-    migros.write_text(
-        text.replace('"-1288.18";"4686.42"', '"-1288.13";"4686.47"').replace(
-            '"45.00";"4731.42"', '"44.95";"4731.42"'
-        ),
-        encoding="utf-8",
-    )
-    extractions, _ = pipeline.load_folder(folder)
-    with pytest.raises(CardBillMismatchError, match=r"-1288\.18, but the bank debited -1288\.13"):
-        pipeline.process(extractions, (), INSTRUMENTS)
-
-
-def test_missing_invoice_or_missing_debit_blocks(folder: Path) -> None:
-    (folder / "swisscard.pdf").unlink()
-    extractions, _ = pipeline.load_folder(folder)
-    with pytest.raises(CardBillMismatchError, match="no card invoice"):
-        pipeline.process(extractions, (), INSTRUMENTS)
-    with pytest.raises(CardBillMismatchError, match="no card debit"):
-        check_card_bill(None, Decimal(-10))
-    check_card_bill(None, None)
-
-
-def test_statements_of_different_months_block(folder: Path) -> None:
-    tasty = folder / "tastytrade.csv"
-    tasty.write_text(tasty.read_text(encoding="utf-8").replace("2026-09-", "2026-08-"))
-    extractions, _ = pipeline.load_folder(folder)
-    with pytest.raises(ExtractionError, match="2026-08, 2026-09"):
-        pipeline.process(extractions, (), INSTRUMENTS)
-    with pytest.raises(ExtractionError, match="found: none"):
+def test_no_statements_block() -> None:
+    with pytest.raises(ExtractionError, match="no statements to process"):
         pipeline.process([], (), INSTRUMENTS)
 
 
@@ -131,7 +106,7 @@ def test_reconciliation_failure_blocks(folder: Path) -> None:
     ibkr = folder / "IBKR.csv"
     text = ibkr.read_text(encoding="utf-8")
     ibkr.write_text(text.replace("Ending Cash,EUR,249.2,", "Ending Cash,EUR,250.2,"))
-    extractions, _ = pipeline.load_folder(folder)
+    extractions, _ = _load(folder)
     with pytest.raises(BalanceMismatchError, match="IBKR EUR"):
         pipeline.process(extractions, (), INSTRUMENTS)
 
@@ -139,14 +114,14 @@ def test_reconciliation_failure_blocks(folder: Path) -> None:
 def test_file_in_an_old_encoding_is_an_extraction_error(folder: Path) -> None:
     (folder / "Migros.csv").write_bytes("Data;Saldo\n1;Zürich\n".encode("cp1252"))
     with pytest.raises(ExtractionError, match=r"Migros\.csv: not UTF-8 text"):
-        pipeline.load_folder(folder)
+        _load(folder)
 
 
 def test_extraction_errors_name_the_file(folder: Path) -> None:
     migros = folder / "Migros.csv"
     migros.write_text(migros.read_text(encoding="utf-8").replace('"-4.40"', '"-4,40"'))
     with pytest.raises(ExtractionError, match=r"Migros\.csv: cannot read amount"):
-        pipeline.load_folder(folder)
+        _load(folder)
 
 
 PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
@@ -172,13 +147,6 @@ def test_a_garbled_byte_order_mark_does_not_hide_the_format(tmp_path: Path) -> N
     assert loaded[0] == "finpension"
 
 
-def test_statements_of_different_periods_block(folder: Path) -> None:
-    (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
-    extractions, _ = pipeline.load_folder(folder)
-    with pytest.raises(ExtractionError, match="found: 2026-07 to 2026-09, 2026-09"):
-        pipeline.process(extractions, (), INSTRUMENTS)
-
-
 def test_files_from_several_folders_get_names_that_tell_them_apart(folder: Path) -> None:
     other = folder / "old"
     (other / "Migros.csv").write_bytes((folder / "Migros.csv").read_bytes())
@@ -197,8 +165,8 @@ def test_files_from_several_folders_get_names_that_tell_them_apart(folder: Path)
 
 def test_statements_of_different_periods_can_be_processed_together(folder: Path) -> None:
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
-    extractions, skipped = pipeline.load_folder(folder)
-    month = pipeline.process(extractions, _rules_of(folder), INSTRUMENTS, skipped, database=True)
+    extractions, skipped = _load(folder)
+    month = pipeline.process(extractions, _rules_of(folder), INSTRUMENTS, skipped)
     assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
     assert {t.account for t in month.transactions} >= {"Finpension 3a", "Migros", "IBKR USD"}
 
@@ -250,37 +218,37 @@ def test_card_payments_are_matched_to_the_bank_debits_a_few_days_apart() -> None
     # The card books the August payment two days later; September's is not invoiced yet.
     september = _invoice(date(2026, 9, 1), (date(2026, 8, 7), "50"))
     both = [("migros", bank), ("swisscard", september)]
-    month = pipeline.process(both, (), {}, database=True)
+    month = pipeline.process(both, (), {})
     assert month.period == AUTUMN
 
 
 def test_a_payment_from_before_the_bank_statements_is_left_alone() -> None:
     bank = _bank(months=AUTUMN)
     august = _invoice(date(2026, 8, 1), (date(2026, 7, 26), "50"))
-    pipeline.process([("migros", bank), ("swisscard", august)], (), {}, database=True)
+    pipeline.process([("migros", bank), ("swisscard", august)], (), {})
 
 
 def test_a_card_payment_the_bank_never_made_blocks() -> None:
     bank = _bank((date(2026, 8, 5), "-50"), months=AUTUMN)
     september = _invoice(date(2026, 9, 1), (date(2026, 8, 20), "50"))  # 15 days apart
     with pytest.raises(CardBillMismatchError, match="lists a payment of 50 on 2026-08-20"):
-        pipeline.process([("migros", bank), ("swisscard", september)], (), {}, database=True)
+        pipeline.process([("migros", bank), ("swisscard", september)], (), {})
 
 
 def test_a_bank_debit_no_invoice_lists_blocks() -> None:
     bank = _bank((date(2026, 8, 5), "-50"), months=AUTUMN)
     september = _invoice(date(2026, 9, 1))
     with pytest.raises(CardBillMismatchError, match="debited 50 for the card on 2026-08-05"):
-        pipeline.process([("migros", bank), ("swisscard", september)], (), {}, database=True)
+        pipeline.process([("migros", bank), ("swisscard", september)], (), {})
 
 
 def test_two_equal_payments_are_matched_one_to_one() -> None:
     bank = _bank((date(2026, 8, 5), "-50"), (date(2026, 8, 6), "-50"), months=AUTUMN)
     september = _invoice(date(2026, 9, 1), (date(2026, 8, 5), "50"), (date(2026, 8, 6), "50"))
-    pipeline.process([("migros", bank), ("swisscard", september)], (), {}, database=True)
+    pipeline.process([("migros", bank), ("swisscard", september)], (), {})
     once = _invoice(date(2026, 9, 1), (date(2026, 8, 5), "50"))
     with pytest.raises(CardBillMismatchError, match="no card invoice lists"):
-        pipeline.process([("migros", bank), ("swisscard", once)], (), {}, database=True)
+        pipeline.process([("migros", bank), ("swisscard", once)], (), {})
 
 
 def test_the_older_migros_layout_is_recognised(tmp_path: Path) -> None:
@@ -322,7 +290,7 @@ def test_a_pdf_saved_without_its_extension_is_still_read(
 
 def test_a_bill_gets_its_maturity_from_another_row_of_the_same_bill(folder: Path) -> None:
     # Tastytrade buys 912797ZZ1 without a maturity; IBKR's statement has it for the same bill.
-    extractions, skipped = pipeline.load_folder(folder)
+    extractions, skipped = _load(folder)
     without = {"WIDG": INSTRUMENTS["WIDG"]}
     month = pipeline.process(extractions, (), without, skipped)
     bought = [t for t in _trades(month) if t.ticker == "912797ZZ1"]
@@ -378,7 +346,7 @@ def test_a_scan_that_no_issuer_recognises_is_not_a_statement(
     certificates, others = pipeline.load_certificates(pillar2.iterdir())
     assert certificates == []
     assert sorted(path.name for path in others) == ["Dokument.pdf", "Scan 0001.pdf"]
-    statements, skipped = pipeline.load_files(others, database=True)
+    statements, skipped = pipeline.load_files(others)
     assert statements == []
     assert sorted(skipped) == sorted(others)
 
@@ -392,7 +360,7 @@ def test_a_certificate_that_does_not_read_cleanly_names_its_file(
         pipeline.load_certificates(pillar2.iterdir())
 
 
-def test_certificates_never_reach_the_files_to_paste(
+def test_scans_among_the_statements_are_skipped_unopened(
     folder: Path, pillar2: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def never(path: Path) -> str:
@@ -401,10 +369,9 @@ def test_certificates_never_reach_the_files_to_paste(
     monkeypatch.setattr(ocr, "read_text", never)  # not even opened
     for scan in pillar2.iterdir():
         scan.rename(folder / scan.name)
-    for database in (False, True):
-        statements, skipped = pipeline.load_statements(folder, database=database)
-        assert len(statements) == 6
-        assert {"Dokument.pdf", "Scan 0001.pdf"} <= {path.name for path in skipped}
-    extractions, skipped = pipeline.load_folder(folder)
+    statements, skipped = pipeline.load_statements(folder)
+    assert len(statements) == 6
+    assert {"Dokument.pdf", "Scan 0001.pdf"} <= {path.name for path in skipped}
+    extractions, skipped = _load(folder)
     month = pipeline.process(extractions, load_rules([_rules(folder)]), INSTRUMENTS, skipped)
     assert not any("Pillar" in txn.account for txn in month.transactions)
