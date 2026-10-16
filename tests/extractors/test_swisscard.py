@@ -32,8 +32,33 @@ def test_known_september_totals(result: Extraction) -> None:
     check_balances(result)
 
 
-def test_everything_is_booked_on_migros_in_the_invoice_month(result: Extraction) -> None:
-    assert result.month == date(2026, 9, 1)
+def test_the_billing_period_is_the_period_covered(result: Extraction) -> None:
+    assert result.period == (date(2026, 8, 5), date(2026, 9, 4))
+    assert result.month == date(2026, 8, 1)
+    assert result.account_id == "40000000000"
+
+
+def test_without_a_printed_period_it_runs_from_the_earliest_row_to_the_invoice() -> None:
+    bare = TEXT.replace("Periodo di fatturazione 05.08.26 \u2013 04.09.26\n", "")
+    assert bare != TEXT
+    assert swisscard.extract(bare, source_file="s.txt").period == (
+        date(2026, 8, 4),
+        date(2026, 9, 4),
+    )
+
+
+def test_a_partial_period_is_reported_exactly_and_reconciles() -> None:
+    part = TEXT.replace("05.08.26 \u2013 04.09.26", "05.09.26 \u2013 20.09.26").replace(
+        "Data della fattura 04.09.2026", "Data della fattura 20.09.2026"
+    )
+    for read in (swisscard.extract, swisscard.extract_account):
+        extraction = read(part, source_file="s.txt")
+        assert extraction.period == (date(2026, 9, 5), date(2026, 9, 20))
+        assert extraction.month == date(2026, 9, 1)
+        check_balances(extraction)
+
+
+def test_everything_is_booked_on_migros_on_the_invoice_day(result: Extraction) -> None:
     assert {(t.account, t.currency, t.booking_date) for t in result.transactions} == {
         ("Migros", "CHF", date(2026, 9, 4))  # D4: the invoice date, not the purchase date
     }
@@ -137,7 +162,8 @@ def card() -> Extraction:
 
 
 def test_as_an_account_the_invoice_reconciles_on_its_own_balances(card: Extraction) -> None:
-    assert card.month == date(2026, 9, 1)
+    assert card.period == (date(2026, 8, 5), date(2026, 9, 4))
+    assert card.account_id == "40000000000"
     assert card.controls == ()
     assert card.balances == (
         CashBalance("Swisscard", "CHF", Decimal("-1142.60"), Decimal("-1288.18")),

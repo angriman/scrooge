@@ -15,12 +15,12 @@ import csv
 import io
 import re
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from finanze.errors import ExtractionError
 from finanze.extractors.common import (
-    month_end,
+    month_start,
     parse_decimal,
     parse_iso_date,
     parse_swiss_date,
@@ -48,7 +48,7 @@ _TRANSFERS = (
 
 
 def extract(content: str, source_file: str) -> Extraction:
-    """Parse the text of a Migros Bank statement covering whole calendar months."""
+    """Parse the text of a Migros Bank statement for the period it prints."""
     text = content.removeprefix("\ufeff")
     header = _HEADER.search(text)
     if header is None:
@@ -92,7 +92,9 @@ def extract(content: str, source_file: str) -> Extraction:
             )
         )
     return Extraction(
-        month=first,
+        month=month_start(first),
+        account_id=_iban(metadata),
+        start=first,
         end=last,
         transactions=tuple(transactions),
         balances=(CashBalance(account, currency, opening, balance),),
@@ -145,30 +147,26 @@ def _metadata(block: str) -> dict[str, str]:
 def _period(metadata: dict[str, str]) -> tuple[date, date]:
     first = parse_iso_date(metadata.get("Estratto conto da:", ""), "Migros period start")
     last = parse_iso_date(metadata.get("Estratto conto fino:", ""), "Migros period end")
-    if first.day != 1 or last < first:
-        msg = f"Migros statement must start on the first day of a month, got {first} to {last}"
-        raise ExtractionError(msg)
-    if last != month_end(last):
-        # Exported up to a day inside a month (often the day of the export): the statement
-        # counts up to the month end before it, and a row after that is refused below.
-        last = last.replace(day=1) - timedelta(days=1)
     if last < first:
-        msg = f"Migros statement covers no whole month ({first} onwards): export a full month"
+        msg = f"Migros statement period ends before it starts: {first} to {last}"
         raise ExtractionError(msg)
     return first, last
 
 
+def _iban(metadata: dict[str, str]) -> str:
+    """The IBAN of "Numero di conto / IBAN:" (account number, a slash, IBAN), no spaces."""
+    printed = metadata.get("Numero di conto / IBAN:", "")
+    return printed.rpartition("/")[2].replace(" ", "")
+
+
 def _booking_date(row: dict[str, str], first: date, last: date, n: int) -> date:
-    # D4: the value date. A card purchase made late last month is booked in this one, so when
-    # the value date falls outside the period the booking date is used.
-    value = parse_swiss_date(row["Valuta"], "Migros Valuta")
-    if first <= value <= last:
-        return value
+    # The day the running balance books the row (`Data`), whatever period the file covers, so
+    # two overlapping exports give a row the same booking date. `Valuta` stays its `date`.
     booked = parse_swiss_date(row["Data"], "Migros Data")
     if not first <= booked <= last:
         msg = (
-            f"Migros row {n}: {booked} is outside the whole months the statement covers "
-            f"({first} to {last}): export it up to a month end"
+            f"Migros row {n}: {booked} is outside the period the statement covers "
+            f"({first} to {last})"
         )
         raise ExtractionError(msg)
     return booked

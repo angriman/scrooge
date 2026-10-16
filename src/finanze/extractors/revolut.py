@@ -14,7 +14,13 @@ import re
 from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import parse_decimal, parse_iso_date, read_table, whole_months
+from finanze.extractors.common import (
+    day_span,
+    month_start,
+    parse_decimal,
+    parse_iso_date,
+    read_table,
+)
 from finanze.models import CashBalance, Extraction, Kind, Transaction
 
 _COLUMNS = (
@@ -57,7 +63,7 @@ def extract(content: str, source_file: str) -> Extraction:
     # The balance chain follows completion, and a payment can start before the statement does:
     # the period is the months in which rows were completed.
     completed = [parse_iso_date(row["Completed Date"], "Revolut Completed Date") for _, row in rows]
-    first, last = whole_months(completed, "Revolut statement")
+    first, last = day_span(completed, "Revolut statement")
 
     transactions: list[Transaction] = []
     opening: dict[str, Decimal] = {}
@@ -74,9 +80,9 @@ def extract(content: str, source_file: str) -> Extraction:
             msg = f"Revolut row {n}: balance {after} does not follow {before} {amount:+} -{fee}"
             raise ExtractionError(msg)
         balance[currency] = after
-        # D4: the transaction (start) date, unless the payment started before the statement:
-        # it is part of this statement's balance, so it is booked on its completion date.
-        day = start if first <= start <= last else end
+        # `date` is the day the payment started; the balance books it on its completion date,
+        # whatever period the file covers, so overlapping exports agree on the booking date.
+        day = end
         for ref, value, (kind, category), description in (
             (str(n), amount, _classify(row, amount, n), row["Description"]),
             (f"{n}:fee", -fee, *_fee(row)),
@@ -98,7 +104,8 @@ def extract(content: str, source_file: str) -> Extraction:
                     )
                 )
     return Extraction(
-        month=first,
+        month=month_start(first),
+        start=first,
         transactions=tuple(transactions),
         balances=tuple(
             CashBalance(f"Revolut {currency}", currency, opened, balance[currency])

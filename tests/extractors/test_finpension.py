@@ -22,8 +22,8 @@ def test_matches_golden_file(result: Extraction) -> None:
     assert_matches_golden(result, "finpension")
 
 
-def test_the_report_covers_whole_months_from_first_to_last_row(result: Extraction) -> None:
-    assert result.period == (date(2026, 7, 1), date(2026, 9, 30))
+def test_the_report_covers_the_days_from_first_to_last_row(result: Extraction) -> None:
+    assert result.period == (date(2026, 7, 6), date(2026, 9, 16))
     assert {t.account for t in result.transactions} == {"Finpension 3a"}
     assert all(t.date == t.booking_date for t in result.transactions)
 
@@ -63,7 +63,7 @@ def test_a_report_of_one_month_and_other_delimiters_are_read() -> None:
     for delimiter in (";", ","):
         text = f"{header}\n{first}\n".replace("\t", delimiter)
         short = finpension.extract("﻿" + text, source_file="t.csv")
-        assert short.period == (date(2026, 7, 1), date(2026, 7, 31))
+        assert short.period == (date(2026, 7, 6), date(2026, 7, 6))
         assert [t.amount for t in short.transactions] == [Decimal(1500)]
 
 

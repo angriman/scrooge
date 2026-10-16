@@ -66,15 +66,32 @@ def test_payment_started_last_month_is_booked_on_completion(result: Extraction) 
     assert started == date(2026, 8, 31)  # D19: the real date stays the day it started
 
 
-def test_a_statement_of_several_months_covers_the_months_rows_completed_in() -> None:
+def test_a_statement_covers_the_days_from_the_first_to_the_last_row_completed() -> None:
     longer = revolut.extract(
         TSV.replace("2026-08-31 18:02:11\t2026-09-01", "2026-08-30 18:02:11\t2026-08-31"),
         source_file="year.tsv",
     )
-    assert longer.period == (date(2026, 8, 1), date(2026, 9, 30))
+    assert longer.period == (date(2026, 8, 31), date(2026, 9, 23))
     first = longer.transactions[0]
-    assert (first.date, first.booking_date) == (date(2026, 8, 30), date(2026, 8, 30))
+    assert (first.date, first.booking_date) == (date(2026, 8, 30), date(2026, 8, 31))
     check_balances(longer)
+
+
+def test_a_partial_month_covers_exactly_its_days_and_reconciles(result: Extraction) -> None:
+    assert result.period == (date(2026, 9, 1), date(2026, 9, 23))
+    lines = TSV.splitlines()
+    part = revolut.extract("\n".join([lines[0], *lines[3:7]]), source_file="p.tsv")
+    assert part.period == (date(2026, 9, 6), date(2026, 9, 10))
+    assert part.month == date(2026, 9, 1)
+    assert all(part.period[0] <= t.booking_date <= part.period[1] for t in part.transactions)
+    check_balances(part)
+
+
+def test_the_booking_date_does_not_depend_on_the_period_covered(result: Extraction) -> None:
+    lines = TSV.splitlines()
+    part = revolut.extract("\n".join([lines[0], *lines[1:3]]), source_file="p.tsv")
+    first = {t.source_ref: t.booking_date for t in part.transactions}
+    assert first["1"] == _row(result, "1")[0] == date(2026, 9, 1)
 
 
 def test_month_is_the_completion_month_even_when_every_row_started_earlier() -> None:
@@ -95,7 +112,7 @@ def test_deterministic_categories(result: Extraction) -> None:
     assert _row(result, "16") == (day.replace(day=23), Decimal(30), Kind.TRANSFER, "Topup Revolut")
     assert _row(result, "4") == (day.replace(day=7), Decimal("-47.5"), Kind.FX, "Acquisto EUR")
     assert _row(result, "15") == (day.replace(day=22), Decimal(-20), Kind.FX, "")  # no GBP category
-    assert _row(result, "6") == (day.replace(day=9), Decimal(-40), Kind.TRANSFER, "Prelievi")
+    assert _row(result, "6") == (day.replace(day=10), Decimal(-40), Kind.TRANSFER, "Prelievi")
     assert _row(result, "9")[2:] == (Kind.INTERNAL, "")
     assert _row(result, "13")[2:] == (Kind.INTERNAL, "")
 

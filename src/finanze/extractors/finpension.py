@@ -16,7 +16,6 @@ from pathlib import PurePath
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
 from finanze.extractors.common import (
-    month_end,
     month_start,
     parse_decimal,
     parse_iso_date,
@@ -102,9 +101,10 @@ def extract(content: str, source_file: str) -> Extraction:
         transactions.append(_trade(cash, row, n) if what in _TRADES else cash)
     return Extraction(
         month=month_start(days[0]),
+        start=days[0],
         transactions=tuple(transactions),
         balances=(CashBalance(account, CURRENCY, opening, balance),),
-        end=month_end(days[-1]),
+        end=days[-1],
     )
 
 

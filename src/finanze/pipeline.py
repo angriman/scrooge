@@ -29,12 +29,14 @@ class Month:
     transactions: tuple[Transaction, ...]
     unreconciled: tuple[str, ...]  # accounts the statements give no figure to check against
     skipped: tuple[Path, ...]  # files in the folder that are not statements
-    # Last day covered when the statements cover more than one month.
+    # Last day covered; None: the end of `month`.
     end: date | None = None
+    # First day covered; None: the first of `month`.
+    start: date | None = None
 
     @property
     def period(self) -> tuple[date, date]:
-        return self.month, self.end or month_end(self.month)
+        return self.start or self.month, self.end or month_end(self.month)
 
     @property
     def uncategorized(self) -> tuple[Transaction, ...]:
@@ -199,7 +201,8 @@ def process(
     )
     unreconciled = sorted({name for _, e in extractions for name in e.unreconciled})
     end = None if last == month_end(first) else last
-    return Month(first, transactions, tuple(unreconciled), tuple(skipped), end)
+    start = None if first.day == 1 else first
+    return Month(month_start(first), transactions, tuple(unreconciled), tuple(skipped), end, start)
 
 
 def _match_card_payments(extractions: Sequence[tuple[str, Extraction]]) -> None:

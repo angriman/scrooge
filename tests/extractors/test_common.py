@@ -63,12 +63,13 @@ def test_months_between() -> None:
     assert common.months_between(date(2026, 9, 30), date(2026, 9, 1)) == [date(2026, 9, 1)]
 
 
-def test_single_month() -> None:
-    assert common.single_month([date(2026, 9, 3), date(2026, 9, 30)], "x") == date(2026, 9, 1)
-    with pytest.raises(ExtractionError, match="2026-09, 2026-10"):
-        common.single_month([date(2026, 9, 3), date(2026, 10, 1)], "x")
+def test_day_span() -> None:
+    assert common.day_span([date(2026, 9, 20), date(2026, 9, 3)], "x") == (
+        date(2026, 9, 3),
+        date(2026, 9, 20),
+    )
     with pytest.raises(ExtractionError, match="no rows"):
-        common.single_month([], "x")
+        common.day_span([], "x")
 
 
 def test_read_table_requires_columns_and_fills_short_rows() -> None:

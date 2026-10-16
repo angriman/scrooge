@@ -166,12 +166,12 @@ class Extraction:
     (Revolut Savings); callers must surface them to the user.
     """
 
-    month: date  # first day of the (first) calendar month the statement covers
+    month: date  # first day of the calendar month of the first day the statement covers
     transactions: tuple[Transaction, ...]
     balances: tuple[CashBalance, ...] = ()
     controls: tuple[ControlTotal, ...] = ()
     unreconciled: tuple[str, ...] = ()
-    # Last day covered, for a statement that covers more than one month; always a month end.
+    # Last day covered, any day; None: the end of `month`.
     end: _Date | None = None
     # The institution's own number for the account, where one person may have several there.
     account_id: str = ""
@@ -180,9 +180,11 @@ class Extraction:
     holdings: tuple[Holding, ...] | None = None
     values: tuple[PrintedValue, ...] = ()
     rates: tuple[Rate, ...] = ()
+    # First day covered, any day; None: the first of `month`.
+    start: _Date | None = None
 
     @property
     def period(self) -> tuple[_Date, _Date]:
-        """First and last day the statement covers: whole calendar months."""
+        """First and last day the statement covers, exactly as it prints or its rows show."""
         last = calendar.monthrange(self.month.year, self.month.month)[1]
-        return self.month, self.end or self.month.replace(day=last)
+        return self.start or self.month, self.end or self.month.replace(day=last)

@@ -39,7 +39,7 @@
     "counterparty": "Revolut**1234*",
     "category": "Topup Revolut",
     "confidence": "1",
-    "booking_date": "2026-09-04"
+    "booking_date": "2026-09-07"
   },
   {
     "date": "2026-09-08",
@@ -67,7 +67,7 @@
     "counterparty": "Accredito TWINT Rossi",
     "category": "",
     "confidence": "1",
-    "booking_date": "2026-09-08"
+    "booking_date": "2026-09-09"
   },
   {
     "date": "2026-09-12",
@@ -81,7 +81,7 @@
     "counterparty": "Prelevamento al Bancomat BM Zürich 12.09.2026 10:15 Carta: 000000******0000",
     "category": "Prelievi",
     "confidence": "1",
-    "booking_date": "2026-09-12"
+    "booking_date": "2026-09-14"
   },
   {
     "date": "2026-09-15",

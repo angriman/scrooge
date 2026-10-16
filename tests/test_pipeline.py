@@ -69,7 +69,9 @@ def test_unrecognised_csv_blocks_instead_of_dropping_an_account(folder: Path) ->
 def test_month_without_rules_reconciles_and_lists_what_needs_review(folder: Path) -> None:
     extractions, skipped = _load(folder)
     month = pipeline.process(extractions, (), INSTRUMENTS, skipped)
-    assert month.month == date(2026, 9, 1)
+    # The card invoice prints its billing period, 5 August to 4 September.
+    assert month.period == (date(2026, 8, 5), date(2026, 9, 30))
+    assert month.month == date(2026, 8, 1)
     assert month.unreconciled == ("Revolut EUR",)
     assert [path.name for path in month.skipped] == ["ibkr.pdf", "notes.txt"]
     assert len(month.uncategorized) > 10
@@ -132,8 +134,12 @@ def test_a_statement_of_several_months_is_processed_as_one_period(tmp_path: Path
     statements, skipped = pipeline.load_statements(tmp_path)
     assert [(s.source, s.filename) for s in statements] == [("finpension", "pillar 3a.tsv")]
     month = pipeline.process([(s.source, s.extraction) for s in statements], (), {}, skipped)
-    assert (month.month, month.end) == (date(2026, 7, 1), date(2026, 9, 30))
-    assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
+    assert (month.month, month.start, month.end) == (
+        date(2026, 7, 1),
+        date(2026, 7, 6),
+        date(2026, 9, 16),
+    )
+    assert month.period == (date(2026, 7, 6), date(2026, 9, 16))
     assert month.uncategorized == ()
     assert {t.asset_tab for t in _trades(month)} == {"Funds"}
 
@@ -167,7 +173,7 @@ def test_statements_of_different_periods_can_be_processed_together(folder: Path)
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
     extractions, skipped = _load(folder)
     month = pipeline.process(extractions, _rules_of(folder), INSTRUMENTS, skipped)
-    assert month.period == (date(2026, 7, 1), date(2026, 9, 30))
+    assert month.period == (date(2026, 7, 6), date(2026, 9, 30))
     assert {t.account for t in month.transactions} >= {"Finpension 3a", "Migros", "IBKR USD"}
 
 

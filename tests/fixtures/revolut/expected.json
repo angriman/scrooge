@@ -39,7 +39,7 @@
     "counterparty": "Listenly",
     "category": "",
     "confidence": "1",
-    "booking_date": "2026-09-05"
+    "booking_date": "2026-09-06"
   },
   {
     "date": "2026-09-07",
@@ -95,7 +95,7 @@
     "counterparty": "Cash withdrawal at Kiosk",
     "category": "Prelievi",
     "confidence": "1",
-    "booking_date": "2026-09-09"
+    "booking_date": "2026-09-10"
   },
   {
     "date": "2026-09-11",
@@ -109,7 +109,7 @@
     "counterparty": "Modario",
     "category": "",
     "confidence": "1",
-    "booking_date": "2026-09-11"
+    "booking_date": "2026-09-12"
   },
   {
     "date": "2026-09-13",
