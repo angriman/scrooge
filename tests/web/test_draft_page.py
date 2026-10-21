@@ -144,13 +144,16 @@ def test_the_menu_of_a_row_that_has_a_category_keeps_it_and_the_waiting_one_asks
     assert '<option value="Stipendio" label="Entrate" data-side="entrate">' in page
     assert '<option value="Giroconto" label="Transfer" data-side="transfer">' in page
     assert '<option value="Casa"' not in page
-    assert "<select name=" not in page.partition("<h2>Add a category</h2>")[0]
+    assert (
+        "<select name=" not in page.partition("<main>")[2].partition("<h2>Add a category</h2>")[0]
+    )
 
 
 def test_the_page_has_what_the_live_totals_work_from(client: TestClient, database: Path) -> None:
     page = client.get("/import", params={"owner": "Lukas"}).text
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
     assert re.findall(r"<script[^>]*>", page) == [
+        f'<script src="{SITE}/static/choose.js" defer>',
         f'<script src="{SITE}/static/picker.js" defer>',
         f'<script src="{SITE}/static/draft.js" defer>',
     ]

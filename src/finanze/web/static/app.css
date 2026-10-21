@@ -25,6 +25,19 @@ nav {
   gap: 0.25rem;
 }
 
+/* The currency every page shows its figures in, beside whose they are. */
+header .currency {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+}
+
+header .currency label {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+}
+
 nav a {
   border-radius: 0.4rem;
   color: inherit;

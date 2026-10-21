@@ -28,7 +28,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import State, UploadFile
+from starlette.datastructures import URL, State, UploadFile
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -68,6 +68,10 @@ from finanze.web import auth, forms
 HOST = "127.0.0.1"  # where the app is served unless `finanze.yaml` names another address
 _HOSTS = (HOST, "localhost")
 _SESSION = "finanze_session"  # the cookie of a signed-in browser
+# The cookie of the currency chosen in the header: every page that converts shows its figures
+# in it, unless its address names another.
+_CURRENCY = "finanze_currency"
+_REMEMBERED = 365 * 24 * 3600  # seconds a browser keeps the currency chosen
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -120,7 +124,18 @@ def _everywhere(request: Request) -> dict[str, object]:
         "token": state.token,
         "copy": copy,
         "importing": not state.read_only,
+        "currencies": networth.CURRENCIES,
+        "currency": forms.currency(_viewed(request)),
     }
+
+
+def _viewed(request: Request) -> dict[str, str]:
+    """The query of the page, with the currency chosen in the header if it names none."""
+    params = dict(request.query_params)
+    remembered = request.cookies.get(_CURRENCY, "")
+    if "currency" not in params and remembered in networth.CURRENCIES:
+        params["currency"] = remembered
+    return params
 
 
 _templates = Jinja2Templates(directory=_HERE / "templates", context_processors=[_everywhere])
@@ -252,6 +267,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/networth.json", _networth_json, name="networth_json"),
             Route("/holdings", _holdings, name="holdings"),
             Route("/cashflow", _cashflow, name="cashflow"),
+            Route("/currency", _choose_currency, name="currency"),
             Route("/import", _import_page, name="import"),
             Route("/import", _import, methods=["POST"]),
             Route("/import/save", writing(_save), methods=["POST"], name="save"),
@@ -319,7 +335,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
 
 
 def _overview(request: Request) -> Response:
-    asked = forms.holdings_view(request.query_params)  # the same two fields: whose, and in what
+    asked = forms.holdings_view(_viewed(request))  # the same two fields: whose, and in what
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
@@ -332,7 +348,6 @@ def _overview(request: Request) -> Response:
         "people": people,
         "owner": asked.owner,
         "asked": asked,
-        "currencies": networth.CURRENCIES,
         "errors": errors,
         "shown": shown,
     }
@@ -764,7 +779,7 @@ def _valued(
 
 
 def _networth(request: Request) -> Response:
-    asked = forms.networth_view(request.query_params)
+    asked = forms.networth_view(_viewed(request))
     result, people, checks, error = _valued(request, asked)
     context = {
         "people": people,
@@ -774,7 +789,6 @@ def _networth(request: Request) -> Response:
         "source": request.url_for("networth_json").include_query_params(
             currency=asked.currency, by=asked.by, **({"owner": asked.owner} if asked.owner else {})
         ),
-        "currencies": networth.CURRENCIES,
         "breakdowns": forms.BREAKDOWNS,
         "errors": [*asked.errors, *([error] if error else [])],
         "result": result,
@@ -786,7 +800,7 @@ def _networth(request: Request) -> Response:
 
 def _networth_json(request: Request) -> Response:
     """What the chart of the page at the same address draws. Amounts are text, to the cent."""
-    asked = forms.networth_view(request.query_params)
+    asked = forms.networth_view(_viewed(request))
     result, people, _, error = _valued(request, asked, checked=False)
     if asked.errors or result is None:
         return JSONResponse({"errors": [*asked.errors, *([error] if error else [])]}, 400)
@@ -804,7 +818,7 @@ def _networth_json(request: Request) -> Response:
 
 
 def _holdings(request: Request) -> Response:
-    asked = forms.holdings_view(request.query_params)
+    asked = forms.holdings_view(_viewed(request))
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
@@ -817,7 +831,6 @@ def _holdings(request: Request) -> Response:
         "people": people,
         "owner": asked.owner,
         "asked": asked,
-        "currencies": networth.CURRENCIES,
         "errors": errors,
         "held": held,
     }
@@ -959,6 +972,26 @@ def _transactions_csv(request: Request) -> Response:
     writer.writerows([getattr(row, column) for column in _CSV] for row in rows)
     headers = {"content-disposition": 'attachment; filename="transactions.csv"'}
     return Response(out.getvalue(), media_type="text/csv; charset=utf-8", headers=headers)
+
+
+def _choose_currency(request: Request) -> Response:
+    """Remembers the currency chosen in the header and shows the page it was chosen on again,
+    in that currency: without one its address names."""
+    asked = request.query_params.get("currency", "").strip().upper()
+    if asked not in networth.CURRENCIES:
+        said = f"'{asked}' is not one of {', '.join(networth.CURRENCIES)}.\n"
+        return PlainTextResponse(said, status_code=400)
+    back = URL(_next(request.query_params.get("back", "/"))).remove_query_params("currency")
+    response = RedirectResponse(str(back), 303)
+    response.set_cookie(
+        _CURRENCY,
+        asked,
+        max_age=_REMEMBERED,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 def _next(asked: str) -> str:

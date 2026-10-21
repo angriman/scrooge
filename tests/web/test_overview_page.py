@@ -83,8 +83,9 @@ def test_everyone_s_net_worth_is_the_headline_with_what_it_is_made_of(client: Te
     assert "Options and futures are not counted as assets" in text(page)
     assert "Only committed statements are shown" in text(page)
     assert errors(page) == []
-    for banned in ("<script", " style=", "<canvas", 'id="networth"'):
+    for banned in (" style=", "<canvas", 'id="networth"'):
         assert banned not in page
+    assert re.findall(r"<script[^>]*>", page) == [f'<script src="{SITE}/static/choose.js" defer>']
 
 
 def test_one_person_s_overview_is_not_cut_by_person(client: TestClient) -> None:
@@ -98,7 +99,7 @@ def test_one_person_s_overview_is_not_cut_by_person(client: TestClient) -> None:
     assert holdings == [["WIDG Widget Index Fund", "ETFs", "320.00", "3.96%", ""]]
     assert securities == [["All securities", "320.00", "3.96%", ""]]
     assert "<option selected>CHF</option>" in page
-    assert f'<input type="hidden" name="owner" value="{PARTNER}">' in page
+    assert f'<input type="hidden" name="back" value="/?owner={PARTNER}&amp;currency=chf">' in page
 
 
 def test_the_links_keep_the_person_and_the_currency(client: TestClient) -> None:

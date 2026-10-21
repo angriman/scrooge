@@ -193,10 +193,4 @@
     .catch(() => {
       plot.textContent = "The chart could not be loaded: the figures are in the table below.";
     });
-
-  // The pickers apply at once; the button stays for a browser without scripts.
-  const view = document.getElementById("view");
-  for (const select of view.querySelectorAll("select")) {
-    select.addEventListener("change", () => view.submit());
-  }
 })();

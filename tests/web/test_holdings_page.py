@@ -178,7 +178,7 @@ def test_everyone_s_positions_are_listed_by_kind_with_what_they_add_up_to(
     assert bills[1][:6] == ["912797ZZ1", OWNER, "IBKR USD", "10,000", NONE, "9,872.50 USD"]
     assert bills[-1] == ["All Bills", "14,872.50", "87.22%", ""]
     assert everything == [["All 6", "17,051.00", "100.00%", ""]]
-    assert "<script" not in page
+    assert re.findall(r"<script[^>]*>", page) == [f'<script src="{SITE}/static/choose.js" defer>']
     assert " style=" not in page
 
 
@@ -222,7 +222,7 @@ def test_one_person_s_positions_need_no_column_for_the_person(client: TestClient
     assert etfs[1][:3] == ["WIDG Widget &lt;Index&gt; Fund", "IBKR USD", "7"]
     assert everything == [["All 1", "374.50", "100.00%", ""]]
     assert "Bills by maturity" not in page  # she holds none
-    assert f'<input type="hidden" name="owner" value="{PARTNER}">' in page
+    assert f'<input type="hidden" name="back" value="/holdings?owner={PARTNER}">' in page
 
 
 def test_the_figures_are_in_the_currency_asked_for(client: TestClient) -> None:
