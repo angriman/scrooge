@@ -28,7 +28,6 @@ MONTHS = ["/months/Lukas/2026-08", "/months/Lukas/2026-09", "/months/Anna/2026-0
 FORMS = [
     "/import/save",
     "/import/commit",
-    "/import/group",
     "/import/category",
     "/months/Lukas/2026-08/categorize",
     "/months/Lukas/2026-08/category",

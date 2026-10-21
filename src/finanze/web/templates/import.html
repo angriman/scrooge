@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "forms.html" import options, choose, add_category %}
+{% from "forms.html" import category_list, add_category %}
 {% block title %}Import{% endblock %}
 {% block head %}
+  <script src="{{ url_for('static', path='picker.js') }}" defer></script>
   <script src="{{ url_for('static', path='draft.js') }}" defer></script>
 {% endblock %}
 {% block main %}
@@ -133,7 +134,12 @@
   </table>
   <p class="note">What the other pages will show, by category. Changing a category below updates these figures at once; they are saved with Save categories or Commit.</p>
 </section>
+{%- if not copy %}
+{{ category_list(choices) }}
+{%- endif %}
+{%- set group_of = draft.group_of %}
 {%- if draft.groups and not copy %}
+{#- Its fields belong to the draft's form below: one button sends them with every row's. #}
 <section id="waiting">
   <h2>Need a category</h2>
   <table class="cards">
@@ -149,11 +155,27 @@
           <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
           {%- endfor %}
         </td>
-        <td class="wide">{{ choose(group, false, url_for('group'), owner, token, choices, can_remember) }}</td>
+        <td class="wide">
+          <div class="choice">
+            {%- set number = loop.index0 %}
+            {%- for row in group.rows %}
+            <input type="hidden" name="ids:{{ number }}" value="{{ row.id }}" form="draft-form">
+            {%- endfor %}
+            <input name="group:{{ number }}" list="categories" placeholder="Choose" autocomplete="off" aria-label="Category for {{ group.name }}" form="draft-form">
+            {%- if can_remember and group.name %}
+            <label><input type="radio" name="remember:{{ number }}" value="rule" checked form="draft-form"> always (save a rule)</label>
+            <label><input type="radio" name="remember:{{ number }}" value="rows" form="draft-form"> just these rows</label>
+            {%- else %}
+            <small>For these rows only.</small>
+            {%- endif %}
+          </div>
+        </td>
       </tr>
       {%- endfor %}
     </tbody>
   </table>
+  <p class="actions"><button form="draft-form">Set categories</button></p>
+  <p class="note">A row chosen on its own below keeps its own choice.</p>
 </section>
 {%- endif %}
 <section id="rows">
@@ -169,17 +191,14 @@
       </thead>
       <tbody>
         {%- for row in draft.rows %}
-        <tr data-id="{{ row.id }}" data-amount="{{ row.amount|plain }}" data-currency="{{ row.currency }}" data-side="{{ row.side }}" data-category="{{ row.category }}">
+        <tr data-id="{{ row.id }}" data-amount="{{ row.amount|plain }}" data-currency="{{ row.currency }}" data-side="{{ row.side }}" data-category="{{ row.category }}"{% if row.id in group_of %} data-group="{{ group_of[row.id] }}"{% endif %}>
           <td class="date">{{ row.date }}</td>
           <td class="account">{{ row.account }}</td>
           <td class="what">{{ row.counterparty or row.description }}{% if row.counterparty and row.description != row.counterparty %}<small>{{ row.description }}</small>{% endif %}{% if row.statement %}<small><a href="{{ url_for('statement', number=row.statement) }}">statement</a></small>{% endif %}</td>
           <td class="number amount">{{ row.amount|money }} {{ row.currency }}</td>
           <td class="category">
             {%- if (row.waiting or row.changeable) and not copy %}
-            <select name="category:{{ row.id }}" aria-label="Category of {{ row.counterparty or row.description }}">
-              <option value="">{{ row.category or "Choose" }}</option>
-              {{- options(choices) }}
-            </select>
+            <input name="category:{{ row.id }}" list="categories" placeholder="{{ row.category or 'Choose' }}" autocomplete="off" aria-label="Category of {{ row.counterparty or row.description }}">
             {%- else %}{{ row.category or "Waiting for a category" }}
             {%- endif %}</td>
         </tr>

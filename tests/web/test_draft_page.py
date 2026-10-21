@@ -47,8 +47,9 @@ def client(database: Path) -> TestClient:
 
 
 def bare(page: str) -> str:
-    """The page without its category menus, which hold every category of every row."""
-    return re.sub(r"<select.*?</select>", "[menu]", page, flags=re.DOTALL)
+    """The page with each category field as [menu], without the list of every category."""
+    page = re.sub(r"<datalist.*?</datalist>", "", page, flags=re.DOTALL)
+    return re.sub(r'<input [^>]*list="categories"[^>]*>', "[menu]", page)
 
 
 def draft(page: str) -> list[list[list[str]]]:
@@ -123,7 +124,7 @@ def test_a_row_a_statement_categorizes_itself_has_no_menu(tmp_path: Path) -> Non
         ("-5.00 USD", "[menu]"),
         ("-1,012.50 USD", "Investimenti"),
     ]
-    assert page.count("<select name=") == 1
+    assert page.count('name="category:') == 1
 
 
 def test_the_menu_of_a_row_that_has_a_category_keeps_it_and_the_waiting_one_asks(
@@ -133,34 +134,35 @@ def test_the_menu_of_a_row_that_has_a_category_keeps_it_and_the_waiting_one_asks
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
     bakery = row_id(database, "Lukas", "Bakery")
     assert (
-        f'<select name="category:{kiosk}" aria-label="Category of &lt;i&gt;Kiosk&lt;/i&gt;">'
-        in page
-    )
-    assert re.search(
-        rf'name="category:{kiosk}".*?<option value="">Choose</option>', page, re.DOTALL
-    )
-    assert re.search(
-        rf'name="category:{bakery}".*?<option value="">Spesa</option>', page, re.DOTALL
-    )
-    assert '<option data-side="uscite">Affitto</option>' in page
-    assert '<option data-side="entrate">Stipendio</option>' in page
-    assert '<option data-side="transfer">Giroconto</option>' in page
-    assert "<option>Casa</option>" not in page
+        f'<input name="category:{kiosk}" list="categories" placeholder="Choose" '
+        'autocomplete="off" aria-label="Category of &lt;i&gt;Kiosk&lt;/i&gt;">'
+    ) in page
+    assert f'<input name="category:{bakery}" list="categories" placeholder="Spesa" ' in page
+    # One list of the categories, which every field suggests from as a name is typed.
+    assert page.count('<datalist id="categories">') == 1
+    assert '<option value="Affitto" label="Casa" data-side="uscite">' in page
+    assert '<option value="Stipendio" label="Entrate" data-side="entrate">' in page
+    assert '<option value="Giroconto" label="Transfer" data-side="transfer">' in page
+    assert '<option value="Casa"' not in page
+    assert "<select name=" not in page.partition("<h2>Add a category</h2>")[0]
 
 
 def test_the_page_has_what_the_live_totals_work_from(client: TestClient, database: Path) -> None:
     page = client.get("/import", params={"owner": "Lukas"}).text
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
-    assert f'<script src="{SITE}/static/draft.js" defer></script>' in page
-    assert re.findall(r"<script[^>]*>", page) == [f'<script src="{SITE}/static/draft.js" defer>']
+    assert re.findall(r"<script[^>]*>", page) == [
+        f'<script src="{SITE}/static/picker.js" defer>',
+        f'<script src="{SITE}/static/draft.js" defer>',
+    ]
     assert not re.search(r"\son[a-z]+=", page)  # no inline handler: the policy allows none
     assert 'style="' not in page
     assert '<section id="rows">' in page
     assert '<section id="totals">' in page
     assert (
         f'<tr data-id="{kiosk}" data-amount="-80" data-currency="CHF" data-side="" '
-        'data-category="">'
+        'data-category="" data-group="0">'
     ) in page
+    assert f'<input type="hidden" name="ids:0" value="{kiosk}" form="draft-form">' in page
     assert '<tr data-side="" data-category="" data-currency="CHF">' in page  # the waiting line
     assert '<tr data-side="uscite" data-category="Spesa" data-currency="CHF">' in page
     assert '<tr data-side="transfer" data-category="Giroconto" data-currency="CHF">' in page
@@ -175,7 +177,9 @@ def test_the_script_counts_in_billionths_and_loads_nothing() -> None:
     assert "parseFloat" not in script
     assert "Number(" not in script
     assert not re.search(r"fetch|XMLHttpRequest|eval\(|innerHTML|https?://", script)
-    assert (WEB / "static" / "draft.js").is_file()
+    picker = (WEB / "static" / "picker.js").read_text(encoding="utf-8")
+    assert "setCustomValidity" in picker
+    assert not re.search(r"fetch|XMLHttpRequest|eval\(|innerHTML|https?://", picker)
 
 
 def test_the_stylesheet_hides_what_the_script_hides() -> None:
@@ -184,8 +188,9 @@ def test_the_stylesheet_hides_what_the_script_hides() -> None:
     assert "tr.changed" in css
 
 
-def test_a_server_answers_the_script_with_a_script(client: TestClient) -> None:
-    response = client.get("/static/draft.js")
+@pytest.mark.parametrize("script", ["draft.js", "picker.js"])
+def test_a_server_answers_the_script_with_a_script(client: TestClient, script: str) -> None:
+    response = client.get(f"/static/{script}")
     assert response.status_code == 200
     assert "javascript" in response.headers["content-type"]
 
@@ -350,18 +355,24 @@ def test_a_commit_with_nothing_staged_says_so(client: TestClient, database: Path
     ]
 
 
-def test_the_waiting_rows_are_asked_about_by_counterparty(
+def test_the_waiting_rows_are_asked_about_by_counterparty_and_set_with_one_button(
     client: TestClient, database: Path
 ) -> None:
     page = client.get("/import", params={"owner": "Lukas"}).text
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
     assert "<h2>Need a category</h2>" in page
-    assert f'<input type="hidden" name="id" value="{kiosk}">' in page
-    assert 'action="http://127.0.0.1:8765/import/group"' in page
+    assert (
+        '<input name="group:0" list="categories" placeholder="Choose" autocomplete="off" '
+        'aria-label="Category for &lt;i&gt;Kiosk&lt;/i&gt;" form="draft-form">'
+    ) in page
     assert 'type="radio"' not in page
     assert "For these rows only." in page
-    sent = form(client) | {"id": kiosk, "category": "Regali", "remember": "rule"}
-    response = client.post("/import/group", data=sent)
+    # Its fields belong to the form of the whole draft: one button sends every choice.
+    assert "/import/group" not in page
+    assert page.count(">Set</button>") == 0
+    assert page.count('<button form="draft-form">Set categories</button>') == 1
+    sent = form(client) | {"ids:0": kiosk, "group:0": "Regali", "remember:0": "rule"}
+    response = client.post("/import/save", data=sent)
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/import?owner=Lukas"
     assert category_of(database, kiosk) == ("Regali", "manual")  # no rules file: not remembered
@@ -372,29 +383,72 @@ def test_a_category_to_remember_is_saved_as_a_rule(database: Path, tmp_path: Pat
     rules = webapp.Rules(tmp_path / "rules.local.yaml", PEOPLE)
     client = TestClient(webapp.create_app(database, rules=rules), base_url=SITE)
     page = client.get("/import", params={"owner": "Lukas"}).text
-    assert '<input type="radio" name="remember" value="rule" checked>' in page
+    assert '<input type="radio" name="remember:0" value="rule" checked form="draft-form">' in page
+    assert '<input type="radio" name="remember:0" value="rows" form="draft-form">' in page
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
-    sent = form(client) | {"id": kiosk, "category": "Regali", "remember": "rule"}
-    assert client.post("/import/group", data=sent, follow_redirects=False).status_code == 303
+    sent = form(client) | {"ids:0": kiosk, "group:0": " Regali ", "remember:0": "rule"}
+    assert client.post("/import/save", data=sent, follow_redirects=False).status_code == 303
     assert category_of(database, kiosk) == ("Regali", "rule")
     assert rules.shared.read_text(encoding="utf-8") == (
         'rules:\n  - {match: "(?m)^<i>Kiosk</i>$", category: "Regali", direction: out}\n'
     )
 
 
+def test_a_group_left_empty_is_left_waiting(client: TestClient, database: Path) -> None:
+    kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
+    sent = form(client) | {"ids:0": kiosk, "group:0": "", "remember:0": "rule"}
+    assert client.post("/import/save", data=sent).status_code == 303
+    assert category_of(database, kiosk) == (None, None)
+
+
+def test_a_row_chosen_on_its_own_takes_its_choice_over_its_groups(
+    database: Path, tmp_path: Path
+) -> None:
+    rules = webapp.Rules(tmp_path / "rules.local.yaml", PEOPLE)
+    client = TestClient(webapp.create_app(database, rules=rules), base_url=SITE)
+    kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
+    sent = form(client) | {
+        "ids:0": kiosk,
+        "group:0": "Regali",
+        "remember:0": "rule",
+        f"category:{kiosk}": "Spesa",
+    }
+    assert client.post("/import/save", data=sent, follow_redirects=False).status_code == 303
+    assert category_of(database, kiosk) == ("Spesa", "manual")
+    assert not rules.shared.exists()  # the group had no row left to give its category to
+
+
+def test_every_choice_of_one_button_is_given_or_none_is(client: TestClient, database: Path) -> None:
+    kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
+    bakery = row_id(database, "Lukas", "Bakery")
+    sent = form(client) | {"ids:0": kiosk, "group:0": "Regali", f"category:{bakery}": "Casa"}
+    response = client.post("/import/save", data=sent)
+    assert response.status_code == 409
+    assert "No category was set: unknown category &#39;Casa&#39;." in response.text
+    assert category_of(database, kiosk) == (None, None)
+    assert category_of(database, bakery) == ("Spesa", "rule")
+    # Both at once, then: the group's first choice and the row's change.
+    sent[f"category:{bakery}"] = "Regali"
+    assert client.post("/import/save", data=sent).status_code == 303
+    assert category_of(database, kiosk) == ("Regali", "manual")
+    assert category_of(database, bakery) == ("Regali", "manual")
+
+
 def test_a_group_choice_that_cannot_be_made_is_said(client: TestClient, database: Path) -> None:
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
-    base = form(client) | {"id": kiosk, "remember": "rows"}
-    empty = client.post("/import/group", data=base | {"category": ""})
-    assert empty.status_code == 409
-    assert "No category was set: no category was chosen." in text(empty.text)
-    unknown = client.post("/import/group", data=base | {"category": "Casa"})
+    base = form(client) | {"ids:0": kiosk, "remember:0": "rows"}
+    unknown = client.post("/import/save", data=base | {"group:0": "Casa"})
+    assert unknown.status_code == 409
     assert "No category was set: unknown category &#39;Casa&#39;." in unknown.text
-    gone = client.post("/import/group", data=base | {"category": "Regali", "id": "gone"})
-    assert "those rows are no longer waiting" in gone.text
+    gone = client.post("/import/save", data=base | {"group:0": "Regali", "ids:0": "gone"})
+    assert gone.status_code == 409
+    assert "those rows are not staged any more: load the page again" in text(gone.text)
+    nothing = client.post("/import/save", data=form(client) | {"group:0": "Regali"})
+    assert nothing.status_code == 409
+    assert "those rows are not staged any more" in text(nothing.text)
     assert category_of(database, kiosk) == (None, None)
-    nobody = client.post("/import/group", data=form(client) | {"owner": "Zoe", "id": "x"})
-    assert nobody.status_code == 404
+    nobody = form(client) | {"owner": "Zoe", "ids:0": "x", "group:0": "Regali"}
+    assert client.post("/import/save", data=nobody).status_code == 404
 
 
 def test_a_category_is_added_from_the_import_page_and_can_then_be_chosen(
@@ -406,13 +460,13 @@ def test_a_category_is_added_from_the_import_page_and_can_then_be_chosen(
     page = client.get("/import", params={"owner": "Lukas"}).text
     assert "<h2>Add a category</h2>" in page
     assert '<option value="uscite:Casa">Expenses, Casa</option>' in page
-    assert '<option data-side="uscite">Animali</option>' not in page
+    assert '<option value="Animali"' not in page
     sent = form(client) | {"name": "Animali", "under": "uscite:Casa"}
     response = client.post("/import/category", data=sent)
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/import?owner=Lukas"
     assert (
-        '<option data-side="uscite">Animali</option>'
+        '<option value="Animali" label="Casa" data-side="uscite">'
         in client.get("/import", params={"owner": "Lukas"}).text
     )
     added = (tmp_path / "categories.yaml").read_text(encoding="utf-8")
@@ -442,9 +496,7 @@ def test_a_statement_is_removed_from_the_draft(client: TestClient, database: Pat
     assert left == 2
 
 
-@pytest.mark.parametrize(
-    "path", ["/import/save", "/import/commit", "/import/group", "/import/category"]
-)
+@pytest.mark.parametrize("path", ["/import/save", "/import/commit", "/import/category"])
 def test_a_form_without_the_token_of_these_pages_changes_nothing(
     client: TestClient, database: Path, path: str
 ) -> None:

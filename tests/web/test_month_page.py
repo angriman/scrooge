@@ -1,6 +1,7 @@
 """The months: how far each account is committed, the months committed statements cover, and
 one month's page, where the category of a committed row is changed."""
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -191,8 +192,14 @@ def test_the_form_offers_leaf_categories_and_only_these_rows_without_rules(
     )
     assert '<input type="hidden" name="change" value="1">' in page
     assert '<input type="hidden" name="owner" value="Lukas">' in page
-    assert '<option data-side="uscite">Affitto</option>' in page
-    assert "<option>Casa</option>" not in page
+    assert (
+        '<input name="category" list="categories" placeholder="Choose" autocomplete="off" '
+        'required aria-label="Category for SAVINGS TOPUP AUG">'
+    ) in page
+    assert page.count('<datalist id="categories">') == 1
+    assert '<option value="Affitto" label="Casa" data-side="uscite">' in page
+    assert '<option value="Casa"' not in page
+    assert re.findall(r"<script[^>]*>", page) == [f'<script src="{SITE}/static/picker.js" defer>']
     assert 'type="radio"' not in page
     assert "For these rows only." in page
 
@@ -259,12 +266,15 @@ def test_a_category_is_added_from_the_page_and_can_then_be_chosen(
     page = client.get("/months/Lukas/2026-08").text
     assert "<h2>Add a category</h2>" in page
     assert '<option value="uscite:Casa">Expenses, Casa</option>' in page
-    assert '<option data-side="uscite">Animali</option>' not in page
+    assert '<option value="Animali"' not in page
     form = sent(client, name="Animali", under="uscite:Casa", owner="Lukas")
     response = client.post("/months/Lukas/2026-08/category", data=form)
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/months/Lukas/2026-08"
-    assert '<option data-side="uscite">Animali</option>' in client.get("/months/Lukas/2026-08").text
+    assert (
+        '<option value="Animali" label="Casa" data-side="uscite">'
+        in client.get("/months/Lukas/2026-08").text
+    )
     added = (tmp_path / "categories.yaml").read_text(encoding="utf-8")
     assert added == "categories:\n  uscite:\n    Casa:\n    - Animali\n  entrate: []\n"
     again = client.post("/months/Lukas/2026-08/category", data=form)
