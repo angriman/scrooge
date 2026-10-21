@@ -1,6 +1,7 @@
 import csv
 import io
 import re
+import struct
 from datetime import date
 from pathlib import Path
 
@@ -146,6 +147,41 @@ def test_no_page_or_asset_names_another_site() -> None:
     assert files
     for file in files:
         assert not re.search(r"https?:|//\w", file.read_text(encoding="utf-8")), file.name
+
+
+def test_every_page_names_its_icon(client: TestClient) -> None:
+    page = client.get("/").text
+    icons = "http://127.0.0.1:8765/static/icons"
+    assert f'<link rel="icon" href="{icons}/icon-32.png" sizes="32x32" type="image/png">' in page
+    assert f'<link rel="icon" href="{icons}/icon.svg" type="image/svg+xml">' in page
+    assert f'<link rel="apple-touch-icon" href="{icons}/apple-touch-icon.png">' in page
+    svg = client.get("/static/icons/icon.svg")
+    assert svg.headers["content-type"] == "image/svg+xml"
+    for name in ["icon-32.png", "apple-touch-icon.png"]:
+        assert client.get(f"/static/icons/{name}").headers["content-type"] == "image/png"
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
+def test_the_icons_are_drawn_here_and_name_no_other_site() -> None:
+    # One drawing, the net worth chart's bands under its line; `make icons` draws the PNGs.
+    folder = WEB / "static" / "icons"
+    assert sorted(f.name for f in folder.iterdir()) == [
+        "apple-touch-icon.png",
+        "icon-32.png",
+        "icon.svg",
+    ]
+    drawing = (folder / "icon.svg").read_text(encoding="utf-8")
+    # The namespace is a name, not an address anything is fetched from.
+    drawing = drawing.replace('xmlns="http://www.w3.org/2000/svg"', "", 1)
+    assert not re.search(r"https?:|//\w|href|<image|<script|<style|url\(", drawing)
+    assert png_size(folder / "icon-32.png") == (32, 32)
+    assert png_size(folder / "apple-touch-icon.png") == (180, 180)
 
 
 def test_the_vendored_chart_library_is_whole_and_asks_nothing_of_the_network() -> None:

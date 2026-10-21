@@ -41,6 +41,7 @@ finanze = [
     "web/templates/*.html",
     "web/static/*",
     "web/static/vendor/*",
+    "web/static/icons/*",
 ]
 
 # ---------------------------------------------------------------- ruff
