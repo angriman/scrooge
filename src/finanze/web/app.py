@@ -71,6 +71,9 @@ _SESSION = "finanze_session"  # the cookie of a signed-in browser
 # The cookie of the currency chosen in the header: every page that converts shows its figures
 # in it, unless its address names another.
 _CURRENCY = "finanze_currency"
+# The pages that convert, and have the header's menu. The others show every amount in its own
+# currency (decided 2026-10-21).
+_CONVERTING = ("/", "/networth", "/holdings")
 _REMEMBERED = 365 * 24 * 3600  # seconds a browser keeps the currency chosen
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
@@ -124,6 +127,7 @@ def _everywhere(request: Request) -> dict[str, object]:
         "token": state.token,
         "copy": copy,
         "importing": not state.read_only,
+        "converting": request.url.path in _CONVERTING,
         "currencies": networth.CURRENCIES,
         "currency": forms.currency(_viewed(request)),
     }

@@ -1,4 +1,5 @@
-"""The currency every page shows its figures in: chosen once in the header, for all of them."""
+"""The currency the overview, net worth and holdings show their figures in: chosen once in the
+header, for all three. The other pages show every amount in its own currency."""
 
 import re
 from pathlib import Path
@@ -16,7 +17,8 @@ from tests.web.test_app import text
 from tests.web.test_holdings_page import errors
 
 SITE = "http://127.0.0.1:8765"
-PAGES = ["/", "/networth", "/holdings", "/cashflow", "/transactions", "/months"]
+PAGES = ["/", "/networth", "/holdings"]  # those that convert
+NATIVE = ["/cashflow", "/transactions", "/months", "/import"]  # each amount in its currency
 WEB = Path(webapp.__file__).parent
 
 
@@ -48,7 +50,7 @@ def chosen(page: str) -> str:
 
 
 @pytest.mark.parametrize("path", PAGES)
-def test_every_page_has_the_picker_in_its_header(client: TestClient, path: str) -> None:
+def test_a_page_that_converts_has_the_picker_in_its_header(client: TestClient, path: str) -> None:
     page = client.get(path, params={"owner": OWNER}).text
     header = page.partition("<main>")[0]
     form = picker(header)
@@ -137,9 +139,9 @@ def test_the_way_back_never_leads_to_another_site(client: TestClient, back: str)
     assert response.headers["location"] == "/"
 
 
-def test_a_page_that_answers_a_form_sent_has_no_picker(site: Site) -> None:
-    # It is no address to go back to: the page is gone once the browser leaves it.
-    sent = site.send(site.uploads("Migros.csv"), owner="Zoe")
-    assert sent.status_code == 400
-    assert "/currency" not in sent.text
-    assert "/currency" in site.client.get("/import").text
+@pytest.mark.parametrize("path", NATIVE)
+def test_a_page_that_converts_nothing_has_no_picker(site: Site, path: str) -> None:
+    site.client.get("/currency", params={"currency": "CHF", "back": "/"})
+    page = site.client.get(path)
+    assert page.status_code == 200
+    assert "/currency" not in page.text

@@ -31,8 +31,7 @@
       <a href="{{ request.url.remove_query_params('page').include_query_params(owner=person.name) }}"{% if owner == person.name %} aria-current="true"{% endif %}>{{ person.name }}</a>
       {%- endfor %}
     </nav>
-    {#- A page that answers a form sent is no address to come back to. #}
-    {%- if request.method == "GET" %}
+    {%- if converting %}
     <form method="get" action="{{ url_for('currency') }}" class="currency" data-auto>
       <input type="hidden" name="back" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
       <label>Currency
