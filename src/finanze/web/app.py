@@ -827,7 +827,8 @@ def _holdings(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
         try:
-            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency)
+            today = request.app.state.clock().date()
+            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
         except networth.MissingRateError as exc:
             errors.append(_sentence(exc))
             held = None

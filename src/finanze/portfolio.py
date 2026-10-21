@@ -29,6 +29,12 @@ two accounts do not take their cost along: nothing in the rows links the two sid
 
 `Portfolio.by_asset`, `total` and `shares` add up the positions only: of `Pillar 3a` the fund
 units, without the cash of the account that the line of net worth also holds.
+
+**The ladder of bills** lists the bills held on `Portfolio.day`, but counts the days to their
+maturity from the day asked for (today, on the page) and values them on it: in a straight line
+from cost to face as net worth does, at the last exchange rate stored by then. Nothing newer
+than `Portfolio.day` is committed for everyone, so a bill bought since is not on it, and one
+that matured since is worth its face.
 """
 
 from __future__ import annotations
@@ -86,8 +92,10 @@ class Position:
 class Rung:
     """A bill or bond held, on the ladder of what is repaid when. Its face is the quantity."""
 
-    position: Position
-    days: int | None  # from `Portfolio.day` to the maturity; below zero: due, not yet repaid
+    position: Position  # on `Portfolio.day`
+    days: int | None  # from `Portfolio.ladder_day` to the maturity; below zero: matured
+    value_native: Decimal  # on `Portfolio.ladder_day`, in the bill's currency, to the cent
+    value: Decimal  # the same in `Portfolio.currency`, at the last rate stored by then
 
     @property
     def interest(self) -> Decimal | None:
@@ -118,6 +126,10 @@ class Portfolio:
     # The cash of the pension accounts, in `currency`: what the `Pillar 3a` lines of net worth
     # hold beyond the fund units listed here, to the cent. None: nobody has such an account.
     pension_cash: Decimal | None = None
+    # The bills and bonds held, by maturity (those without one last), then by symbol, owner and
+    # account, valued on `ladder_day`: the day asked for, never before `day`. None: no bills.
+    ladder: tuple[Rung, ...] = ()
+    ladder_day: date | None = None
 
     @property
     def total(self) -> Decimal:
@@ -158,18 +170,6 @@ class Portfolio:
             share = sum((shares[position] for position in held), Decimal(0))
             groups.append(Group(asset, tuple(held), value, share))
         return tuple(groups)
-
-    @property
-    def ladder(self) -> tuple[Rung, ...]:
-        """The bills and bonds held, by maturity (those without one last), then by symbol."""
-        held = [position for position in self.positions if position.type in _LADDER]
-        held.sort(
-            key=lambda p: (p.maturity is None, p.maturity or date.min, p.symbol, p.owner, p.account)
-        )
-        return tuple(Rung(position, self._days_to(position.maturity)) for position in held)
-
-    def _days_to(self, maturity: date | None) -> int | None:
-        return None if maturity is None or self.day is None else (maturity - self.day).days
 
 
 def shared_out(exact: Sequence[Decimal]) -> list[Decimal]:
@@ -225,17 +225,22 @@ def run(
     *,
     owner: str | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
+    today: date | None = None,
 ) -> Portfolio:
     """What `owner`, or everyone, holds at the end of the last day of `networth.run`.
 
     Only what is worth something that day is listed: what was sold is not, nor what net
-    worth cannot value (a note then says why).
+    worth cannot value (a note then says why). The ladder of bills is valued on `today`
+    (see the module).
     """
-    return positions_of(conn, networth.value(conn, owner), currency)
+    return positions_of(conn, networth.value(conn, owner), currency, today)
 
 
 def positions_of(
-    conn: sqlite3.Connection, valued: networth.Valued | None, currency: str
+    conn: sqlite3.Connection,
+    valued: networth.Valued | None,
+    currency: str,
+    today: date | None = None,
 ) -> Portfolio:
     """`run` for what `networth.value` already worked out."""
     if valued is None:
@@ -268,18 +273,15 @@ def positions_of(
     ):
         splits[split_of].append((date.fromisoformat(day), int(new), int(old)))
     positions: list[Position] = []
+    bills: list[tuple[Position, list[networth.LotTrade]]] = []
     held_ids = [series.instrument_id for series in held if series.instrument_id is not None]
     for series, instrument, value in zip(held, held_ids, values, strict=True):
         symbol, name, kind, maturity = instruments[instrument]
         quote = series.quote
         quantity = series.quantity or Decimal(0)
         worth = series.values[-1].quantize(_CENT)
-        cost = _cost(
-            trades.get((series.account_id, instrument), []),
-            splits[instrument],
-            quantity,
-            last[0],
-        )
+        traded = trades.get((series.account_id, instrument), [])
+        cost = _cost(traded, splits[instrument], quantity, last[0])
         positions.append(
             Position(
                 owner=series.owner,
@@ -300,6 +302,8 @@ def positions_of(
                 gain_native=None if cost is None else worth - cost,
             )
         )
+        if kind in _LADDER:
+            bills.append((positions[-1], [trade for trade in traded if trade.day <= last[0]]))
     positions.sort(
         key=lambda p: (p.owner, networth.ASSETS.index(p.asset), -p.value, p.symbol, p.account)
     )
@@ -319,4 +323,32 @@ def positions_of(
         tuple(positions),
         valued.security_notes,
         cash if pension else None,
+        *_ladder(conn, bills, currency, max(today or last[0], last[0])),
     )
+
+
+def _ladder(
+    conn: sqlite3.Connection,
+    bills: Sequence[tuple[Position, Sequence[networth.LotTrade]]],
+    currency: str,
+    on: date,
+) -> tuple[tuple[Rung, ...], date | None]:
+    """The bills held, each with the lots it is made of, as they stand on `on`; no day when
+    there are none."""
+    rates = networth.rates_on(conn, [on])
+    rungs = []
+    for position, trades in bills:
+        [worth] = networth.bill_values(trades, position.maturity, [on])
+        [value] = networth.convert([worth], position.currency, currency, rates)
+        days = None if position.maturity is None else (position.maturity - on).days
+        rungs.append(Rung(position, days, worth.quantize(_CENT), value.quantize(_CENT)))
+    rungs.sort(
+        key=lambda rung: (
+            (p := rung.position).maturity is None,
+            p.maturity or date.min,
+            p.symbol,
+            p.owner,
+            p.account,
+        )
+    )
+    return tuple(rungs), on if rungs else None

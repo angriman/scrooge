@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -21,16 +21,27 @@ SITE = "http://127.0.0.1:8765"
 NONE = "\u2013"  # what a cell shows where there is no figure
 DUE = "912797WW4"  # a bill that matured two days before the last day and is not repaid yet
 FUND = "CH0000000001"
+LAST = datetime(2026, 9, 30, 18, 0, tzinfo=UTC)  # a clock on the last day committed
+
+
+def at(path: Path, now: datetime = LAST) -> TestClient:
+    """The app over `path` on a clock that says `now`: the bills are valued on that day."""
+    return TestClient(webapp.create_app(path, clock=lambda: now), base_url=SITE)
 
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
+    path: Path = tmp_path_factory.mktemp("holdings") / "finanze.db"
+    household(path)
+    return at(path)
+
+
+def household(path: Path) -> None:
     """September 2026, committed for both, in dollars; a dollar and a euro are 0.80 francs.
 
     Lukas holds an ETF whose last close is of the 18th, a share with a close on the last day,
     another with none at all, and two bills; Anna holds the same ETF.
     """
-    path: Path = tmp_path_factory.mktemp("holdings") / "finanze.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     close(
@@ -60,7 +71,6 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     rate(conn, "USD", day(1), "0.8")
     rate(conn, "EUR", day(1), "0.8")
     conn.close()
-    return TestClient(webapp.create_app(path), base_url=SITE)
 
 
 @pytest.fixture(scope="module")
@@ -268,7 +278,7 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
     assert tables(page)[-1] == [
         [
             "2026-09-28",
-            "due 2 days ago, not yet repaid",
+            "matured 2 days ago",
             DUE,
             OWNER,
             "IBKR USD",
@@ -294,12 +304,34 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
     mine = client.get("/holdings", params={"owner": OWNER}).text
     assert "Person" not in headers(mine)[2]
     assert [row[:3] for row in tables(mine)[-1]] == [
-        ["2026-09-28", "due 2 days ago, not yet repaid", DUE],
+        ["2026-09-28", "matured 2 days ago", DUE],
         ["2026-12-24", "85", "912797ZZ1"],
     ]
     assert "Interest is what a bill earns when it is repaid: its face less what it cost" in text(
         page
     )
+
+
+def test_the_bills_are_valued_today_at_the_last_rate_stored(tmp_path: Path) -> None:
+    path = tmp_path / "finanze.db"
+    household(path)
+    conn = db.connect(path)
+    rate(conn, "USD", day(20, 10), "0.9")
+    conn.close()
+    today = datetime(2026, 10, 21, 9, 0, tzinfo=UTC)
+    page = at(path, today).get("/holdings", params={"currency": "CHF"})
+    assert [row[1:3] + row[-2:] for row in tables(page.text)[-1]] == [
+        ["matured 23 days ago", DUE, "5,000.00", "4,500.00"],
+        ["64", "912797ZZ1", "9,904.00", "8,913.60"],  # 36 days of 100 from cost to face
+    ]
+    said = text(page.text)
+    assert "Days to go and values are of 2026-10-21" in said
+    assert "One that has matured since 2026-09-30 may be repaid already" in said
+    on_the_day = text(at(path).get("/holdings").text)
+    assert "Days to go and values are of 2026-09-30" in on_the_day
+    assert "matured since" not in on_the_day
+    assert "9,872.50 CHF" not in said  # the positions themselves are of the last day
+    assert "in securities on 2026-09-30" in said
 
 
 def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Path) -> None:
@@ -323,10 +355,10 @@ def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Pa
     )
     conn.execute("UPDATE instruments SET maturity = NULL WHERE symbol = '912797CC7'")
     conn.close()
-    page = TestClient(webapp.create_app(path), base_url=SITE).get("/holdings?currency=USD").text
+    page = at(path).get("/holdings?currency=USD").text
     assert [row[:3] for row in tables(page)[-1]] == [
-        ["2026-09-29", "due 1 day ago, not yet repaid", "912797AA9"],
-        ["2026-09-30", "due today", "912797BB8"],
+        ["2026-09-29", "matured 1 day ago", "912797AA9"],
+        ["2026-09-30", "matures today", "912797BB8"],
         [NONE, NONE, "912797CC7"],
     ]
 

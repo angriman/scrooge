@@ -131,8 +131,8 @@
       <td class="date" data-label="Maturity">{{ position.maturity or "–" }}</td>
       <td class="number" data-label="Days to go">
         {%- if rung.days is none %}–
-        {%- elif rung.days < 0 %}due {{ -rung.days }} day{{ "" if rung.days == -1 else "s" }} ago, not yet repaid
-        {%- elif rung.days == 0 %}due today
+        {%- elif rung.days < 0 %}matured {{ -rung.days }} day{{ "" if rung.days == -1 else "s" }} ago
+        {%- elif rung.days == 0 %}matures today
         {%- else %}{{ rung.days }}
         {%- endif -%}
       </td>
@@ -142,13 +142,18 @@
       <td class="number" data-label="Face">{{ position.quantity|exact }} {{ position.currency }}</td>
       <td class="number" data-label="Cost">{{ known(position.cost_native) }}</td>
       <td class="number" data-label="Interest">{{ known(rung.interest) }}</td>
-      <td class="number" data-label="Value today">{{ position.value_native|money }}</td>
-      <td class="number total" data-unit="{{ held.currency }}">{{ position.value|money }}</td>
+      <td class="number" data-label="Value today">{{ rung.value_native|money }}</td>
+      <td class="number total" data-unit="{{ held.currency }}">{{ rung.value|money }}</td>
     </tr>
     {%- endfor %}
   </tbody>
 </table>
 <p class="note">
+  These are the bills held on {{ held.day }}. Days to go and values are of {{ held.ladder_day }}:
+  a bill grows in a straight line from what it cost to its face at maturity, and is in
+  {{ held.currency }} at the last exchange rate stored by then.
+  {%- if held.ladder_day != held.day %} One that has matured since {{ held.day }} may be
+  repaid already, in statements not committed yet.{% endif %}
   Interest is what a bill earns when it is repaid: its face less what it cost, in the
   currency of the bill.
 </p>
