@@ -89,6 +89,13 @@ class Rung:
     position: Position
     days: int | None  # from `Portfolio.day` to the maturity; below zero: due, not yet repaid
 
+    @property
+    def interest(self) -> Decimal | None:
+        """What is earned when it is repaid: the face less what it cost, in its currency, to
+        the cent (as `storage.bills` splits it off then); None when the cost is not known."""
+        cost = self.position.cost_native
+        return None if cost is None else (self.position.quantity - cost).quantize(_CENT)
+
 
 @dataclass(frozen=True, slots=True)
 class Group:

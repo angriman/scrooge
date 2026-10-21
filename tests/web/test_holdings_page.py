@@ -191,7 +191,7 @@ def test_the_columns_of_every_row_line_up(client: TestClient) -> None:
             spans = [int(n or 1) for n in re.findall(r"<t[dh](?: colspan=\"(\d+)\")?[ >]", row)]
             assert sum(spans) == columns
         ladder = page.partition("<h2>Bills by maturity</h2>")[2]
-        assert {len(row) for row in tables(ladder)[0]} == {len(headers(ladder)[0])} == {columns - 2}
+        assert {len(row) for row in tables(ladder)[0]} == {len(headers(ladder)[0])} == {columns - 1}
 
 
 def test_a_price_that_is_only_that_of_a_trade_is_marked(client: TestClient) -> None:
@@ -261,6 +261,7 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
         "Account",
         "Face",
         "Cost",
+        "Interest",
         "Value today",
         "Value in CHF",
     ]
@@ -273,6 +274,7 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
             "IBKR USD",
             "5,000 USD",
             "4,950.00",
+            "50.00",
             "5,000.00",
             "4,000.00",
         ],
@@ -284,6 +286,7 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
             "IBKR USD",
             "10,000 USD",
             "9,850.00",
+            "150.00",
             "9,872.50",
             "7,898.00",
         ],
@@ -294,6 +297,9 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
         ["2026-09-28", "due 2 days ago, not yet repaid", DUE],
         ["2026-12-24", "85", "912797ZZ1"],
     ]
+    assert "Interest is what a bill earns when it is repaid: its face less what it cost" in text(
+        page
+    )
 
 
 def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Path) -> None:

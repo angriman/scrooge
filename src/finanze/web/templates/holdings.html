@@ -130,6 +130,7 @@
       <th>Account</th>
       <th class="number">Face</th>
       <th class="number">Cost</th>
+      <th class="number">Interest</th>
       <th class="number">Value today</th>
       <th class="number">Value in {{ held.currency }}</th>
     </tr>
@@ -151,12 +152,17 @@
       <td data-label="Account">{{ position.account }}</td>
       <td class="number" data-label="Face">{{ position.quantity|exact }} {{ position.currency }}</td>
       <td class="number" data-label="Cost">{{ known(position.cost_native) }}</td>
+      <td class="number" data-label="Interest">{{ known(rung.interest) }}</td>
       <td class="number" data-label="Value today">{{ position.value_native|money }}</td>
       <td class="number total" data-unit="{{ held.currency }}">{{ position.value|money }}</td>
     </tr>
     {%- endfor %}
   </tbody>
 </table>
+<p class="note">
+  Interest is what a bill earns when it is repaid: its face less what it cost, in the
+  currency of the bill.
+</p>
 {%- endif %}
 {%- else %}
 <p>No securities are held on {{ held.day }}.</p>

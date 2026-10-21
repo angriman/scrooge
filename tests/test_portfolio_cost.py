@@ -289,6 +289,18 @@ def test_the_ladder_is_the_bills_held_by_maturity(conn: sqlite3.Connection) -> N
     assert (due.account, due.currency, due.quantity) == ("IBKR USD", "USD", D(5000))
     assert (due.cost_native, due.value_native, due.value) == (D(4950), D(5000), D(5000))
     assert portfolio.run(conn, owner=PARTNER, currency="USD").ladder == ladder[1:2]
+    # what is earned when each is repaid: its face less what it cost
+    assert [rung.interest for rung in ladder] == [D(50), D(50), D(50), D(150), D(50)]
+
+
+def test_the_interest_of_a_bill_whose_cost_is_not_known_is_not_known_either(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bill("10000", "-9850", day(15)), opening="50000"))
+    [rung] = agrees_with_net_worth(conn, None, "USD").ladder
+    assert rung.interest == D(150)
+    unknown = portfolio.Rung(replace(rung.position, cost_native=None), rung.days)
+    assert unknown.interest is None
 
 
 def test_without_bills_there_is_no_ladder(conn: sqlite3.Connection) -> None:
