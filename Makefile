@@ -5,7 +5,7 @@ UV ?= uv
 NAS_APP ?= output/nas/app
 
 .DEFAULT_GOAL := help
-.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean nas-app
+.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean nas-app icons
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -45,6 +45,13 @@ hooks: ## Install the git pre-commit hooks
 
 hooks-run: ## Run every pre-commit hook over all files
 	$(UV) run pre-commit run --all-files
+
+ICONS := src/finanze/web/static/icons
+
+# A phone rounds a home screen icon itself and turns clear corners black: its tile is square.
+icons: ## Draw the PNG icons from icons/icon.svg (needs rsvg-convert: brew install librsvg)
+	rsvg-convert -w 32 -h 32 $(ICONS)/icon.svg -o $(ICONS)/icon-32.png
+	sed 's/ rx="14"//' $(ICONS)/icon.svg | rsvg-convert -w 180 -h 180 -o $(ICONS)/apple-touch-icon.png
 
 nas-app: ## The folder the NAS builds the web app's image from (deploy/README.md)
 	rm -rf $(NAS_APP)

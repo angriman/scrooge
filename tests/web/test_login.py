@@ -96,6 +96,8 @@ def test_the_login_page_and_the_stylesheet_are_all_it_can_see(client: TestClient
     assert "<nav" not in page.text  # no names of the people, no way around
     assert "Sign out" not in page.text
     assert client.get("/static/app.css").status_code == 200
+    assert 'rel="icon"' in page.text
+    assert client.get("/static/icons/icon.svg").status_code == 200
     assert client.get("/loginx").status_code == 303
     assert client.get("/static").status_code == 303
 
