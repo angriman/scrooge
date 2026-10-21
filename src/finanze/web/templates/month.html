@@ -1,6 +1,11 @@
 {% extends "base.html" %}
-{% from "forms.html" import choose, add_category %}
+{% from "forms.html" import category_list, choose, add_category %}
 {% block title %}{{ month.month.strftime("%B %Y") }}, {{ month.owner }}{% endblock %}
+{% block head %}
+  {%- if not copy and month.changeable %}
+  <script src="{{ url_for('static', path='picker.js') }}" defer></script>
+  {%- endif %}
+{% endblock %}
 {% block main %}
 {%- if error %}
 <p class="error" role="alert">{{ error }}</p>
@@ -30,6 +35,7 @@
 </section>
 {%- if not copy %}
 {%- if month.changeable %}
+{{ category_list(choices) }}
 <section>
   <h2>Change a category</h2>
   <details>

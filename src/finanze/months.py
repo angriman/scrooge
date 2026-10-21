@@ -140,6 +140,11 @@ class Draft:
         return _grouped(self.uncategorized)
 
     @property
+    def group_of(self) -> dict[str, int]:
+        """Each waiting row's group, by its place among `groups`."""
+        return {row.id: number for number, group in enumerate(self.groups) for row in group.rows}
+
+    @property
     def blocked_by(self) -> tuple[str, ...]:
         """Why it cannot be committed yet; empty when it can."""
         reasons = list(self.gaps)

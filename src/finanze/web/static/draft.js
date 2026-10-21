@@ -1,5 +1,7 @@
-// The draft on the import page: when a category is chosen for a row, the totals by category
-// are worked out again here, at once, from the rows on the page, and the row is marked.
+// The draft on the import page: when a category is chosen for a row, or for the counterparty
+// a waiting row belongs to (its data-group), the totals by category are worked out again here,
+// at once, from the rows on the page, and the row is marked. A row chosen on its own keeps its
+// choice, as the server does; else its field shows its counterparty's choice.
 // Money is never a float: each amount arrives as exact decimal text (data-amount) and is
 // counted in billionths, the unit the database stores, as a BigInt; only the sum is rounded,
 // to the cent, half to even as the server does, when it is written. Without this script the
@@ -9,7 +11,8 @@
 (function () {
   const rows = document.querySelector("#rows tbody");
   const totals = document.querySelector("#totals tbody");
-  if (!rows || !totals) return;
+  const list = document.getElementById("categories");
+  if (!rows || !totals || !list) return;
   const SCALE = 9; // decimals of a billionth
   const SEP = "\u0000";
 
@@ -35,25 +38,40 @@
     return (negative ? "-" : "") + whole + "." + fraction;
   }
 
+  // Each category name and the sides it is on: a name can be both income and an expense.
+  const sides = new Map();
+  for (const option of list.options) {
+    if (!sides.has(option.value)) sides.set(option.value, new Set());
+    sides.get(option.value).add(option.dataset.side);
+  }
+
   // The side a category name takes for an amount, as the server does it: a transfer is a
   // transfer; otherwise the side the sign points to, then the other one.
-  function sideOf(select, name, amount) {
-    const sides = new Set();
-    for (const option of select.options) {
-      if (option.value === name) sides.add(option.dataset.side);
-    }
-    if (sides.has("transfer")) return "transfer";
+  function sideOf(name, amount) {
+    const on = sides.get(name);
+    if (on.has("transfer")) return "transfer";
     const order = amount < 0n ? ["uscite", "entrate"] : ["entrate", "uscite"];
-    return order.find((side) => sides.has(side)) || "";
+    return order.find((side) => on.has(side)) || "";
+  }
+
+  // The category a field holds, "" while it holds none or a name that is no category.
+  function named(field) {
+    return field && sides.has(field.value) ? field.value : "";
   }
 
   function chosen(row) {
-    const select = row.querySelector("select");
+    const field = row.querySelector('input[list="categories"]');
+    const group = row.dataset.group === undefined ? null
+      : document.querySelector('input[name="group:' + row.dataset.group + '"]');
+    if (field) {
+      if (field.dataset.shown === undefined) field.dataset.shown = field.placeholder;
+      field.placeholder = named(group) || field.dataset.shown;
+    }
     const amount = nano(row.dataset.amount);
-    const name = select ? select.value : "";
+    const name = named(field) || named(group);
     const changed = name !== "";
     if (!changed) return { side: row.dataset.side, category: row.dataset.category, amount, changed };
-    return { side: sideOf(select, name, amount), category: name, amount, changed };
+    return { side: sideOf(name, amount), category: name, amount, changed };
   }
 
   function line(side, category, currency) {
@@ -111,6 +129,8 @@
     tr.querySelector(".count").textContent = String(entry.count);
   }
 
-  rows.addEventListener("change", update);
+  document.addEventListener("input", (event) => {
+    if (event.target.matches('input[list="categories"]')) update();
+  });
   update();
 })();

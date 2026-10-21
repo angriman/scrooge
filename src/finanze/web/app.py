@@ -256,7 +256,6 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/import", _import, methods=["POST"]),
             Route("/import/save", writing(_save), methods=["POST"], name="save"),
             Route("/import/commit", writing(_commit), methods=["POST"], name="commit_draft"),
-            Route("/import/group", writing(_group), methods=["POST"], name="group"),
             Route(
                 "/import/category", writing(_new_category), methods=["POST"], name="add_category"
             ),
@@ -553,45 +552,57 @@ def _to_import(request: Request, owner: str, **flags: int) -> Response:
 
 
 def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> str:
-    """Give the categories chosen on the draft's rows; "" when all went in, else why not.
+    """Give every category chosen on the draft, together; "" when all went in, else why not.
 
-    A row whose category was chosen again is left alone. Rows going to the same category, all
-    waiting or all already categorized, are one call.
+    A counterparty's choice (`group:N`) goes to its rows (`ids:N`), as a rule when
+    `remember:N` says so, except to a row chosen on its own (`category:<id>`), which keeps its
+    choice. A row whose category was chosen again is left alone. Rows going to the same
+    category, all waiting or all already categorized, are one choice.
     """
-    chosen = {
-        name.removeprefix("category:"): values[-1]
-        for name, values in fields.items()
-        if name.startswith("category:") and values[-1]
-    }
-    if not chosen:
+    own, groups = _filled(fields, "category:"), _filled(fields, "group:")
+    if not own and not groups:
         return ""
     conn = db.connect(state.database)
     try:
         rows = {row.id: row for row in months.draft(conn, owner).rows}
-        groups: dict[tuple[str, bool], list[str]] = {}
-        for row_id, category in chosen.items():
-            row = rows.get(row_id)
-            if row is None:
-                return (
-                    "No category was set: those rows are not staged any more: load the page again."
-                )
-            if category != row.category:
-                groups.setdefault((category, bool(row.category)), []).append(row_id)
-        for (category, change), ids in groups.items():
-            staging.categorize(
-                conn,
-                owner=owner,
-                ids=ids,
-                category=category,
-                now=state.clock(),
-                remember=None,
-                change=change,
-            )
+        members = {number: fields.get(f"ids:{number}", []) for number in groups}
+        wanted = [*own, *(row_id for ids in members.values() for row_id in ids)]
+        if not wanted or any(row_id not in rows for row_id in wanted):
+            return "No category was set: those rows are not staged any more: load the page again."
+        together: dict[tuple[str, bool], list[str]] = {}
+        for row_id, category in own.items():
+            if category != rows[row_id].category:
+                together.setdefault((category, bool(rows[row_id].category)), []).append(row_id)
+        choices = [
+            staging.Choice(ids, category, change=change)
+            for (category, change), ids in together.items()
+        ]
+        for number, category in groups.items():
+            ids = [row_id for row_id in members[number] if row_id not in own]
+            rule = fields.get(f"remember:{number}", [""])[-1] == "rule"
+            if ids:
+                choices.append(staging.Choice(ids, category, rule=rule))
+        staging.categorize_all(
+            conn,
+            owner=owner,
+            choices=choices,
+            now=state.clock(),
+            remember=None if state.rules is None else state.rules.of(owner),
+        )
     except (staging.StagingError, store.UnknownCategoryError) as exc:
         return f"No category was set: {exc}."
     finally:
         conn.close()
     return ""
+
+
+def _filled(fields: dict[str, list[str]], prefix: str) -> dict[str, str]:
+    """The fields named `prefix` and something, by that something, without the empty ones."""
+    return {
+        name.removeprefix(prefix): values[-1].strip()
+        for name, values in fields.items()
+        if name.startswith(prefix) and values[-1].strip()
+    }
 
 
 async def _save(request: Request) -> Response:
@@ -653,16 +664,6 @@ def _choose(state: State, owner: str, fields: dict[str, list[str]]) -> str:
     finally:
         conn.close()
     return ""
-
-
-async def _group(request: Request) -> Response:
-    """One category for the waiting rows of a counterparty, from the draft."""
-    fields = await _sent(request)
-    owner = fields.get("owner", [""])[-1]
-    error = await run_in_threadpool(_choose, request.app.state, owner, fields)
-    if error:
-        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
-    return _to_import(request, owner)
 
 
 async def _change(request: Request) -> Response:

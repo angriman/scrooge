@@ -107,8 +107,14 @@ button {
   padding: 0.25rem 0.4rem;
 }
 
-select {
+select,
+input[list] {
   max-width: 14rem;
+}
+
+/* A category typed that is no category (picker.js), once it has been typed. */
+input[list]:user-invalid {
+  outline: 2px solid #c0392b;
 }
 
 .error {
@@ -601,7 +607,8 @@ figcaption {
     opacity: 0.65;
   }
 
-  .cards .choice select {
+  .cards .choice select,
+  .cards .choice input[list] {
     max-width: 100%;
   }
 

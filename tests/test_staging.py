@@ -1479,6 +1479,46 @@ def test_a_choice_that_cannot_be_made_changes_nothing(
     assert choose(conn, [ids["6"], ids["6"]], "Regali") == 1
 
 
+def choose_all(
+    conn: sqlite3.Connection,
+    choices: list[staging.Choice],
+    remember: staging.Remember | None = None,
+) -> int:
+    return staging.categorize_all(conn, owner=OWNER, choices=choices, now=LATER, remember=remember)
+
+
+def test_choices_made_together_are_given_all_or_none(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    ids = waiting_month(conn)
+    before = dump(conn)
+    shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
+    everyone = [pattern for patterns in PEOPLE.values() for pattern in patterns]
+    remember = staging.Remember(shared, own, everyone)
+    kiosk = staging.Choice((ids["KIOSK1"], ids["KIOSK2"]), "Regali", rule=True)
+    unknown = staging.Choice((ids["TO SAVINGS5"],), "Regalo")
+    with pytest.raises(store.UnknownCategoryError, match="'Regalo'"):
+        choose_all(conn, [kiosk, unknown], remember)
+    assert dump(conn) == before
+    assert not list(tmp_path.iterdir())  # the rule of the first choice went with it
+
+    savings = staging.Choice((ids["TO SAVINGS5"],), "Giroconto")
+    changed = staging.Choice((ids["DONE7"],), "Regali", change=True)
+    assert choose_all(conn, [kiosk, savings, changed], remember) == 4
+    assert category_of(conn, ids["KIOSK2"]) == ("Regali", "uscite", "rule", "expense")
+    assert category_of(conn, ids["TO SAVINGS5"]) == ("Giroconto", "transfer", "manual", "transfer")
+    assert category_of(conn, ids["DONE7"]) == ("Regali", "uscite", "manual", "expense")
+    assert shared.read_text(encoding="utf-8") == (
+        'rules:\n  - {match: "(?m)^KIOSK$", category: "Regali", direction: out}\n'
+    )
+    assert not own.exists()
+    # Without a place for rules, a choice to remember is kept for its rows alone.
+    choice = staging.Choice((ids["KIOSK3"],), "Regali", rule=True)
+    assert choose_all(conn, [choice]) == 1
+    assert category_of(conn, ids["KIOSK3"]) == ("Regali", "uscite", "manual", "income")
+    assert choose_all(conn, []) == 0
+
+
 def test_rows_of_a_committed_statement_or_of_nobody_are_not_waiting_for_a_category(
     conn: sqlite3.Connection,
 ) -> None:

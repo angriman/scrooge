@@ -639,6 +639,16 @@ class Remember:
     others: Patterns = ()
 
 
+@dataclass(frozen=True, slots=True)
+class Choice:
+    """One category for some rows, as `categorize` gives it."""
+
+    ids: Collection[str]
+    category: str
+    rule: bool = False  # remembered as a rule, where there is a place for rules
+    change: bool = False  # the rows have a category, which was wrong
+
+
 def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is remembered
     conn: sqlite3.Connection,
     *,
@@ -662,53 +672,92 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     of these rows, and a rule to remember it goes before the rules already there, the wrong
     one among them. A transfer given another kind of category is income or an expense again.
     """
+    choice = Choice(ids, category, rule=remember is not None, change=change)
+    return categorize_all(conn, owner=owner, choices=[choice], now=now, remember=remember)
+
+
+def categorize_all(
+    conn: sqlite3.Connection,
+    *,
+    owner: str,
+    choices: Sequence[Choice],
+    now: datetime,
+    remember: Remember | None,
+) -> int:
+    """Make each choice as `categorize` does, all together: when one cannot be made, none is,
+    and the rule files are left as they were. A choice to remember is remembered in
+    `remember`, and kept for its rows alone without it. Returns how many rows were given one.
+    """
     with _rules_kept() as before, db.transaction(conn):
-        owner_id = store.owner_id(conn, owner)
-        rows = [] if owner_id is None else store.waiting(conn, owner_id, ids, change=change)
-        if not rows or len(rows) != len(set(ids)):
-            state = "cannot be given another category" if change else _NOT_WAITING
-            msg = f"those rows {state}: load the page again"
+        return sum(
+            _categorize(
+                conn,
+                before,
+                owner=owner,
+                choice=choice,
+                now=now,
+                remember=remember if choice.rule else None,
+            )
+            for choice in choices
+        )
+
+
+def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule files' state
+    conn: sqlite3.Connection,
+    before: dict[Path, str | None],
+    *,
+    owner: str,
+    choice: Choice,
+    now: datetime,
+    remember: Remember | None,
+) -> int:
+    ids, category, change = choice.ids, choice.category, choice.change
+    owner_id = store.owner_id(conn, owner)
+    rows = [] if owner_id is None else store.waiting(conn, owner_id, ids, change=change)
+    if not rows or len(rows) != len(set(ids)):
+        state = "cannot be given another category" if change else _NOT_WAITING
+        msg = f"those rows {state}: load the page again"
+        raise StagingError(msg)
+    leaves = store.leaf_categories(conn)
+    flows = {kind.value for kind in _BETWEEN_OWNERS}
+    rules: dict[tuple[str, str], Path] = {}
+    for row in rows:
+        chosen = store.category_for(leaves, category, from_nano(row.amount_nano))
+        if chosen is None:
+            msg = "no category was chosen"
             raise StagingError(msg)
-        leaves = store.leaf_categories(conn)
-        flows = {kind.value for kind in _BETWEEN_OWNERS}
-        rules: dict[tuple[str, str], Path] = {}
-        for row in rows:
-            chosen = store.category_for(leaves, category, from_nano(row.amount_nano))
-            if chosen is None:
-                msg = "no category was chosen"
-                raise StagingError(msg)
-            transfer = ("transfer", category) in leaves
-            kind = row.kind
-            if transfer and row.kind in flows:
-                kind = Kind.TRANSFER.value
-            elif not transfer and row.kind == Kind.TRANSFER.value:
-                kind = (Kind.INCOME if row.amount_nano > 0 else Kind.EXPENSE).value
-            kept = remember is None or change  # as an override of this row
-            store.set_category(conn, row.id, chosen, "manual" if kept else "rule", kind)
-            if kept:
-                changed = kind if kind != row.kind else None
-                store.set_override(conn, row.id, chosen, changed, db.timestamp(now))
-            if remember is None:
-                continue
-            name = (row.counterparty or row.description).strip()
-            if not name:
-                msg = "a row without any text cannot become a rule: choose 'just these rows'"
-                raise StagingError(msg)
-            text = f"{row.description}\n{row.counterparty}"
-            if transfer and any(pattern.search(text) for pattern in remember.others):
-                msg = (
-                    f"a rule cannot make money to or from another person a transfer ({name}): "
-                    "choose 'just these rows'"
-                )
-                raise StagingError(msg)
-            named = any(pattern.search(text) for pattern in remember.people)
-            flow = "in" if row.amount_nano > 0 else "out"
-            rules[name, flow] = remember.own if named else remember.shared
-        for (name, flow), where in rules.items():
-            if where not in before:
-                before[where] = where.read_text(encoding="utf-8") if where.exists() else None
-            classification.append_rule(where, name, flow, category, first=change)
-        return len(rows)
+        transfer = ("transfer", category) in leaves
+        kind = row.kind
+        if transfer and row.kind in flows:
+            kind = Kind.TRANSFER.value
+        elif not transfer and row.kind == Kind.TRANSFER.value:
+            kind = (Kind.INCOME if row.amount_nano > 0 else Kind.EXPENSE).value
+        kept = remember is None or change  # as an override of this row
+        store.set_category(conn, row.id, chosen, "manual" if kept else "rule", kind)
+        if kept:
+            changed = kind if kind != row.kind else None
+            store.set_override(conn, row.id, chosen, changed, db.timestamp(now))
+        if remember is None:
+            continue
+        name = (row.counterparty or row.description).strip()
+        if not name:
+            msg = "a row without any text cannot become a rule: choose 'just these rows'"
+            raise StagingError(msg)
+        text = f"{row.description}\n{row.counterparty}"
+        if transfer and any(pattern.search(text) for pattern in remember.others):
+            msg = (
+                f"a rule cannot make money to or from another person a transfer ({name}): "
+                "choose 'just these rows'"
+            )
+            raise StagingError(msg)
+        named = any(pattern.search(text) for pattern in remember.people)
+        flow = "in" if row.amount_nano > 0 else "out"
+        rules[name, flow] = remember.own if named else remember.shared
+    for (name, flow), where in rules.items():
+        if where not in before:
+            before[where] = where.read_text(encoding="utf-8") if where.exists() else None
+        classification.append_rule(where, name, flow, category, first=change)
+    return len(rows)
 
 
 def add_category(
