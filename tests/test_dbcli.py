@@ -51,6 +51,7 @@ class Run:
         self.instruments = folder / "instruments.yaml"
         self.instruments.write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
         self.output = ""
+        self.now = NOW
         self.source: FakeSource | None = None  # what `prices` fetches from
         self.answers: list[str] = []
         self.questions: list[str] = []
@@ -58,7 +59,7 @@ class Run:
     def __call__(self, command: str, *args: str) -> int:
         argv = [command, *args, "--config", str(self.config)]
         out = io.StringIO()
-        code = dbcli.main(argv, out, ask=self._ask, now=lambda: NOW, source=self.source)
+        code = dbcli.main(argv, out, ask=self._ask, now=lambda: self.now, source=self.source)
         self.output = out.getvalue()
         return code
 
@@ -98,50 +99,120 @@ def run(folder: Path) -> Run:
     return Run(folder)
 
 
-def test_import_stages_the_month_and_says_what_is_next(run: Run) -> None:
+def test_import_says_what_became_of_each_file_and_what_is_next(run: Run) -> None:
+    assert run.load_august() == dbcli.OK
+    assert run.output == (
+        "  staged tastytrade.csv (Tastytrade transactions)\n"
+        "1 transactions staged for Lukas.\n"
+        "Next: finanze commit\n"
+    )
     assert run.load() == dbcli.OK
-    assert "September 2026 for Lukas: 6 statements reconciled" in run.output
-    assert "skipped ibkr.pdf (not a statement)" in run.output
-    assert "note: Revolut EUR includes rows with no balance to check against" in run.output
-    assert run.output.endswith("Next: finanze commit 2026-09\n")
+    assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
+    assert "  staged swisscard.pdf (Swisscard invoice)\n" in run.output
+    assert "  skipped ibkr.pdf (not a statement)\n" in run.output
+    assert "  note: Revolut EUR includes rows with no balance to check against\n" in run.output
+    assert "108 transactions staged for Lukas.\n" in run.output
+    assert run.output.endswith("Next: finanze commit\n")
     assert run.count("transactions") > 0
     assert run.count("committed_transactions") == 0
 
 
-def test_commit_saves_a_copy_first_and_reopen_undoes_it(run: Run) -> None:
+def test_commit_saves_a_copy_first_and_uncommit_undoes_it(run: Run) -> None:
     assert run.load_august() == dbcli.OK
     run.load()
     staged = run.count("transactions") - 1  # all but the August purchase
-    assert run("commit", "2026-09") == dbcli.OK
+    assert run("commit") == dbcli.OK
     copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
-    assert f"September 2026 committed for Lukas. Copy from before: {copy}" in run.output
+    assert "  committed tastytrade.csv (2026-08-20 to 2026-08-20)\n" in run.output
+    assert f"7 statements committed for Lukas. Copy from before: {copy}\n" in run.output
     assert copy.exists()
-    assert run.count("committed_transactions") == staged
+    assert run.count("committed_transactions") == staged + 1
 
     copy.unlink()
-    assert run("commit", "2026-09") == dbcli.OK
-    assert "already committed" in run.output
+    assert run("commit") == dbcli.OK
+    assert run.output == "Nothing is staged for Lukas.\n"
     assert not copy.exists()
 
-    # A committed month is left as it is: the same statements again find their rows there.
+    # What is committed is left as it is: the same statements again find their rows there.
     assert run.load() == dbcli.OK
+    assert "  Migros.csv (Migros Bank account statement): committed already, nothing new\n" in (
+        run.output
+    )
     assert "0 transactions staged" in run.output
     # One row less than is committed: the interest split off the bill is in no statement.
-    assert f"  {staged - 1} rows are booked in committed months and are stored" in run.output
+    assert f"  {staged - 1} rows are committed already: left as they are" in run.output
     assert "differs" not in run.output
     assert "Next:" not in run.output
-    assert run.count("committed_transactions") == staged
-    assert run("reopen", "2026-09") == dbcli.OK
-    assert run.output == "September 2026 is open again for Lukas.\n"
-    assert run.count("committed_transactions") == 0
-    assert run.load() == dbcli.OK
+    assert run.count("committed_transactions") == staged + 1
+    assert run("uncommit", "3") == dbcli.OK
+    assert run.output == "Migros.csv is staged again for Lukas.\n"
+    assert run.count("committed_transactions") < staged + 1
+    assert run.load() == dbcli.OK  # the statement it took back is found in the folder again
+    assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
+    assert run("commit") == dbcli.OK
+
+
+def test_statements_are_listed_staged_first_with_the_numbers_to_act_on(run: Run) -> None:
+    assert run("statements") == dbcli.OK
+    assert run.output == "No statements for Lukas.\n"
+    run.load_august()
+    run.load()
+    assert run("statements") == dbcli.OK
+    lines = run.output.splitlines()
+    assert (
+        lines[0] == "    6  staged     2026-08-05 to 2026-09-04  Swisscard invoice: swisscard.pdf"
+    )
+    assert len(lines) == 7
+    assert {line.split()[1] for line in lines} == {"staged"}
+    run("commit")
+    run("uncommit", "2")
+    assert run("statements") == dbcli.OK
+    first, *rest = run.output.splitlines()
+    assert first == "    2  staged     2026-09-01 to 2026-09-30  IBKR activity statement: IBKR.csv"
+    assert {line.split()[1] for line in rest} == {"committed"}
+
+
+def test_discard_removes_a_staged_statement_and_not_a_committed_one(run: Run) -> None:
+    run.load_august()
+    assert run("discard", "1") == dbcli.OK
+    assert run.output == "tastytrade.csv and what it staged are removed; its original is kept.\n"
+    assert run.count("statement_files") == 0
+    assert run.count("transactions") == 0
+    assert kept(run) != []  # the original stays
+    run.load_august()
+    run("commit")
+    assert run("discard", "1") == dbcli.FAILED
+    assert run.output == "error: tastytrade.csv is committed: take it back first\n"
+    assert run("uncommit", "1") == dbcli.OK
+    assert run("discard", "1") == dbcli.OK
+
+
+def test_what_is_booked_today_or_later_waits_for_the_next_import(run: Run) -> None:
+    only = run.folder / "old" / "only"
+    only.mkdir()
+    shutil.copy(run.folder / "Migros.csv", only / "Migros.csv")
+    run.now = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)  # 9 September is the last day over
+    assert run.load(folder=only) == dbcli.OK
+    later = run.output.splitlines()[2]
+    assert later.endswith(" booked today or later wait for the next import")
+    run.now = NOW
+    assert run.load(folder=only) == dbcli.OK
+    assert "booked today or later" not in run.output
+
+
+def test_a_statement_that_is_not_stored_or_not_committed_is_refused(run: Run) -> None:
+    run.load_august()
+    assert run("uncommit", "99") == dbcli.FAILED
+    assert run.output == "error: Lukas has no statement 99\n"
+    assert run("uncommit", "1") == dbcli.FAILED
+    assert run.output == "error: tastytrade.csv is not committed\n"
 
 
 def test_uncategorized_rows_are_reported_and_block_the_commit(run: Run) -> None:
     run.rules.write_text("rules: []\n", encoding="utf-8")
     assert run.load() == dbcli.NEEDS_REVIEW
     assert "transactions need a category: import again with --review" in run.output
-    assert run("commit", "2026-09") == dbcli.FAILED
+    assert run("commit") == dbcli.FAILED
     assert "still need a category" in run.output
     assert not list((run.database.parent / "backups").iterdir())
 
@@ -163,7 +234,7 @@ def test_a_missing_statement_is_shown_on_import_and_blocks_the_commit(run: Run) 
     conn.close()
     assert run.load() == dbcli.OK
     assert "  missing: Migros (CHF): no statement covers the days after 2026-07-31" in run.output
-    assert run("commit", "2026-09") == dbcli.FAILED
+    assert run("commit") == dbcli.FAILED
     assert "error: " in run.output
     assert "no statement covers" in run.output
 
@@ -171,10 +242,11 @@ def test_a_missing_statement_is_shown_on_import_and_blocks_the_commit(run: Run) 
 def test_a_bill_without_its_purchase_is_shown_on_import_and_blocks_the_commit(run: Run) -> None:
     assert run.load() == dbcli.OK
     assert "  missing: Tastytrade: 912797YY2 matured or was sold on 2026-09-16" in run.output
-    assert run("commit", "2026-09") == dbcli.FAILED
+    assert "Next:" not in run.output  # something is missing first
+    assert run("commit") == dbcli.FAILED
     assert "its purchases are not all stored" in run.output
     assert run.load_august() == dbcli.OK
-    assert run("commit", "2026-09") == dbcli.OK
+    assert run("commit") == dbcli.OK
 
 
 def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> None:
@@ -236,30 +308,19 @@ def load_pension(run: Run) -> int:
     return run.load(folder=folder)
 
 
-def test_a_statement_of_several_months_is_committed_as_a_range(run: Run) -> None:
+def test_a_statement_of_several_months_is_one_statement(run: Run) -> None:
     assert load_pension(run) == dbcli.OK
-    assert "July 2026 to September 2026 for Lukas: 1 statements reconciled, 9 trans" in run.output
-    assert run.output.endswith("Next: finanze commit 2026-07 2026-09\n")
+    assert "  staged pillar 3a.tsv (finpension pillar 3a transactions)\n" in run.output
+    assert run.output.endswith("9 transactions staged for Lukas.\nNext: finanze commit\n")
 
-    assert run("commit", "2026-07", "2026-09") == dbcli.OK
-    assert "July 2026 to September 2026 committed for Lukas. Copy from before: " in run.output
+    assert run("commit") == dbcli.OK
+    assert "  committed pillar 3a.tsv (2026-07-06 to 2026-09-16)\n" in run.output
     assert run.count("committed_transactions") == 9
-    assert run("commit", "2026-07", "2026-09") == dbcli.OK
-    assert run.output == "July 2026 to September 2026 was already committed for Lukas.\n"
+    assert run("commit") == dbcli.OK
+    assert run.output == "Nothing is staged for Lukas.\n"
 
-    assert run("reopen", "2026-08", "2026-09") == dbcli.OK
-    assert run.output == "August 2026 to September 2026 is open again for Lukas.\n"
-    assert run.count("committed_transactions") == 4  # July: deposit, two buys, the fee
-
-
-def test_a_range_stops_at_the_first_month_that_cannot_be_committed(run: Run) -> None:
-    load_pension(run)
-    assert run("commit", "2026-07", "2026-10") == dbcli.FAILED
-    assert run.output == (
-        "July 2026 to September 2026 committed for Lukas, then:\n"
-        "error: nothing is staged for Lukas in 2026-10\n"
-    )
-    assert len(list((run.database.parent / "backups").iterdir())) == 1
+    assert run("uncommit", "1") == dbcli.OK
+    assert run.count("committed_transactions") == 0
 
 
 def test_files_and_folders_can_be_given_together(run: Run) -> None:
@@ -270,8 +331,9 @@ def test_files_and_folders_can_be_given_together(run: Run) -> None:
     report.write_bytes(PENSION.read_bytes())
     paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
     assert run("import", str(run.folder), str(report), *paths) == dbcli.OK
-    assert "July 2026 to September 2026 for Lukas: 7 statements reconciled" in run.output
-    assert run("commit", "2026-07", "2026-09") == dbcli.OK
+    assert "  staged pillar 3a.tsv (finpension pillar 3a transactions)\n" in run.output
+    assert "  staged tastytrade.csv (Tastytrade transactions)\n" in run.output
+    assert run("commit") == dbcli.OK
 
 
 def test_a_second_broker_account_is_named_by_its_number(run: Run) -> None:
@@ -319,15 +381,16 @@ def test_pension_certificates_are_imported_and_what_was_read_is_shown(
     (pillar2 / "cover letter.txt").write_text("Dear member", encoding="utf-8")
     assert run.load(folder=pillar2) == dbcli.OK
     assert run.output == (
-        SERVISA_READ
+        "  staged Dokument.pdf (Servisa pension certificate)\n"
+        "  staged Scan 0001.pdf (AXA pension certificate)\n"
+        "  skipped cover letter.txt (not a statement)\n"
+        + SERVISA_READ
         + AXA_READ
-        + "  skipped cover letter.txt (not a statement)\n"
-        + "Next: finanze commit 2026-01\nNext: finanze commit 2026-03\n"
+        + "0 transactions staged for Lukas.\nNext: finanze commit\n"
     )
     assert (run.count("statement_files"), run.count("balances")) == (2, 2)
     assert run.count("transactions") == 0
-    assert run("commit", "2026-01") == dbcli.OK
-    assert run("commit", "2026-03") == dbcli.OK
+    assert run("commit") == dbcli.OK
 
     conn = db.connect(run.database)
     result = networth.run(conn, currency="CHF")
@@ -336,7 +399,7 @@ def test_pension_certificates_are_imported_and_what_was_read_is_shown(
     assert result.days[0] == date(2026, 1, 1)
     assert worth[date(2026, 2, 28)] == Decimal("3579.40")
     assert worth[date(2026, 3, 1)] == Decimal("3579.40") + Decimal("35802.00")
-    assert worth[date(2026, 3, 31)] == worth[date(2026, 3, 1)]
+    assert result.days[-1] == date(2026, 3, 1)  # net worth ends on the last day committed
 
 
 def test_the_balance_a_yearly_certificate_opens_with_is_shown_too(
@@ -345,24 +408,45 @@ def test_the_balance_a_yearly_certificate_opens_with_is_shown_too(
     text = (FIXTURES / "axa_yearly" / "certificate.txt").read_text(encoding="utf-8")
     monkeypatch.setattr(ocr, "read_text", lambda path: text)
     assert run.load(folder=pillar2 / "Scan 0001.pdf") == dbcli.OK
-    assert run.output == (
+    assert run.output.startswith("  staged Scan 0001.pdf (AXA pension certificate)\n")
+    assert run.output.removeprefix("  staged Scan 0001.pdf (AXA pension certificate)\n") == (
         "Pillar 2 AXA of Lukas: 37,026.00 CHF on 2026-01-01, read off the axa certificate "
         "Scan 0001.pdf (mandatory part 12,345.65).\n"
         "  and 30,000.75 CHF on 2025-01-01, where its year began\n"
-        "Next: finanze commit 2026-01\n"
+        "0 transactions staged for Lukas.\n"
+        "Next: finanze commit\n"
     )
     assert (run.count("statement_files"), run.count("balances")) == (1, 2)
 
 
-def test_a_certificate_of_a_committed_month_is_refused_until_the_month_is_reopened(
-    run: Run, pillar2: Path
+def test_a_certificate_read_again_after_its_commit_changes_nothing(run: Run, pillar2: Path) -> None:
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert run("commit") == dbcli.OK
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert "  Scan 0001.pdf (AXA pension certificate): committed already, nothing new\n" in (
+        run.output
+    )
+    assert "Next:" not in run.output
+    assert (run.count("statement_files"), run.count("balances")) == (2, 2)
+
+
+def test_another_scan_of_a_committed_certificate_is_refused_until_it_is_taken_back(
+    run: Run, pillar2: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert run.load(folder=pillar2) == dbcli.OK
-    assert run("commit", "2026-03") == dbcli.OK
-    assert run.load(folder=pillar2) == dbcli.FAILED
-    assert run.output == "error: 2026-03 is committed for Lukas: reopen it first\n"
-    assert run("reopen", "2026-03") == dbcli.OK
-    assert run.load(folder=pillar2) == dbcli.OK
+    assert run("commit") == dbcli.OK
+    again = run.folder / "again" / "Scan 0001.pdf"
+    again.parent.mkdir()
+    again.write_bytes((pillar2 / "Scan 0001.pdf").read_bytes() + b"\n% scanned twice")
+    text = (FIXTURES / "axa" / "certificate.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(ocr, "read_text", lambda path: text)
+    assert run.load(folder=again.parent) == dbcli.FAILED
+    assert run.output.startswith(
+        "  refused Scan 0001.pdf (AXA pension certificate): a certificate of Pillar 2 AXA"
+    )
+    assert "is committed: take it back before Scan 0001.pdf replaces it" in run.output
+    assert run("uncommit", "2") == dbcli.OK
+    assert run.load(folder=again.parent) == dbcli.OK
     assert (run.count("statement_files"), run.count("balances")) == (2, 2)
 
 
@@ -372,35 +456,36 @@ def test_certificates_come_in_with_the_statements_of_other_months(
     run.load_august()
     paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
     assert run("import", str(run.folder), str(pillar2), *paths) == dbcli.OK
-    first, *rest = run.output.splitlines(keepends=True)
-    assert first.startswith("September 2026 for Lukas: 6 statements reconciled, ")
-    assert "".join(rest[:3]) == SERVISA_READ + AXA_READ
-    assert rest[-3:] == [
-        "Next: finanze commit 2026-09\n",
-        "Next: finanze commit 2026-01\n",
-        "Next: finanze commit 2026-03\n",
-    ]
+    assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
+    assert "  staged Scan 0001.pdf (AXA pension certificate)\n" in run.output
+    assert "  staged Dokument.pdf (Servisa pension certificate)\n" in run.output
+    assert SERVISA_READ + AXA_READ in run.output
+    assert run.output.endswith("Next: finanze commit\n")
+    assert run("commit") == dbcli.OK
 
-    # A certificate dated inside the months the statements cover needs no commit of its own.
+    # A certificate dated inside the days the statements cover is a statement like the others.
     text = (FIXTURES / "axa" / "certificate.txt").read_text(encoding="utf-8")
     monkeypatch.setattr(ocr, "read_text", lambda path: text.replace("01.03.2026", "15.09.2026"))
     scan = pillar2 / "Scan 0001.pdf"
     assert run("import", str(run.folder), str(scan), *paths) == dbcli.OK
     assert "Pillar 2 AXA of Lukas: 35,802.00 CHF on 2026-09-15, " in run.output
     assert run.output.count("Next: ") == 1
-    assert run.output.endswith("Next: finanze commit 2026-09\n")
-    assert run("commit", "2026-09") == dbcli.OK
+    assert run("commit") == dbcli.OK
 
 
-def test_a_certificate_that_cannot_be_read_stores_nothing(
+def test_a_certificate_that_cannot_be_read_is_refused_and_stores_nothing(
     run: Run, pillar2: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     text = (FIXTURES / "servisa" / "certificate.txt").read_text(encoding="utf-8")
     monkeypatch.setattr(ocr, "read_text", lambda path: text.replace("3'579.40", "3'579.4O"))
     paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
     assert run("import", str(run.folder), str(pillar2), *paths) == dbcli.FAILED
-    assert run.output.startswith("error: Dokument.pdf: ")
-    assert (run.count("statement_files"), run.count("balances")) == (0, 0)
+    assert "  refused Dokument.pdf (not read): cannot read amount" in run.output
+    assert run.count("balances") > 0  # the statements of the folder were staged all the same
+    conn = db.connect(run.database)
+    scans = conn.execute("SELECT count(*) FROM statement_files WHERE source IN ('axa', 'servisa')")
+    assert scans.fetchone()[0] == 0
+    conn.close()
 
 
 def test_a_path_that_does_not_exist_is_reported(run: Run) -> None:
@@ -408,30 +493,55 @@ def test_a_path_that_does_not_exist_is_reported(run: Run) -> None:
     assert run.output == f"error: {run.folder / 'nowhere'}: no such file or folder\n"
 
 
-def test_a_range_must_run_forwards(run: Run) -> None:
-    assert run("commit", "2026-09", "2026-07") == dbcli.FAILED
-    assert run.output == "error: 2026-07 is before 2026-09\n"
+def test_nothing_staged_is_said_by_commit(run: Run) -> None:
+    assert run("commit") == dbcli.OK
+    assert run.output == "Nothing is staged for Lukas.\n"
+    assert not (run.database.parent / "backups").exists() or not list(
+        (run.database.parent / "backups").iterdir()
+    )
 
 
-def test_a_month_that_is_not_staged_cannot_be_committed(run: Run) -> None:
-    assert run("commit", "2026-08") == dbcli.FAILED
-    assert run.output == "error: nothing is staged for Lukas in 2026-08\n"
-
-
-def test_a_reconciliation_failure_stores_nothing(run: Run) -> None:
+def test_a_file_that_does_not_reconcile_is_refused_and_the_others_are_staged(run: Run) -> None:
     statement = run.folder / "Migros.csv"
     text = statement.read_text(encoding="utf-8")
     statement.write_text(text.replace("-1288.18", "-1288.19"), encoding="utf-8")
+    assert run.load_august() == dbcli.OK
     assert run.load() == dbcli.FAILED
-    assert run.output.startswith("error: ")
-    assert run.count("transactions") == 0
+    assert run.output.count("  refused ") >= 1
+    assert "  refused Migros.csv (not read): " in run.output
+    assert "  staged IBKR.csv (IBKR activity statement)\n" in run.output
+    assert "Next:" not in run.output  # an exit code of failure, and nothing to say about next
+    conn = db.connect(run.database)
+    migros = conn.execute("SELECT count(*) FROM statement_files WHERE source = 'migros'")
+    assert migros.fetchone()[0] == 0
+    conn.close()
+    assert run.count("transactions") > 1
+
+
+def test_a_file_that_needs_a_category_ends_the_import_with_a_request_to_review(
+    run: Run,
+) -> None:
+    run.rules.write_text("rules: []\n", encoding="utf-8")
+    assert run.load() == dbcli.NEEDS_REVIEW
+    assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
+
+
+def test_a_refusal_comes_before_a_request_for_categories(run: Run) -> None:
+    statement = run.folder / "Migros.csv"
+    statement.write_text(
+        statement.read_text(encoding="utf-8").replace("-1288.18", "-1288.19"), encoding="utf-8"
+    )
+    run.rules.write_text("rules: []\n", encoding="utf-8")
+    assert run.load() == dbcli.NEEDS_REVIEW
+    assert "  refused Migros.csv" in run.output
 
 
 def test_owner_and_database_can_come_from_the_command_line(run: Run, tmp_path: Path) -> None:
     run.config.unlink()
     other = tmp_path / "other.db"
     assert run.load("--owner", "Anna", "--db", str(other)) == dbcli.OK
-    assert "September 2026 for Anna" in run.output
+    assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
+    assert "108 transactions staged for Anna.\n" in run.output
     assert other.exists()
     assert not run.database.exists()
 
@@ -450,7 +560,7 @@ def test_owner_and_database_can_come_from_the_command_line(run: Run, tmp_path: P
 )
 def test_configuration_mistakes_are_reported(run: Run, config: str, message: str) -> None:
     run.config.write_text(config, encoding="utf-8")
-    assert run("reopen", "2026-09") == dbcli.FAILED
+    assert run("commit") == dbcli.FAILED
     assert message in run.output
 
 
@@ -462,17 +572,17 @@ def test_a_person_without_patterns_is_fine(run: Run) -> None:
     assert run.load() == dbcli.OK
 
 
-def test_the_month_must_look_like_a_month(run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_statement_is_named_by_its_number(run: Run, capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
-        run("commit", "September")
-    assert "'September' is not a month like 2026-09" in capsys.readouterr().err
+        run("uncommit", "September")
+    assert "invalid int value: 'September'" in capsys.readouterr().err
 
 
 def test_the_main_command_hands_database_commands_over(run: Run) -> None:
     out = io.StringIO()
-    argv = ["reopen", "2026-09", "--config", str(run.config)]
+    argv = ["uncommit", "1", "--config", str(run.config)]
     assert cli.main(argv, out=out) == dbcli.FAILED
-    assert out.getvalue() == "error: nothing is staged for Lukas in 2026-09\n"
+    assert out.getvalue() == "error: Lukas has no statement 1\n"
 
 
 @pytest.fixture
@@ -480,7 +590,7 @@ def closed(run: Run) -> Run:
     """August and September 2026, committed."""
     run.load_august()
     run.load()
-    assert run("commit", "2026-08", "2026-09") == dbcli.OK
+    assert run("commit") == dbcli.OK
     return run
 
 
@@ -813,17 +923,17 @@ def test_publish_copies_the_database_to_the_folder_and_says_what_went(
         assert conn.execute("SELECT count(*) FROM committed_transactions").fetchone()[0] == 110
 
 
-def test_publish_says_what_the_copy_holds_of_months_that_are_not_committed(
+def test_publish_says_what_the_copy_holds_of_statements_that_are_not_committed(
     run: Run, share: Path
 ) -> None:
     run.load_august()
     assert run("publish", str(share)) == dbcli.OK
     first, second = run.output.splitlines()
     assert first.endswith(f" bytes, 0 committed transactions, schema version {db.latest()}.")
-    assert second == "  with it: 1 transactions of 1 open month, which only the months pages show"
+    assert second == "  with it: 1 transactions of 1 staged statement, which the pages do not show"
     run.load()
     assert run("publish", str(share)) == dbcli.OK
-    assert " of 2 open months, which only the months pages show\n" in run.output
+    assert " of 7 staged statements, which the pages do not show\n" in run.output
 
 
 def test_publish_takes_the_folder_from_the_config_unless_one_is_named(
@@ -952,10 +1062,12 @@ def test_import_keeps_the_file_of_every_statement_under_its_digest(run: Run) -> 
 
 
 def test_an_import_that_stores_nothing_keeps_nothing(run: Run) -> None:
-    migros = run.folder / "Migros.csv"
-    text = migros.read_text(encoding="utf-8")
+    only = run.folder / "old" / "only"
+    only.mkdir()
+    migros = only / "Migros.csv"
+    text = (run.folder / "Migros.csv").read_text(encoding="utf-8")
     migros.write_text(text.replace("-1288.18", "-1288.19"), encoding="utf-8")
-    assert run.load() == dbcli.FAILED
+    assert run.load(folder=only) == dbcli.FAILED
     assert kept(run) == []
 
 
@@ -979,10 +1091,18 @@ def test_an_export_that_disagrees_with_a_committed_month_says_where(run: Run) ->
     lines = (run.folder / "Revolut Savings.tsv").read_text(encoding="utf-8").splitlines(True)
     savings.write_text("".join(lines), encoding="utf-8")
     assert run.load(folder=savings.parent) == dbcli.OK
-    assert run("commit", "2026-09") == dbcli.OK
+    assert run("commit") == dbcli.OK
     short = [line for line in lines if not line.startswith("Sep 29, 2026, 2:09")]
     savings.write_text("".join(short), encoding="utf-8")
     assert run.load(folder=savings.parent) == dbcli.OK
     assert "  differs: Revolut EUR 2026-09-29: " in run.output
     assert "is committed and is not in Revolut Savings.tsv\n" in run.output
-    assert "nothing was changed in the committed months: reopen them" in run.output
+    assert "nothing committed was changed: take the statement back" in run.output
+
+
+def test_keys_of_an_older_config_are_ignored(run: Run) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + "locale: it\naccounts:\n  Tastytrade: Tasty\n",
+        encoding="utf-8",
+    )
+    assert run.load() == dbcli.OK

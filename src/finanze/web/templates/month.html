@@ -1,123 +1,34 @@
 {% extends "base.html" %}
+{% from "forms.html" import choose, add_category %}
 {% block title %}{{ month.month.strftime("%B %Y") }}, {{ month.owner }}{% endblock %}
-{% macro act(name, label) %}
-{%- if not copy %}
-<form method="post" action="{{ url_for(name, owner=month.owner, month=month.month.strftime('%Y-%m')) }}">
-  <input type="hidden" name="token" value="{{ token }}">
-  <button>{{ label }}</button>
-</form>
-{%- endif %}
-{% endmacro %}
-{% macro choose(group, change) %}
-          <form method="post" action="{{ url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="choice">
-            <input type="hidden" name="token" value="{{ token }}">
-            {%- if change %}
-            <input type="hidden" name="change" value="1">
-            {%- endif %}
-            {%- for row in group.rows %}
-            <input type="hidden" name="id" value="{{ row.id }}">
-            {%- endfor %}
-            <select name="category" required aria-label="Category for {{ group.name }}">
-              <option value="">Choose</option>
-              {%- for heading, names in choices.leaves %}
-              <optgroup label="{{ heading }}">
-                {%- for name in names %}
-                <option>{{ name }}</option>
-                {%- endfor %}
-              </optgroup>
-              {%- endfor %}
-            </select>
-            {%- if can_remember and group.name %}
-            <label><input type="radio" name="remember" value="rule" checked> always (save a rule)</label>
-            <label><input type="radio" name="remember" value="rows"> just these rows</label>
-            {%- else %}
-            <input type="hidden" name="remember" value="rows">
-            <small>For these rows only.</small>
-            {%- endif %}
-            <button>Set</button>
-          </form>
-{% endmacro %}
 {% block main %}
 {%- if error %}
 <p class="error" role="alert">{{ error }}</p>
 {%- endif %}
 <section>
-  <h2>State</h2>
-  {%- if month.committed %}
-  <p>Committed on {{ month.committed_at[:10] }}.{% if not copy %} Reopen it to import its statements again.{% endif %}</p>
-  {{ act("reopen", "Reopen the month") }}
-  {%- elif month.blocked_by %}
-  <p>Open. It cannot be committed yet:</p>
-  <ul>
-    {%- for reason in month.blocked_by %}
-    <li>{{ reason }}</li>
-    {%- endfor %}
-  </ul>
-  {%- else %}
-  <p>Open, and nothing stands in the way.{% if not copy %} A copy of the database is saved first.{% endif %}</p>
-  {{ act("commit", "Commit the month") }}
-  {%- endif %}
-  {%- if copy %}
-  <p class="note">{{ copy }}</p>
-  {%- endif %}
-</section>
-<section>
   <h2>Statements</h2>
+  {%- if month.files %}
   <table class="cards">
     <thead>
-      <tr><th>Source</th><th>File</th><th>Covers</th><th>Reconciled</th><th class="number">Transactions</th></tr>
+      <tr><th>Kind</th><th>File</th><th>Covers</th><th>Reconciled</th><th class="number">Transactions</th></tr>
     </thead>
     <tbody>
       {%- for file in month.files %}
       <tr>
-        <td class="lead">{{ file.source|replace("_", " ") }}</td>
+        <td class="lead">{{ file.label }}</td>
         <td class="wide" data-label="File"><a href="{{ url_for('statement', number=file.id) }}">{{ file.filename }}</a></td>
         <td class="date wide" data-label="Covers">{{ file.first }} to {{ file.last }}</td>
         <td data-label="Reconciled">{{ "yes" if file.checked else "nothing to check against" }}</td>
         <td class="number" data-label="Transactions">{{ file.transactions }}</td>
       </tr>
       {%- endfor %}
-      {%- for source in month.missing %}
-      <tr>
-        <td class="lead">{{ source|replace("_", " ") }}</td>
-        <td colspan="4" class="wide">No statement for this month, though there was one for the month before.</td>
-      </tr>
-      {%- endfor %}
     </tbody>
   </table>
+  {%- else %}
+  <p>No committed statement covers this month.</p>
+  {%- endif %}
 </section>
-{%- if month.groups %}
-<section>
-  <h2>Need a category</h2>
-  <table class="cards">
-    <thead>
-      <tr><th>Counterparty or description</th><th>Rows</th><th>Category</th></tr>
-    </thead>
-    <tbody>
-      {%- for group in month.groups %}
-      <tr>
-        <td class="lead wide">{{ group.name or "(no text)" }}<small>{{ "received" if group.incoming else "paid" }}{% if group.rows[0].description != group.name %} · {{ group.rows[0].description }}{% endif %}</small></td>
-        <td class="wide">
-          {%- for row in group.rows %}
-          <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
-          {%- endfor %}
-        </td>
-        <td class="wide">
-          {%- if copy %}
-          Not set here.
-          {%- elif month.committed %}
-          Reopen the month to set it.
-          {%- else %}
-          {{ choose(group, false) }}
-          {%- endif %}
-        </td>
-      </tr>
-      {%- endfor %}
-    </tbody>
-  </table>
-</section>
-{%- endif %}
-{%- if not copy and not month.committed %}
+{%- if not copy %}
 {%- if month.changeable %}
 <section>
   <h2>Change a category</h2>
@@ -137,7 +48,7 @@
             {%- endfor %}
           </td>
           <td data-label="Now">{{ group.category }}</td>
-          <td class="wide">{{ choose(group, true) }}</td>
+          <td class="wide">{{ choose(group, true, url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')), month.owner, token, choices, can_remember) }}</td>
         </tr>
         {%- endfor %}
       </tbody>
@@ -148,20 +59,7 @@
 {%- if can_remember %}
 <section>
   <h2>Add a category</h2>
-  <form method="post" action="{{ url_for('category', owner=month.owner, month=month.month.strftime('%Y-%m')) }}" class="filter">
-    <input type="hidden" name="token" value="{{ token }}">
-    <label>Name <input name="name" required maxlength="60" size="24"></label>
-    <label>Under
-      <select name="under">
-        <option value="uscite:">Expenses, a group of its own</option>
-        {%- for name in choices.groups %}
-        <option value="uscite:{{ name }}">Expenses, {{ name }}</option>
-        {%- endfor %}
-        <option value="entrate:">Income</option>
-      </select>
-    </label>
-    <button>Add</button>
-  </form>
+  {{ add_category(url_for('category', owner=month.owner, month=month.month.strftime('%Y-%m')), month.owner, token, choices) }}
   <p class="note">For a row that fits none of the categories. It is there for every import from now on.</p>
 </section>
 {%- endif %}
@@ -181,7 +79,7 @@
       {%- endfor %}
     </tbody>
   </table>
-  <p class="note">By booking date, as the month is closed: a card purchase counts in the month of its invoice.</p>
+  <p class="note">By booking date: a card purchase counts in the month of its invoice. Statements are committed when they come, not by month, so a month can be partly there.</p>
   {%- else %}
   <p>No categorized transactions are booked in this month.</p>
   {%- endif %}

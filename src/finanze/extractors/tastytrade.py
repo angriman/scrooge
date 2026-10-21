@@ -10,7 +10,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import parse_decimal, parse_iso_date, read_table, whole_months
+from finanze.extractors.common import (
+    day_span,
+    month_start,
+    parse_decimal,
+    parse_iso_date,
+    read_table,
+)
 from finanze.models import ControlTotal, Extraction, Kind, SecurityTrade, Transaction
 
 ACCOUNT = "Tastytrade"
@@ -97,11 +103,12 @@ def extract(content: str, source_file: str) -> Extraction:
                     leg_kind is Kind.INCOME and _is_maturity(row)
                 )
                 transactions.append(_security_trade(txn, row, n) if is_trade else txn)
-    first, last = whole_months(
+    first, last = day_span(
         (parse_iso_date(row["Date"], "Tastytrade Date") for row in rows), "Tastytrade export"
     )
     return Extraction(
-        month=first,
+        month=month_start(first),
+        start=first,
         transactions=tuple(transactions),
         controls=(ControlTotal(ACCOUNT, CURRENCY, total),),
         end=last,
@@ -166,7 +173,7 @@ def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
     if row["Type"] in {"Trade", "Receive Deliver"}:
         if row["Instrument Type"] in _SECURITIES:
             # Principal back. The export has no cost to split the interest out (D13): the
-            # database does it from the stored purchases, the paste files book it whole.
+            # database does it from the stored purchases.
             if row["Sub Type"] == "Maturity":
                 return Kind.INCOME, "Investimenti"
             return Kind.SECURITY_TRADE, "Investimenti"

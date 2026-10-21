@@ -5,8 +5,9 @@ from decimal import Decimal
 
 import pytest
 
-from finanze import monthclose, months
+from finanze import months, staging
 from finanze.models import CashBalance, Kind
+from finanze.router import LABELS
 from finanze.storage import db
 from tests.storage.helpers import (
     AUGUST,
@@ -19,7 +20,6 @@ from tests.storage.helpers import (
     bill,
     certificate,
     certified,
-    close,
     migros,
     statement,
     tastytrade,
@@ -27,101 +27,173 @@ from tests.storage.helpers import (
 )
 
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
-LUKAS = [
+SEP = {"source_file": "migros sep.csv"}
+AUGUST_ROWS = [
     txn("-45.20", date=date(2026, 8, 3), source_ref="1"),
     txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Stipendio"),
-    txn("-80", date=date(2026, 9, 5), source_ref="3", category=""),
+]
+SEPTEMBER_ROWS = [
+    txn("-80", date=date(2026, 9, 5), source_ref="3", category="", **SEP),
     # Bought on the last day of August, booked in September.
-    txn("-15", date=date(2026, 8, 31), booking_date=date(2026, 9, 2), source_ref="4"),
-    txn("-70", date=date(2026, 9, 8), source_ref="5", kind=Kind.INTERNAL, category=""),
-    txn("-20", date=date(2026, 9, 9), source_ref="6", category="", counterparty="Kiosk"),
+    txn("-15", date=date(2026, 8, 31), booking_date=date(2026, 9, 2), source_ref="4", **SEP),
+    txn("-70", date=date(2026, 9, 8), source_ref="5", kind=Kind.INTERNAL, category="", **SEP),
+    txn("-20", date=date(2026, 9, 9), source_ref="6", category="", counterparty="Kiosk", **SEP),
 ]
 LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti", **EUR)]
+SEPTEMBER_FILE = 3
 
 
 @pytest.fixture
 def conn() -> Iterator[sqlite3.Connection]:
-    """Lukas: August committed, September open with two rows to categorize. Anna: August open."""
+    """Lukas: August committed, September staged with two rows to categorize.
+    Anna: August staged."""
     connection = db.connect(":memory:")
     db.migrate(connection, CLOSED_AT)
-    span = (AUGUST, date(2026, 9, 30))
-    close(connection, OWNER, span, AUGUST, ("migros", LUKAS), ("revolut", LUKAS_EUR))
-    monthclose.stage(connection, batch(migros("0", "-60", month=AUGUST), owner=PARTNER), CLOSED_AT)
+    august = statement(
+        "migros",
+        AUGUST_ROWS,
+        [CashBalance("Migros", "CHF", Decimal(0), Decimal("5954.80"))],
+        month=AUGUST,
+    )
+    revolut = statement(
+        "revolut",
+        LUKAS_EUR,
+        [CashBalance("Revolut EUR", "EUR", Decimal(0), Decimal(-30))],
+        month=AUGUST,
+    )
+    staging.stage(connection, batch(august, revolut, month=AUGUST), CLOSED_AT)
+    staging.commit(connection, owner=OWNER, now=CLOSED_AT)
+    balance = CashBalance("Migros", "CHF", Decimal("5954.80"), Decimal("5769.80"))
+    september = statement("migros", SEPTEMBER_ROWS, [balance], month=SEPTEMBER)
+    staging.stage(connection, batch(september), CLOSED_AT)
+    staging.stage(connection, batch(migros("0", "-60", month=AUGUST), owner=PARTNER), CLOSED_AT)
     yield connection
     connection.close()
 
 
-def test_months_are_listed_newest_first_with_what_they_hold(conn: sqlite3.Connection) -> None:
-    assert months.listing(conn) == (
-        months.MonthLine(OWNER, SEPTEMBER, False, 2, 4, 2),
-        months.MonthLine(PARTNER, AUGUST, False, 1, 1, 0),
-        months.MonthLine(OWNER, AUGUST, True, 2, 3, 0),
-    )
-    assert [line.month for line in months.listing(conn, PARTNER)] == [AUGUST]
-
-
-def test_an_open_month_lists_its_statements_and_what_needs_a_category(
+def test_months_that_committed_statements_cover_are_listed_newest_first(
     conn: sqlite3.Connection,
 ) -> None:
-    september = months.checklist(conn, OWNER, SEPTEMBER)
-    assert (september.committed, september.committed_at) == (False, None)
-    assert september.files == (
-        months.File(1, "migros", "migros.csv", AUGUST, date(2026, 9, 30), True, 4),
-        months.File(2, "revolut", "revolut.tsv", AUGUST, date(2026, 9, 30), True, 0),
+    assert months.listing(conn) == (months.MonthLine(OWNER, AUGUST, 2, 3),)
+    assert months.listing(conn, PARTNER) == ()
+    staging.commit(conn, owner=PARTNER, now=CLOSED_AT)
+    assert [line.month for line in months.listing(conn, PARTNER)] == [AUGUST]
+    # The rest of September is committed once the person categorizes it.
+    conn.execute("UPDATE transactions SET category_id = 1, category_source = 'manual'")
+    staging.commit(conn, owner=OWNER, now=CLOSED_AT)
+    assert months.listing(conn) == (
+        months.MonthLine(OWNER, SEPTEMBER, 1, 4),
+        months.MonthLine(PARTNER, AUGUST, 1, 1),
+        months.MonthLine(OWNER, AUGUST, 2, 3),
     )
-    first, second = september.uncategorized
+
+
+def test_a_draft_lists_the_staged_statements_and_what_needs_a_category(
+    conn: sqlite3.Connection,
+) -> None:
+    draft = months.draft(conn, OWNER)
+    assert draft.files == (
+        months.File(
+            SEPTEMBER_FILE,
+            "migros",
+            "migros sep.csv",
+            SEPTEMBER,
+            date(2026, 9, 30),
+            True,
+            4,
+            committed=False,
+        ),
+    )
+    first, second = draft.uncategorized
     assert first == months.Pending(
-        first.id, date(2026, 9, 5), "Migros", Decimal(-80), "CHF", "", "KONSUM"
+        first.id, date(2026, 9, 5), "Migros", Decimal(-80), "CHF", "", "KONSUM", statement=3
     )
     assert (second.date, second.amount, second.counterparty) == (
         date(2026, 9, 9),
         Decimal(-20),
         "Kiosk",
     )
+    assert first.waiting
     assert first.id != second.id
-    assert september.totals == (months.CategoryTotal("uscite", "Spesa", "CHF", 1, Decimal(-15)),)
-    assert september.blocked_by == ("2 transactions still need a category",)
-
-
-def test_a_committed_month_says_when_and_adds_up_by_booking_date(conn: sqlite3.Connection) -> None:
-    august = months.checklist(conn, OWNER, AUGUST)
-    assert (august.committed, august.committed_at) == (True, "2026-10-08T12:00:00+00:00")
-    assert august.totals == (
-        months.CategoryTotal("uscite", "Spesa", "CHF", 1, Decimal("-45.2")),
-        months.CategoryTotal("uscite", "Ristoranti", "EUR", 1, Decimal(-30)),
-        months.CategoryTotal("entrate", "Stipendio", "CHF", 1, Decimal(6000)),
+    assert len(draft.rows) == 3  # not the leg of the card bill, which no category is asked for
+    assert draft.totals == (
+        months.CategoryTotal("uscite", "Spesa", "CHF", 1, Decimal(-15)),
+        months.CategoryTotal("", "", "CHF", 2, Decimal(-100)),  # the waiting rows last
     )
-    assert august.uncategorized == ()
-    assert august.blocked_by == ()
-    assert august.missing == ()
+    assert draft.gaps == ()
+    assert draft.blocked_by == ("2 transactions still need a category",)
 
 
-def test_a_source_seen_the_month_before_and_absent_now_is_missing(
-    conn: sqlite3.Connection,
-) -> None:
-    card = statement(
-        "swisscard",
-        [txn("-10", date=date(2026, 10, 3), account="Swisscard", source_file="card.pdf")],
-        filename="card.pdf",
-        month=OCTOBER,
-    )
-    monthclose.stage(conn, batch(card, month=OCTOBER), CLOSED_AT)
-    october = months.checklist(conn, OWNER, OCTOBER)
-    assert [file.source for file in october.files] == ["swisscard"]
-    assert october.files[0].checked is False
-    assert october.missing == ("migros", "revolut")
-    assert months.checklist(conn, OWNER, SEPTEMBER).missing == ()
+def test_a_draft_of_nobody_or_of_nothing_staged_is_empty(conn: sqlite3.Connection) -> None:
+    staging.commit(conn, owner=PARTNER, now=CLOSED_AT)
+    for owner in (PARTNER, "Zoe"):
+        draft = months.draft(conn, owner)
+        assert (draft.files, draft.rows, draft.totals, draft.gaps) == ((), (), (), ())
+        assert draft.blocked_by == ()
 
 
 def test_one_row_to_categorize_is_said_in_the_singular(conn: sqlite3.Connection) -> None:
     row = txn("-5", date=date(2026, 9, 3), category="")
     lone = statement("migros", [row], [CashBalance("Migros", "CHF", Decimal(-60), Decimal(-65))])
-    monthclose.stage(conn, batch(lone, owner=PARTNER), CLOSED_AT)
-    september = months.checklist(conn, PARTNER, SEPTEMBER)
-    assert september.blocked_by == ("1 transaction still needs a category",)
+    staging.stage(conn, batch(lone, owner=PARTNER), CLOSED_AT)
+    assert months.draft(conn, PARTNER).blocked_by == ("1 transaction still needs a category",)
 
 
-def test_a_missing_statement_blocks_and_is_said(conn: sqlite3.Connection) -> None:
+def test_coverage_says_how_far_each_account_is_committed_and_staged(
+    conn: sqlite3.Connection,
+) -> None:
+    covered = months.coverage(conn)
+    assert covered == (
+        months.Coverage(PARTNER, "Migros", "migros", None, date(2026, 8, 31)),
+        months.Coverage(OWNER, "Migros", "migros", date(2026, 8, 31), date(2026, 9, 30)),
+        months.Coverage(OWNER, "Revolut EUR", "revolut", date(2026, 8, 31), None),
+    )
+    assert months.coverage(conn, OWNER) == covered[1:]
+    assert [line.label for line in covered[1:]] == [LABELS["migros"], LABELS["revolut"]]
+    staging.commit(conn, owner=PARTNER, now=CLOSED_AT)
+    assert months.coverage(conn, PARTNER) == (
+        months.Coverage(PARTNER, "Migros", "migros", date(2026, 8, 31), None),
+    )
+
+
+def test_a_month_adds_up_what_is_committed_by_booking_date(conn: sqlite3.Connection) -> None:
+    august = months.checklist(conn, OWNER, AUGUST)
+    assert august.files == (
+        months.File(1, "migros", "migros.csv", AUGUST, date(2026, 8, 31), True, 2),
+        months.File(2, "revolut", "revolut.tsv", AUGUST, date(2026, 8, 31), True, 1),
+    )
+    assert august.totals == (
+        months.CategoryTotal("uscite", "Spesa", "CHF", 1, Decimal("-45.2")),
+        months.CategoryTotal("uscite", "Ristoranti", "EUR", 1, Decimal(-30)),
+        months.CategoryTotal("entrate", "Stipendio", "CHF", 1, Decimal(6000)),
+    )
+    assert [row.category for row in august.categorized] == ["Spesa", "Ristoranti", "Stipendio"]
+    assert all(row.changeable and not row.waiting for row in august.categorized)
+    # September is staged, not committed: the month shows nothing of it yet.
+    september = months.checklist(conn, OWNER, SEPTEMBER)
+    assert (september.files, september.totals, september.categorized) == ((), (), ())
+
+
+def test_the_rows_of_a_month_are_grouped_per_counterparty_direction_and_category(
+    conn: sqlite3.Connection,
+) -> None:
+    groups = months.checklist(conn, OWNER, AUGUST).changeable
+    found = [(g.name, g.incoming, g.category, [str(row.amount) for row in g.rows]) for g in groups]
+    assert found == [
+        ("KONSUM", False, "Spesa", ["-45.2"]),
+        ("KONSUM", False, "Ristoranti", ["-30"]),
+        ("KONSUM", True, "Stipendio", ["6000"]),
+    ]
+
+
+def test_a_month_of_nobody_is_refused(conn: sqlite3.Connection) -> None:
+    with pytest.raises(staging.NothingStagedError, match="nobody called Zoe"):
+        months.checklist(conn, "Zoe", AUGUST)
+    quiet = months.checklist(conn, PARTNER, date(2020, 1, 1))
+    assert (quiet.files, quiet.totals) == ((), ())
+
+
+def test_a_missing_statement_is_said_and_blocks(conn: sqlite3.Connection) -> None:
     # Anna's bank closed August at -60; a statement for October that starts from 100.
     later = statement(
         "migros",
@@ -129,24 +201,16 @@ def test_a_missing_statement_blocks_and_is_said(conn: sqlite3.Connection) -> Non
         [CashBalance("Migros", "CHF", Decimal(100), Decimal(99))],
         month=OCTOBER,
     )
-    monthclose.stage(conn, batch(later, owner=PARTNER, month=OCTOBER), CLOSED_AT)
-    (gap,) = months.checklist(conn, PARTNER, OCTOBER).gaps
+    staging.stage(conn, batch(later, owner=PARTNER, month=OCTOBER), CLOSED_AT)
+    (gap,) = months.draft(conn, PARTNER).gaps
     assert gap.startswith("Migros (CHF): no statement covers the days after 2026-08-31")
-    assert months.checklist(conn, PARTNER, AUGUST).blocked_by == (gap,)
+    assert months.draft(conn, PARTNER).blocked_by == (gap,)
 
 
 def test_statements_that_disagree_are_said_too(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE balances SET amount_nano = amount_nano + 1 WHERE date = '2026-09-30'")
-    (gap,) = months.checklist(conn, OWNER, SEPTEMBER).gaps
-    assert "Migros" in gap or "Revolut" in gap
-
-
-@pytest.mark.parametrize(("owner", "month"), [("Zoe", AUGUST), (PARTNER, date(2020, 1, 1))])
-def test_a_month_nobody_staged_is_refused(
-    conn: sqlite3.Connection, owner: str, month: date
-) -> None:
-    with pytest.raises(monthclose.NothingStagedError, match=f"nothing is staged for {owner}"):
-        months.checklist(conn, owner, month)
+    (gap,) = months.draft(conn, OWNER).gaps
+    assert "Migros" in gap
 
 
 def test_waiting_rows_are_grouped_by_counterparty_and_direction(conn: sqlite3.Connection) -> None:
@@ -158,50 +222,50 @@ def test_waiting_rows_are_grouped_by_counterparty_and_direction(conn: sqlite3.Co
         txn("-9", date=date(2026, 10, 8), source_ref="4", counterparty="Kiosk", **card_row),
     ]
     card = statement("swisscard", more, filename="card.pdf", month=OCTOBER)
-    monthclose.stage(conn, batch(card, month=OCTOBER), CLOSED_AT)
-    groups = months.checklist(conn, OWNER, OCTOBER).groups
-    found = [(g.name, g.incoming, [str(row.amount) for row in g.rows]) for g in groups]
+    staging.stage(conn, batch(card, month=OCTOBER), CLOSED_AT)
+    found = [
+        (g.name, g.incoming, [str(row.amount) for row in g.rows])
+        for g in months.draft(conn, OWNER).groups
+    ]
     assert found == [
-        ("KONSUM", False, ["-80"]),
-        ("Kiosk", False, ["-7", "-9"]),
+        ("KONSUM", False, ["-80", "-80"]),
+        ("Kiosk", False, ["-20", "-7", "-9"]),
         ("KONSUM", True, ["3"]),
     ]
 
 
 def test_a_bill_without_its_purchase_blocks_and_is_said(conn: sqlite3.Connection) -> None:
     sold = bill("10000", "-10000", date(2026, 9, 16), kind=Kind.INCOME)
-    monthclose.stage(conn, tastytrade(sold), CLOSED_AT)
-    september = months.checklist(conn, OWNER, SEPTEMBER)
-    (reason,) = [gap for gap in september.gaps if "912797YY2" in gap]
+    staging.stage(conn, tastytrade(sold), CLOSED_AT)
+    draft = months.draft(conn, OWNER)
+    (reason,) = [gap for gap in draft.gaps if "912797YY2" in gap]
     assert reason.startswith("Tastytrade: 912797YY2 matured or was sold on 2026-09-16")
-    assert reason in september.blocked_by
+    assert reason in draft.blocked_by
 
 
-def test_a_pension_certificate_is_a_statement_of_its_month_and_expected_in_no_other(
-    conn: sqlite3.Connection,
-) -> None:
-    before = months.checklist(conn, OWNER, SEPTEMBER)
-    august = months.checklist(conn, OWNER, AUGUST)
+def test_a_pension_certificate_is_a_statement_of_its_day(conn: sqlite3.Connection) -> None:
+    before = months.draft(conn, OWNER)
     scan = certificate(date(2026, 9, 1), "35802.00", filename="scan.pdf")
-    monthclose.stage(conn, certified(scan), CLOSED_AT)
-    september = months.checklist(conn, OWNER, SEPTEMBER)
-    assert september.files == (
-        months.File(september.files[0].id, "axa", "scan.pdf", SEPTEMBER, SEPTEMBER, True, 0),
+    staging.stage(conn, certified(scan), CLOSED_AT)
+    draft = months.draft(conn, OWNER)
+    assert draft.files == (
+        months.File(5, "axa", "scan.pdf", SEPTEMBER, SEPTEMBER, True, 0, committed=False),
         *before.files,
     )
-    assert (september.missing, september.gaps) == ((), ())
-    assert september.blocked_by == before.blocked_by
-    assert months.checklist(conn, OWNER, AUGUST) == august
-    assert months.listing(conn, OWNER) == (
-        months.MonthLine(OWNER, SEPTEMBER, False, 3, 4, 2),
-        months.MonthLine(OWNER, AUGUST, True, 2, 3, 0),
-    )
-    # October has the card alone: the bank and Revolut are missing, the pension fund is not.
-    card = statement(
-        "swisscard",
-        [txn("-10", date=date(2026, 10, 3), account="Swisscard", source_file="card.pdf")],
-        filename="card.pdf",
-        month=OCTOBER,
-    )
-    monthclose.stage(conn, batch(card, month=OCTOBER), CLOSED_AT)
-    assert months.checklist(conn, OWNER, OCTOBER).missing == ("migros", "revolut")
+    assert draft.files[0].label == LABELS["axa"]
+    assert (draft.gaps, draft.blocked_by) == (before.gaps, before.blocked_by)
+    assert months.listing(conn, OWNER) == (months.MonthLine(OWNER, AUGUST, 2, 3),)
+
+
+def test_a_statement_says_whether_it_is_committed_and_what_holds_it(
+    conn: sqlite3.Connection,
+) -> None:
+    assert months.statement(conn, 99) is None
+    staged = months.statement(conn, SEPTEMBER_FILE)
+    assert staged is not None
+    assert (staged.committed_at, staged.held_by, staged.transactions) == (None, (), 4)
+    assert (staged.label, staged.months) == (LABELS["migros"], (SEPTEMBER,))
+    committed = months.statement(conn, 1)
+    assert committed is not None
+    assert committed.committed_at == "2026-12-20T12:00:00+00:00"
+    assert committed.held_by == ()  # nothing committed lies after it

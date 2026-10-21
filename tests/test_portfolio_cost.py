@@ -10,14 +10,14 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import monthclose, networth, portfolio
+from finanze import networth, portfolio
 from finanze.models import Holding, Kind, SecurityTrade
 from finanze.networth import BILLS, ETFS, PENSION, STOCKS, LotTrade
 from finanze.portfolio import Portfolio, Position
 from finanze.storage import db, holdings, store
 from finanze.storage.bills import Event, fifo_costs, open_lots
 from finanze.storage.money import from_nano
-from tests.storage.helpers import OCTOBER, OWNER, PARTNER, SEPTEMBER
+from tests.storage.helpers import OCTOBER, OWNER, PARTNER, take_back
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate
 from tests.test_portfolio import agrees_with_net_worth, family
 
@@ -151,7 +151,7 @@ def test_a_lot_that_came_in_without_a_price_has_no_known_cost_while_it_is_held(
     [position] = agrees_with_net_worth(conn, None, "USD").positions
     assert (position.quantity, position.cost_native, position.gain_native) == (D(15), None, None)
     # once those shares are sold, the oldest first, what is left was all bought
-    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
+    take_back(conn, OWNER)
     close(conn, ibkr(*rows, bought("WIDG", "-10", "530", day(20))))
     conn.execute("UPDATE trades SET price = NULL WHERE quantity = '10'")
     [position] = agrees_with_net_worth(conn, None, "USD").positions

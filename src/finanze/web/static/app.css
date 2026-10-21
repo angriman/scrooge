@@ -653,3 +653,39 @@ figcaption {
     text-align: right;
   }
 }
+
+/* ---- the draft of the import page */
+
+[hidden] {
+  display: none !important;
+}
+
+tr.changed {
+  background: var(--soft);
+  box-shadow: inset 3px 0 0 #2a78d6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+button.primary {
+  font-weight: 600;
+}
+
+nav a.import {
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.done {
+  border-left: 3px solid #1baf7a;
+  padding-left: 0.6rem;
+}
+
+tr.behind td strong {
+  color: #c0392b;
+}

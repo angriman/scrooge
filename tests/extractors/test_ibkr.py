@@ -46,6 +46,15 @@ def test_a_statement_of_several_months_covers_them_all() -> None:
     check_balances(longer)
 
 
+def test_a_period_that_starts_and_ends_inside_a_month_is_kept_exactly() -> None:
+    odd = CSV.replace("September 1, 2026 - September 30, 2026", "August 20, 2026 - October 3, 2026")
+    assert odd != CSV
+    part = ibkr.extract(odd, "part.csv")
+    assert part.period == (date(2026, 8, 20), date(2026, 10, 3))
+    assert part.month == date(2026, 8, 1)
+    check_balances(part)
+
+
 def test_month_is_the_first_day_of_the_statement_period(result: Extraction) -> None:
     assert result.month == date(2026, 9, 1)
 
@@ -446,8 +455,7 @@ def _without(prefix: str) -> str:
 @pytest.mark.parametrize(
     ("content", "message"),
     [
-        (CSV.replace("September 30, 2026", "September 29, 2026"), "calendar month"),
-        (CSV.replace("September 1, 2026", "September 2, 2026"), "calendar month"),
+        (CSV.replace("September 1, 2026", "October 2, 2026"), "ends before it starts"),
         (CSV.replace("September 1, 2026 - ", "September 1, 2026 to "), "period"),
         (CSV.replace("September 1, 2026", "Septembre 1, 2026"), "period"),
         (_without("Statement,Data,Period"), "period"),

@@ -42,9 +42,15 @@ def test_other_currencies_get_their_own_account() -> None:
     assert {(t.account, t.currency) for t in eur.transactions} == {("Migros EUR", "EUR")}
 
 
-def test_value_date_is_used_unless_it_falls_outside_the_period(result: Extraction) -> None:
-    assert _row(result, "3")[0] == date(2026, 9, 4)  # booked 07.09, value 04.09
-    assert _row(result, "2")[0] == date(2026, 9, 1)  # value 30.08: booking date instead
+def test_the_iban_is_the_account_id(result: Extraction) -> None:
+    iban = "CH" + "0" * 19
+    assert result.account_id == iban
+    assert migros.extract(OLDER, source_file="o.csv").account_id == iban
+
+
+def test_the_booking_date_is_the_day_the_balance_books_the_row(result: Extraction) -> None:
+    assert _row(result, "3")[0] == date(2026, 9, 7)  # booked 07.09, value 04.09
+    assert _row(result, "2")[0] == date(2026, 9, 1)  # value 30.08
 
 
 def test_the_real_date_is_always_the_value_date(result: Extraction) -> None:
@@ -110,9 +116,9 @@ def test_bom_is_ignored(result: Extraction) -> None:
     [
         (CSV.replace('"Data";"Testo', '"Datum";"Text'), "no transaction table"),
         (CSV.replace('"Importo";"Saldo";', '"Importo";'), "missing column"),
-        (CSV.replace('"2026-09-30"', '"2026-09-29"'), "covers no whole month"),
-        (CSV.replace('"2026-09-01"', '"2026-09-02"'), "start on the first day"),
-        (CSV.replace('"2026-09-01"', '"2026-10-01"'), "start on the first day"),
+        (CSV.replace('"2026-09-30"', '"2026-09-29"'), "outside"),
+        (CSV.replace('"2026-09-01"', '"2026-09-02"'), "outside"),
+        (CSV.replace('"2026-09-01"', '"2026-10-01"'), "ends before it starts"),
         (CSV.replace('"Estratto conto da:";"2026-09-01"\n', ""), "date"),
         (CSV.replace('"Saldo:";"CHF 9000.00"', '"Saldo:";"9000.00"'), "currency"),
         (CSV.replace('"Saldo:";"CHF 9000.00"\n', ""), "currency"),
@@ -129,18 +135,40 @@ def test_malformed_statements_raise(content: str, message: str) -> None:
         migros.extract(content, source_file="migros.csv")
 
 
-def test_a_statement_of_several_months_ends_at_the_last_whole_month() -> None:
-    # Exported from August on the 12th of October: it counts for August and September.
+def test_a_statement_ends_on_the_day_it_prints() -> None:
+    # Exported from August on the 12th of October: it covers those days exactly.
     longer = CSV.replace('"2026-09-01"', '"2026-08-01"').replace('"2026-09-30"', '"2026-10-12"')
     result = migros.extract(longer, source_file="m.csv")
-    assert result.period == (date(2026, 8, 1), date(2026, 9, 30))
+    assert result.period == (date(2026, 8, 1), date(2026, 10, 12))
     check_balances(result)
-    assert {t.source_ref: t.booking_date for t in result.transactions}["2"] == date(2026, 8, 30)
+    assert {t.source_ref: t.booking_date for t in result.transactions}["2"] == date(2026, 9, 1)
 
 
-def test_a_row_after_the_last_whole_month_is_refused() -> None:
+def test_a_partial_month_covers_the_days_it_prints_and_reconciles() -> None:
+    part = CSV.replace('"2026-09-01"\n', '"2026-09-05"\n', 1).replace(
+        '"2026-09-30"', '"2026-09-20"'
+    )
+    # keep only the rows booked from the 5th to the 20th: the first row starts the chain
+    lines = part.splitlines()
+    head = next(i for i, line in enumerate(lines) if line.startswith('"Data"'))
+    kept = [
+        line for line in lines[head + 1 :] if line and "2026-09-05" <= _iso(line) <= "2026-09-20"
+    ]
+    assert kept
+    result = migros.extract("\n".join([*lines[: head + 1], *kept]) + "\n", source_file="m.csv")
+    assert result.period == (date(2026, 9, 5), date(2026, 9, 20))
+    assert result.month == date(2026, 9, 1)
+    check_balances(result)
+
+
+def _iso(line: str) -> str:
+    day, month, year = line.split(";", maxsplit=1)[0].strip('"').split(".")
+    return f"{year}-{month}-{day}"
+
+
+def test_a_row_after_the_printed_end_is_refused() -> None:
     cut = CSV.replace('"2026-09-01"', '"2026-08-01"').replace('"2026-09-30"', '"2026-09-12"')
-    with pytest.raises(ExtractionError, match="export it up to a month end"):
+    with pytest.raises(ExtractionError, match="outside the period"):
         migros.extract(cut, source_file="m.csv")
 
 
@@ -149,7 +177,7 @@ OLDER = (FIXTURES / "migros" / "older.csv").read_text(encoding="utf-8")
 
 def test_the_older_layout_is_read_and_put_back_in_balance_order() -> None:
     result = migros.extract(OLDER, source_file="migros.csv")
-    assert result.period == (date(2023, 5, 1), date(2023, 5, 31))  # exported on 1 June
+    assert result.period == (date(2023, 5, 1), date(2023, 6, 1))  # exported on 1 June
     assert result.balances == (
         CashBalance("Migros", "CHF", Decimal("5000.00"), Decimal("8157.65")),
     )

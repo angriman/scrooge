@@ -1,4 +1,4 @@
-"""Normalized transaction: the contract between extractors and sheet writers."""
+"""Normalized transaction: the contract between extractors and the database."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class Kind(StrEnum):
     TAX = "tax"
     SECURITY_TRADE = "security_trade"
     # Moves money inside one sheet account (or is replaced by another source, like the Swisscard
-    # debit on Migros): needed to reconcile the statement, never written to the sheet.
+    # debit on Migros): needed to reconcile the statement, never a row of income or expenses.
     INTERNAL = "internal"
 
 
@@ -36,8 +36,8 @@ class Transaction:
     """One normalized transaction. `amount` is signed, in the native currency.
 
     D19: `date` is the day it really happened (viewing, querying); `booking_date` is the day
-    it counts on for its statement, always inside the statement period (reconciliation, paste
-    files). They differ only where an extractor says so, e.g. card purchases billed later.
+    it counts on for its statement, always inside the statement period (reconciliation
+    and booking). They differ only where an extractor says so, e.g. card purchases billed later.
     """
 
     date: date
@@ -166,12 +166,12 @@ class Extraction:
     (Revolut Savings); callers must surface them to the user.
     """
 
-    month: date  # first day of the (first) calendar month the statement covers
+    month: date  # first day of the calendar month of the first day the statement covers
     transactions: tuple[Transaction, ...]
     balances: tuple[CashBalance, ...] = ()
     controls: tuple[ControlTotal, ...] = ()
     unreconciled: tuple[str, ...] = ()
-    # Last day covered, for a statement that covers more than one month; always a month end.
+    # Last day covered, any day; None: the end of `month`.
     end: _Date | None = None
     # The institution's own number for the account, where one person may have several there.
     account_id: str = ""
@@ -180,9 +180,11 @@ class Extraction:
     holdings: tuple[Holding, ...] | None = None
     values: tuple[PrintedValue, ...] = ()
     rates: tuple[Rate, ...] = ()
+    # First day covered, any day; None: the first of `month`.
+    start: _Date | None = None
 
     @property
     def period(self) -> tuple[_Date, _Date]:
-        """First and last day the statement covers: whole calendar months."""
+        """First and last day the statement covers, exactly as it prints or its rows show."""
         last = calendar.monthrange(self.month.year, self.month.month)[1]
-        return self.month, self.end or self.month.replace(day=last)
+        return self.start or self.month, self.end or self.month.replace(day=last)

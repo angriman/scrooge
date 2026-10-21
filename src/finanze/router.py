@@ -6,7 +6,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-from finanze import records
+from pdfplumber.utils.exceptions import PdfminerException
+
 from finanze.errors import ExtractionError
 from finanze.extractors import (
     axa,
@@ -36,11 +37,23 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
         finpension.extract,
     ),
 )
+# What each source's files are called on the import page and in `finanze import`.
+LABELS = {
+    "ibkr": "IBKR activity statement",
+    "tastytrade": "Tastytrade transactions",
+    "revolut": "Revolut account statement",
+    "revolut_savings": "Revolut Savings statement",
+    "migros": "Migros Bank account statement",
+    "finpension": "finpension pillar 3a transactions",
+    "swisscard": "Swisscard invoice",
+    "axa": "AXA pension certificate",
+    "servisa": "Servisa pension certificate",
+}
+# What only a card invoice's text says: its issuer.
+_CARD_ISSUER = "Swisscard AECS"
 # A UTF-8 byte-order mark that was read as Latin-1 and saved again (seen on re-saved exports).
 _GARBLED_MARK = "\u00ef\u00bb\u00bf"
 _TEXT_SUFFIXES = {".csv", ".tsv"}
-# Header of a `--dump` file: older runs saved it next to the statements.
-_OWN_DUMP = ",".join(records.FIELDS)
 
 
 class Scanned(NamedTuple):
@@ -85,27 +98,37 @@ def load_certificate(path: Path) -> Scanned | None:
     return None
 
 
-def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Extraction] | None:
+def _card_invoice(path: Path) -> str | None:
+    """The text of a card invoice; None for any other PDF, and for one that is no PDF."""
+    if "swisscard" in path.name.lower():
+        return swisscard.read_text(path)
+    if ocr.is_scan(path):  # images of paper, and a file that is no PDF after all, have no text
+        return None
+    try:
+        text = swisscard.read_text(path)
+    except PdfminerException:
+        return None
+    return text if _CARD_ISSUER in text else None
+
+
+def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
     """Extract one statement file. Returns None for files that are not statements.
 
     `name` is what the transactions call their source file: the file's own name unless given.
-    For the `database`, a card invoice is a statement of the card's own account; for the
-    files to paste, its purchases are booked on the bank account (D3).
+    A card invoice is a statement of the card's own account.
 
     A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
     skipping it would drop a whole account from the month without a word.
 
-    A pension certificate is no statement of a month and is not read here: every PDF but a
-    card invoice is skipped unopened, so a certificate never reaches the files to paste.
-    `load_certificate` reads one, for the database.
+    A PDF is a card invoice when its name or its text says so; any other PDF (the copy of the
+    IBKR statement, a scan) is no statement here. `load_certificate` reads the scan of a
+    pension certificate.
     """
     name = name or path.name
     suffix = path.suffix.lower()
     if _named_pdf(path):
-        if "swisscard" not in path.name.lower():
-            return None  # e.g. the PDF copy of the IBKR statement
-        read = swisscard.extract_account if database else swisscard.extract
-        return "swisscard", read(swisscard.read_text(path), name)
+        text = _card_invoice(path)
+        return None if text is None else ("swisscard", swisscard.extract_account(text, name))
     if suffix not in _TEXT_SUFFIXES:
         return None
     try:
@@ -117,7 +140,5 @@ def load(path: Path, name: str = "", *, database: bool = False) -> tuple[str, Ex
     for source, starts, extract in _TEXT_SOURCES:
         if text.startswith(starts):
             return source, extract(text, name)
-    if text.startswith(_OWN_DUMP):
-        return None
     msg = "not a statement format this parser knows: export it again or move it out of the folder"
     raise ExtractionError(msg)

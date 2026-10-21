@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% block title %}{{ statement.filename }}{% endblock %}
 {% block main %}
+{%- if error %}
+<p class="error" role="alert">{{ error }}</p>
+{%- endif %}
 <section>
   <h2>Statement</h2>
   <table class="narrow">
     <tbody>
       <tr><th>Person</th><td>{{ statement.owner }}</td></tr>
-      <tr><th>Source</th><td>{{ statement.source|replace("_", " ") }}</td></tr>
+      <tr><th>Kind</th><td>{{ statement.label }}</td></tr>
+      <tr><th>State</th><td>{% if statement.committed_at %}Committed on {{ statement.committed_at[:10] }}{% else %}Staged, waiting to be committed{% endif %}</td></tr>
       <tr><th>Covers</th><td class="date">{{ statement.first }} to {{ statement.last }}</td></tr>
       <tr><th>Reconciled</th><td>{{ "yes" if statement.checked else "nothing to check against" }}</td></tr>
       <tr><th>Rows</th><td>{{ statement.transactions }} transaction{{ "" if statement.transactions == 1 else "s" }}</td></tr>
@@ -20,6 +24,26 @@
   <p class="note">The file itself is not kept here: it was imported before originals were kept, or this is a copy of the database. <code>finanze keep</code> takes it in where the data is.</p>
   {%- endif %}
 </section>
+{%- if not copy %}
+<section>
+  <h2>{{ "Take it back" if statement.committed_at else "Remove it" }}</h2>
+  {%- if not statement.committed_at %}
+  <p>Removing it deletes what it staged. The file itself is kept.</p>
+  <form method="post" action="{{ url_for('discard', number=statement.id) }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button>Remove</button>
+  </form>
+  {%- elif statement.held_by %}
+  <p>It cannot be taken back now: committed statements of the same accounts lie on both sides of it ({{ statement.held_by|join(", ") }}). Take the later ones back first.</p>
+  {%- else %}
+  <p>Taking it back makes it staged again: the other pages stop showing it until it is committed.</p>
+  <form method="post" action="{{ url_for('uncommit', number=statement.id) }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button>Take back</button>
+  </form>
+  {%- endif %}
+</section>
+{%- endif %}
 <section>
   <h2>Months</h2>
   <p>

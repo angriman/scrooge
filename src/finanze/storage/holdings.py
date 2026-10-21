@@ -22,16 +22,14 @@ from decimal import Decimal
 from finanze.validation import HoldingsMismatchError
 
 
-def _committed(day: str, wanted: bool) -> str:
-    """The join that keeps the rows of committed months only, as the dashboards read them.
-
-    `day` is the column that says which month a row belongs to.
-    """
+def _committed(file: str, wanted: bool) -> str:
+    """The condition that keeps the rows of committed statements only (and those typed by
+    hand), as the dashboards read them. `file` is the column naming the row's statement."""
     if not wanted:
         return ""
     return (
-        "JOIN months m ON m.owner_id = a.owner_id AND m.status = 'committed' "
-        f"AND m.month = date({day}, 'start of month') "
+        f"AND ({file} IS NULL OR EXISTS (SELECT 1 FROM statement_files cf "  # noqa: S608  # `file` is a column name given by the callers below
+        f"WHERE cf.id = {file} AND cf.committed_at IS NOT NULL)) "
     )
 
 
@@ -138,15 +136,15 @@ def held(
 ) -> list[Holding]:
     """Every instrument of every account of `owner_id` (or of everyone) over time.
 
-    With `committed`, only what is booked or printed in committed months is read.
+    With `committed`, only what committed statements book or print is read.
     """
     changes: dict[tuple[int, int], list[Change]] = defaultdict(list)
     for account, instrument, day, quantity in conn.execute(
         "SELECT t.account_id, tr.instrument_id, t.booking_date, tr.quantity "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
         "JOIN accounts a ON a.id = t.account_id "
-        + _committed("t.booking_date", committed)
-        + "WHERE a.owner_id = coalesce(?, a.owner_id)",
+        "WHERE a.owner_id = coalesce(?, a.owner_id) "
+        + _committed("t.statement_file_id", committed),
         (owner_id,),
     ):
         changes[account, instrument].append(
@@ -188,16 +186,16 @@ def _printed(
         "SELECT DISTINCT b.account_id, f.period_end FROM statement_files f "  # noqa: S608  # only fixed text is joined
         "JOIN balances b ON b.statement_file_id = f.id "
         "JOIN accounts a ON a.id = b.account_id "
-        + _committed("f.period_end", committed)
-        + "WHERE f.holdings = 'printed' AND a.owner_id = coalesce(?, a.owner_id)",
+        "WHERE f.holdings = 'printed' AND a.owner_id = coalesce(?, a.owner_id) "
+        + _committed("f.id", committed),
         (owner_id,),
     ):
         printed[account, date.fromisoformat(day)] = {}
     for account, day, instrument, quantity, unvested in conn.execute(
         "SELECT p.account_id, p.date, p.instrument_id, p.quantity, p.unvested FROM positions p "  # noqa: S608  # only fixed text is joined
         "JOIN accounts a ON a.id = p.account_id "
-        + _committed("p.date", committed)
-        + "WHERE a.owner_id = coalesce(?, a.owner_id)",
+        "WHERE a.owner_id = coalesce(?, a.owner_id) "
+        + _committed("p.statement_file_id", committed),
         (owner_id,),
     ):
         known = None if unvested else Decimal(quantity)

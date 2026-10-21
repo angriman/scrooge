@@ -1,4 +1,4 @@
-"""The SQL behind the month-close service: small typed functions over one connection.
+"""The SQL behind the import and commit service: small typed functions over one connection.
 
 Nothing here begins or commits a transaction, and nothing decides anything: callers do both.
 """
@@ -144,24 +144,6 @@ def category_for(leaves: dict[tuple[str, str], int], name: str, amount: Decimal)
     raise UnknownCategoryError(msg)
 
 
-def month_status(conn: sqlite3.Connection, owner: int, month: date) -> str | None:
-    row = conn.execute(
-        "SELECT status FROM months WHERE owner_id = ? AND month = ?", (owner, month.isoformat())
-    ).fetchone()
-    return None if row is None else str(row[0])
-
-
-def set_month(
-    conn: sqlite3.Connection, owner: int, month: date, status: str, committed_at: str | None
-) -> None:
-    conn.execute(
-        "INSERT INTO months (owner_id, month, status, committed_at) VALUES (?, ?, ?, ?) "
-        "ON CONFLICT (owner_id, month) DO UPDATE SET status = excluded.status, "
-        "committed_at = excluded.committed_at",
-        (owner, month.isoformat(), status, committed_at),
-    )
-
-
 def upsert_statement_file(  # noqa: PLR0913  # one argument per column
     conn: sqlite3.Connection,
     owner: int,
@@ -173,19 +155,21 @@ def upsert_statement_file(  # noqa: PLR0913  # one argument per column
     reconciled: str,
     imported_at: str,
     holdings: bool = False,
+    account_number: str = "",
 ) -> int:
     """The row of this exact file; importing the same bytes again keeps its id and timestamp.
 
     `holdings` says that the statement lists what its accounts held at the end of its period.
+    A new file is staged; one staged or committed before stays so.
     """
     row = conn.execute(
         "INSERT INTO statement_files (owner_id, source, filename, sha256, period_start, "
-        "period_end, reconciled, imported_at, holdings) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "period_end, reconciled, imported_at, holdings, account_number) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (owner_id, sha256) DO UPDATE SET source = excluded.source, "
         "filename = excluded.filename, period_start = excluded.period_start, "
         "period_end = excluded.period_end, reconciled = excluded.reconciled, "
-        "holdings = excluded.holdings "
+        "holdings = excluded.holdings, account_number = excluded.account_number "
         "RETURNING id",
         (
             owner,
@@ -197,9 +181,136 @@ def upsert_statement_file(  # noqa: PLR0913  # one argument per column
             reconciled,
             imported_at,
             "printed" if holdings else "not_printed",
+            account_number,
         ),
     ).fetchone()
     return int(row[0])
+
+
+def is_committed(conn: sqlite3.Connection, owner: int, sha256: str) -> bool:
+    """Whether the file with these bytes is stored for the owner and committed."""
+    row = conn.execute(
+        "SELECT 1 FROM statement_files WHERE owner_id = ? AND sha256 = ? "
+        "AND committed_at IS NOT NULL",
+        (owner, sha256),
+    ).fetchone()
+    return row is not None
+
+
+def link_accounts(conn: sqlite3.Connection, statement_file: int, accounts: Iterable[int]) -> None:
+    """Record the accounts the statement covers."""
+    conn.executemany(
+        "INSERT OR IGNORE INTO statement_accounts (statement_file_id, account_id) VALUES (?, ?)",
+        [(statement_file, account) for account in accounts],
+    )
+
+
+def committed_span(conn: sqlite3.Connection, source: str, account: int) -> tuple[date, date] | None:
+    """The first and the last day committed statements of `source` cover of the account."""
+    row = conn.execute(
+        "SELECT min(f.period_start), max(f.period_end) FROM statement_files f "
+        "JOIN statement_accounts s ON s.statement_file_id = f.id "
+        "WHERE f.source = ? AND s.account_id = ? AND f.committed_at IS NOT NULL",
+        (source, account),
+    ).fetchone()
+    return None if row[0] is None else (date.fromisoformat(row[0]), date.fromisoformat(row[1]))
+
+
+def committed_file(conn: sqlite3.Connection, source: str, account: int, day: date) -> str | None:
+    """The digest of a committed statement of `source` covering the account on `day`."""
+    row = conn.execute(
+        "SELECT f.sha256 FROM statement_files f "
+        "JOIN statement_accounts s ON s.statement_file_id = f.id "
+        "WHERE f.source = ? AND s.account_id = ? AND f.committed_at IS NOT NULL "
+        "AND ? BETWEEN f.period_start AND f.period_end ORDER BY f.id",
+        (source, account, day.isoformat()),
+    ).fetchone()
+    return None if row is None else str(row[0])
+
+
+def owner_of_number(conn: sqlite3.Connection, account_number: str) -> str | None:
+    """Whose statements print this account number, if any were imported."""
+    row = conn.execute(
+        "SELECT o.name FROM statement_files f JOIN owners o ON o.id = f.owner_id "
+        "WHERE f.account_number = ? ORDER BY f.id",
+        (account_number,),
+    ).fetchone()
+    return None if row is None else str(row[0])
+
+
+@dataclass(frozen=True, slots=True)
+class StatementFile:
+    """A statement file as stored."""
+
+    id: int
+    owner: str
+    source: str
+    filename: str
+    period: tuple[date, date]
+    imported_at: str
+    committed_at: str | None  # None: staged
+
+
+def statement_files(
+    conn: sqlite3.Connection, owner: int | None = None, *, staged: bool | None = None
+) -> list[StatementFile]:
+    """The statement files of `owner` (or everyone's): only staged ones, only committed ones,
+    or both when `staged` is None. Oldest period first."""
+    rows = conn.execute(
+        "SELECT f.id, o.name, f.source, f.filename, f.period_start, f.period_end, "
+        "f.imported_at, f.committed_at FROM statement_files f "
+        "JOIN owners o ON o.id = f.owner_id WHERE f.owner_id = coalesce(?1, f.owner_id) "
+        "AND (?2 IS NULL OR (f.committed_at IS NULL) = ?2) "
+        "ORDER BY f.period_start, f.period_end, f.source, f.id",
+        (owner, staged),
+    ).fetchall()
+    return [
+        StatementFile(
+            int(r[0]),
+            str(r[1]),
+            str(r[2]),
+            str(r[3]),
+            (date.fromisoformat(r[4]), date.fromisoformat(r[5])),
+            str(r[6]),
+            r[7],
+        )
+        for r in rows
+    ]
+
+
+def commit_files(conn: sqlite3.Connection, files: Collection[int], committed_at: str) -> None:
+    conn.executemany(
+        "UPDATE statement_files SET committed_at = ? WHERE id = ? AND committed_at IS NULL",
+        [(committed_at, file_id) for file_id in files],
+    )
+
+
+def uncommit_file(conn: sqlite3.Connection, file_id: int) -> None:
+    conn.execute("UPDATE statement_files SET committed_at = NULL WHERE id = ?", (file_id,))
+
+
+def later_committed(conn: sqlite3.Connection, file_id: int) -> list[str]:
+    """Committed files of the same source and accounts that end after this one, and others
+    that start before it: a file inside what is committed cannot be taken back alone."""
+    rows = conn.execute(
+        "SELECT DISTINCT o.filename, o.period_end > f.period_end FROM statement_files f "
+        "JOIN statement_accounts s ON s.statement_file_id = f.id "
+        "JOIN statement_accounts os ON os.account_id = s.account_id "
+        "JOIN statement_files o ON o.id = os.statement_file_id AND o.id <> f.id "
+        "AND o.source = f.source AND o.committed_at IS NOT NULL "
+        "WHERE f.id = ? ORDER BY o.period_start",
+        (file_id,),
+    ).fetchall()
+    after = [str(r[0]) for r in rows if r[1]]
+    before = [str(r[0]) for r in rows if not r[1]]
+    return after if after and before else []
+
+
+def delete_file(conn: sqlite3.Connection, file_id: int) -> None:
+    """Remove a statement file and everything it gave the accounts."""
+    for table in ("transactions", "balances", "positions"):
+        conn.execute(f"DELETE FROM {table} WHERE statement_file_id = ?", (file_id,))  # noqa: S608  # the table names are the literals above
+    conn.execute("DELETE FROM statement_files WHERE id = ?", (file_id,))
 
 
 def statement_names(conn: sqlite3.Connection) -> dict[str, str]:
@@ -239,14 +350,23 @@ def delete_statement_rows(
     return touched
 
 
+@dataclass(frozen=True, slots=True)
+class StoredRow:
+    """A stored row as an import compares it with its own."""
+
+    text: str  # what it is, to be read
+    booked: date
+    same: tuple[str, str, int, str]  # the day it happened, currency, amount and description
+
+
 def statement_rows(
     conn: sqlite3.Connection, source: str, accounts: Collection[int], period: tuple[date, date]
-) -> dict[str, str]:
-    """The rows statements of `source` gave these accounts, booked in the period: id -> what
-    it is, to be read. Without the interest split off a bill, which no statement prints."""
+) -> dict[str, StoredRow]:
+    """The rows statements of `source` gave these accounts, booked in the period, by id.
+    Without the interest split off a bill, which no statement prints."""
     marks = ", ".join("?" * len(accounts))
     found = conn.execute(
-        "SELECT t.id, a.name, t.booking_date, t.description "  # noqa: S608  # only "?" marks are interpolated
+        "SELECT t.id, a.name, t.booking_date, t.description, t.date, t.currency, t.amount_nano "  # noqa: S608  # only "?" marks are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         f"WHERE t.account_id IN ({marks}) AND t.booking_date BETWEEN ? AND ? "
         "AND t.split_of IS NULL "
@@ -254,7 +374,14 @@ def statement_rows(
         "ORDER BY t.booking_date, t.id",
         (*accounts, period[0].isoformat(), period[1].isoformat(), source),
     ).fetchall()
-    return {str(r[0]): f"{r[1]} {r[2]}: {r[3]}" for r in found}
+    return {
+        str(r[0]): StoredRow(
+            f"{r[1]} {r[2]}: {r[3]}",
+            date.fromisoformat(r[2]),
+            (str(r[4]), str(r[5]), int(r[6]), str(r[3])),
+        )
+        for r in found
+    }
 
 
 def drop_unused_files(conn: sqlite3.Connection, files: Iterable[int]) -> None:
@@ -597,12 +724,12 @@ def own_flow(conn: sqlite3.Connection, account: int, after: date, until: date) -
 WAITING = "t.category_id IS NULL AND t.kind <> 'internal'"
 
 
-def uncategorized(conn: sqlite3.Connection, owner: int, period: tuple[date, date]) -> int:
-    """How many of the owner's rows booked in the period still need a category."""
+def uncategorized(conn: sqlite3.Connection, owner: int) -> int:
+    """How many of the owner's rows still need a category."""
     row = conn.execute(
         "SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id "  # noqa: S608  # only the fixed text above is interpolated
-        f"WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND {WAITING}",
-        (owner, period[0].isoformat(), period[1].isoformat()),
+        f"WHERE a.owner_id = ? AND {WAITING}",
+        (owner,),
     ).fetchone()
     return int(row[0])
 
@@ -628,22 +755,17 @@ CHANGEABLE = (
 
 
 def waiting(
-    conn: sqlite3.Connection,
-    owner: int,
-    period: tuple[date, date],
-    ids: Collection[str],
-    *,
-    change: bool = False,
+    conn: sqlite3.Connection, owner: int, ids: Collection[str], *, change: bool = False
 ) -> list[Waiting]:
-    """Those of `ids` that are rows of the owner booked in the period and still need a category;
-    with `change`, those that have one which can be changed."""
+    """Those of `ids` that are rows of the owner and still need a category; with `change`,
+    those that have one which can be changed, staged or committed."""
     marks = ", ".join("?" * len(ids))
     rows = conn.execute(
         "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks and the fixed text above are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        f"AND {CHANGEABLE if change else WAITING} AND t.id IN ({marks}) ORDER BY t.id",
-        (owner, period[0].isoformat(), period[1].isoformat(), *ids),
+        f"WHERE a.owner_id = ? AND {CHANGEABLE if change else WAITING} "
+        f"AND t.id IN ({marks}) ORDER BY t.id",
+        (owner, *ids),
     ).fetchall()
     return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]
 

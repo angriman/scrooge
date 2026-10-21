@@ -2,27 +2,41 @@ import shutil
 import sqlite3
 from collections.abc import Iterator
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import BinaryIO
 
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import publish
+from finanze import publish, staging
+from finanze.models import CashBalance
 from finanze.storage import db
 from finanze.web import app as webapp
-from tests.storage.helpers import AUGUST, CLOSED_AT, OWNER, close
-from tests.web.test_month_page import LUKAS
+from tests.storage.helpers import AUGUST, CLOSED_AT, OWNER, SEPTEMBER, batch, close, statement, txn
+
+AUGUST_ROWS = [
+    txn("-45.20", date=date(2026, 8, 3), source_ref="1"),
+    txn("-12", date=date(2026, 8, 20), source_ref="2"),
+]
+SEPTEMBER_ROWS = [
+    txn("-8", date=date(2026, 9, 3), source_ref="3", source_file="migros sep.csv"),
+    txn("-3", date=date(2026, 9, 4), source_ref="4", source_file="migros sep.csv"),
+]
 
 
 @pytest.fixture
 def database(tmp_path: Path) -> Path:
-    """Lukas: August committed with two rows, September open with two more."""
+    """Lukas: August committed with two rows, September staged with two more."""
     path = tmp_path / "data" / "finanze.db"
     path.parent.mkdir()
     conn = db.connect(path)
     db.migrate(conn, CLOSED_AT)
-    close(conn, OWNER, (AUGUST, date(2026, 9, 30)), AUGUST, ("migros", LUKAS))
+    august = (AUGUST, date(2026, 8, 31))
+    close(conn, OWNER, august, august[1], ("migros", AUGUST_ROWS))
+    balance = CashBalance("Migros", "CHF", Decimal("-57.20"), Decimal("-68.20"))
+    september = statement("migros", SEPTEMBER_ROWS, [balance], month=SEPTEMBER)
+    staging.stage(conn, batch(september), CLOSED_AT)
     conn.close()
     return path
 
@@ -61,7 +75,7 @@ def test_the_whole_database_is_published_as_one_file_and_what_it_holds_is_said(
         version=db.latest(),
         committed=2,
         staged=2,
-        open_months=1,
+        staged_files=1,
     )
     assert done.size > 0
     assert names(share) == ["finanze.db"]

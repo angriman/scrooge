@@ -1,73 +1,11 @@
-import sqlite3
-from datetime import UTC, date, datetime
 from pathlib import Path
 
-import pytest
-from httpx2 import Response
-from starlette.testclient import TestClient
-
-from finanze import importing, monthclose
+from finanze import staging
 from finanze.storage import db
-from finanze.web import app as webapp
-from tests.conftest import FILES, INSTRUMENTS_YAML, write_rules
-from tests.storage.helpers import PEOPLE
+from tests.conftest import FILES
+from tests.web.builders import CLICKED, SITE, Site
 from tests.web.test_app import text
-
-SITE = "http://127.0.0.1:8765"
-CLICKED = datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
-MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
-Upload = tuple[str, tuple[str, bytes]]
-
-
-class Site:
-    """The app over an empty database, set up to import the fixture month."""
-
-    def __init__(self, folder: Path) -> None:
-        self.folder = folder
-        self.database = folder / "data" / "finanze.db"
-        self.database.parent.mkdir()
-        conn = db.connect(self.database)
-        db.migrate(conn, CLICKED)
-        conn.close()
-        instruments = folder / "instruments.yaml"
-        instruments.write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
-        self.setup = importing.Setup([write_rules(folder)], instruments, PEOPLE, {})
-        self.client = self.app()
-
-    def app(self, **settings: object) -> TestClient:
-        made = webapp.create_app(self.database, clock=lambda: CLICKED, **settings)  # type: ignore[arg-type]  # each test names the settings it changes
-        made.state.token = self.token
-        return TestClient(made, base_url=SITE, follow_redirects=False)
-
-    def uploads(self, *names: str) -> list[Upload]:
-        return [("file", (name, (self.folder / name).read_bytes())) for name in names or FILES]
-
-    def send(self, files: list[Upload], owner: str = "Lukas", **fields: str) -> Response:
-        form = {"token": self.token, "owner": owner} | fields
-        return self.client.post("/import", data=form, files=files)
-
-    @property
-    def token(self) -> str:
-        """What every form of the pages sends back; the same for every app of a test."""
-        return "the-token-of-these-tests"
-
-    def count(self, table: str) -> int:
-        conn = sqlite3.connect(self.database)
-        try:
-            return int(conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0])  # noqa: S608  # table names are literals in this file
-        finally:
-            conn.close()
-
-    def kept(self) -> int:
-        folder = self.database.parent / "originals"
-        return len(list(folder.iterdir())) if folder.is_dir() else 0
-
-
-@pytest.fixture
-def site(folder: Path) -> Site:
-    made = Site(folder)
-    made.client = made.app(imports=made.setup)
-    return made
+from tests.web.test_cashflow_page import tables
 
 
 def test_the_page_asks_whose_statements_and_which_files(site: Site) -> None:
@@ -77,50 +15,83 @@ def test_the_page_asks_whose_statements_and_which_files(site: Site) -> None:
     assert '<input type="file" name="file" multiple required>' in response.text
     assert "<option>Lukas</option>" in response.text
     assert "<option selected>Anna</option>" in response.text
-    assert (
-        f'<a href="{SITE}/import" aria-current="page">Import</a>' in site.client.get("/import").text
-    )
+    assert "Nothing is staged for Anna." in text(response.text)
+    link = f'<a href="{SITE}/import?owner=Lukas" class="import" aria-current="page">Import</a>'
+    assert link in site.client.get("/import").text
+    assert site.client.get("/import", params={"owner": "Zoe"}).status_code == 404
 
 
-def test_uploaded_statements_are_staged_and_their_files_kept(site: Site) -> None:
+def result(page: str) -> list[list[str]]:
+    """File, kind and what became of it, for each file of the upload."""
+    return tables(page)[0]
+
+
+def test_every_file_of_an_upload_says_what_it_is_and_what_became_of_it(site: Site) -> None:
     response = site.send([*site.uploads(), *site.uploads("notes.txt")])
     assert response.status_code == 200
-    page = text(response.text)
-    assert "September 2026 for Lukas: 6 statements reconciled" in page
-    assert "migros Migros.csv 2026-09-01 to 2026-09-30" in page
-    assert "notes.txt is not a statement and was left out" in page
-    assert "Revolut EUR includes rows with no balance to check against" in page
-    assert f'<a href="{SITE}/months/Lukas/2026-09">2026-09</a>' in response.text
+    assert result(response.text) == [
+        ["IBKR.csv", "IBKR activity statement", "Staged."],
+        ["Migros.csv", "Migros Bank account statement", "Staged."],
+        ["Revolut CHF.tsv", "Revolut account statement", "Staged."],
+        ["Revolut Savings.tsv", "Revolut Savings statement", "Staged."],
+        ["notes.txt", "not a statement", "Not recognised: it is not a statement and was left out."],
+        ["swisscard.pdf", "Swisscard invoice", "Staged."],
+        ["tastytrade.csv", "Tastytrade transactions", "Staged."],
+    ]
+    assert "Revolut EUR includes rows with no balance to check against" in text(response.text)
     assert site.count("transactions") > 0
-    assert site.count("committed_transactions") == 0  # staged: the month page commits
+    assert site.count("committed_transactions") == 0  # staged: the draft below commits
     assert site.count("statement_files") == len(FILES)
     assert site.kept() == len(FILES)
     assert list(site.folder.glob("**/*.part")) == []
 
 
-def test_what_does_not_reconcile_is_refused_whole(site: Site) -> None:
+def test_the_draft_of_the_person_is_below_the_upload(site: Site) -> None:
+    response = site.send(site.uploads("Migros.csv", "Revolut Savings.tsv"))
+    page = response.text
+    assert page.index('id="uploaded"') < page.index('id="staged"') < page.index('id="rows"')
+    assert "Waiting to be committed, Lukas" in text(page)
+    files = tables(page)[1]
+    assert [row[:4] for row in files] == [
+        ["Migros Bank account statement", "Migros.csv", "2026-09-01 to 2026-09-30", "11"],
+        ["Revolut Savings statement", "Revolut Savings.tsv", "2026-09-01 to 2026-09-30", "5"],
+    ]
+    # The same draft on a plain visit.
+    assert tables(site.client.get("/import").text)[0] == files
+    assert tables(site.client.get("/import", params={"owner": "Anna"}).text) == []
+
+
+def test_a_file_that_does_not_reconcile_is_refused_and_the_others_are_staged(site: Site) -> None:
     migros = site.folder / "Migros.csv"
     tampered = migros.read_text(encoding="utf-8").replace("-1288.18", "-1288.19")
     migros.write_text(tampered, encoding="utf-8")
-    response = site.send(site.uploads())
-    assert response.status_code == 409
-    assert "Nothing was imported: Migros.csv" in text(response.text)
-    assert "<form" in response.text
-    assert site.count("transactions") == 0
-    assert site.kept() == 0
+    response = site.send(site.uploads("Migros.csv", "Revolut Savings.tsv"))
+    assert response.status_code == 200
+    refused, staged = result(response.text)
+    assert refused[:2] == ["Migros.csv", "not read"]
+    assert refused[2] == "Refused: Migros row 4: balance 4686.42 does not follow 5974.60 -1288.19"
+    assert staged == ["Revolut Savings.tsv", "Revolut Savings statement", "Staged."]
+    assert 'class="wide error"' in response.text
+    assert site.count("statement_files") == 1
+    assert site.kept() == 1
 
 
-def test_a_committed_month_is_left_as_it_is_and_what_differs_is_said(site: Site) -> None:
+def test_a_committed_statement_is_left_as_it_is_and_what_differs_is_said(site: Site) -> None:
     assert site.send(site.uploads("Revolut Savings.tsv")).status_code == 200
     conn = db.connect(site.database)
-    monthclose.commit(conn, owner="Lukas", month=date(2026, 9, 1), now=CLICKED)
+    staging.commit(conn, owner="Lukas", now=CLICKED)
     conn.close()
     before = site.count("transactions")
-    same = text(site.send(site.uploads("Revolut Savings.tsv")).text)
-    assert "0 transactions staged" in same
-    assert "5 rows are booked in committed months and stored there: left as they are." in same
-    assert "Nothing new: every month these files cover is committed." in same
-    assert "Differs" not in same
+    same = site.send(site.uploads("Revolut Savings.tsv"))
+    assert result(same.text) == [
+        [
+            "Revolut Savings.tsv",
+            "Revolut Savings statement",
+            "Nothing new: all of it is committed already.",
+        ]
+    ]
+    assert "5 rows are booked on days already committed and stored there" in text(same.text)
+    assert "Differs" not in same.text
 
     savings = site.folder / "Revolut Savings.tsv"
     lines = savings.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -129,8 +100,17 @@ def test_a_committed_month_is_left_as_it_is_and_what_differs_is_said(site: Site)
     short = site.send(site.uploads("Revolut Savings.tsv"))
     assert short.status_code == 200
     assert "is committed and is not in Revolut Savings.tsv." in text(short.text)
-    assert "Nothing was changed in the committed months" in text(short.text)
+    assert "Nothing was changed in what is committed" in text(short.text)
     assert site.count("transactions") == before
+
+
+def test_an_import_that_cannot_start_stores_nothing_and_says_why(site: Site) -> None:
+    (site.folder / "categories.yaml").write_text("categories: 5", encoding="utf-8")
+    response = site.send(site.uploads("Migros.csv"))
+    assert response.status_code == 409
+    assert "Nothing was imported: " in text(response.text)
+    assert site.count("statement_files") == 0
+    assert "<form" in response.text
 
 
 def test_the_form_needs_a_person_and_a_file(site: Site) -> None:
@@ -147,9 +127,8 @@ def test_two_files_of_one_name_are_told_apart(site: Site) -> None:
     first, second = site.uploads("Migros.csv", "Revolut Savings.tsv")
     response = site.send([first, ("file", ("Migros.csv", second[1][1]))])
     assert response.status_code == 200
-    page = text(response.text)
-    assert "migros 1/Migros.csv" in page
-    assert "revolut savings 2/Migros.csv" in page
+    assert result(response.text)[0][:2] == ["1/Migros.csv", "Migros Bank account statement"]
+    assert result(response.text)[1][:2] == ["2/Migros.csv", "Revolut Savings statement"]
 
 
 def test_a_form_from_elsewhere_or_without_the_token_is_refused(site: Site) -> None:
@@ -173,10 +152,15 @@ def test_a_copy_imports_nothing(site: Site) -> None:
     assert site.count("transactions") == 0
 
 
-def test_without_its_setup_the_app_has_no_import_page(site: Site) -> None:
+def test_without_its_setup_the_page_shows_the_draft_but_takes_no_files(site: Site) -> None:
+    assert site.send(site.uploads("Migros.csv")).status_code == 200
     plain = site.app()
-    assert "Import</a>" not in plain.get("/months").text
-    assert plain.get("/import").status_code == 404
+    page = plain.get("/import", params={"owner": "Lukas"})
+    assert page.status_code == 200
+    assert "Migros.csv" in text(page.text)
+    assert 'type="file"' not in page.text
+    form = {"token": site.token, "owner": "Lukas"}
+    assert plain.post("/import", data=form, files=site.uploads("Migros.csv")).status_code == 404
 
 
 def test_a_pension_certificate_is_taken_and_what_was_read_is_shown(

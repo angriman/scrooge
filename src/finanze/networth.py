@@ -1,6 +1,6 @@
 """Net worth, day by day: what the dashboard draws (D20).
 
-Only committed months are read. For every day: the cash of each account, plus what each
+Only committed statements are read. For every day: the cash of each account, plus what each
 account held that day at the last close on or before it, each converted at that day's rate
 into the currency asked for. Nothing here is stored and nothing here writes.
 
@@ -31,7 +31,6 @@ from decimal import Decimal
 from typing import TypeVar
 
 from finanze import query
-from finanze.extractors.common import month_end
 from finanze.storage import holdings
 from finanze.storage.bills import Event, open_lots
 from finanze.storage.money import from_nano
@@ -167,13 +166,14 @@ def _days(first: date, last: date) -> tuple[date, ...]:
 
 
 def _last_days(conn: sqlite3.Connection, owner: str | None) -> dict[str, date]:
-    """owner -> the last day of their latest committed month."""
+    """owner -> the last day their committed statements cover."""
     rows = conn.execute(
-        "SELECT o.name, max(m.month) FROM months m JOIN owners o ON o.id = m.owner_id "
-        "WHERE m.status = 'committed' AND o.name = coalesce(?, o.name) GROUP BY o.name",
+        "SELECT o.name, max(f.period_end) FROM statement_files f "
+        "JOIN owners o ON o.id = f.owner_id "
+        "WHERE f.committed_at IS NOT NULL AND o.name = coalesce(?, o.name) GROUP BY o.name",
         (owner,),
     ).fetchall()
-    return {str(name): month_end(date.fromisoformat(month)) for name, month in rows}
+    return {str(name): date.fromisoformat(day) for name, day in rows}
 
 
 def _accounts(conn: sqlite3.Connection, owners: Iterable[str]) -> dict[int, _Account]:
@@ -230,7 +230,7 @@ class _Flow:
 def _flows(
     conn: sqlite3.Connection, accounts: Mapping[int, _Account], last: date
 ) -> dict[int, dict[date, _Flow]]:
-    """account -> day -> what was booked, for committed months, oldest day first.
+    """account -> day -> what committed statements booked, oldest day first.
 
     Rows that another source books on an account (the interest of Revolut's savings, D8) are
     not in its statement balance: they add to what is set aside there, and so does every
@@ -240,10 +240,9 @@ def _flows(
         "SELECT t.account_id, t.booking_date, t.amount_nano, t.kind, "
         "f.source IS NULL OR f.source IS a.source AS own "
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        "JOIN months m ON m.owner_id = a.owner_id AND m.status = 'committed' "
-        "AND m.month = date(t.booking_date, 'start of month') "
         "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
-        "WHERE t.booking_date <= ? ORDER BY t.booking_date",
+        "WHERE (f.id IS NULL OR f.committed_at IS NOT NULL) AND t.booking_date <= ? "
+        "ORDER BY t.booking_date",
         (last.isoformat(),),
     ).fetchall()
     fed_by_another = {int(r[0]) for r in rows if not r[4]}
@@ -268,17 +267,13 @@ def _anchors(
 ) -> dict[int, dict[date, int]]:
     """account -> day -> the balance a statement gives, or that was typed, oldest first.
 
-    A statement counts once its month is committed: the month of the balance it closes
-    on, or the month it starts in for the balance it opens with. A pension certificate is
-    a statement of the one day it is dated.
+    A statement counts once it is committed. A pension certificate is a statement of the one
+    day it is dated.
     """
     rows = conn.execute(
         "SELECT b.account_id, b.date, b.amount_nano FROM balances b "
-        "JOIN accounts a ON a.id = b.account_id "
         "LEFT JOIN statement_files f ON f.id = b.statement_file_id "
-        "WHERE b.date <= ? AND (f.id IS NULL OR EXISTS ("
-        "SELECT 1 FROM months m WHERE m.owner_id = a.owner_id AND m.status = 'committed' "
-        "AND m.month = date(max(b.date, f.period_start), 'start of month'))) ORDER BY b.date",
+        "WHERE b.date <= ? AND (f.id IS NULL OR f.committed_at IS NOT NULL) ORDER BY b.date",
         (last.isoformat(),),
     ).fetchall()
     anchors: dict[int, dict[date, int]] = defaultdict(dict)
@@ -475,9 +470,8 @@ def lot_trades(conn: sqlite3.Connection) -> dict[tuple[int, int], list[LotTrade]
         "SELECT t.account_id, tr.instrument_id, t.booking_date, t.id, tr.quantity, tr.cost_nano, "
         "tr.price IS NOT NULL "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
-        "JOIN accounts a ON a.id = t.account_id "
-        "JOIN months m ON m.owner_id = a.owner_id AND m.status = 'committed' "
-        "AND m.month = date(t.booking_date, 'start of month') "
+        "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
+        "WHERE f.id IS NULL OR f.committed_at IS NOT NULL "
         # on one day, purchases come before disposals
         "ORDER BY t.booking_date, tr.quantity LIKE '-%', t.id"
     )

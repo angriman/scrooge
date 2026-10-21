@@ -1,0 +1,52 @@
+{#- Forms that the import page and a month's page share. A macro sees none of the page's
+    variables, so the page hands over what it needs. -#}
+{% macro options(choices) %}
+              {%- for heading, names in choices.leaves %}
+              <optgroup label="{{ heading }}">
+                {%- for name in names %}
+                <option data-side="{{ 'transfer' if heading == 'Transfer' else 'entrate' if heading == 'Entrate' else 'uscite' }}">{{ name }}</option>
+                {%- endfor %}
+              </optgroup>
+              {%- endfor %}
+{% endmacro %}
+{% macro choose(group, change, action, owner, token, choices, can_remember) %}
+          <form method="post" action="{{ action }}" class="choice">
+            <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="owner" value="{{ owner }}">
+            {%- if change %}
+            <input type="hidden" name="change" value="1">
+            {%- endif %}
+            {%- for row in group.rows %}
+            <input type="hidden" name="id" value="{{ row.id }}">
+            {%- endfor %}
+            <select name="category" required aria-label="Category for {{ group.name }}">
+              <option value="">Choose</option>
+              {{- options(choices) }}
+            </select>
+            {%- if can_remember and group.name %}
+            <label><input type="radio" name="remember" value="rule" checked> always (save a rule)</label>
+            <label><input type="radio" name="remember" value="rows"> just these rows</label>
+            {%- else %}
+            <input type="hidden" name="remember" value="rows">
+            <small>For these rows only.</small>
+            {%- endif %}
+            <button>Set</button>
+          </form>
+{% endmacro %}
+{% macro add_category(action, owner, token, choices) %}
+  <form method="post" action="{{ action }}" class="filter">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="owner" value="{{ owner }}">
+    <label>Name <input name="name" required maxlength="60" size="24"></label>
+    <label>Under
+      <select name="under">
+        <option value="uscite:">Expenses, a group of its own</option>
+        {%- for name in choices.groups %}
+        <option value="uscite:{{ name }}">Expenses, {{ name }}</option>
+        {%- endfor %}
+        <option value="entrate:">Income</option>
+      </select>
+    </label>
+    <button>Add</button>
+  </form>
+{% endmacro %}

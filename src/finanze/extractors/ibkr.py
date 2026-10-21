@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import parse_decimal, parse_iso_date
+from finanze.extractors.common import month_start, parse_decimal, parse_iso_date
 from finanze.models import (
     CashBalance,
     Extraction,
@@ -98,7 +98,8 @@ def extract(content: str, source_file: str) -> Extraction:
     account = _fields(sections, "Account Information")
     base = account.get("Base Currency", "")
     return Extraction(
-        month=start,
+        month=month_start(start),
+        start=start,
         transactions=tuple(transactions),
         balances=balances,
         end=end,
@@ -141,8 +142,8 @@ def _period(statement: dict[str, str]) -> tuple[date, date]:
         raise ExtractionError(msg)
     start = date(int(match[3]), _MONTHS[match[1]], int(match[2]))
     end = date(int(match[6]), _MONTHS[match[4]], int(match[5]))
-    if start.day != 1 or end.day != calendar.monthrange(end.year, end.month)[1] or end < start:
-        msg = f"statement must cover whole calendar months, got {text!r}"
+    if end < start:
+        msg = f"statement period ends before it starts: {text!r}"
         raise ExtractionError(msg)
     return start, end
 

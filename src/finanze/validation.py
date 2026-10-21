@@ -141,23 +141,6 @@ class CardBillMismatchError(ReconciliationError):
     """D3: the card invoice and the debit on the bank account disagree, or one is missing."""
 
 
-def check_card_bill(debit: Decimal | None, invoice: Decimal | None) -> None:
-    """D3: sum(purchases) - cashback must equal the bank's card debit of the same month.
-
-    Both are signed as cash leaving the bank account (negative). A debit without an invoice
-    would silently drop the month's card spending; an invoice without a debit would double it.
-    """
-    if debit == invoice:
-        return
-    if invoice is None:
-        msg = f"the bank statement has a card debit of {debit}, but there is no card invoice"
-    elif debit is None:
-        msg = f"the card invoice totals {invoice}, but the bank statement has no card debit"
-    else:
-        msg = f"the card invoice totals {invoice}, but the bank debited {debit}"
-    raise CardBillMismatchError(msg)
-
-
 def check_balances(extraction: Extraction) -> None:
     """Check every account against its statement balance or control total, exactly."""
     flows: dict[tuple[str, str], Decimal] = defaultdict(Decimal)

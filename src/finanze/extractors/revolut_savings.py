@@ -13,7 +13,7 @@ import re
 from datetime import date
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import parse_decimal, read_table, whole_months
+from finanze.extractors.common import day_span, month_start, parse_decimal, read_table
 from finanze.models import Extraction, Kind, Transaction
 
 _DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
@@ -62,9 +62,13 @@ def extract(content: str, source_file: str) -> Extraction:
                 category=category,
             )
         )
-    first, last = whole_months(days, "Revolut Savings statement")
+    first, last = day_span(days, "Revolut Savings statement")
     return Extraction(
-        month=first, transactions=tuple(transactions), unreconciled=(account,), end=last
+        month=month_start(first),
+        transactions=tuple(transactions),
+        unreconciled=(account,),
+        end=last,
+        start=first,
     )
 
 

@@ -81,7 +81,7 @@ def test_everyone_s_net_worth_is_the_headline_with_what_it_is_made_of(client: Te
     assert "<h2>Holdings</h2>" in page  # all of them: none is cut
     assert "what is owed counts below zero, and so does its share" in text(page)
     assert "Options and futures are not counted as assets" in text(page)
-    assert "Only committed months are shown" in text(page)
+    assert "Only committed statements are shown" in text(page)
     assert errors(page) == []
     for banned in ("<script", " style=", "<canvas", 'id="networth"'):
         assert banned not in page

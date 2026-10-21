@@ -197,3 +197,19 @@ def test_the_answer_for_a_row_naming_a_person_goes_to_the_owners_own_file(tmp_pa
     assert len(rules.read_text("utf-8").splitlines()) == 2
     assert f"saved to {own}: Transfer to ANNA MEIER -> Regali\n" in out.getvalue()
     assert f"saved to {rules}: To Jonas Example -> Regali\n" in out.getvalue()
+
+
+def test_review_never_saves_a_rule_for_rows_without_text(tmp_path: Path) -> None:
+    blank = replace(LENT, description="")
+    rules = tmp_path / "rules.local.yaml"
+    out = io.StringIO()
+    asked: list[str] = []
+
+    def ask(question: str) -> str:
+        asked.append(question)
+        return "Regali"
+
+    review.ask_categories([blank, replace(blank, description=" ")], rules, out, ask)
+    assert asked == []
+    assert not rules.exists()
+    assert "2 rows have no text to match" in out.getvalue()

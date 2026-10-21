@@ -8,19 +8,19 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import query
-from finanze.models import Kind
+from finanze import query, staging
+from finanze.models import CashBalance, Kind
 from finanze.query import Filter
 from finanze.storage import db, store
-from tests.storage.helpers import OWNER, PARTNER, close, txn
+from tests.storage.helpers import OWNER, PARTNER, batch, close, statement, txn
 
-NOW = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
 START = date(2025, 1, 1)
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
 FOOD = {"category": "Ristoranti", "counterparty": "Trattoria Ölberg"}
 
-# Lukas, January 2025 to September 2026; September is left open.
+# Lukas, January 2025 to September 2026; September is staged and not committed.
 LUKAS = [
     txn("-45.20", date=date(2025, 5, 3), source_ref="1"),
     txn("-80", date=date(2025, 5, 20), source_ref="2", description="CARD", **FOOD),
@@ -30,7 +30,7 @@ LUKAS = [
     txn("-15", date=date(2026, 6, 30), booking_date=date(2026, 7, 2), source_ref="5"),
     txn("-1000", date=date(2026, 7, 2), source_ref="6", kind=Kind.TRANSFER, category="Giroconto"),
     txn("-200", date=date(2026, 7, 10), source_ref="7", category="Regali", counterparty=GIFT),
-    txn("-12", date=date(2026, 9, 10), source_ref="8"),
+    txn("-12", date=date(2026, 9, 10), source_ref="8", source_file="migros sep.csv"),
 ]
 LUKAS_EUR = [
     txn("-30", date=date(2026, 7, 5), source_ref="1", description="Caffè Roma", **EUR, **FOOD),
@@ -52,10 +52,19 @@ ANNA = [
 def conn() -> Iterator[sqlite3.Connection]:
     connection = db.connect(":memory:")
     db.migrate(connection, NOW)
-    lukas = (START, date(2026, 9, 30))
-    close(connection, OWNER, lukas, date(2026, 8, 1), ("migros", LUKAS), ("revolut", LUKAS_EUR))
+    lukas = (START, date(2026, 8, 31))
+    committed = LUKAS[:-1]
+    close(connection, OWNER, lukas, lukas[1], ("migros", committed), ("revolut", LUKAS_EUR))
+    balance = sum((row.amount for row in committed), Decimal(0))
+    september = statement(
+        "migros",
+        LUKAS[-1:],
+        [CashBalance("Migros", "CHF", balance, balance + LUKAS[-1].amount)],
+        month=date(2026, 9, 1),
+    )
+    staging.stage(connection, batch(september), NOW)
     july = (date(2026, 7, 1), date(2026, 7, 31))
-    close(connection, PARTNER, july, july[0], ("migros", ANNA))
+    close(connection, PARTNER, july, july[1], ("migros", ANNA))
     yield connection
     connection.close()
 
@@ -73,7 +82,7 @@ def test_everything_committed_comes_back_oldest_first(conn: sqlite3.Connection) 
     days = [row.date for row in result.rows]
     assert days == sorted(days)
     assert len(result.rows) == len(LUKAS) + len(LUKAS_EUR) + len(ANNA) - 1
-    assert date(2026, 9, 10) not in days  # September is still open
+    assert date(2026, 9, 10) not in days  # September is staged
     assert sums(result.totals) == [("", "CHF", 9, "10899.8"), ("", "EUR", 1, "-30")]
 
 
@@ -184,20 +193,20 @@ def test_subtotals_add_up_to_the_totals_and_to_the_rows(
     assert per_currency(result.by_month) == from_rows
 
 
-def test_people_are_listed_with_what_is_committed_and_what_is_open(
+def test_people_are_listed_with_what_is_committed_and_what_is_staged(
     conn: sqlite3.Connection,
 ) -> None:
     anna, lukas = query.people(conn)
     july = date(2026, 7, 1)
-    assert anna == query.Person(PARTNER, 1, july, july, open=0, transactions=2)
-    assert lukas == query.Person(OWNER, 20, START, date(2026, 8, 1), open=1, transactions=8)
+    assert anna == query.Person(PARTNER, 1, july, date(2026, 7, 31), staged=0, transactions=2)
+    assert lukas == query.Person(OWNER, 2, START, date(2026, 8, 31), staged=1, transactions=8)
 
 
-def test_a_person_with_nothing_staged_is_listed_too() -> None:
+def test_a_person_with_nothing_committed_is_listed_too() -> None:
     empty = db.connect(":memory:")
     db.migrate(empty, NOW)
     store.ensure_owner(empty, "Zoe")
-    assert query.people(empty) == (query.Person("Zoe", 0, None, None, open=0, transactions=0),)
+    assert query.people(empty) == (query.Person("Zoe", 0, None, None, staged=0, transactions=0),)
     empty.close()
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from finanze import classification, monthclose, pipeline
+from finanze import classification, pipeline, staging
 from finanze.classification import Instrument, UnknownInstrumentError
 from finanze.extractors import ibkr
 from finanze.models import CashBalance, Holding, Kind, PrintedValue, Rate
@@ -17,7 +17,7 @@ from finanze.storage import store
 from tests.conftest import INSTRUMENTS
 from tests.storage.conftest import NOW
 from tests.storage.helpers import OWNER, batch, rows, statement, trade
-from tests.test_monthclose import fixture_batch, new_database, stage_september
+from tests.test_staging import fixture_batch, new_database, stage_september
 
 D = Decimal
 
@@ -82,7 +82,7 @@ def test_staging_the_same_statements_again_stores_the_same(
     stage_september(conn, folder)
     counts = "SELECT (SELECT count(*) FROM positions), (SELECT count(*) FROM statement_values)"
     before = rows(conn, counts)
-    monthclose.stage(conn, fixture_batch(folder), NOW)
+    staging.stage(conn, fixture_batch(folder), NOW)
     assert rows(conn, counts) == before == [(3, 5)]
 
 
@@ -101,7 +101,7 @@ def test_a_maturity_its_statement_has_split_closes_its_lots_and_is_left_alone(
         source_ref="Corporate Actions:1:principal",
     )
     balance = CashBalance("IBKR USD", "USD", D(5000), D("5004.6"))
-    staged = monthclose.stage(conn, batch(statement("ibkr", [bought, principal], [balance])), NOW)
+    staged = staging.stage(conn, batch(statement("ibkr", [bought, principal], [balance])), NOW)
     assert staged.gaps == ()
     assert rows(conn, "SELECT amount_nano, split_of FROM transactions ORDER BY date") == [
         (-4_875_000_000_000, None),
@@ -116,9 +116,9 @@ def test_a_maturity_its_statement_has_split_needs_no_stored_purchase(
         "4879.6", "912797YY2", "-5000", kind=Kind.INCOME, asset_tab="Bonds", source_ref="1"
     )
     balance = CashBalance("IBKR USD", "USD", D(0), D("4879.6"))
-    staged = monthclose.stage(conn, batch(statement("ibkr", [principal], [balance])), NOW)
+    staged = staging.stage(conn, batch(statement("ibkr", [principal], [balance])), NOW)
     assert staged.gaps == ()
-    assert monthclose.would_refuse(conn, store.owner_id(conn, OWNER) or 0) == []
+    assert staging.would_refuse(conn, store.owner_id(conn, OWNER) or 0) == []
 
 
 def test_rates_in_another_base_than_francs_are_not_kept(conn: sqlite3.Connection) -> None:
@@ -126,7 +126,7 @@ def test_rates_in_another_base_than_francs_are_not_kept(conn: sqlite3.Connection
     rates = (Rate("USD", "CHF", D("0.8")), Rate("CHF", "EUR", D("1.05")))
     values = (PrintedValue("Total", "JPY", D(1000)),)
     extraction = replace(base.extraction, rates=rates, values=values)
-    monthclose.stage(conn, batch(replace(base, extraction=extraction)), NOW)
+    staging.stage(conn, batch(replace(base, extraction=extraction)), NOW)
     assert rows(conn, "SELECT currency, rate_to_chf FROM fx_rates") == [("USD", "0.8")]
     # a currency is known from the first value in it
     assert rows(conn, "SELECT currency FROM statement_values") == [("JPY",)]
@@ -135,7 +135,7 @@ def test_rates_in_another_base_than_francs_are_not_kept(conn: sqlite3.Connection
 def test_a_holding_in_a_currency_without_cash_gets_an_account(conn: sqlite3.Connection) -> None:
     base = statement("ibkr", [], [CashBalance("IBKR USD", "USD", D(0), D(0))])
     held = (Holding("IBKR EUR", "WIDG", "EUR", D(3), D(10), D(30), "ETFs"),)
-    monthclose.stage(
+    staging.stage(
         conn, batch(replace(base, extraction=replace(base.extraction, holdings=held))), NOW
     )
     assert rows(conn, "SELECT name, currency FROM accounts ORDER BY name") == [
@@ -146,7 +146,7 @@ def test_a_holding_in_a_currency_without_cash_gets_an_account(conn: sqlite3.Conn
 
 
 def test_a_second_account_at_the_broker_holds_under_its_own_name(folder: Path) -> None:
-    statements, _ = pipeline.load_statements(folder, database=True)
+    statements, _ = pipeline.load_statements(folder)
     renamed = pipeline.relabel(statements, {"U12345678": "IBKR 2"})
     [broker] = [s for s in renamed if s.source == "ibkr"]
     assert {h.account for h in broker.extraction.holdings or ()} == {"IBKR 2 USD"}
@@ -155,7 +155,7 @@ def test_a_second_account_at_the_broker_holds_under_its_own_name(folder: Path) -
 
 
 def test_instruments_yaml_names_and_types_what_is_held(folder: Path) -> None:
-    statements, _ = pipeline.load_statements(folder, database=True)
+    statements, _ = pipeline.load_statements(folder)
     instruments = INSTRUMENTS | {"ACME": Instrument(tab="ETFs", ticker="ACMX")}
     resolved = pipeline.resolve_holdings(statements, instruments)
     [broker] = [s for s in resolved if s.source == "ibkr"]

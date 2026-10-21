@@ -27,6 +27,10 @@ CURRENCY = "CHF"
 _AMOUNT = r"(-?\d[\d']*\.\d{2})"
 _TRANSACTION = re.compile(rf"(\d{{2}}\.\d{{2}}\.\d{{4}}) (.+?) {_AMOUNT}")
 _INVOICE_DATE = re.compile(r"Data ?della ?fattura ?(\d{2}\.\d{2}\.\d{4})")
+_ACCOUNT_NUMBER = re.compile(r"Numero ?di ?conto ?(\d+)")
+_BILLING = re.compile(
+    r"Periodo ?di ?fatturazione ?(\d{2}\.\d{2}\.)(\d{2}) ?[\u2013-] ?(\d{2}\.\d{2}\.)(\d{2})"
+)
 _CARD = re.compile(r"[\dX ]*X[\dX ]*?(\d{4}) [A-Z]")  # "0000 00XXXX X0001 NAME Cashback ..."
 _CARD_TOTAL = re.compile(rf"Totale ?transazioni.* {_AMOUNT}")
 _INVOICE_TOTAL = re.compile(rf"Totale ?nuove ?transazioni {_AMOUNT}")
@@ -59,6 +63,9 @@ class _Invoice:
     purchases: tuple[_Line, ...]
     total: Decimal  # "Totale nuove transazioni"
     figures: tuple[Decimal, ...]  # previous balance, payments, new transactions, new balance
+    account_id: str  # the number of the card account, "" when not printed
+    first: date  # first day the invoice covers
+    last: date  # last day it covers: not before the invoice day, on which its rows are booked
 
 
 def extract(content: str, source_file: str) -> Extraction:
@@ -69,7 +76,10 @@ def extract(content: str, source_file: str) -> Extraction:
         _purchase(line, ACCOUNT, invoice.day, source_file) for line in invoice.purchases
     )
     return Extraction(
-        month=month_start(invoice.day),
+        month=month_start(invoice.first),
+        start=invoice.first,
+        end=invoice.last,
+        account_id=invoice.account_id,
         transactions=transactions,
         controls=(ControlTotal(ACCOUNT, CURRENCY, -invoice.total),),
     )
@@ -112,7 +122,10 @@ def extract_account(content: str, source_file: str) -> Extraction:
         _purchase(line, CARD_ACCOUNT, invoice.day, source_file) for line in invoice.purchases
     )
     return Extraction(
-        month=month_start(invoice.day),
+        month=month_start(invoice.first),
+        start=invoice.first,
+        end=invoice.last,
+        account_id=invoice.account_id,
         transactions=(*payments, *purchases),
         balances=(CashBalance(CARD_ACCOUNT, CURRENCY, -previous, -balance),),
     )
@@ -163,7 +176,18 @@ def _read(content: str) -> _Invoice:
             _check(total, line, "the invoice total")
             found = figures.groups() if figures else ()
             amounts = tuple(parse_decimal(f, "Swisscard balance") for f in found)
-            return _Invoice(day, payments, tuple(purchases), total, amounts)
+            first, last = _covered(content, day, (*payments, *purchases))
+            number = _ACCOUNT_NUMBER.search(content)
+            return _Invoice(
+                day,
+                payments,
+                tuple(purchases),
+                total,
+                amounts,
+                number[1] if number else "",
+                first,
+                last,
+            )
         card = _CARD.match(line)
         if card or line == _MISCELLANEOUS:
             section, subtotal = (card[1] if card else _MISCELLANEOUS), Decimal(0)
@@ -179,6 +203,16 @@ def _read(content: str) -> _Invoice:
             purchases.append(bought)
     msg = 'Swisscard: no "Totale nuove transazioni" line'
     raise ExtractionError(msg)
+
+
+def _covered(content: str, day: date, lines: tuple[_Line, ...]) -> tuple[date, date]:
+    """The billing period the invoice prints, else its earliest row to the invoice day."""
+    printed = _BILLING.search(content)
+    if printed is None:
+        return min((line.day for line in lines), default=day), day
+    first = parse_swiss_date(f"{printed[1]}20{printed[2]}", "Swisscard billing period")
+    last = parse_swiss_date(f"{printed[3]}20{printed[4]}", "Swisscard billing period")
+    return first, max(last, day)
 
 
 def _line(ref: str, match: re.Match[str]) -> _Line:

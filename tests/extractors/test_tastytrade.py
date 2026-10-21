@@ -147,12 +147,20 @@ def test_rerunning_gives_identical_output(result: Extraction) -> None:
     assert tastytrade.extract("\ufeff" + CSV, source_file="transactions.csv") == result
 
 
+def test_a_partial_month_covers_exactly_the_days_of_its_rows() -> None:
+    lines = CSV.splitlines()
+    part = tastytrade.extract("\n".join([lines[0], *lines[2:5]]) + "\n", source_file="p.csv")
+    assert part.period == (date(2026, 9, 25), date(2026, 9, 28))
+    assert part.month == date(2026, 9, 1)
+    check_balances(part)
+
+
 def test_an_export_of_several_months_covers_them_all(result: Extraction) -> None:
-    assert result.period == (date(2026, 9, 1), date(2026, 9, 30))
+    assert result.period == (date(2026, 9, 4), date(2026, 9, 30))
     longer = tastytrade.extract(
         CSV.replace("2026-09-04T21", "2026-07-31T21"), source_file="year.csv"
     )
-    assert longer.period == (date(2026, 7, 1), date(2026, 9, 30))
+    assert longer.period == (date(2026, 7, 31), date(2026, 9, 30))
     assert longer.controls == result.controls
     check_balances(longer)
 

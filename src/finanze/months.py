@@ -1,6 +1,9 @@
-"""What a person's month holds and what still stands between it and its commit.
+"""What is staged for a person and waits for its commit, how far each account is committed,
+and what the committed months hold.
 
-Read-only: the month-close page shows this; `monthclose` is what changes anything.
+Read-only: the import page and the months pages show this; `staging` is what changes
+anything. There is no month to close (decided 2026-10-16): a month is only a way to look at
+what is committed.
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from finanze import monthclose
+from finanze import router, staging
 from finanze.extractors.common import month_end, months_between
 from finanze.storage import store
 from finanze.storage.money import from_nano
@@ -22,19 +25,17 @@ _Date = date
 
 @dataclass(frozen=True, slots=True)
 class MonthLine:
-    """One month of one person, as the list of months shows it."""
+    """One month of one person, as the list of months shows it: what is committed of it."""
 
     owner: str
     month: date
-    committed: bool
-    statements: int  # files that cover the month
-    transactions: int  # booked in the month
-    uncategorized: int
+    statements: int  # committed files that cover the month
+    transactions: int  # committed, booked in the month
 
 
 @dataclass(frozen=True, slots=True)
 class File:
-    """A statement that covers the month."""
+    """A statement file: one that covers a month, or one that is staged."""
 
     id: int
     source: str
@@ -42,7 +43,12 @@ class File:
     first: date
     last: date
     checked: bool  # False: the statement prints nothing to reconcile against
-    transactions: int  # of this file, booked in the month
+    transactions: int  # of this file (booked in the month, for a month)
+    committed: bool = True
+
+    @property
+    def label(self) -> str:
+        return router.LABELS.get(self.source, self.source)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,16 +65,23 @@ class Statement:
     checked: bool
     imported_at: str
     transactions: int  # every row that came from it
+    committed_at: str | None = None  # None: staged
+    # Why it cannot be taken back now: committed statements of its accounts on both sides.
+    held_by: tuple[str, ...] = ()
 
     @property
     def months(self) -> tuple[date, ...]:
         """The first day of every month it covers."""
         return tuple(months_between(self.first, self.last))
 
+    @property
+    def label(self) -> str:
+        return router.LABELS.get(self.source, self.source)
+
 
 @dataclass(frozen=True, slots=True)
 class Pending:
-    """A row that still needs a category."""
+    """A row to give a category to, or to change the category of."""
 
     id: str
     date: date
@@ -77,12 +90,19 @@ class Pending:
     currency: str
     counterparty: str
     description: str
-    category: str = ""  # of a row that has one, which can be changed
+    category: str = ""  # of a row that has one
+    side: str = ""  # of that category: "uscite", "entrate" or "transfer"
+    changeable: bool = False  # money in or out whose category a rule or a choice gave
+    statement: int | None = None  # the file it came from
+
+    @property
+    def waiting(self) -> bool:
+        return not self.category
 
 
 @dataclass(frozen=True, slots=True)
 class Group:
-    """Waiting rows of one counterparty going one way: they get their category together."""
+    """Rows of one counterparty going one way: they get their category together."""
 
     name: str  # the counterparty, or the description without one; "" when the rows have no text
     incoming: bool
@@ -92,7 +112,7 @@ class Group:
 
 @dataclass(frozen=True, slots=True)
 class CategoryTotal:
-    side: str  # "uscite", "entrate" or "transfer"
+    side: str  # "uscite", "entrate" or "transfer"; "" for the rows waiting for a category
     category: str
     currency: str
     count: int
@@ -100,24 +120,19 @@ class CategoryTotal:
 
 
 @dataclass(frozen=True, slots=True)
-class Checklist:
-    """One person's month, in the order things block its commit."""
+class Draft:
+    """What is staged for one person: what a commit would make visible."""
 
     owner: str
-    month: date
-    committed: bool
-    committed_at: str | None
     files: tuple[File, ...]
-    # Sources with a statement for the month before and none for this one. Never a pension
-    # fund: its certificates come when they come, and none is expected in any month.
-    missing: tuple[str, ...]
+    rows: tuple[Pending, ...]  # every staged row but those a statement books on itself alone
+    totals: tuple[CategoryTotal, ...]  # by category and currency, the waiting rows apart
     # What only another statement can settle, anywhere in the person's history.
     gaps: tuple[str, ...]
-    uncategorized: tuple[Pending, ...]
-    totals: tuple[CategoryTotal, ...]  # by booking date, as the month is closed
-    # Rows of an open month whose category can be changed: money in or out, by the category
-    # a rule or a choice gave it. Empty once the month is committed.
-    categorized: tuple[Pending, ...] = ()
+
+    @property
+    def uncategorized(self) -> tuple[Pending, ...]:
+        return tuple(row for row in self.rows if row.waiting)
 
     @property
     def groups(self) -> tuple[Group, ...]:
@@ -125,13 +140,8 @@ class Checklist:
         return _grouped(self.uncategorized)
 
     @property
-    def changeable(self) -> tuple[Group, ...]:
-        """The rows that have a category, per counterparty, direction and category."""
-        return _grouped(self.categorized)
-
-    @property
     def blocked_by(self) -> tuple[str, ...]:
-        """Why the month cannot be committed yet; empty when it can."""
+        """Why it cannot be committed yet; empty when it can."""
         reasons = list(self.gaps)
         if self.uncategorized:
             count = len(self.uncategorized)
@@ -140,98 +150,208 @@ class Checklist:
         return tuple(reasons)
 
 
-def listing(conn: sqlite3.Connection, owner: str | None = None) -> tuple[MonthLine, ...]:
-    """Every staged or committed month of `owner` (of everyone without one), newest first."""
-    booked = (
-        "(SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        "WHERE a.owner_id = m.owner_id "
-        "AND t.booking_date BETWEEN m.month AND date(m.month, '+1 month', '-1 day')"
+@dataclass(frozen=True, slots=True)
+class Coverage:
+    """How far one account of one person is committed, and staged, by one source."""
+
+    owner: str
+    account: str
+    source: str
+    committed: date | None  # the last day committed; None: nothing is
+    staged: date | None  # the last day staged beyond it; None: nothing is
+
+    @property
+    def label(self) -> str:
+        return router.LABELS.get(self.source, self.source)
+
+
+@dataclass(frozen=True, slots=True)
+class Checklist:
+    """What is committed of one person's month."""
+
+    owner: str
+    month: date
+    files: tuple[File, ...]
+    totals: tuple[CategoryTotal, ...]  # by booking date
+    # Money in or out of the month whose category can be changed.
+    categorized: tuple[Pending, ...] = ()
+
+    @property
+    def changeable(self) -> tuple[Group, ...]:
+        """The rows that have a category, per counterparty, direction and category."""
+        return _grouped(self.categorized)
+
+
+# A row of `transactions t` joined with its account `a`, category `c` and file `f`, as a Pending.
+_PENDING = (
+    "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description, "  # noqa: S608  # only fixed text of `store` is interpolated
+    f"coalesce(c.name, ''), coalesce(c.side, ''), {store.CHANGEABLE}, t.statement_file_id "
+    "FROM transactions t JOIN accounts a ON a.id = t.account_id "
+    "LEFT JOIN categories c ON c.id = t.category_id "
+    "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
+)
+
+
+def _pending(row: sqlite3.Row) -> Pending:
+    return Pending(
+        row[0],
+        _day(row[1]),
+        row[2],
+        from_nano(row[3]),
+        row[4],
+        row[5],
+        row[6],
+        row[7],
+        row[8],
+        bool(row[9]),
+        row[10],
     )
+
+
+def draft(conn: sqlite3.Connection, owner: str) -> Draft:
+    """What is staged for `owner`, nothing when nothing is."""
+    owner_id = store.owner_id(conn, owner)
+    if owner_id is None:
+        return Draft(owner, (), (), (), ())
+    files = conn.execute(
+        "SELECT f.id, f.source, f.filename, f.period_start, f.period_end, f.reconciled, "
+        "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id) "
+        "FROM statement_files f WHERE f.owner_id = ? AND f.committed_at IS NULL "
+        "ORDER BY f.period_start, f.source, f.filename",
+        (owner_id,),
+    ).fetchall()
+    rows = conn.execute(
+        _PENDING  # only fixed text is interpolated
+        + "WHERE a.owner_id = ? AND f.committed_at IS NULL AND t.statement_file_id IS NOT NULL "
+        "AND t.kind <> 'internal' ORDER BY t.date, t.id",
+        (owner_id,),
+    ).fetchall()
+    pending = tuple(_pending(row) for row in rows)
+    return Draft(
+        owner=owner,
+        files=tuple(
+            File(f[0], f[1], f[2], _day(f[3]), _day(f[4]), f[5] == "yes", f[6], committed=False)
+            for f in files
+        ),
+        rows=pending,
+        totals=_totals(conn, pending),
+        gaps=_gaps(conn, owner_id),
+    )
+
+
+def _totals(conn: sqlite3.Connection, rows: tuple[Pending, ...]) -> tuple[CategoryTotal, ...]:
+    """Per category and currency in the order of the taxonomy, the waiting rows last."""
+    order = {
+        (r[0], r[1]): n
+        for n, r in enumerate(
+            conn.execute("SELECT side, name FROM categories ORDER BY sort_order, id")
+        )
+    }
+    sums: dict[tuple[str, str, str], tuple[int, Decimal]] = {}
+    for row in rows:
+        key = (row.side, row.category, row.currency)
+        count, total = sums.get(key, (0, Decimal(0)))
+        sums[key] = (count + 1, total + row.amount)
+    ranked = sorted(sums, key=lambda k: (not k[1], order.get((k[0], k[1]), len(order)), k[2]))
+    return tuple(
+        CategoryTotal(side, name, cur, *sums[side, name, cur]) for side, name, cur in ranked
+    )
+
+
+def coverage(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Coverage, ...]:
+    """Every account a source feeds, of `owner` or of everyone: the last day committed and the
+    last day staged."""
     found = conn.execute(
-        "SELECT o.name, m.month, m.status, "  # noqa: S608  # only the fixed text above is interpolated
-        "(SELECT count(*) FROM statement_files f WHERE f.owner_id = m.owner_id "
-        "AND f.period_start <= date(m.month, '+1 month', '-1 day') AND f.period_end >= m.month), "
-        f"{booked}), {booked} AND {store.WAITING}) "
-        "FROM months m JOIN owners o ON o.id = m.owner_id "
-        "WHERE o.name = coalesce(?, o.name) ORDER BY m.month DESC, o.name",
+        "SELECT o.name, a.name, f.source, "
+        "max(f.period_end) FILTER (WHERE f.committed_at IS NOT NULL), "
+        "max(f.period_end) FILTER (WHERE f.committed_at IS NULL) "
+        "FROM statement_accounts s JOIN statement_files f ON f.id = s.statement_file_id "
+        "JOIN accounts a ON a.id = s.account_id JOIN owners o ON o.id = a.owner_id "
+        "WHERE o.name = coalesce(?, o.name) "
+        "GROUP BY o.name, a.name, f.source ORDER BY o.name, a.name, f.source",
         (owner,),
     ).fetchall()
+    lines: list[Coverage] = []
+    for name, account, source, committed, staged in found:
+        last = committed and _day(committed)
+        ahead = staged and _day(staged)
+        lines.append(
+            Coverage(
+                name, account, source, last, ahead if ahead and (not last or ahead > last) else None
+            )
+        )
+    return tuple(lines)
+
+
+def listing(conn: sqlite3.Connection, owner: str | None = None) -> tuple[MonthLine, ...]:
+    """Every month that committed statements of `owner` (of everyone without one) cover,
+    newest first."""
+    files = conn.execute(
+        "SELECT o.name, f.period_start, f.period_end FROM statement_files f "
+        "JOIN owners o ON o.id = f.owner_id "
+        "WHERE f.committed_at IS NOT NULL AND o.name = coalesce(?, o.name)",
+        (owner,),
+    ).fetchall()
+    covered: dict[tuple[str, date], int] = {}
+    for name, first, last in files:
+        for month in months_between(_day(first), _day(last)):
+            covered[name, month] = covered.get((name, month), 0) + 1
+    booked = conn.execute(
+        "SELECT owner, date(booking_date, 'start of month'), count(*) "
+        "FROM committed_transactions WHERE owner = coalesce(?, owner) GROUP BY 1, 2",
+        (owner,),
+    ).fetchall()
+    counts = {(r[0], _day(r[1])): int(r[2]) for r in booked}
+    keys = sorted({*covered, *counts}, key=lambda k: (-k[1].toordinal(), k[0]))
     return tuple(
-        MonthLine(r[0], date.fromisoformat(r[1]), r[2] == "committed", r[3], r[4], r[5])
-        for r in found
+        MonthLine(name, month, covered.get((name, month), 0), counts.get((name, month), 0))
+        for name, month in keys
     )
 
 
 def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
-    """The month of `owner` that starts on `month`. Raises `NothingStagedError` without one."""
+    """What is committed of the month of `owner` that starts on `month`.
+
+    Raises `NothingStagedError` for a person the database does not know.
+    """
     owner_id = store.owner_id(conn, owner)
-    row = conn.execute(
-        "SELECT status, committed_at FROM months WHERE owner_id = ? AND month = ?",
-        (owner_id, month.isoformat()),
-    ).fetchone()
-    if owner_id is None or row is None:
-        msg = f"nothing is staged for {owner} in {month:%Y-%m}"
-        raise monthclose.NothingStagedError(msg)
+    if owner_id is None:
+        msg = f"there is nobody called {owner}"
+        raise staging.NothingStagedError(msg)
     span = (month.isoformat(), month_end(month).isoformat())
+    committed = "(f.committed_at IS NOT NULL OR t.statement_file_id IS NULL)"
     files = conn.execute(
         "SELECT f.id, f.source, f.filename, f.period_start, f.period_end, f.reconciled, "
         "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id "
         "AND t.booking_date BETWEEN ?1 AND ?2) "
         "FROM statement_files f WHERE f.owner_id = ?3 AND f.period_start <= ?2 "
-        "AND f.period_end >= ?1 ORDER BY f.source, f.filename",
+        "AND f.period_end >= ?1 AND f.committed_at IS NOT NULL ORDER BY f.source, f.filename",
         (*span, owner_id),
     ).fetchall()
-    before = conn.execute(
-        "SELECT DISTINCT source FROM statement_files WHERE owner_id = ?1 "
-        "AND period_start < ?2 AND period_end >= date(?2, '-1 month') "
-        # what feeds an account carried flat (a pension fund's certificates) is not monthly
-        "AND source NOT IN (SELECT source FROM accounts WHERE owner_id = ?1 "
-        "AND kind = 'manual' AND source IS NOT NULL) ORDER BY source",
-        (owner_id, span[0]),
-    ).fetchall()
-    present = {f[1] for f in files}
-    pending = conn.execute(
-        "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description "  # noqa: S608  # only fixed text of `store` is interpolated
-        "FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
-        f"AND {store.WAITING} ORDER BY t.date, t.id",
+    categorized = conn.execute(
+        _PENDING  # only fixed text is interpolated
+        + f"WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND {committed} "
+        f"AND {store.CHANGEABLE} ORDER BY t.date, t.id",
         (owner_id, *span),
     ).fetchall()
-    categorized = conn.execute(
-        "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description, "  # noqa: S608  # only fixed text of `store` is interpolated
-        "c.name FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        "JOIN categories c ON c.id = t.category_id "
-        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND ? = 'open' "
-        f"AND {store.CHANGEABLE} ORDER BY t.date, t.id",
-        (owner_id, *span, row["status"]),
-    ).fetchall()
     totals = conn.execute(
-        "SELECT c.side, c.name, t.currency, count(*), sum(t.amount_nano) "
+        "SELECT c.side, c.name, t.currency, count(*), sum(t.amount_nano) "  # noqa: S608  # only fixed text is interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "JOIN categories c ON c.id = t.category_id "
-        "WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? "
+        "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
+        f"WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND {committed} "
         "GROUP BY c.id, t.currency ORDER BY c.sort_order, c.id, t.currency",
         (owner_id, *span),
     ).fetchall()
     return Checklist(
         owner=owner,
         month=month,
-        committed=row["status"] == "committed",
-        committed_at=row["committed_at"],
         files=tuple(
             File(f[0], f[1], f[2], _day(f[3]), _day(f[4]), checked=f[5] == "yes", transactions=f[6])
             for f in files
         ),
-        missing=tuple(r[0] for r in before if r[0] not in present),
-        gaps=_gaps(conn, owner_id),
-        uncategorized=tuple(
-            Pending(r[0], _day(r[1]), r[2], from_nano(r[3]), r[4], r[5], r[6]) for r in pending
-        ),
         totals=tuple(CategoryTotal(r[0], r[1], r[2], r[3], from_nano(r[4])) for r in totals),
-        categorized=tuple(
-            Pending(r[0], _day(r[1]), r[2], from_nano(r[3]), r[4], r[5], r[6], r[7])
-            for r in categorized
-        ),
+        categorized=tuple(_pending(row) for row in categorized),
     )
 
 
@@ -251,7 +371,7 @@ def statement(conn: sqlite3.Connection, number: int) -> Statement | None:
     found = conn.execute(
         "SELECT f.id, o.name, f.source, f.filename, f.sha256, f.period_start, f.period_end, "
         "f.reconciled, f.imported_at, "
-        "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id) "
+        "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id), f.committed_at "
         "FROM statement_files f JOIN owners o ON o.id = f.owner_id WHERE f.id = ?",
         (number,),
     ).fetchone()
@@ -268,6 +388,8 @@ def statement(conn: sqlite3.Connection, number: int) -> Statement | None:
         checked=found[7] == "yes",
         imported_at=found[8],
         transactions=found[9],
+        committed_at=found[10],
+        held_by=tuple(store.later_committed(conn, number)) if found[10] else (),
     )
 
 
@@ -279,6 +401,6 @@ def _gaps(conn: sqlite3.Connection, owner_id: int) -> tuple[str, ...]:
     """What the chain of balances and the bills are missing, as sentences. Nothing is settled or
     hidden here: the commit runs the same checks and refuses."""
     try:
-        return tuple(str(gap) for gap in monthclose.would_refuse(conn, owner_id))
+        return tuple(str(gap) for gap in staging.would_refuse(conn, owner_id))
     except ReconciliationError as exc:  # two statements disagree: shown, and the commit raises it
         return (str(exc),)

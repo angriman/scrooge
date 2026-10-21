@@ -64,11 +64,21 @@ def test_malformed_statements_raise(content: str, error: type[Exception], messag
         revolut_savings.extract(content, source_file="savings.tsv")
 
 
+def test_a_partial_month_covers_exactly_its_days() -> None:
+    lines = TSV.splitlines()
+    kept = [
+        line for line in lines[1:] if line.startswith(("Sep 15,", "Sep 2,", "Sep 1,", "Sep 29,"))
+    ]
+    part = revolut_savings.extract("\n".join([lines[0], *kept]) + "\n", source_file="p.tsv")
+    assert part.period == (date(2026, 9, 1), date(2026, 9, 29))
+    assert part.month == date(2026, 9, 1)
+
+
 def test_a_statement_of_several_months_and_reinvested_returns() -> None:
     cells = ["Aug 2, 2026, 2:10:47 AM", "Return Reinvested Class R EUR IE0000000001"]
     reinvested = "\t".join([*cells, "0.04", "0.03", "0.95", "1", "0.04"]) + "\n"
     longer = revolut_savings.extract(TSV + reinvested, source_file="year.tsv")
-    assert longer.period == (date(2026, 8, 1), date(2026, 9, 30))
+    assert longer.period == (date(2026, 8, 2), date(2026, 9, 30))
     assert len(longer.transactions) == len(
         revolut_savings.extract(TSV, source_file="s.tsv").transactions
     )

@@ -6,7 +6,7 @@ whoever receives, and just its own name to whoever sent. The named side carries
 rows of the person it names: same bank, same currency, the opposite amount, at most a day
 apart. A half that is named too needs nothing; one that is not gets `counterparty_owner`.
 
-Derived data, redone on every import. A row of a committed month is never changed.
+Derived data, redone on every import. A row of a committed statement is never changed.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class _Row:
     key: tuple[str, str]  # bank, currency
     amount: int
     day: date
-    fixed: bool  # in a committed month
+    fixed: bool  # of a committed statement
     paired: bool = False
 
 
@@ -36,10 +36,9 @@ def mark(conn: sqlite3.Connection) -> int:
         _Row(row[0], row[1], row[2], (row[3], row[4]), row[5], date.fromisoformat(row[6]), row[7])
         for row in conn.execute(
             "SELECT t.id, a.owner_id, t.counterparty_owner_id, a.source, t.currency, "
-            "t.amount_nano, t.date, coalesce(m.status = 'committed', 0) "
+            "t.amount_nano, t.date, coalesce(f.committed_at IS NOT NULL, 0) "
             "FROM transactions t JOIN accounts a ON a.id = t.account_id "
-            "LEFT JOIN months m ON m.owner_id = a.owner_id "
-            "AND m.month = date(t.booking_date, 'start of month') "
+            "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
             "WHERE t.kind IN ('income', 'expense') AND a.source IS NOT NULL "
             "ORDER BY t.date, t.id"
         )

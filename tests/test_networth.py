@@ -10,8 +10,16 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from finanze import monthclose, networth, query
-from finanze.models import CashBalance, Holding, Kind, PrintedValue, SecurityTrade, Transaction
+from finanze import networth, query, staging
+from finanze.models import (
+    CashBalance,
+    ControlTotal,
+    Holding,
+    Kind,
+    PrintedValue,
+    SecurityTrade,
+    Transaction,
+)
 from finanze.networth import (
     BILLS,
     CARD,
@@ -38,7 +46,7 @@ from tests.storage.helpers import (
     txn,
 )
 
-NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)  # after every day the tests cover
 D = Decimal
 
 
@@ -75,8 +83,8 @@ def close(
     conn: sqlite3.Connection, *statements: Statement, owner: str = OWNER, month: date = SEPTEMBER
 ) -> None:
     """Stage the statements of one month and commit it."""
-    monthclose.stage(conn, batch(*statements, owner=owner, month=month), NOW)
-    monthclose.commit(conn, owner=owner, month=month, now=NOW)
+    staging.stage(conn, batch(*statements, owner=owner, month=month), NOW)
+    staging.commit(conn, owner=owner, now=NOW)
 
 
 def spent(amount: str, on: date, **fields: object) -> Transaction:
@@ -116,16 +124,37 @@ def test_nothing_committed_is_no_net_worth(conn: sqlite3.Connection) -> None:
     assert networth.run(conn) == networth.NetWorth("EUR", (), (), ())
     assert networth.run(conn).total == ()
     assert networth.checks(conn) == ()
-    monthclose.stage(conn, batch(account("migros", "Migros", "CHF", "1000")), NOW)
+    staging.stage(conn, batch(account("migros", "Migros", "CHF", "1000")), NOW)
     assert networth.run(conn, currency="CHF").days == ()  # staged is not committed
 
 
-def test_committed_months_without_anything_in_them_are_no_net_worth(
+def test_a_person_with_nothing_committed_is_no_net_worth(conn: sqlite3.Connection) -> None:
+    store.ensure_owner(conn, OWNER)
+    assert networth.run(conn, currency="CHF").days == ()
+
+
+def test_a_committed_statement_with_no_figure_in_it_is_no_net_worth(
     conn: sqlite3.Connection,
 ) -> None:
-    owner = store.ensure_owner(conn, OWNER)
-    store.set_month(conn, owner, SEPTEMBER, "committed", "2026-10-06T12:00:00+00:00")
+    empty = statement("tastytrade", [], filename="empty.csv")
+    controls = (ControlTotal("Tastytrade", "USD", D(0)),)
+    empty = replace(empty, extraction=replace(empty.extraction, controls=controls))
+    staging.stage(conn, batch(empty), NOW)
+    assert len(staging.commit(conn, owner=OWNER, now=NOW)) == 1
     assert networth.run(conn, currency="CHF").days == ()
+
+
+def test_net_worth_ends_on_the_last_day_committed_and_for_everyone_on_the_earliest(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    staging.stage(conn, certified(certificate(day(15), "500"), owner=PARTNER), NOW)
+    staging.commit(conn, owner=PARTNER, now=NOW)
+    later = batch(account("migros", "Migros", "CHF", "1000", month=OCTOBER), month=OCTOBER)
+    staging.stage(conn, later, NOW)  # October is staged, not committed
+    assert networth.run(conn, currency="CHF", owner=OWNER).days[-1] == day(30)
+    assert networth.run(conn, currency="CHF", owner=PARTNER).days == (day(15),)
+    assert networth.run(conn, currency="CHF").days[-1] == day(15)
 
 
 def test_an_unknown_person_is_refused(conn: sqlite3.Connection) -> None:
@@ -164,11 +193,11 @@ def test_cash_starts_with_the_first_statement_and_follows_its_rows(
 def test_only_committed_months_count(conn: sqlite3.Connection) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000", spent("-200", day(10))))
     october = account("migros", "Migros", "CHF", "800", spent("-100", day(5, 10)), month=OCTOBER)
-    monthclose.stage(conn, batch(october, month=OCTOBER), NOW)
+    staging.stage(conn, batch(october, month=OCTOBER), NOW)
     result = networth.run(conn, currency="CHF")
     assert result.days[-1] == day(30)
     assert result.total[-1] == 800
-    monthclose.commit(conn, owner=OWNER, month=OCTOBER, now=NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     result = networth.run(conn, currency="CHF")
     assert (result.days[-1], result.total[-1]) == (day(31, 10), D(700))
 
@@ -179,9 +208,9 @@ def test_an_account_whose_first_statement_is_not_committed_does_not_count_yet(
     close(conn, account("migros", "Migros", "CHF", "1000"))
     # Its statement opens on the last day of September, which is committed: October is not.
     staged = account("revolut", "Revolut CHF", "CHF", "500", month=OCTOBER)
-    monthclose.stage(conn, batch(staged, month=OCTOBER), NOW)
+    staging.stage(conn, batch(staged, month=OCTOBER), NOW)
     assert networth.run(conn, currency="CHF").total[-1] == 1000
-    monthclose.commit(conn, owner=OWNER, month=OCTOBER, now=NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     result = networth.run(conn, currency="CHF")
     assert [result.total[result.days.index(d)] for d in (day(29), day(30))] == [D(1000), D(1500)]
 
@@ -264,7 +293,7 @@ def test_an_account_that_is_only_typed_is_carried_flat_and_says_so(
 ) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
     for on, amount in ((day(5), "250"), (day(20), "300")):
-        monthclose.type_balance(
+        staging.type_balance(
             conn, owner=OWNER, account="Old bank", day=on, amount=D(amount), currency="CHF"
         )
     result = networth.run(conn, currency="CHF")
@@ -288,11 +317,10 @@ def test_a_pension_fund_is_a_line_of_its_own_from_the_day_of_its_certificate(
 ) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
     before = networth.run(conn, currency="CHF")
-    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
-    monthclose.stage(conn, certified(certificate(day(5), "35802.00")), NOW)
-    assert networth.run(conn, currency="CHF").days == ()  # staged is not committed
-    monthclose.stage(conn, certified(certificate(day(20), "36000.50")), NOW)
-    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    staging.stage(conn, certified(certificate(day(5), "35802.00")), NOW)
+    assert networth.run(conn, currency="CHF") == before  # staged is not committed
+    staging.stage(conn, certified(certificate(day(20), "36000.50")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
 
     result = networth.run(conn, currency="CHF")
     assert result.days == before.days
@@ -317,10 +345,10 @@ def test_a_pension_fund_is_a_line_of_its_own_from_the_day_of_its_certificate(
 def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Connection) -> None:
     rate(conn, "EUR", day(1), "0.95")
     rate(conn, "EUR", day(15), "0.94")
-    monthclose.stage(conn, certified(certificate(day(10), "9400")), NOW)
-    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    staging.stage(conn, certified(certificate(day(10), "9400"), certificate(day(15), "9400")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     result = networth.run(conn)
-    assert result.days[0] == day(10)  # nothing is known before: no day before it
+    assert (result.days[0], result.days[-1]) == (day(10), day(15))  # nothing is known outside
     fund = line(result, PILLAR2)
     assert (fund[day(10)], fund[day(15)]) == (D("9894.74"), D("10000.00"))
 
@@ -328,10 +356,9 @@ def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Conne
 def test_the_pension_fund_of_one_person_is_not_the_others(conn: sqlite3.Connection) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
     close(conn, account("migros", "Migros", "CHF", "500"), owner=PARTNER)
-    monthclose.reopen(conn, owner=PARTNER, month=SEPTEMBER)
     scan = certificate(day(1), "3579.40", issuer="Servisa")
-    monthclose.stage(conn, certified(scan, owner=PARTNER), NOW)
-    monthclose.commit(conn, owner=PARTNER, month=SEPTEMBER, now=NOW)
+    staging.stage(conn, certified(scan, owner=PARTNER), NOW)
+    staging.commit(conn, owner=PARTNER, now=NOW)
     both = networth.run(conn, currency="CHF")
     assert line(both, PILLAR2, PARTNER)[day(1)] == D("3579.40")
     assert line(both, CASH, PARTNER)[day(1)] == D(500)
@@ -350,10 +377,9 @@ def test_between_certificates_the_pension_fund_stands_still(stated: dict[int, De
     db.migrate(conn, NOW)
     close(conn, account("migros", "Migros", "CHF", "1000"))
     without = networth.run(conn, currency="CHF").total
-    monthclose.reopen(conn, owner=OWNER, month=SEPTEMBER)
     scans = [certificate(day(n), str(balance)) for n, balance in stated.items()]
-    monthclose.stage(conn, certified(*scans), NOW)
-    monthclose.commit(conn, owner=OWNER, month=SEPTEMBER, now=NOW)
+    staging.stage(conn, certified(*scans), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     result = networth.run(conn, currency="CHF")
     conn.close()
     for on, total, other in zip(result.days, result.total, without, strict=True):
@@ -788,9 +814,9 @@ def test_a_valuation_of_a_month_not_committed_is_not_checked(conn: sqlite3.Conne
     base = ibkr(month=OCTOBER)
     values = (PrintedValue("Cash", "USD", D(10000)),)
     staged = replace(base, extraction=replace(base.extraction, values=values))
-    monthclose.stage(conn, batch(staged, month=OCTOBER), NOW)
+    staging.stage(conn, batch(staged, month=OCTOBER), NOW)
     assert networth.checks(conn) == ()
-    monthclose.commit(conn, owner=OWNER, month=OCTOBER, now=NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
     [check] = networth.checks(conn)
     assert (check.printed, check.derived) == (D(10000), D(10000))
 
