@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Transactions{% endblock %}
+{% block head %}
+  <script src="{{ url_for('static', path='period.js') }}" defer></script>
+{%- endblock %}
 {% macro sums(title, items) %}
 <details>
   <summary>{{ title }}</summary>
@@ -15,8 +18,8 @@
 {% block main %}
 <form method="get" class="filter">
   {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
-  <label>From <input name="from" value="{{ given.get('from', '') }}" placeholder="2025-05" size="10"></label>
-  <label>To <input name="to" value="{{ given.get('to', '') }}" placeholder="2025-05" size="10"></label>
+  <label>From <input name="from" value="{{ given.get('from', '') }}" placeholder="2025-05" size="10" data-period="from"></label>
+  <label>To <input name="to" value="{{ given.get('to', '') }}" placeholder="2025-05" size="10" data-period="to"></label>
   <label>Account
     <select name="account">
       <option value="">All</option>

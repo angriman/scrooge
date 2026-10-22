@@ -100,3 +100,16 @@ def test_a_currency_holdings_cannot_be_shown_in_is_reported() -> None:
     assert forms.holdings_view({"currency": "xau"}) == forms.HoldingsView(
         None, "EUR", ("'XAU' is not one of EUR, CHF, USD, GBP, JPY.",)
     )
+
+
+def test_net_worth_is_in_euros_and_by_asset_type_unless_asked() -> None:
+    assert forms.networth_view({}) == forms.NetWorthView(None, "EUR", "asset", ())
+    asked = {"owner": " Lukas ", "currency": "chf", "by": "total"}
+    assert forms.networth_view(asked) == forms.NetWorthView("Lukas", "CHF", "total", ())
+    assert forms.networth_view({"by": " "}).by == "asset"
+
+
+def test_a_breakdown_that_cannot_be_read_is_reported_and_asset_type_shown() -> None:
+    assert forms.networth_view({"by": "shape"}) == forms.NetWorthView(
+        None, "EUR", "asset", ("'shape' is not total, asset or owner.",)
+    )

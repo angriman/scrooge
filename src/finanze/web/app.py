@@ -22,7 +22,7 @@ import tempfile
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -69,12 +69,19 @@ HOST = "127.0.0.1"  # where the app is served unless `finanze.yaml` names anothe
 _HOSTS = (HOST, "localhost")
 _SESSION = "finanze_session"  # the cookie of a signed-in browser
 # The cookie of the currency chosen in the header: every page that converts shows its figures
-# in it, unless its address names another.
+# in it, unless its address names another. A session cookie: the choice is kept while the
+# browser is open, and a new visit opens in euros (decided 2026-10-22).
 _CURRENCY = "finanze_currency"
 # The pages that convert, and have the header's menu. The others show every amount in its own
 # currency (decided 2026-10-21).
-_CONVERTING = ("/", "/networth", "/holdings")
-_REMEMBERED = 365 * 24 * 3600  # seconds a browser keeps the currency chosen
+_CONVERTING = ("/", "/holdings")
+# The colour of each kind of asset, the same in the chart, the ring and their tables.
+# Neighbours in the stack wear neighbouring colours: those are the pairs the palette was
+# checked for.
+_SLOTS = {asset: n for n, asset in enumerate(networth.STACK, 1)}
+# The space between two slices of the ring, in hundredths of its circle; a slice not twice
+# that wide has none.
+_GAP = Decimal("0.6")
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -155,6 +162,17 @@ def _signed(amount: Decimal) -> str:
     return f"{amount:+,.2f}"
 
 
+def _short(amount: Decimal) -> str:
+    """`850`, `12.3k`, `1.2M`: an amount at a glance, half up; the exact one is beside it."""
+    whole = amount.quantize(Decimal(1), ROUND_HALF_UP)
+    if abs(whole) < 1000:
+        return f"{whole.copy_abs() if whole == 0 else whole:f}"
+    thousands = (amount / 1000).quantize(Decimal("0.1"), ROUND_HALF_UP)
+    if abs(thousands) < 1000:
+        return f"{thousands:f}k"
+    return f"{(amount / 1_000_000).quantize(Decimal('0.1'), ROUND_HALF_UP):,f}M"
+
+
 def _exact(number: Decimal) -> str:
     """`1,234.5`: a quantity or a price as it is stored, never rounded, without the zeros
     that say nothing."""
@@ -164,6 +182,7 @@ def _exact(number: Decimal) -> str:
 
 _templates.env.filters["money"] = _money
 _templates.env.filters["signed"] = _signed
+_templates.env.filters["short"] = _short
 _templates.env.filters["exact"] = _exact
 _templates.env.filters["plain"] = lambda number: format(number, "f")
 _templates.env.globals["days"] = cashflow.days
@@ -338,8 +357,31 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     return app
 
 
+@dataclass(frozen=True, slots=True)
+class _Arc:
+    """One slice of the ring of what is held: a dash along a circle measured as 100."""
+
+    part: overview.Part
+    slot: int
+    dash: Decimal  # how long it is drawn: its share, less the gap after it
+    gap: Decimal  # the rest of the circle
+    offset: Decimal  # where it starts, as a dash offset: the shares before it, below zero
+
+
+def _ring(held: Sequence[overview.Part]) -> list[_Arc]:
+    """The slices of the ring, clockwise from the top, in the order the chart stacks them."""
+    arcs = []
+    start = Decimal(0)
+    for part in held:
+        share = part.share or Decimal(0)  # every part held has one: their sum is above zero
+        dash = share - _GAP if share > 2 * _GAP and len(held) > 1 else share
+        arcs.append(_Arc(part, _SLOTS[part.name], dash, 100 - dash, -start))
+        start += share
+    return arcs
+
+
 def _overview(request: Request) -> Response:
-    asked = forms.holdings_view(_viewed(request))  # the same two fields: whose, and in what
+    asked = forms.networth_view(_viewed(request))
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
@@ -348,14 +390,35 @@ def _overview(request: Request) -> Response:
         except networth.MissingRateError as exc:
             errors.append(_sentence(exc))
             shown = None
+        # A statement valued in a currency without a rate leaves out the brokers' figures,
+        # not the page's own.
+        try:
+            checks = networth.checks(conn, owner=asked.owner)
+        except networth.MissingRateError as exc:
+            errors.append(_sentence(exc))
+            checks = ()
     context = {
         "people": people,
         "owner": asked.owner,
         "asked": asked,
         "errors": errors,
         "shown": shown,
+        # The view shown, not the one asked for: a field that could not be read is unset.
+        "source": request.url_for("networth_json").include_query_params(
+            currency=asked.currency, by=asked.by, **({"owner": asked.owner} if asked.owner else {})
+        ),
+        "breakdowns": forms.BREAKDOWNS,
+        "parts": _parts(shown.worth, asked.by, people) if shown and shown.day else [],
+        "slots": _SLOTS,
+        "ring": _ring(shown.held) if shown else [],
+        "checks": checks,
     }
     return _templates.TemplateResponse(request, "overview.html", context)
+
+
+def _networth(request: Request) -> Response:
+    """The page of the chart is the first page now: an old bookmark leads there."""
+    return RedirectResponse(request.url_for("overview").replace(query=request.url.query))
 
 
 def _import_form(
@@ -746,19 +809,13 @@ class _Part:
     slot: int  # which colour it wears, the same whatever else is shown; 0 for the total
     values: tuple[Decimal, ...]
 
-    def before(self, days: int) -> Decimal | None:
-        """What it was worth `days` before the last day; None when that is before the first."""
-        return networth.before(self.values, days)
-
 
 def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...]) -> list[_Part]:
     """The total first, then its parts in the order the chart stacks them, from the bottom up:
     each keeps its colour whoever is looked at."""
     parts = [_Part("Net worth", 0, result.total)]
     if by == "asset":
-        # Neighbours in the stack wear neighbouring colours: those are the pairs the
-        # palette was checked for.
-        slots = {asset: n for n, asset in enumerate(networth.STACK, 1)}
+        slots = _SLOTS
     elif by == "owner":
         slots = {person.name: n for n, person in enumerate(people, 1)}
     else:
@@ -767,46 +824,18 @@ def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...])
     return parts + sorted(stacked, key=lambda part: part.slot)
 
 
-def _valued(
-    request: Request, asked: forms.NetWorthView, *, checked: bool = True
-) -> tuple[networth.NetWorth | None, tuple[query.Person, ...], tuple[networth.Check, ...], str]:
-    """Net worth as asked for, with the statements' own figures if `checked`, or the reason
-    there is none to show."""
+def _networth_json(request: Request) -> Response:
+    """What the chart of the first page draws, for the view of its address. Amounts are text,
+    to the cent."""
+    asked = forms.networth_view(_viewed(request))
+    error = ""
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
         try:
             result = networth.run(conn, owner=asked.owner, currency=asked.currency)
-            checks = networth.checks(conn, owner=asked.owner) if checked else ()
         except networth.MissingRateError as exc:
-            return None, people, (), _sentence(exc)
-        return result, people, checks, ""
-
-
-def _networth(request: Request) -> Response:
-    asked = forms.networth_view(_viewed(request))
-    result, people, checks, error = _valued(request, asked)
-    context = {
-        "people": people,
-        "owner": asked.owner,
-        "asked": asked,
-        # The view shown, not the one asked for: a field that could not be read is unset.
-        "source": request.url_for("networth_json").include_query_params(
-            currency=asked.currency, by=asked.by, **({"owner": asked.owner} if asked.owner else {})
-        ),
-        "breakdowns": forms.BREAKDOWNS,
-        "errors": [*asked.errors, *([error] if error else [])],
-        "result": result,
-        "parts": _parts(result, asked.by, people) if result and result.days else [],
-        "checks": checks,
-    }
-    return _templates.TemplateResponse(request, "networth.html", context)
-
-
-def _networth_json(request: Request) -> Response:
-    """What the chart of the page at the same address draws. Amounts are text, to the cent."""
-    asked = forms.networth_view(_viewed(request))
-    result, people, _, error = _valued(request, asked, checked=False)
-    if asked.errors or result is None:
+            error = _sentence(exc)
+    if asked.errors or error:
         return JSONResponse({"errors": [*asked.errors, *([error] if error else [])]}, 400)
     lines = _parts(result, asked.by, people) if result.days else []
     return JSONResponse(
@@ -980,8 +1009,8 @@ def _transactions_csv(request: Request) -> Response:
 
 
 def _choose_currency(request: Request) -> Response:
-    """Remembers the currency chosen in the header and shows the page it was chosen on again,
-    in that currency: without one its address names."""
+    """Remembers the currency chosen in the header until the browser is closed and shows the
+    page it was chosen on again, in that currency: without one its address names."""
     asked = request.query_params.get("currency", "").strip().upper()
     if asked not in networth.CURRENCIES:
         said = f"'{asked}' is not one of {', '.join(networth.CURRENCIES)}.\n"
@@ -990,8 +1019,7 @@ def _choose_currency(request: Request) -> Response:
     response = RedirectResponse(str(back), 303)
     response.set_cookie(
         _CURRENCY,
-        asked,
-        max_age=_REMEMBERED,
+        asked,  # no max-age: forgotten when the browser closes (decided 2026-10-22)
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",

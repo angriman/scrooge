@@ -58,7 +58,7 @@ def sign_in(client: TestClient, password: str = WORDS, then: str = "/") -> Respo
     return client.post("/login", data=form)
 
 
-PAGES = ["/", "/networth", "/networth.json", "/holdings", "/cashflow", "/months"]
+PAGES = ["/", "/networth.json", "/holdings", "/cashflow", "/months"]
 
 
 @pytest.mark.parametrize("path", [*PAGES, "/transactions", "/transactions.csv", "/nowhere"])
