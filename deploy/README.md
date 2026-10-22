@@ -118,3 +118,39 @@ docker save finanze:latest | gzip > output/finanze-image.tar.gz
 Then Container Manager > Image > Action > Import > Add From File, or
 `sudo docker load -i finanze-image.tar.gz` on the NAS. Without `app/` there, take the
 `build:` line out of `compose.yaml`.
+
+## Later: pulling the image from GitHub
+
+The future way, once the repository is on GitHub: `.github/workflows/image.yml` builds the
+image for every tag `v*` that passes `make check` and pushes it to GitHub's registry, private
+like the repository, as `ghcr.io/<owner>/finanze:<tag>` and `:latest` (`<owner>` in lower
+case). The NAS then pulls it: nothing is built there, and `make nas-app` and `app/` are no
+longer needed. Until then, the steps above stand.
+
+1. On GitHub, Settings > Developer settings > Personal access tokens > Tokens (classic): a
+   token for the NAS with the one scope `read:packages`, nothing else. It can read the
+   images and change nothing.
+
+2. In a terminal on the NAS, sign in once (the token is the password; Docker keeps it):
+
+   ```sh
+   sudo docker login ghcr.io -u <github-user>
+   ```
+
+3. In `compose.yaml` on the NAS, in place of the two lines `image: finanze:latest` and
+   `build: ./app`, name the version to run:
+
+   ```yaml
+       image: ghcr.io/<owner>/finanze:v1.2.3   # or :latest
+   ```
+
+4. Start it, and later update it, with:
+
+   ```sh
+   cd /volume1/docker/finanze
+   sudo docker compose pull
+   sudo docker compose up -d
+   sudo docker image prune -f      # drop the image it replaced
+   ```
+
+   A new version is a new tag in `image:` (or, with `:latest`, only these commands).
