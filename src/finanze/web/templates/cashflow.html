@@ -1,13 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Cash flow{% endblock %}
+{% block head %}
+  <script src="{{ url_for('static', path='period.js') }}" defer></script>
+{%- endblock %}
 {% macro listed(first, last, category=None) -%}
 {{ url_for('transactions').include_query_params(**{"from": first, "to": last}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}{% if category %}&amp;category={{ category|urlencode }}{% endif %}
 {%- endmacro %}
 {% block main %}
 <form method="get" class="filter">
   {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
-  <label>From <input name="from" value="{{ given.get('from', '') }}" placeholder="2025" size="10"></label>
-  <label>To <input name="to" value="{{ given.get('to', '') }}" placeholder="2025-12" size="10"></label>
+  <label>From <input name="from" value="{{ given.get('from', '') }}" placeholder="2025" size="10" data-period="from"></label>
+  <label>To <input name="to" value="{{ given.get('to', '') }}" placeholder="2025-12" size="10" data-period="to"></label>
   <label>By
     <select name="by">
       {%- for grouping in groupings %}
