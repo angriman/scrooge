@@ -698,6 +698,55 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert "unrecognized arguments: --host" in capsys.readouterr().err
 
 
+def test_the_config_says_where_the_rules_and_the_instruments_are(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As on a machine where the personal files and the committed ones are in two folders."""
+    data, image = run.folder / "data", run.folder / "image"
+    image.mkdir()
+    generic, instruments = image / "rules.yaml", image / "instruments.yaml"
+    shutil.move(run.rules, generic)
+    shutil.move(run.instruments, instruments)
+    keys = f"rules: [{data / 'rules.local.yaml'}, {generic}]\ninstruments: {instruments}\n"
+    run.config.write_text(CONFIG.format(database=run.database) + keys, encoding="utf-8")
+    august = run.folder / "old" / "august"
+    august.mkdir(parents=True)
+    (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
+    assert run("import", str(august)) == dbcli.OK  # the bill's maturity is in `instruments`
+    assert run("import", str(run.folder)) == dbcli.OK
+    assert "108 transactions staged for Lukas.\n" in run.output  # every row has a category
+
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert run("serve") == dbcli.OK
+    assert served[-1].state.imports.rules == [data / "rules.local.yaml", generic]
+    assert served[-1].state.imports.instruments == instruments
+    assert served[-1].state.rules.shared == data / "rules.local.yaml"
+    # A flag still wins, and names every file read: none is looked for next to it.
+    assert run("serve", "--rules", "mine.yaml", "--instruments", "other.yaml") == dbcli.OK
+    assert served[-1].state.imports.rules == [Path("mine.yaml")]
+    assert served[-1].state.imports.instruments == Path("other.yaml")
+
+
+@pytest.mark.parametrize(
+    ("keys", "why"),
+    [
+        ("rules: rules.local.yaml", "'rules' must list the rules files, the one both people"),
+        ("rules: []", "'rules' must list the rules files"),
+        ("rules: [{a: 1}]", "'rules' must list the rules files"),
+        ("instruments: [a.yaml]", "'instruments' must be the path of the instruments file"),
+        ("instruments: ''", "'instruments' must be the path of the instruments file"),
+    ],
+)
+def test_rules_and_instruments_in_the_config_must_be_paths(
+    run: Run, monkeypatch: pytest.MonkeyPatch, keys: str, why: str
+) -> None:
+    monkeypatch.setattr(uvicorn, "run", lambda app, **how: None)
+    run.config.write_text(f"database: {run.database}\n{keys}\n", encoding="utf-8")
+    assert run("serve") == dbcli.FAILED
+    assert run.output.startswith(f"error: {run.config}: {why}")
+
+
 WORDS = "correct horse battery"
 STORED = auth.digest(WORDS, salt=bytes(16))
 
@@ -1006,11 +1055,16 @@ def test_prices_fetches_what_is_held_and_says_what_it_stored(closed: Run) -> Non
     closed.instruments.write_text(
         INSTRUMENTS_YAML + MATURED + "  WIDG: {price_symbol: WIDG.SW}\n", encoding="utf-8"
     )
-    paths = ["--instruments", str(closed.instruments)]
-    assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
+    # The config may name the instruments, as the flag does.
+    closed.config.write_text(
+        CONFIG.format(database=closed.database) + f"instruments: {closed.instruments}\n",
+        encoding="utf-8",
+    )
+    assert closed("prices", "--through", "2026-09-30") == dbcli.OK
     assert closed.output == "4 closes, 4 exchange rates and 0 splits stored.\n"
     # Nothing is fetched twice, and no owner is needed: prices are everyone's.
     closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
+    paths = ["--instruments", str(closed.instruments)]
     assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
     assert closed.output == "0 closes, 0 exchange rates and 0 splits stored.\n"
 

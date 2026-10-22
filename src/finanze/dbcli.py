@@ -36,6 +36,11 @@ database was filled from, and says which statements still have no original.
 The database path, the person and the names that recognise each person as a counterparty
 come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
+`rules` there lists the rules files, first wins, and `instruments` names the instruments
+file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
+`rules.local.yaml` then `rules.yaml`, and `instruments.yaml`, in the folder the command runs
+in. The first rules file is the one both people share: each person's `rules.<owner>.yaml` and
+`categories.yaml` are next to it, and answers and categories given are written there.
 `keep`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
 people.
 `prices` is the only command that uses the network (D9).
@@ -120,6 +125,9 @@ COMMANDS = (
 # Commands that are not about one person's statements.
 _READ_BOTH = ("keep", "prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
+# Where the rules and the instruments are read from when neither a flag nor the config says.
+RULES = ["rules.local.yaml", "rules.yaml"]
+INSTRUMENTS = "instruments.yaml"
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
     ExtractionError,
@@ -175,14 +183,7 @@ def _parser() -> argparse.ArgumentParser:
         metavar="path",
         help="statement files, or folders holding them (subfolders are not searched)",
     )
-    load.add_argument(
-        "--rules",
-        type=Path,
-        action="append",
-        help="rules file(s), first wins (default: rules.local.yaml, then rules.yaml); the "
-        "owner's own rules.<owner>.yaml, next to the first, is read before them",
-    )
-    load.add_argument("--instruments", type=Path, default=Path("instruments.yaml"))
+    _rules_flags(load)
     load.add_argument(
         "--review",
         action="store_true",
@@ -219,25 +220,13 @@ def _parser() -> argparse.ArgumentParser:
     fetch.add_argument(
         "--instruments",
         type=Path,
-        default=Path("instruments.yaml"),
-        help="where 'price_symbol' names the symbol an instrument's prices are found under",
+        help="where 'price_symbol' names the symbol an instrument's prices are found under "
+        "(default: 'instruments' in the config, or instruments.yaml)",
     )
     _query_parser(commands.add_parser("query", parents=[files], help="find transactions"))
     serve = commands.add_parser("serve", parents=[files], help="browse the database")
     serve.add_argument("--port", type=int, default=8765, help="default: 8765")
-    serve.add_argument(
-        "--rules",
-        type=Path,
-        default=Path("rules.local.yaml"),
-        help="where a remembered category is saved as a rule (default: rules.local.yaml); "
-        "rows naming a person go to that owner's rules.<owner>.yaml next to it",
-    )
-    serve.add_argument(
-        "--instruments",
-        type=Path,
-        default=Path("instruments.yaml"),
-        help="what the import page reads about instruments (default: instruments.yaml)",
-    )
+    _rules_flags(serve)
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
@@ -247,6 +236,24 @@ def _parser() -> argparse.ArgumentParser:
         help="the mounted folder the copy goes to (default: 'publish' in the config)",
     )
     return parser
+
+
+def _rules_flags(command: argparse.ArgumentParser) -> None:
+    """`--rules` and `--instruments`, of the commands that classify statements."""
+    command.add_argument(
+        "--rules",
+        type=Path,
+        action="append",
+        help="rules file(s), first wins (default: 'rules' in the config, or rules.local.yaml "
+        "then rules.yaml); the owner's own rules.<owner>.yaml, next to the first, is read "
+        "before them; a remembered category is saved in the first, or the owner's",
+    )
+    command.add_argument(
+        "--instruments",
+        type=Path,
+        help="what is known about instruments (default: 'instruments' in the config, or "
+        "instruments.yaml)",
+    )
 
 
 def _query_parser(find: argparse.ArgumentParser) -> None:
@@ -331,6 +338,29 @@ def _labels(config: dict[str, object], path: Path) -> dict[str, str]:
     return {str(number): str(label) for number, label in labels.items()}
 
 
+def _rules(args: argparse.Namespace, config: dict[str, object]) -> list[Path]:
+    """`--rules`, or `rules: [path, ...]` in the config, or the two files of the folder the
+    command runs in."""
+    if args.rules:
+        return list(args.rules)
+    listed = config.get("rules", RULES)
+    if not isinstance(listed, list) or not listed or not all(isinstance(p, str) for p in listed):
+        msg = f"{args.config}: 'rules' must list the rules files, the one both people share first"
+        raise ConfigError(msg)
+    return [Path(path).expanduser() for path in listed]
+
+
+def _instruments(args: argparse.Namespace, config: dict[str, object]) -> Path:
+    """`--instruments`, or `instruments: path` in the config, or `instruments.yaml`."""
+    if args.instruments:
+        return Path(args.instruments)
+    named = config.get("instruments", INSTRUMENTS)
+    if not isinstance(named, str) or not named:
+        msg = f"{args.config}: 'instruments' must be the path of the instruments file"
+        raise ConfigError(msg)
+    return Path(named).expanduser()
+
+
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
     value = getattr(args, flag) or config.get(key)
     if not value:
@@ -371,11 +401,10 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _check_copy(path)
         else:
             _open(path, now).close()
-        # What the import page reads, as `finanze import` would here: the rules both share,
-        # then the generic ones next to them.
-        shared = [args.rules, args.rules.with_name("rules.yaml")]
-        imports = importing.Setup(shared, args.instruments, people, _labels(config, args.config))
-        pages = _Pages(webapp.Rules(args.rules, people), imports)
+        # What the import page reads, as `finanze import` would here.
+        rules, labels = _rules(args, config), _labels(config, args.config)
+        imports = importing.Setup(rules, _instruments(args, config), people, labels)
+        pages = _Pages(webapp.Rules(rules[0], people), imports)
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
         msg = f"{path}: no database to publish"
@@ -389,9 +418,10 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         if args.command == "keep":
             return _keep(conn, path, _files(args.paths), out)
         if args.command == "prices":
-            return _prices(conn, args, console, now)
+            return _prices(conn, args, config, console, now)
         labels = _labels(config, args.config)
-        return _for_owner(_Session(conn, path, owner, people, labels, console, now), args)
+        session = _Session(conn, path, owner, people, labels, console, now)
+        return _for_owner(session, args, config)
     finally:
         conn.close()
 
@@ -427,11 +457,11 @@ def _check_copy(path: Path) -> None:
         raise ConfigError(msg)
 
 
-def _for_owner(session: _Session, args: argparse.Namespace) -> int:
+def _for_owner(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:
     """The commands about one person's statements."""
     conn, owner, out = session.conn, session.owner, session.console.out
     if args.command == "import":
-        return _import(session, args)
+        return _import(session, args, config)
     if args.command == "commit":
         return _commit(session)
     if args.command == "statements":
@@ -576,7 +606,11 @@ def _password(out: TextIO) -> int:
 
 
 def _prices(
-    conn: sqlite3.Connection, args: argparse.Namespace, console: _Console, now: datetime
+    conn: sqlite3.Connection,
+    args: argparse.Namespace,
+    config: dict[str, object],
+    console: _Console,
+    now: datetime,
 ) -> int:
     """Fetch what is missing; what could not be fetched is listed and nothing is guessed.
 
@@ -584,7 +618,7 @@ def _prices(
     stored is never fetched again.
     """
     yesterday = now.date() - timedelta(days=1)
-    typed = classification.load_instruments(args.instruments)
+    typed = classification.load_instruments(_instruments(args, config))
     refreshed = marketdata.refresh(
         conn,
         console.source or prices.Yahoo(),
@@ -659,10 +693,10 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
         out.write(f"  {period}{item.total:>{width},.2f} {item.currency}  ({item.count})\n")
 
 
-def _import(session: _Session, args: argparse.Namespace) -> int:
+def _import(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:
     out = session.console.out
-    shared = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
-    setup = importing.Setup(shared, args.instruments, session.people, session.labels)
+    shared = _rules(args, config)
+    setup = importing.Setup(shared, _instruments(args, config), session.people, session.labels)
     found = importing.read(session.owner, _files(args.paths), setup)
     if args.review and found.month.uncategorized:
         everyone = [pattern for patterns in session.people.values() for pattern in patterns]
