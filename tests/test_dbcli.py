@@ -884,6 +884,67 @@ def test_a_database_newer_than_this_code_is_refused_by_every_command(
     assert f"{run.database}: schema version 99, where this code reads" in run.output
 
 
+def older(run: Run, monkeypatch: pytest.MonkeyPatch) -> int:
+    """The database as code one migration older left it, with an owner in it; its version."""
+    every = db.migrations()
+    run.database.parent.mkdir()
+    conn = db.connect(run.database)
+    monkeypatch.setattr(db, "migrations", lambda: every[:-1])
+    db.migrate(conn, NOW)
+    monkeypatch.undo()
+    conn.execute("INSERT INTO owners (name) VALUES ('Lukas')")
+    conn.close()
+    return every[-2][0]
+
+
+def schema_of(path: Path) -> int:
+    with db.reading(path) as conn:
+        return db.version(conn)
+
+
+def test_serve_copies_a_database_at_an_older_schema_before_bringing_it_up_to_date(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    (how,) = serve_with(run, monkeypatch, "{}")
+    assert isinstance(how["app"], Starlette)
+    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    assert run.output == (
+        f"{run.database}: schema version {was} brought up to {db.latest()}. "
+        f"Copy from before: {copy}\n"
+        f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
+    )
+    assert (schema_of(copy), schema_of(run.database)) == (was, db.latest())
+    assert run.count("owners") == 1
+
+    (how,) = serve_with(run, monkeypatch, "{}")  # up to date: no copy, nothing said
+    assert run.output == f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
+    assert [path.name for path in copy.parent.iterdir()] == [copy.name]
+
+
+def test_serve_does_not_start_on_a_database_a_migration_fails_on(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    every = db.migrations()
+    broken = (every[-1][0] + 1, "CREATE TABLE owners (x INTEGER) STRICT;")
+    monkeypatch.setattr(db, "migrations", lambda: [*every, broken])
+    assert serve_with(run, monkeypatch, "{}") == []  # never listens
+    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    assert run.output == (
+        f"error: {run.database}: schema version {broken[0]} could not be reached (table "
+        f"owners already exists): the database is at version {every[-1][0]}; copy from "
+        f"before: {copy}\n"
+    )
+    assert (schema_of(copy), schema_of(run.database)) == (was, every[-1][0])
+
+    # Started again, as a container is: it fails the same way, and no copy is added for a
+    # database that did not change.
+    assert serve_with(run, monkeypatch, "{}") == []
+    assert run.output.endswith(f"the database is at version {every[-1][0]}\n")
+    assert [path.name for path in copy.parent.iterdir()] == [copy.name]
+
+
 def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:

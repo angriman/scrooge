@@ -45,6 +45,10 @@ in. The first rules file is the one both people share: each person's `rules.<own
 people.
 `prices` is the only command that uses the network (D9).
 
+Every command but a read-only `serve` creates the database if there is none and brings its
+schema up to date: a database at an older schema is copied to `backups/` next to it first,
+and a migration that fails stops the command (`serve` does not start).
+
 `serve` listens on 127.0.0.1 and asks for no password, unless the config has (D18):
 
     serve:
@@ -400,7 +404,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         if reach.read_only:
             _check_copy(path)
         else:
-            _open(path, now).close()
+            _open(path, now, out).close()
         # What the import page reads, as `finanze import` would here.
         rules, labels = _rules(args, config), _labels(config, args.config)
         imports = importing.Setup(rules, _instruments(args, config), people, labels)
@@ -409,7 +413,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     if args.command == "publish" and not path.is_file():
         msg = f"{path}: no database to publish"
         raise ConfigError(msg)
-    conn = _open(path, now)
+    conn = _open(path, now, out)
     try:
         if args.command == "publish":
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
@@ -426,15 +430,38 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         conn.close()
 
 
-def _open(path: Path, now: datetime) -> sqlite3.Connection:
-    """The database, created if there is none, with its schema brought up to date."""
+def _open(path: Path, now: datetime, out: TextIO) -> sqlite3.Connection:
+    """The database, created if there is none, with its schema brought up to date.
+
+    A database at an older schema is copied to `backups/` next to it first, and the copy is
+    said. A migration that fails is refused with its reason: the migrations applied before it
+    stay (each is one transaction), and the copy is dropped when none was.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(path)
     try:
-        db.migrate(conn, now)
+        found, latest = db.version(conn), db.latest()
+        copy = staging.copy_before(conn, path, now) if 0 < found < latest else None
+        try:
+            db.migrate(conn, now)
+        except sqlite3.Error as exc:
+            reached = db.version(conn)
+            if copy and reached == found:
+                copy.unlink()
+                copy = None
+            kept = f"; copy from before: {copy}" if copy else ""
+            msg = (
+                f"{path}: schema version {latest} could not be reached ({exc}): the database "
+                f"is at version {reached}{kept}"
+            )
+            raise MigrationError(msg) from None
     except BaseException:
         conn.close()
         raise
+    if copy:
+        out.write(
+            f"{path}: schema version {found} brought up to {latest}. Copy from before: {copy}\n"
+        )
     return conn
 
 
