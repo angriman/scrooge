@@ -89,6 +89,10 @@ def test_a_currency_chosen_is_remembered_and_the_page_shown_again_in_it(
     assert cookie.startswith("finanze_currency=CHF;")
     assert "HttpOnly" in cookie
     assert "Path=/" in cookie
+    assert "SameSite=lax" in cookie
+    # Kept while the browser is open: a new visit opens in euros (decided 2026-10-22).
+    assert "max-age" not in cookie.lower()
+    assert "expires" not in cookie.lower()
     for path in PAGES:
         assert chosen(client.get(path).text) == "CHF"
     assert "net worth on 2026-09-30" in text(client.get("/").text)

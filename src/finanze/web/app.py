@@ -69,7 +69,8 @@ HOST = "127.0.0.1"  # where the app is served unless `finanze.yaml` names anothe
 _HOSTS = (HOST, "localhost")
 _SESSION = "finanze_session"  # the cookie of a signed-in browser
 # The cookie of the currency chosen in the header: every page that converts shows its figures
-# in it, unless its address names another.
+# in it, unless its address names another. A session cookie: the choice is kept while the
+# browser is open, and a new visit opens in euros (decided 2026-10-22).
 _CURRENCY = "finanze_currency"
 # The pages that convert, and have the header's menu. The others show every amount in its own
 # currency (decided 2026-10-21).
@@ -81,7 +82,6 @@ _SLOTS = {asset: n for n, asset in enumerate(networth.STACK, 1)}
 # The space between two slices of the ring, in hundredths of its circle; a slice not twice
 # that wide has none.
 _GAP = Decimal("0.6")
-_REMEMBERED = 365 * 24 * 3600  # seconds a browser keeps the currency chosen
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -1009,8 +1009,8 @@ def _transactions_csv(request: Request) -> Response:
 
 
 def _choose_currency(request: Request) -> Response:
-    """Remembers the currency chosen in the header and shows the page it was chosen on again,
-    in that currency: without one its address names."""
+    """Remembers the currency chosen in the header until the browser is closed and shows the
+    page it was chosen on again, in that currency: without one its address names."""
     asked = request.query_params.get("currency", "").strip().upper()
     if asked not in networth.CURRENCIES:
         said = f"'{asked}' is not one of {', '.join(networth.CURRENCIES)}.\n"
@@ -1019,8 +1019,7 @@ def _choose_currency(request: Request) -> Response:
     response = RedirectResponse(str(back), 303)
     response.set_cookie(
         _CURRENCY,
-        asked,
-        max_age=_REMEMBERED,
+        asked,  # no max-age: forgotten when the browser closes (decided 2026-10-22)
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",
