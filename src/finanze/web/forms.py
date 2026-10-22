@@ -27,7 +27,8 @@ class CashFlowRange:
     errors: tuple[str, ...]
 
 
-BREAKDOWNS = ("total", "asset", "owner")  # how the net-worth page cuts its one line
+BREAKDOWNS = ("total", "asset", "owner")  # how the chart of the first page cuts its line
+DEFAULT_BREAKDOWN = "asset"  # the parts by asset type unless asked otherwise
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,11 +140,12 @@ def holdings_view(params: Mapping[str, str]) -> HoldingsView:
 
 
 def networth_view(params: Mapping[str, str]) -> NetWorthView:
-    """`owner`, `currency` (euros when left out) and `by` (total, asset or owner)."""
+    """`owner`, `currency` (euros when left out) and `by` (total, asset or owner; asset when
+    left out or unreadable)."""
     errors: list[str] = []
     currency = _currency(params, errors)
-    by = _text(params, "by") or BREAKDOWNS[0]
+    by = _text(params, "by") or DEFAULT_BREAKDOWN
     if by not in BREAKDOWNS:
         errors.append(f"'{by}' is not total, asset or owner.")
-        by = BREAKDOWNS[0]
+        by = DEFAULT_BREAKDOWN
     return NetWorthView(_text(params, "owner"), currency, by, tuple(errors))

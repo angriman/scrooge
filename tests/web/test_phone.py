@@ -19,7 +19,7 @@ ROWS = [
     txn("6000", date=date(2026, 8, 25), source_ref="1", kind=Kind.INCOME, category="Stipendio"),
     txn("-45.20", date=date(2026, 8, 3), source_ref="2", category="Spesa", counterparty="Bakery"),
 ]
-PAGES = ["/", "/networth", "/holdings", "/cashflow", "/transactions", "/months"]
+PAGES = ["/", "/holdings", "/cashflow", "/transactions", "/months"]
 
 
 @pytest.fixture(scope="module")

@@ -18,7 +18,6 @@ from tests.web.test_login import STORED, sign_in
 COPY = "This is a copy: changes are made on the machine that holds the data."
 PAGES = [  # in francs, the one currency of these rows: no exchange rate is needed
     "/?currency=CHF",
-    "/networth?currency=CHF",
     "/networth.json?currency=CHF",
     "/holdings?currency=CHF",
     "/cashflow",

@@ -17,7 +17,7 @@ from tests.web.test_app import text
 from tests.web.test_holdings_page import errors
 
 SITE = "http://127.0.0.1:8765"
-PAGES = ["/", "/networth", "/holdings"]  # those that convert
+PAGES = ["/", "/holdings"]  # those that convert
 NATIVE = ["/cashflow", "/transactions", "/months", "/import"]  # each amount in its currency
 WEB = Path(webapp.__file__).parent
 
@@ -94,9 +94,9 @@ def test_a_currency_chosen_is_remembered_and_the_page_shown_again_in_it(
     assert "net worth on 2026-09-30" in text(client.get("/").text)
     assert " CHF net worth on" in text(client.get("/").text)
     assert " CHF</strong> in securities" in client.get("/holdings").text
-    networth = client.get("/networth").text
-    assert "/networth.json?currency=CHF&amp;by=total" in networth
-    assert '<input type="hidden" name="currency" value="CHF">' in networth  # the breakdown's form
+    home = client.get("/").text
+    assert "/networth.json?currency=CHF&amp;by=asset" in home  # what the chart draws
+    assert '<input type="hidden" name="currency" value="CHF">' in home  # the breakdown's form
 
 
 def test_an_address_that_names_a_currency_is_shown_in_it_and_the_choice_stays(

@@ -15,6 +15,10 @@ says nothing, and there is none (None).
 whoever holds it and in whichever account: the same ETF at two brokers, or of two people,
 is one row. Only the largest `TOP` are listed; `Overview.rest` is what the others add up
 to, so that the two together are `portfolio`'s total of all securities.
+
+**What is held** (`Overview.held`, the ring of the page) is every kind of asset above zero,
+each with its share of their sum and not of net worth: shares of a whole that add up to
+exactly 100. What is owed is not in it.
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ class Part:
     name: str
     value: Decimal
     share: Decimal | None  # of net worth, in percent (see the module)
+    then: tuple[Decimal | None, ...] = ()  # one for each of `SPANS`; None: before the history
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,11 +81,13 @@ class Overview:
     day: date | None  # the last day of `networth.run` for the same people; None: no such day
     total: Decimal  # net worth on `day`
     changes: tuple[Change, ...]  # one for each of `SPANS`
-    assets: tuple[Part, ...]  # in the order of `networth.ASSETS`; those worth nothing are absent
+    assets: tuple[Part, ...]  # in the order of `networth.STACK`; those worth nothing are absent
+    held: tuple[Part, ...]  # those of `assets` above zero, with shares of what is held
     people: tuple[Part, ...]  # by name; empty unless everyone is shown and they are several
     top: tuple[Holding, ...]  # by value (largest first), then symbol
     rest: Rest | None  # None: `top` is all of them
     securities: Part  # every holding together: `portfolio.Portfolio.total`
+    worth: networth.NetWorth  # every day, of which the figures above are the last
 
 
 def _shares(values: list[Decimal], total: Decimal) -> list[Decimal | None]:
@@ -99,7 +106,18 @@ def _parts(lines: dict[str, tuple[Decimal, ...]], total: Decimal) -> tuple[Part,
     last = {name: values[-1] for name, values in sorted(lines.items()) if values[-1]}
     shares = _shares(list(last.values()), total)
     return tuple(
-        Part(name, value, share) for (name, value), share in zip(last.items(), shares, strict=True)
+        Part(name, value, share, tuple(networth.before(lines[name], days) for days in SPANS))
+        for (name, value), share in zip(last.items(), shares, strict=True)
+    )
+
+
+def _held(assets: tuple[Part, ...]) -> tuple[Part, ...]:
+    above = [part for part in assets if part.value > 0]
+    shares = _shares(
+        [part.value for part in above], sum((part.value for part in above), Decimal(0))
+    )
+    return tuple(
+        Part(part.name, part.value, share) for part, share in zip(above, shares, strict=True)
     )
 
 
@@ -123,9 +141,8 @@ def run(
     valued = networth.value(conn, owner)
     worth = networth.worth_of(conn, valued, currency)
     if not worth.days:
-        return Overview(
-            currency, None, Decimal(0), (), (), (), (), None, Part("", Decimal(0), None)
-        )
+        nothing = Part("", Decimal(0), None)
+        return Overview(currency, None, Decimal(0), (), (), (), (), (), None, nothing, worth)
     held = portfolio.positions_of(conn, valued, currency)
     total = worth.total[-1]
     people = _parts(worth.by("owner"), total) if owner is None else ()
@@ -142,7 +159,7 @@ def run(
         Holding(key[0], names[key], key[2], sums[key], share)
         for key, share in zip(largest, shares, strict=True)
     ]
-    by_asset = _parts(worth.by("asset"), total)
+    by_asset = sorted(_parts(worth.by("asset"), total), key=lambda p: networth.STACK.index(p.name))
     cut = holdings[top:]
     rest = None
     if cut:
@@ -153,9 +170,11 @@ def run(
         day=worth.days[-1],
         total=total,
         changes=tuple(_change(worth.total, days) for days in SPANS),
-        assets=tuple(sorted(by_asset, key=lambda part: networth.ASSETS.index(part.name))),
+        assets=tuple(by_asset),
+        held=_held(tuple(by_asset)),
         people=people if len(people) > 1 else (),
         top=tuple(holdings[:top]),
         rest=rest,
         securities=Part("Securities", held.total, _added(shares)),
+        worth=worth,
     )

@@ -447,11 +447,11 @@ def test_a_person_the_database_does_not_have_is_not_found(client: TestClient) ->
     assert response.text == "no owner named 'Zoe'\n"
 
 
-def test_the_page_is_linked_after_net_worth_and_the_person_keeps_the_currency(
+def test_the_page_is_linked_after_the_overview_and_the_person_keeps_the_currency(
     client: TestClient,
 ) -> None:
     home = client.get("/", params={"owner": PARTNER}).text.replace(SITE, "")
-    after = home.partition(f'<a href="/networth?owner={PARTNER}">Net worth</a>')[2]
+    after = home.partition(f'<a href="/?owner={PARTNER}" aria-current="page">Overview</a>')[2]
     assert after.lstrip().startswith(f'<a href="/holdings?owner={PARTNER}">Holdings</a>')
     page = client.get("/holdings", params={"currency": "CHF"}).text.replace(SITE, "")
     assert '<a href="/holdings" aria-current="page">Holdings</a>' in page

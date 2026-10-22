@@ -312,6 +312,71 @@ code {
   position: relative;
 }
 
+/* ---- the ring of what is held, beside the table of the kinds of asset. A slice is a dash
+   of a circle's stroke, in its kind's colour; the one pointed at is wider, the rest fade. */
+
+.today {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+}
+
+.donut {
+  margin: 0;
+  max-width: 15rem;
+  width: 100%;
+}
+
+.donut svg {
+  display: block;
+  width: 100%;
+}
+
+.donut figcaption {
+  text-align: center;
+}
+
+.donut .slice {
+  cursor: pointer;
+  pointer-events: stroke;
+  stroke-width: 26;
+  transition: opacity 0.15s, stroke-width 0.15s;
+}
+
+.donut .slice.on {
+  stroke-width: 34;
+}
+
+.donut .pointing .slice:not(.on) {
+  opacity: 0.45;
+}
+
+.donut text {
+  fill: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+
+.donut .what,
+.donut .share {
+  fill: var(--text-secondary);
+  font-size: 12px;
+}
+
+.donut .amount {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.donut .slot-1 { stroke: var(--series-1); }
+.donut .slot-2 { stroke: var(--series-2); }
+.donut .slot-3 { stroke: var(--series-3); }
+.donut .slot-4 { stroke: var(--series-4); }
+.donut .slot-5 { stroke: var(--series-5); }
+.donut .slot-6 { stroke: var(--series-6); }
+.donut .slot-7 { stroke: var(--series-7); }
+
 .tip {
   background: var(--tip);
   border: 1px solid var(--line);

@@ -1,4 +1,4 @@
-"""The net-worth page and the figures its chart reads."""
+"""The chart of the first page, the figures it reads, and the brokers' own figures beside it."""
 
 import re
 from dataclasses import replace
@@ -77,56 +77,74 @@ def source(html: str) -> str:
     return found[0].replace("&amp;", "&")
 
 
-def test_net_worth_is_in_euros_and_one_line_unless_asked(client: TestClient) -> None:
-    response = client.get("/networth")
+def test_net_worth_is_in_euros_and_by_asset_type_unless_asked(client: TestClient) -> None:
+    response = client.get("/")
     assert response.status_code == 200
-    assert "1,625.00 EUR on 2026-09-30" in text(response.text)
-    # (800 + 500) / 0.8 on the last day, (1000 + 500) / 0.8 thirty days before.
-    assert tables(response.text)[0] == [["Net worth", "1,625.00", "1,875.00", NONE]]
-    assert legend(response.text) == []
-    assert source(response.text) == "http://127.0.0.1:8765/networth.json?currency=EUR&by=total"
+    assert "1,625.00 EUR net worth on 2026-09-30" in text(response.text)
+    # (800 + 500) / 0.8 on the last day, (1000 + 500) / 0.8 thirty days before: the changes
+    # come after the kinds, their total, the people and theirs.
+    assert tables(response.text)[4][0][:2] == ["30 days before", "1,875.00"]
+    assert legend(response.text) == [("0", "Net worth"), ("1", "Cash")]
+    assert source(response.text) == "http://127.0.0.1:8765/networth.json?currency=EUR&by=asset"
+    assert '<option value="asset" selected>asset type</option>' in response.text
     assert "Options and futures are not counted as assets" in text(response.text)
 
 
+def test_the_total_alone_is_one_line_without_a_legend(client: TestClient) -> None:
+    response = client.get("/", params={"by": "total"})
+    assert legend(response.text) == []
+    assert source(response.text).endswith("?currency=EUR&by=total")
+    assert '<option value="total" selected>nothing</option>' in response.text
+
+
+def test_the_old_address_of_the_chart_leads_to_the_first_page(client: TestClient) -> None:
+    asked = {"currency": "CHF", "by": "owner", "owner": OWNER}
+    response = client.get("/networth", params=asked, follow_redirects=False)
+    assert response.status_code == 307
+    assert (
+        response.headers["location"]
+        == f"http://127.0.0.1:8765/?currency=CHF&by=owner&owner={OWNER}"
+    )
+    assert legend(client.get("/networth", params=asked).text)[1][1] == OWNER
+
+
 def test_the_parts_follow_the_total_each_with_its_colour(client: TestClient) -> None:
-    response = client.get("/networth", params={"currency": "chf", "by": "owner"})
-    assert tables(response.text)[0] == [
-        ["Net worth", "1,300.00", "1,500.00", NONE],
-        [PARTNER, "500.00", "500.00", NONE],
-        [OWNER, "800.00", "1,000.00", NONE],
-    ]
+    response = client.get("/", params={"currency": "chf", "by": "owner"})
     by_owner = legend(response.text)
     assert [name for _, name in by_owner] == ["Net worth", PARTNER, OWNER]
     assert by_owner[0][0] == "0"
     assert {slot for slot, _ in by_owner[1:]} == {"1", "2"}
     assert source(response.text).endswith("?currency=CHF&by=owner")  # the same view
-
-    response = client.get("/networth", params={"currency": "CHF", "by": "asset"})
-    assert tables(response.text)[0] == [
-        ["Net worth", "1,300.00", "1,500.00", NONE],
-        ["Cash", "1,300.00", "1,500.00", NONE],
+    # Each person with what they had 30 days before, whatever the chart is cut by.
+    assert tables(response.text)[2] == [
+        [PARTNER, "500.00", "38.46%", "500.00", NONE],
+        [OWNER, "800.00", "61.54%", "1,000.00", NONE],
     ]
+    assert '<option value="owner" selected>person</option>' in response.text
+
+    response = client.get("/", params={"currency": "CHF", "by": "asset"})
+    assert tables(response.text)[0] == [["Cash", "1,300.00", "100.00%", "1,500.00", NONE]]
     assert legend(response.text) == [("0", "Net worth"), ("1", "Cash")]
 
 
 def test_a_person_keeps_their_colour_when_looked_at_alone(client: TestClient) -> None:
-    both = {name: slot for slot, name in legend(client.get("/networth?by=owner").text)}
+    both = {name: slot for slot, name in legend(client.get("/?by=owner").text)}
     for person, worth in ((OWNER, "1,000.00"), (PARTNER, "625.00")):
-        response = client.get("/networth", params={"owner": person, "by": "owner"})
-        assert tables(response.text)[0][0][:2] == ["Net worth", worth]
+        response = client.get("/", params={"owner": person, "by": "owner"})
+        assert f"{worth} EUR net worth on 2026-09-30" in text(response.text)
         assert legend(response.text) == [("0", "Net worth"), (both[person], person)]
         assert f'<input type="hidden" name="owner" value="{person}">' in response.text
         assert source(response.text).endswith(f"?currency=EUR&by=owner&owner={person}")
 
 
 def test_what_a_statement_says_it_was_worth_is_set_beside_it(client: TestClient) -> None:
-    response = client.get("/networth", params={"currency": "CHF"})
-    assert tables(response.text)[1] == [
+    response = client.get("/", params={"currency": "CHF"})
+    assert tables(response.text)[-1] == [
         ["2026-09-30", OWNER, "Migros", "Options", "-50.00", "not counted", "", "CHF"],
         ["2026-09-30", OWNER, "Migros", "Cash", "790.00", "800.00", "10.00", "CHF"],
     ]
-    hers = client.get("/networth", params={"owner": PARTNER})
-    assert len(tables(hers.text)) == 1
+    hers = client.get("/", params={"owner": PARTNER})
+    assert len(tables(hers.text)) == 3  # the kinds with their total, and the changes
     assert "Against the brokers" not in hers.text
 
 
@@ -141,16 +159,19 @@ def test_the_chart_reads_every_day_as_text_to_the_cent(client: TestClient) -> No
     # 1500 francs until the 9th, 1300 from the 10th, at 0.80 francs a euro.
     assert total["values"] == cash["values"] == ["1875.00"] * 10 + ["1625.00"] * 21
     assert len(total["values"]) == DAYS == (LAST - FIRST).days + 1
-    assert [line["name"] for line in client.get("/networth.json").json()["series"]] == ["Net worth"]
+    # by asset type unless asked otherwise, as on the page
+    assert client.get("/networth.json").json() == answer
+    alone = client.get("/networth.json", params={"by": "total"}).json()["series"]
+    assert [line["name"] for line in alone] == ["Net worth"]
 
 
 def test_the_parts_are_listed_and_stacked_from_the_steadiest_up(mixed: TestClient) -> None:
     asked = {"by": "asset", "currency": "USD"}
-    page = mixed.get("/networth", params=asked).text
+    page = mixed.get("/", params=asked).text
     # Bills below the ETF, whatever the order the kinds of asset are worked out in; each in
     # its colour, and neighbours in the stack in neighbouring ones.
     assert legend(page) == [("0", "Net worth"), ("1", "Cash"), ("2", "Bills"), ("5", "ETFs")]
-    assert [row[0] for row in tables(page)[0]] == ["Net worth", "Cash", "Bills", "ETFs"]
+    assert [row[0] for row in tables(page)[0]] == ["Cash", "Bills", "ETFs"]
     # The script finds the button of a series by its slot.
     assert re.findall(r'<button type="button" data-slot="(\d)" aria-pressed="true">', page) == [
         slot for slot, _ in legend(page)
@@ -164,7 +185,7 @@ def test_the_parts_are_listed_and_stacked_from_the_steadiest_up(mixed: TestClien
 
 def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: TestClient) -> None:
     asked = {"currency": "XAU", "by": "shape"}
-    response = client.get("/networth", params=asked)
+    response = client.get("/", params=asked)
     assert response.status_code == 200
     errors = [
         "'XAU' is not one of EUR, CHF, USD, GBP, JPY.",
@@ -173,7 +194,7 @@ def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: Te
     assert re.findall(r'<p class="error" role="alert">(.*?)</p>', response.text) == [
         error.replace("'", "&#39;") for error in errors
     ]
-    assert tables(response.text)[0] == [["Net worth", "1,625.00", "1,875.00", NONE]]
+    assert "1,625.00 EUR net worth on 2026-09-30" in text(response.text)
     # The chart draws what the page shows, not what was asked for.
     assert client.get(source(response.text)).json()["currency"] == "EUR"
     answer = client.get("/networth.json", params=asked)
@@ -182,7 +203,7 @@ def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: Te
 
 
 def test_a_currency_without_a_rate_is_said_and_nothing_is_drawn(client: TestClient) -> None:
-    response = client.get("/networth", params={"currency": "USD"})
+    response = client.get("/", params={"currency": "USD"})
     assert response.status_code == 200
     [error] = re.findall(r'<p class="error" role="alert">(.*?)</p>', response.text)
     assert error.startswith("No exchange rate is stored for USD")
@@ -204,15 +225,19 @@ def test_a_statement_valued_in_a_currency_without_a_rate_is_said_too(tmp_path: P
     close(conn, replace(his, extraction=replace(his.extraction, values=printed)))
     conn.close()
     client = TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
-    response = client.get("/networth", params={"currency": "CHF"})
+    response = client.get("/", params={"currency": "CHF"})
     assert response.status_code == 200
     assert "No exchange rate is stored for USD" in response.text
-    # The figures themselves need no rate, and the chart does not read the statements.
+    # The figures themselves need no rate, and neither does the chart: only the brokers'
+    # own figures are left out.
+    assert "1,000.00 CHF net worth on 2026-09-30" in text(response.text)
+    assert 'id="networth"' in response.text
+    assert "Against the brokers" not in response.text
     assert client.get("/networth.json", params={"currency": "CHF"}).status_code == 200
 
 
 def test_nothing_committed_is_said_and_is_an_empty_chart(empty: TestClient) -> None:
-    response = empty.get("/networth")
+    response = empty.get("/")
     assert response.status_code == 200
     assert "Nothing is committed yet." in response.text
     assert 'id="networth"' not in response.text
@@ -220,14 +245,14 @@ def test_nothing_committed_is_said_and_is_an_empty_chart(empty: TestClient) -> N
 
 
 def test_the_page_brings_its_own_chart_and_keeps_its_own_colours(client: TestClient) -> None:
-    page = client.get("/networth").text
+    page = client.get("/").text
     # Dark Reader would paint over the chart's canvas: the stylesheet has a dark mode.
     assert '<meta name="darkreader-lock">' in page
-    for asset in ("vendor/uPlot.iife.min.js", "vendor/uPlot.min.css", "networth.js"):
+    for asset in ("vendor/uPlot.iife.min.js", "vendor/uPlot.min.css", "networth.js", "donut.js"):
         address = f"http://127.0.0.1:8765/static/{asset}"
         assert address in page
         assert client.get(address).status_code == 200
-    # only this page has a chart: the others have the script of the header alone
-    assert re.findall(r"<script[^>]*>", client.get("/").text) == [
+    # only this page has charts: the others have the script of the header alone
+    assert re.findall(r"<script[^>]*>", client.get("/holdings").text) == [
         '<script src="http://127.0.0.1:8765/static/choose.js" defer>'
     ]
