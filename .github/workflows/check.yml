@@ -1,0 +1,49 @@
+# The gate of CLAUDE.md (`make check`: ruff, mypy --strict, pytest with coverage) on every
+# push to a branch and every pull request. image.yml runs it too, before it builds an image.
+#
+# Third-party actions are pinned by tag for now: pin each to the full commit SHA of that
+# release (with the version in a comment) before the first push.
+
+name: check
+
+on:
+  push:
+    branches: ["**"] # branches only: a tag `v*` runs this through image.yml
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5 # TODO pin to SHA
+        with:
+          persist-credentials: false
+
+      # The OCR tests read the scanned certificates with the real program
+      # (tests/extractors/test_ocr.py): without it they fail, they are not skipped.
+      - name: Install Tesseract
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+          tesseract --version
+
+      # The Python of .python-version (the image's), installed by uv.
+      - uses: astral-sh/setup-uv@v6 # TODO pin to SHA
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the project
+        run: uv sync --locked
+
+      - name: make check
+        run: make check
