@@ -11,6 +11,7 @@
   <link rel="icon" href="{{ url_for('static', path='icons/icon.svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static', path='icons/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script src="{{ url_for('static', path='choose.js') }}" defer></script>
   {%- block head %}{% endblock %}
 </head>
 <body>
@@ -30,6 +31,19 @@
       <a href="{{ request.url.remove_query_params('page').include_query_params(owner=person.name) }}"{% if owner == person.name %} aria-current="true"{% endif %}>{{ person.name }}</a>
       {%- endfor %}
     </nav>
+    {%- if converting %}
+    <form method="get" action="{{ url_for('currency') }}" class="currency" data-auto>
+      <input type="hidden" name="back" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <label>Currency
+        <select name="currency">
+          {%- for each in currencies %}
+          <option{% if each == currency %} selected{% endif %}>{{ each }}</option>
+          {%- endfor %}
+        </select>
+      </label>
+      <button>Show</button>
+    </form>
+    {%- endif %}
     {%- if signing %}
     <form method="post" action="{{ url_for('logout') }}">
       <input type="hidden" name="token" value="{{ token }}">

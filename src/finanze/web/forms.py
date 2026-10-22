@@ -125,6 +125,12 @@ def _currency(params: Mapping[str, str], errors: list[str]) -> str:
     return currency
 
 
+def currency(params: Mapping[str, str]) -> str:
+    """The currency the figures are shown in: the one asked for, or euros when it cannot be
+    read (the page that shows figures says why)."""
+    return _currency(params, [])
+
+
 def holdings_view(params: Mapping[str, str]) -> HoldingsView:
     """`owner` and `currency` (euros when left out)."""
     errors: list[str] = []

@@ -199,7 +199,10 @@ def test_the_form_offers_leaf_categories_and_only_these_rows_without_rules(
     assert page.count('<datalist id="categories">') == 1
     assert '<option value="Affitto" label="Casa" data-side="uscite">' in page
     assert '<option value="Casa"' not in page
-    assert re.findall(r"<script[^>]*>", page) == [f'<script src="{SITE}/static/picker.js" defer>']
+    assert re.findall(r"<script[^>]*>", page) == [
+        f'<script src="{SITE}/static/choose.js" defer>',
+        f'<script src="{SITE}/static/picker.js" defer>',
+    ]
     assert 'type="radio"' not in page
     assert "For these rows only." in page
 

@@ -6,15 +6,9 @@
   <script src="{{ url_for('static', path='networth.js') }}" defer></script>
 {%- endblock %}
 {% block main %}
-<form method="get" class="filter" id="view">
+<form method="get" class="filter" id="view" data-auto>
   {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
-  <label>Currency
-    <select name="currency">
-      {%- for currency in currencies %}
-      <option{% if currency == asked.currency %} selected{% endif %}>{{ currency }}</option>
-      {%- endfor %}
-    </select>
-  </label>
+  <input type="hidden" name="currency" value="{{ asked.currency }}">
   <label>Break down by
     <select name="by">
       {%- for by in breakdowns %}

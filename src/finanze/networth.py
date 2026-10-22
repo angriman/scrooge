@@ -373,7 +373,7 @@ def _securities(
         quote = None
         if kind in {"bill", "bond"}:
             trades = lots.get((holding.account_id, holding.instrument_id), [])
-            values = _bill_values(trades, maturity, days)
+            values = bill_values(trades, maturity, days)
             if not trades and any(step.quantity for step in holding.steps):
                 notes.append(f"{symbol} was bought before the history starts: it is not counted.")
         else:
@@ -482,7 +482,7 @@ def lot_trades(conn: sqlite3.Connection) -> dict[tuple[int, int], list[LotTrade]
     return trades
 
 
-def _bill_values(
+def bill_values(
     trades: Sequence[LotTrade], maturity: date | None, days: Sequence[date]
 ) -> list[Decimal]:
     """What the lots still held are worth each day: from cost towards face, in a straight line."""

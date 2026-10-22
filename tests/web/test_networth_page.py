@@ -227,4 +227,7 @@ def test_the_page_brings_its_own_chart_and_keeps_its_own_colours(client: TestCli
         address = f"http://127.0.0.1:8765/static/{asset}"
         assert address in page
         assert client.get(address).status_code == 200
-    assert "<script" not in client.get("/").text  # only this page has a script
+    # only this page has a chart: the others have the script of the header alone
+    assert re.findall(r"<script[^>]*>", client.get("/").text) == [
+        '<script src="http://127.0.0.1:8765/static/choose.js" defer>'
+    ]

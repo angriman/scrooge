@@ -71,9 +71,10 @@ def test_a_copy_shows_a_month_without_the_forms_that_change_it(
 ) -> None:
     response = client.get(path)
     assert response.status_code == 200
-    assert "<form" not in response.text
-    assert "<button" not in response.text
-    assert "<select" not in response.text
+    page = response.text.partition("<main>")[2]  # the header chooses a currency, nothing more
+    assert "<form" not in page
+    assert "<button" not in page
+    assert "<select" not in page
     assert "Add a category" not in response.text
 
 
@@ -89,7 +90,7 @@ def test_a_copy_shows_a_statement_without_the_forms_that_change_it(
     for committed in (True, False):
         page = client.get(f"/statements/{file_id(database, 'Lukas', committed=committed)}")
         assert page.status_code == 200
-        assert "<form" not in page.text
+        assert "<form" not in page.text.partition("<main>")[2]
         assert "Take it back" not in page.text
         assert "Remove it" not in page.text
 
@@ -138,7 +139,7 @@ def test_a_copy_behind_a_password_asks_for_it_before_it_refuses(database: Path) 
     for path in FORMS:
         assert client.post(path, data=form).status_code == 403
     page = client.get("/months/Lukas/2026-08").text
-    assert page.count("<form") == 1  # signing out is all that is left to send
+    assert page.count('<form method="post"') == 1  # signing out is all that is left to send
     out = client.post("/logout", data=form)
     assert (out.status_code, out.headers["location"]) == (303, "/login")
     assert client.get("/months").status_code == 303

@@ -289,6 +289,71 @@ def test_the_ladder_is_the_bills_held_by_maturity(conn: sqlite3.Connection) -> N
     assert (due.account, due.currency, due.quantity) == ("IBKR USD", "USD", D(5000))
     assert (due.cost_native, due.value_native, due.value) == (D(4950), D(5000), D(5000))
     assert portfolio.run(conn, owner=PARTNER, currency="USD").ladder == ladder[1:2]
+    # what is earned when each is repaid: its face less what it cost
+    assert [rung.interest for rung in ladder] == [D(50), D(50), D(50), D(150), D(50)]
+
+
+def test_the_ladder_is_valued_on_the_day_asked_for_at_the_last_rate_by_then(
+    conn: sqlite3.Connection,
+) -> None:
+    close(
+        conn,
+        ibkr(
+            bill("10000", "-9850", day(15)),  # 100 days to 24 December: 1.5 a day
+            # 20 days to 6 October: 2.5 a day, repaid before the day asked for
+            bought(
+                "912797WW4",
+                "5000",
+                "-4950",
+                day(16),
+                asset_tab="Bonds",
+                price=D(99),
+                maturity=day(6, 10),
+            ),
+            opening="50000",
+        ),
+    )
+    rate(conn, "USD", day(1), "0.8")
+    rate(conn, "USD", day(20, 10), "0.9")  # after the last day committed, before the one asked
+    rate(conn, "USD", day(25, 10), "1")  # after the one asked
+    held = portfolio.run(conn, currency="CHF", today=day(21, 10))
+    assert (held.day, held.ladder_day) == (day(30), day(21, 10))
+    due, later = held.ladder
+    assert (due.position.symbol, due.days, due.value_native, due.value) == (
+        "912797WW4",
+        -15,
+        D(5000),
+        D(4500),
+    )
+    # 36 days after 15 September; at the rate of 20 October, not that of the last day
+    assert (later.days, later.value_native, later.value) == (64, D(9904), D("8913.60"))
+    assert later.position.value_native == D("9872.50")  # the positions are of the last day
+    assert later.interest == D(150)
+
+
+def test_the_ladder_is_never_valued_before_the_last_day_committed(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bill("10000", "-9850", day(15)), opening="50000"))
+    for today in (None, day(20), day(30)):
+        held = portfolio.run(conn, currency="USD", today=today)
+        [rung] = held.ladder
+        assert (held.ladder_day, rung.days, rung.value_native, rung.value) == (
+            day(30),
+            85,
+            D("9872.50"),
+            D("9872.50"),
+        )
+
+
+def test_the_interest_of_a_bill_whose_cost_is_not_known_is_not_known_either(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bill("10000", "-9850", day(15)), opening="50000"))
+    [rung] = agrees_with_net_worth(conn, None, "USD").ladder
+    assert rung.interest == D(150)
+    unknown = replace(rung, position=replace(rung.position, cost_native=None))
+    assert unknown.interest is None
 
 
 def test_without_bills_there_is_no_ladder(conn: sqlite3.Connection) -> None:

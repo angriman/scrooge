@@ -8,17 +8,6 @@
 {{ url_for(page).include_query_params(currency=shown.currency, owner=person) if person else url_for(page).include_query_params(currency=shown.currency) }}
 {%- endmacro %}
 {% block main %}
-<form method="get" class="filter">
-  {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
-  <label>Currency
-    <select name="currency">
-      {%- for currency in currencies %}
-      <option{% if currency == asked.currency %} selected{% endif %}>{{ currency }}</option>
-      {%- endfor %}
-    </select>
-  </label>
-  <button>Show</button>
-</form>
 {%- for error in errors %}
 <p class="error" role="alert">{{ error }}</p>
 {%- endfor %}
