@@ -1,7 +1,11 @@
-# The web app alone (`finanze serve`), to show a copy of the database from another machine.
-# How it is built, started and updated: deploy/README.md.
+# The app on the NAS: `finanze serve` over the one database, which the pages and
+# `docker exec finanze finanze <command>` both change. How it is built, started and updated:
+# deploy/README.md.
 #
-# No Tesseract: nothing is imported where this runs. No network once it is built.
+# Two folders matter when it runs:
+#   /app   in the image: the committed rules.yaml and instruments.yaml, replaced by every update
+#   /data  the volume: everything personal, read and written there (see deploy/README.md)
+# No network once it is built, except `finanze prices` (D10).
 
 FROM python:3.11-slim AS build
 
@@ -27,28 +31,35 @@ RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.11-slim
 
+# Tesseract and its English data, for the scanned pension certificates (extractors/ocr.py),
+# and nothing it merely recommends. The package lists are not kept.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /opt/finanze /opt/finanze
+COPY rules.yaml instruments.yaml /app/
 
 ENV PATH=/opt/finanze/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Not root. deploy/compose.yaml names the user of the machine that may read the data instead;
+# Not root. deploy/compose.yaml names the user of the NAS that owns the data folder instead;
 # nothing in the image belongs to this one, so any other works as well.
 USER 10001:10001
 
-# /data is the one folder the app looks into: the config and the database, and the rules
-# file a remembered category would go to. It is meant to be mounted read-only.
+# The folder `finanze` runs in, `docker exec` included: finanze.yaml is found here, and so is
+# anything it names by a relative path.
 WORKDIR /data
 EXPOSE 8765
 
 # /login is the one page that asks for no password. From inside, the app is 127.0.0.1,
 # a name it always answers to.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/login', timeout=3)"]
 
-CMD ["finanze", "serve", \
-     "--config", "/data/finanze.yaml", \
-     "--db", "/data/finanze.db", \
-     "--rules", "/data/rules.local.yaml", \
-     "--port", "8765"]
+# Everything else comes from /data/finanze.yaml: the database, the rules, the instruments,
+# who may see the pages. Before listening, a database at an older schema is copied to
+# /data/backups and brought up to date; when that fails, nothing listens and the container
+# stops with the reason in its log.
+CMD ["finanze", "serve", "--config", "/data/finanze.yaml", "--port", "8765"]

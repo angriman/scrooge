@@ -7,6 +7,9 @@
 !uv.lock
 !src
 !src/**
+# The committed rules and instruments: the personal files are on the data volume.
+!rules.yaml
+!instruments.yaml
 
 # Inside src: what is not source.
 **/__pycache__
