@@ -38,9 +38,9 @@ come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--
 `account_labels` there names a further account at a broker by its account number.
 `rules` there lists the rules files, first wins, and `instruments` names the instruments
 file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
-`rules.local.yaml` then `rules.yaml`, and `instruments.yaml`, in the folder the command runs
-in. The first rules file is the one both people share: each person's `rules.<owner>.yaml` and
-`categories.yaml` are next to it, and answers and categories given are written there.
+`rules.yaml` and `instruments.yaml`, in the folder the command runs in. The first rules file
+is the one both people share: each person's `rules.<owner>.yaml` and `categories.yaml` are
+next to it, and answers and categories given are written there.
 `keep`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
 people.
 `prices` is the only command that uses the network (D9).
@@ -130,7 +130,7 @@ COMMANDS = (
 _READ_BOTH = ("keep", "prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 # Where the rules and the instruments are read from when neither a flag nor the config says.
-RULES = ["rules.local.yaml", "rules.yaml"]
+RULES = ["rules.yaml"]
 INSTRUMENTS = "instruments.yaml"
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -248,8 +248,8 @@ def _rules_flags(command: argparse.ArgumentParser) -> None:
         "--rules",
         type=Path,
         action="append",
-        help="rules file(s), first wins (default: 'rules' in the config, or rules.local.yaml "
-        "then rules.yaml); the owner's own rules.<owner>.yaml, next to the first, is read "
+        help="rules file(s), first wins (default: 'rules' in the config, or rules.yaml); "
+        "the owner's own rules.<owner>.yaml, next to the first, is read "
         "before them; a remembered category is saved in the first, or the owner's",
     )
     command.add_argument(

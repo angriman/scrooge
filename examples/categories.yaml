@@ -1,0 +1,10 @@
+# An example of `categories.yaml`: categories added to the taxonomy of `src/finanze/categories.py`
+# (D6). It lives next to `rules.yaml` and is git-ignored. `--review` and the import page write
+# here when a category is added (`+Name`, or `+Group:Name` to put an expense under a top-level
+# category). Uscite have two levels, Entrate one. The file is rewritten on every addition: only
+# these leading comments are kept.
+categories:
+  uscite:
+    Trasporti:
+    - Spedizioni
+  entrate: []

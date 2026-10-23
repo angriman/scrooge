@@ -2,9 +2,9 @@
 # `docker exec finanze finanze <command>` both change. How it is built, started and updated:
 # deploy/README.md.
 #
-# Two folders matter when it runs:
-#   /app   in the image: the committed rules.yaml and instruments.yaml, replaced by every update
-#   /data  the volume: everything personal, read and written there (see deploy/README.md)
+# Everything personal is in /data, the volume, read and written there (see deploy/README.md):
+# finanze.yaml, the database and its backups, originals/, rules.yaml, rules.<owner>.yaml,
+# instruments.yaml and categories.yaml. The image holds only the code.
 # No network once it is built, except `finanze prices` (D10).
 
 FROM python:3.11-slim AS build
@@ -38,7 +38,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/finanze /opt/finanze
-COPY rules.yaml instruments.yaml /app/
 
 ENV PATH=/opt/finanze/bin:$PATH \
     PYTHONUNBUFFERED=1 \

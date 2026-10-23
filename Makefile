@@ -56,8 +56,7 @@ icons: ## Draw the PNG icons from icons/icon.svg (needs rsvg-convert: brew insta
 nas-app: ## The folder the NAS builds the web app's image from (deploy/README.md)
 	rm -rf $(NAS_APP)
 	mkdir -p $(NAS_APP)
-	git archive HEAD Dockerfile .dockerignore pyproject.toml uv.lock src rules.yaml instruments.yaml \
-		| tar -x -C $(NAS_APP)
+	git archive HEAD Dockerfile .dockerignore pyproject.toml uv.lock src | tar -x -C $(NAS_APP)
 	@echo "$(NAS_APP): commit $$(git rev-parse --short HEAD), to copy to the NAS"
 
 clean: ## Remove caches and coverage artifacts
