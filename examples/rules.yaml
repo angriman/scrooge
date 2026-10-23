@@ -1,0 +1,42 @@
+# An example of `rules.yaml`: description -> category rules (D6 taxonomy, see docs/parser-spec.md).
+# Copy it next to `finanze.yaml` (on the NAS, into /data) and make it yours: the real file is
+# git-ignored, since rules that name shops, people or an employer are personal.
+#
+# `match` is a case-insensitive regular expression searched in the transaction's description and
+# counterparty. The first matching rule wins, so put the specific rules (a shop, a person) first.
+# Optional keys: `kind` (expense, income, ...), `account` (apply only to that account) and
+# `direction` (in | out). One person's rules for rows naming either person go in
+# `rules.<owner>.yaml` beside it, read before this file. `--review` and the import page add
+# rules here. Transactions no rule matches are left for review.
+rules:
+  # --- Trasporti
+  - {match: 'CARBURANTI|TANKSTELLE|DISTRIBUTORE', category: Carburante}
+  - {match: 'PARKING|PARCHEGGIO|PARKHAUS|AUTOSTRAD|PEDAGGIO', category: Parcheggi e pedaggi}
+
+  # --- Ristoranti e bar
+  - {match: 'RESTAURANT|RISTORANTE|TRATTORIA|OSTERIA|PIZZERIA|\bPIZZA|RAMEN|SUSHI|\bGRILL\b', category: Ristoranti}
+  - {match: 'GELAT|\bCAF[EÉ]\b|CAFF[EÈ]|\bKAFI\b|KAFFEE|COFFEE|\bBAR\b|BISTRO|BAKERY|B[AÄ]CKEREI|CONFISERIE|CONFISEUR', category: Ristoranti}
+
+  # --- Alimentari
+  - {match: 'SUPERMARKET|SUPERMERCATO|HOFLADEN', category: Spesa}
+
+  # --- Casa, salute, cura personale
+  - {match: 'ELEKTRIZIT[AÄ]TSWERK', category: Utenze}
+  - {match: 'KRANKEN-?VERSICHERUNG', category: Assicurazione sanitaria}
+  - {match: 'APOTHEKE|PHARMACIE|FARMACIA|DROGERIE', category: Medico/Farmacia}
+  - {match: 'ZAHNARZT|DENTIST', category: Dentista}
+  - {match: 'BARBIERE|BARBER|COIFFEUR', category: Barbiere}
+
+  # --- Formazione, viaggi
+  - {match: 'LIBRERIA|BUCHHANDLUNG', category: Libri}
+  - {match: '\bHOTELS?\b|HOSTEL', category: Alloggi}
+  - {match: 'BERGBAHNEN|LUFTSEILBAHN|\bKINO\b|CINEMA|MUSEUM|MUSEO', category: Attività/Svago}
+
+  # --- Banca
+  - {match: 'Metal( repricing \d+)? plan fee', category: Revolut Metal}
+  - {match: 'Spese per traffico pagamenti|SPESE DI GESTIONE|Withdrawal Fee', category: Commissioni}
+
+  # --- Donazioni, tasse e burocrazia (after Utenze: "Elektrizitätswerk der Stadt ...")
+  - {match: 'STIFTUNG', category: Donazioni}
+  - {match: 'STEUERAMT|AGENZIA DELLE ENTRATE', category: Tasse}
+  - {match: 'CONSOLATO|STADTPOLIZEI', category: Documenti e burocrazia}
