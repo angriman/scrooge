@@ -24,11 +24,10 @@ See "The database" below.
 
 | File | Committed | Purpose |
 |---|---|---|
-| `rules.yaml` | yes | generic word → category rules ("ristorante", "apotheke"); names no business |
-| `rules.local.yaml` | no | your own rules (shops, chains, employer); read before `rules.yaml`; `--review` appends here |
+| `rules.yaml` | no | description → category rules, generic words and your own (shops, chains, employer); `--review` and the import page append here; start from `examples/rules.yaml` |
 | `rules.<owner>.yaml` | no | one person's rules for rows naming either person (transfers between the two, own top-ups); read first; `--review` saves those answers here |
-| `categories.yaml` | yes | categories added to the built-in taxonomy; `--review` appends here on `+Name`; read from the folder of the first rules file |
-| `instruments.yaml` | yes | asset tab for Tastytrade tickers, maturity of T-bills bought there, overrides |
+| `categories.yaml` | no | categories added to the built-in taxonomy; `--review` appends here on `+Name`; read from the folder of the first rules file; see `examples/categories.yaml` |
+| `instruments.yaml` | no | asset tab for Tastytrade tickers, maturity of T-bills bought there, overrides; start from `examples/instruments.yaml` |
 | `finanze.yaml` | no | database, owners, account labels, web app |
 
 Keys of older configs that nothing reads any more (`locale`, `accounts`) are ignored.

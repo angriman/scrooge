@@ -179,7 +179,7 @@ def _parser() -> argparse.ArgumentParser:
         "--rules",
         type=Path,
         action="append",
-        help="rules file(s), first wins (default: rules.local.yaml, then rules.yaml); the "
+        help="rules file(s), first wins (default: rules.yaml); the "
         "owner's own rules.<owner>.yaml, next to the first, is read before them",
     )
     load.add_argument("--instruments", type=Path, default=Path("instruments.yaml"))
@@ -228,8 +228,8 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--rules",
         type=Path,
-        default=Path("rules.local.yaml"),
-        help="where a remembered category is saved as a rule (default: rules.local.yaml); "
+        default=Path("rules.yaml"),
+        help="where a remembered category is saved as a rule (default: rules.yaml); "
         "rows naming a person go to that owner's rules.<owner>.yaml next to it",
     )
     serve.add_argument(
@@ -371,10 +371,10 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _check_copy(path)
         else:
             _open(path, now).close()
-        # What the import page reads, as `finanze import` would here: the rules both share,
-        # then the generic ones next to them.
-        shared = [args.rules, args.rules.with_name("rules.yaml")]
-        imports = importing.Setup(shared, args.instruments, people, _labels(config, args.config))
+        # What the import page reads, as `finanze import` would here: the rules both share.
+        imports = importing.Setup(
+            [args.rules], args.instruments, people, _labels(config, args.config)
+        )
         pages = _Pages(webapp.Rules(args.rules, people), imports)
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
@@ -661,7 +661,7 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
 
 def _import(session: _Session, args: argparse.Namespace) -> int:
     out = session.console.out
-    shared = args.rules or [Path("rules.local.yaml"), Path("rules.yaml")]
+    shared = args.rules or [Path("rules.yaml")]
     setup = importing.Setup(shared, args.instruments, session.people, session.labels)
     found = importing.read(session.owner, _files(args.paths), setup)
     if args.review and found.month.uncategorized:
