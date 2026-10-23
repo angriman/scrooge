@@ -50,5 +50,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 CMD ["finanze", "serve", \
      "--config", "/data/finanze.yaml", \
      "--db", "/data/finanze.db", \
-     "--rules", "/data/rules.local.yaml", \
+     "--rules", "/data/rules.yaml", \
      "--port", "8765"]
