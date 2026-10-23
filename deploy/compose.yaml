@@ -1,4 +1,5 @@
-# The web app on the NAS (Synology Container Manager: Project). Steps: README.md, here.
+# The app on the NAS (Synology Container Manager: Project), the one place the data lives and
+# changes. Steps: README.md, here.
 #
 # Lives on the NAS next to `app/`, the folder `make nas-app` writes. Two things to adapt,
 # both marked PLACEHOLDER. No password here or in the image: its digest is in
@@ -10,16 +11,15 @@ services:
     build: ./app
     container_name: finanze
 
-    # PLACEHOLDER: the user and group of the NAS that may read the data folder, as numbers
-    # (`id <user>` on the NAS). Not root.
+    # PLACEHOLDER: the user and group of the NAS that own the data folder, as numbers
+    # (`id <user>` on the NAS). Not root. The app writes there as this user: the database,
+    # its backups, originals/, rules and categories added from the pages.
     user: "1026:100"
 
     volumes:
-      # PLACEHOLDER (left of the colon): the folder holding finanze.yaml and finanze.db.
-      # The folder, not the two files, so that a database put in place of the old one is
-      # the one read. Read-only: the app opens the database to read and writes no file
-      # next to it.
-      - /volume1/docker/finanze/data:/data:ro
+      # PLACEHOLDER (left of the colon): the data folder, read and written. The folder, not
+      # its files, so that SQLite can keep its journal next to the database.
+      - /volume1/docker/finanze/data:/data
 
     ports:
       # Every address of the NAS, the tailnet's among them. Put an address in front
@@ -28,7 +28,8 @@ services:
 
     restart: unless-stopped
 
-    # The app writes nothing: not in its own file system, not as anyone more than it is.
+    # The app writes nowhere but /data: not in its own file system, not as anyone more than
+    # it is. Uploads and Tesseract's work files go to /tmp.
     read_only: true
     tmpfs:
       - /tmp
