@@ -145,7 +145,7 @@ prices, so that every page has something to show. It is made again from nothing 
 in `output/dev/` with the config and rules it was built with, and it prints how to serve it:
 
 ```
-uv run finanze serve --config output/dev/finanze.yaml --rules output/dev/rules.local.yaml \
+uv run finanze serve --config output/dev/finanze.yaml --rules output/dev/rules.yaml \
     --instruments output/dev/instruments.yaml
 ```
 
