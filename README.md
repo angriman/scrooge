@@ -28,7 +28,13 @@ See "The database" below.
 | `rules.<owner>.yaml` | no | one person's rules for rows naming either person (transfers between the two, own top-ups); read first; `--review` saves those answers here |
 | `categories.yaml` | no | categories added to the built-in taxonomy; `--review` appends here on `+Name`; read from the folder of the first rules file; see `examples/categories.yaml` |
 | `instruments.yaml` | no | asset tab for Tastytrade tickers, maturity of T-bills bought there, overrides; start from `examples/instruments.yaml` |
-| `finanze.yaml` | no | database, owners, account labels, web app |
+| `finanze.yaml` | no | database, owners, account labels, web app, where the rules and instruments are |
+
+The files above are read in the folder the command runs in. `finanze.yaml` can name others:
+`rules: [path, ...]` (first wins; default `rules.yaml`) and `instruments: path` (default
+`instruments.yaml`), for `import`, `serve` and `prices`; `--rules` and `--instruments` win over
+both. The first rules file is the one both people share: `rules.<owner>.yaml` and
+`categories.yaml` are read from its folder and written there.
 
 Keys of older configs that nothing reads any more (`locale`, `accounts`) are ignored.
 

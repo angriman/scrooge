@@ -698,6 +698,55 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert "unrecognized arguments: --host" in capsys.readouterr().err
 
 
+def test_the_config_says_where_the_rules_and_the_instruments_are(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As on a machine where the personal files and the committed ones are in two folders."""
+    data, image = run.folder / "data", run.folder / "image"
+    image.mkdir()
+    generic, instruments = image / "rules.yaml", image / "instruments.yaml"
+    shutil.move(run.rules, generic)
+    shutil.move(run.instruments, instruments)
+    keys = f"rules: [{data / 'rules.local.yaml'}, {generic}]\ninstruments: {instruments}\n"
+    run.config.write_text(CONFIG.format(database=run.database) + keys, encoding="utf-8")
+    august = run.folder / "old" / "august"
+    august.mkdir(parents=True)
+    (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
+    assert run("import", str(august)) == dbcli.OK  # the bill's maturity is in `instruments`
+    assert run("import", str(run.folder)) == dbcli.OK
+    assert "108 transactions staged for Lukas.\n" in run.output  # every row has a category
+
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert run("serve") == dbcli.OK
+    assert served[-1].state.imports.rules == [data / "rules.local.yaml", generic]
+    assert served[-1].state.imports.instruments == instruments
+    assert served[-1].state.rules.shared == data / "rules.local.yaml"
+    # A flag still wins, and names every file read: none is looked for next to it.
+    assert run("serve", "--rules", "mine.yaml", "--instruments", "other.yaml") == dbcli.OK
+    assert served[-1].state.imports.rules == [Path("mine.yaml")]
+    assert served[-1].state.imports.instruments == Path("other.yaml")
+
+
+@pytest.mark.parametrize(
+    ("keys", "why"),
+    [
+        ("rules: rules.local.yaml", "'rules' must list the rules files, the one both people"),
+        ("rules: []", "'rules' must list the rules files"),
+        ("rules: [{a: 1}]", "'rules' must list the rules files"),
+        ("instruments: [a.yaml]", "'instruments' must be the path of the instruments file"),
+        ("instruments: ''", "'instruments' must be the path of the instruments file"),
+    ],
+)
+def test_rules_and_instruments_in_the_config_must_be_paths(
+    run: Run, monkeypatch: pytest.MonkeyPatch, keys: str, why: str
+) -> None:
+    monkeypatch.setattr(uvicorn, "run", lambda app, **how: None)
+    run.config.write_text(f"database: {run.database}\n{keys}\n", encoding="utf-8")
+    assert run("serve") == dbcli.FAILED
+    assert run.output.startswith(f"error: {run.config}: {why}")
+
+
 WORDS = "correct horse battery"
 STORED = auth.digest(WORDS, salt=bytes(16))
 
@@ -833,6 +882,67 @@ def test_a_database_newer_than_this_code_is_refused_by_every_command(
     assert run.output == newer
     assert serve_with(run, monkeypatch, "{read_only: true}") == []
     assert f"{run.database}: schema version 99, where this code reads" in run.output
+
+
+def older(run: Run, monkeypatch: pytest.MonkeyPatch) -> int:
+    """The database as code one migration older left it, with an owner in it; its version."""
+    every = db.migrations()
+    run.database.parent.mkdir()
+    conn = db.connect(run.database)
+    monkeypatch.setattr(db, "migrations", lambda: every[:-1])
+    db.migrate(conn, NOW)
+    monkeypatch.undo()
+    conn.execute("INSERT INTO owners (name) VALUES ('Lukas')")
+    conn.close()
+    return every[-2][0]
+
+
+def schema_of(path: Path) -> int:
+    with db.reading(path) as conn:
+        return db.version(conn)
+
+
+def test_serve_copies_a_database_at_an_older_schema_before_bringing_it_up_to_date(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    (how,) = serve_with(run, monkeypatch, "{}")
+    assert isinstance(how["app"], Starlette)
+    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    assert run.output == (
+        f"{run.database}: schema version {was} brought up to {db.latest()}. "
+        f"Copy from before: {copy}\n"
+        f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
+    )
+    assert (schema_of(copy), schema_of(run.database)) == (was, db.latest())
+    assert run.count("owners") == 1
+
+    (how,) = serve_with(run, monkeypatch, "{}")  # up to date: no copy, nothing said
+    assert run.output == f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
+    assert [path.name for path in copy.parent.iterdir()] == [copy.name]
+
+
+def test_serve_does_not_start_on_a_database_a_migration_fails_on(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    every = db.migrations()
+    broken = (every[-1][0] + 1, "CREATE TABLE owners (x INTEGER) STRICT;")
+    monkeypatch.setattr(db, "migrations", lambda: [*every, broken])
+    assert serve_with(run, monkeypatch, "{}") == []  # never listens
+    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    assert run.output == (
+        f"error: {run.database}: schema version {broken[0]} could not be reached (table "
+        f"owners already exists): the database is at version {every[-1][0]}; copy from "
+        f"before: {copy}\n"
+    )
+    assert (schema_of(copy), schema_of(run.database)) == (was, every[-1][0])
+
+    # Started again, as a container is: it fails the same way, and no copy is added for a
+    # database that did not change.
+    assert serve_with(run, monkeypatch, "{}") == []
+    assert run.output.endswith(f"the database is at version {every[-1][0]}\n")
+    assert [path.name for path in copy.parent.iterdir()] == [copy.name]
 
 
 def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
@@ -1006,11 +1116,16 @@ def test_prices_fetches_what_is_held_and_says_what_it_stored(closed: Run) -> Non
     closed.instruments.write_text(
         INSTRUMENTS_YAML + MATURED + "  WIDG: {price_symbol: WIDG.SW}\n", encoding="utf-8"
     )
-    paths = ["--instruments", str(closed.instruments)]
-    assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
+    # The config may name the instruments, as the flag does.
+    closed.config.write_text(
+        CONFIG.format(database=closed.database) + f"instruments: {closed.instruments}\n",
+        encoding="utf-8",
+    )
+    assert closed("prices", "--through", "2026-09-30") == dbcli.OK
     assert closed.output == "4 closes, 4 exchange rates and 0 splits stored.\n"
     # Nothing is fetched twice, and no owner is needed: prices are everyone's.
     closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
+    paths = ["--instruments", str(closed.instruments)]
     assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
     assert closed.output == "0 closes, 0 exchange rates and 0 splits stored.\n"
 
