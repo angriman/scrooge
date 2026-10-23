@@ -4,9 +4,12 @@ statements/*
 transactions_*.csv
 # Generated: the NAS image folder, caches of runs
 output/
-# Personal: merchant rules naming people, account names
-rules.local.yaml
+# Personal: rules naming shops and people, what is held, own categories, account names.
+# Invented examples of the first three are in examples/.
+/rules.yaml
 rules.*.yaml
+/instruments.yaml
+/categories.yaml
 finanze.yaml
 
 # Python
