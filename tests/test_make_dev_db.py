@@ -79,6 +79,22 @@ def test_the_config_next_to_it_serves_and_queries_it(tmp_path: Path) -> None:
     assert "transactions\n" in out.getvalue()
 
 
+def test_its_rules_are_one_file_from_the_fixtures_and_the_examples(tmp_path: Path) -> None:
+    # The repository's own rules.yaml and categories.yaml are the user's: never read here.
+    built, _ = build(tmp_path / "dev", tmp_path)
+    assert built.rules == tmp_path / "dev" / "rules.yaml"
+    assert not (tmp_path / "dev" / "rules.local.yaml").exists()
+    rules = built.rules.read_text(encoding="utf-8")
+    examples = Path(__file__).parents[1] / "examples"
+    assert "VELOSHARE" in rules  # an invented shop of the fixtures
+    assert (
+        examples.joinpath("rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
+        in rules
+    )
+    categories = (tmp_path / "dev" / "categories.yaml").read_text(encoding="utf-8")
+    assert categories == examples.joinpath("categories.yaml").read_text(encoding="utf-8")
+
+
 def test_without_tesseract_the_certificates_are_left_out(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -81,8 +81,8 @@ AUGUST = (
     '"-9,920.00",USD\n'
 )
 INSTRUMENTS = INSTRUMENTS_YAML + "  912797YY2: {maturity: 2026-09-16}\n"
-# The rules naming the invented people and shops of the fixtures, read first; then the
-# repository's own. What no rule matches is a present, so that everything can be committed.
+# The rules naming the invented people and shops of the fixtures come first, then those of
+# examples/rules.yaml. What no rule matches is a present, so that everything can be committed.
 SHOPS = """  - {match: 'ALPENBAHN', category: Treni}
   - {match: 'VELOSHARE', category: Trasporti locali}
   - {match: 'AEROSUR', category: Voli}
@@ -149,9 +149,7 @@ def build(
     (folder / MARK).write_text("made by make dev-db: emptied by the next run\n", encoding="utf-8")
     now = now or datetime.now(UTC)
     built = _files(folder)
-    setup = importing.Setup(
-        [built.rules, built.rules.with_name("rules.yaml")], built.instruments, _people(), {}
-    )
+    setup = importing.Setup([built.rules], built.instruments, _people(), {})
     scans = can_read_scans()
     if not scans:
         out.write(
@@ -228,11 +226,13 @@ def _files(folder: Path) -> Built:
         + "# No 'serve': on this machine only (127.0.0.1), no password.\n",
         encoding="utf-8",
     )
-    rules = folder / "rules.local.yaml"
-    rules.write_text(RULES.replace("  - {match: '.', category: Regali}\n", SHOPS), encoding="utf-8")
-    shared = (ROOT / "rules.yaml").read_text(encoding="utf-8")
-    (folder / "rules.yaml").write_text(shared.rstrip("\n") + FALLBACK, encoding="utf-8")
-    shutil.copy(ROOT / "categories.yaml", folder / "categories.yaml")
+    # Never the repository's own rules.yaml or categories.yaml: those are the user's, real.
+    examples = ROOT / "examples"
+    generic = (examples / "rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
+    own = RULES.replace("  - {match: '.', category: Regali}\n", SHOPS).rstrip("\n") + "\n"
+    rules = folder / "rules.yaml"
+    rules.write_text(own + generic.rstrip("\n") + FALLBACK, encoding="utf-8")
+    shutil.copy(examples / "categories.yaml", folder / "categories.yaml")
     instruments = folder / "instruments.yaml"
     instruments.write_text(INSTRUMENTS, encoding="utf-8")
     return Built(database, config, rules, instruments, certificates=False)
