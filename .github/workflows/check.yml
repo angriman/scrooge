@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5 # TODO pin to SHA
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
@@ -37,7 +37,7 @@ jobs:
           tesseract --version
 
       # The Python of .python-version (the image's), installed by uv.
-      - uses: astral-sh/setup-uv@v6 # TODO pin to SHA
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
