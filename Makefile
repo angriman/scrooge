@@ -3,9 +3,10 @@
 
 UV ?= uv
 NAS_APP ?= output/nas/app
+DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
-.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean nas-app icons
+.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean nas-app dev-db icons
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -58,6 +59,9 @@ nas-app: ## The folder the NAS builds the web app's image from (deploy/README.md
 	mkdir -p $(NAS_APP)
 	git archive HEAD Dockerfile .dockerignore pyproject.toml uv.lock src | tar -x -C $(NAS_APP)
 	@echo "$(NAS_APP): commit $$(git rev-parse --short HEAD), to copy to the NAS"
+
+dev-db: ## (Re)build output/dev/finanze.db from the fixtures, for two invented people
+	$(UV) run python -m tests.make_dev_db $(DEV_DB)
 
 clean: ## Remove caches and coverage artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov

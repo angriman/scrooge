@@ -139,5 +139,17 @@ appear only when the result spans more than one.
 `make check` runs ruff, `mypy --strict` and pytest with branch coverage. Real statements stay in
 `statements/` (git-ignored); only redacted fixtures live in `tests/fixtures/`.
 
+`make dev-db` builds a database to develop against from those fixtures alone: two invented
+people, every source, the pension certificates when Tesseract is installed, and invented
+prices, so that every page has something to show. It is made again from nothing on every run,
+in `output/dev/` with the config and rules it was built with, and it prints how to serve it:
+
+```
+uv run finanze serve --config output/dev/finanze.yaml --rules output/dev/rules.yaml \
+    --instruments output/dev/instruments.yaml
+```
+
+It never empties a folder it did not make, nor the real database's.
+
 `deploy/README.md` says how the web app runs as a container on a NAS, over a copy of the
 database. The image is not built by `make check`.
