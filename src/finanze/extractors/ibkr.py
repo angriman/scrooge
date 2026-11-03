@@ -95,6 +95,7 @@ def extract(content: str, source_file: str) -> Extraction:
     else:  # yearly exports itemise no VAT, only the Cash Report total
         transactions += parser.sales_tax(sections.get("Cash Report", []))
     balances = _balances(sections.get("Cash Report", []))
+    balances += _without_cash(transactions, balances)
     account = _fields(sections, "Account Information")
     base = account.get("Base Currency", "")
     return Extraction(
@@ -169,6 +170,25 @@ def _balances(rows: list[_Row]) -> tuple[CashBalance, ...]:
     return tuple(
         CashBalance(_account(ccy), ccy, opening[ccy], closing[ccy]) for ccy in sorted(opening)
     )
+
+
+def _without_cash(
+    transactions: list[Transaction], balances: tuple[CashBalance, ...]
+) -> tuple[CashBalance, ...]:
+    """The currencies the Cash Report leaves out, held at 0 when nothing in them moves cash.
+
+    IBKR lists every currency that has cash, so one only shares were moved in (or out) of
+    had none on either day. Any cash booked in a currency left out stays without a balance,
+    for reconciliation to refuse.
+    """
+    listed = {balance.currency for balance in balances}
+    left_out = {txn.currency for txn in transactions} - listed
+    cashless = sorted(
+        currency
+        for currency in left_out
+        if all(txn.amount == 0 for txn in transactions if txn.currency == currency)
+    )
+    return tuple(CashBalance(_account(ccy), ccy, Decimal(0), Decimal(0)) for ccy in cashless)
 
 
 def _account(currency: str) -> str:
