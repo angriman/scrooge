@@ -16,7 +16,7 @@ from finanze.models import (
     Rate,
     SecurityTrade,
 )
-from finanze.validation import check_balances
+from finanze.validation import MissingBalanceError, check_balances
 from tests.extractors.golden import assert_matches_golden
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "ibkr"
@@ -292,6 +292,44 @@ def test_holdings_are_the_shares_and_bills_of_open_positions(result: Extraction)
             "IBKR USD", "912797ZZ1", "USD", Decimal(10000), Decimal("98.71"), Decimal(9871), "Bonds"
         ),
     )
+
+
+# An account that holds only shares moved in: its Cash Report lists no currency at all.
+CASHLESS = """\
+Statement,Header,Field Name,Field Value
+Statement,Data,Period,"October 1, 2026 - October 31, 2026"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,U87654321
+Account Information,Data,Base Currency,CHF
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
+Cash Report,Data,Starting Cash,Base Currency Summary,0,0,0,
+Cash Report,Data,Ending Cash,Base Currency Summary,0,0,0,
+Cash Report,Data,Ending Settled Cash,Base Currency Summary,0,0,0,
+Transfers,Header,Asset Category,Currency,Symbol,Date,Type,Direction,Xfer Company,Xfer Account,\
+Qty,Xfer Price,Market Value,Realized P/L,Cash Amount,Code
+Transfers,Data,Stocks,USD,GOOG,2026-10-07,FOP,In,--,MS-XXXXXX-00,4,--,"812.40",0.00,0.00,
+Transfers,Data,Total,,,,,,,,,,812.4,0,0,
+"""
+
+
+def test_a_currency_the_cash_report_leaves_out_holds_no_cash() -> None:
+    # IBKR lists every currency with cash; shares moved in without cash leave it at 0.
+    cashless = ibkr.extract(CASHLESS, "cashless.csv")
+    assert cashless.balances == (CashBalance("IBKR USD", "USD", Decimal(0), Decimal(0)),)
+    [moved] = cashless.transactions
+    assert (moved.account, moved.amount) == ("IBKR USD", Decimal(0))
+    check_balances(cashless)
+
+
+def test_cash_in_a_currency_the_cash_report_leaves_out_is_still_refused() -> None:
+    paid = CASHLESS + (
+        "Dividends,Header,Currency,Date,Description,Amount\n"
+        "Dividends,Data,USD,2026-10-15,GOOG(US0000000003) Cash Dividend USD 0.21 per Share,0.84\n"
+    )
+    extraction = ibkr.extract(paid, "cashless.csv")
+    assert extraction.balances == ()
+    with pytest.raises(MissingBalanceError, match="IBKR USD"):
+        check_balances(extraction)
 
 
 def test_a_statement_without_open_positions_holds_nothing() -> None:
