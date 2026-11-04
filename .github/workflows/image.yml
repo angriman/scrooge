@@ -4,8 +4,7 @@
 # Run by hand (Actions > image > Run workflow) on a tag, it does the same; on a branch, it
 # pushes only `sha-<commit>` and leaves `latest` where it is. deploy/README.md: pulling it.
 #
-# Third-party actions are pinned by tag for now: pin each to the full commit SHA of that
-# release (with the version in a comment) before the first push.
+# Third-party actions are pinned to the full commit SHA of a release, its version beside it.
 
 name: image
 

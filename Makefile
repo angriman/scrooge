@@ -2,11 +2,13 @@
 # See CLAUDE.md (Definition of done) and docs/parser-spec.md.
 
 UV ?= uv
-NAS_APP ?= output/nas/app
+# A Host of ~/.ssh/config: the NAS's name, port and user (deploy/README.md).
+NAS ?= nas
+NAS_DIR ?= /volume1/docker/finanze
 DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
-.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean nas-app dev-db icons
+.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -54,11 +56,21 @@ icons: ## Draw the PNG icons from icons/icon.svg (needs rsvg-convert: brew insta
 	rsvg-convert -w 32 -h 32 $(ICONS)/icon.svg -o $(ICONS)/icon-32.png
 	sed 's/ rx="14"//' $(ICONS)/icon.svg | rsvg-convert -w 180 -h 180 -o $(ICONS)/apple-touch-icon.png
 
-nas-app: ## The folder the NAS builds the web app's image from (deploy/README.md)
-	rm -rf $(NAS_APP)
-	mkdir -p $(NAS_APP)
-	git archive HEAD Dockerfile .dockerignore pyproject.toml uv.lock src | tar -x -C $(NAS_APP)
-	@echo "$(NAS_APP): commit $$(git rev-parse --short HEAD), to copy to the NAS"
+# GitHub builds the image of a tag v* once `make check` passes (.github/workflows/image.yml).
+release: ## Tag what is pushed to main as VERSION (make release VERSION=v1.2.3), wait for its image
+	@case "$(VERSION)" in v*) ;; *) echo "release: VERSION=v1.2.3 is missing"; exit 1;; esac
+	@test -z "$$(git status --porcelain)" || { echo "release: commit or stash first"; exit 1; }
+	git fetch --quiet origin main
+	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" \
+		|| { echo "release: this is not what main on GitHub is: push main first"; exit 1; }
+	git tag -a $(VERSION) -m $(VERSION) && git push origin $(VERSION)
+	@for n in $$(seq 30); do \
+		run=$$(gh run list --workflow image.yml --branch $(VERSION) -L 1 --json databaseId -q '.[0].databaseId'); \
+		[ -n "$$run" ] && exec gh run watch --exit-status "$$run"; sleep 2; \
+	done; echo "release: no image run for $(VERSION) yet: see GitHub > Actions"; exit 1
+
+nas-update: ## Run the newest image on the NAS: pull it and restart (sudo asks the DSM password)
+	ssh -t $(NAS) 'cd $(NAS_DIR) && sudo docker compose pull && sudo docker compose up -d && sudo docker image prune -f'
 
 dev-db: ## (Re)build output/dev/finanze.db from the fixtures, for two invented people
 	$(UV) run python -m tests.make_dev_db $(DEV_DB)
