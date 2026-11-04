@@ -5,6 +5,8 @@ UV ?= uv
 # A Host of ~/.ssh/config: the NAS's name, port and user (deploy/README.md).
 NAS ?= nas
 NAS_DIR ?= /volume1/docker/finanze
+# By its path: a command run by ssh has no login shell, and DSM's docker is not on its PATH.
+NAS_DOCKER ?= /usr/local/bin/docker
 DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
@@ -70,7 +72,7 @@ release: ## Tag what is pushed to main as VERSION (make release VERSION=v1.2.3),
 	done; echo "release: no image run for $(VERSION) yet: see GitHub > Actions"; exit 1
 
 nas-update: ## Run the newest image on the NAS: pull it and restart (sudo asks the DSM password)
-	ssh -t $(NAS) 'cd $(NAS_DIR) && sudo docker compose pull && sudo docker compose up -d && sudo docker image prune -f'
+	ssh -t $(NAS) 'cd $(NAS_DIR) && sudo $(NAS_DOCKER) compose pull && sudo $(NAS_DOCKER) compose up -d && sudo $(NAS_DOCKER) image prune -f'
 
 dev-db: ## (Re)build output/dev/finanze.db from the fixtures, for two invented people
 	$(UV) run python -m tests.make_dev_db $(DEV_DB)
