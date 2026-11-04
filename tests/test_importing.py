@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from finanze import importing, staging
-from finanze.extractors import ocr
+from finanze.extractors import ocr, swisscard
 from finanze.router import LABELS
 from finanze.storage import db, originals
 from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
@@ -194,3 +194,36 @@ def test_the_rules_as_they_are_now_classify_what_was_read_before(
     classified = importing.again(found, setup)
     assert not classified.month.uncategorized
     assert classified.files == found.files
+
+
+def test_a_stock_plan_statement_is_staged_and_committed(
+    conn: sqlite3.Connection,
+    setup: importing.Setup,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text = (FIXTURES / "morganstanley" / "statement.txt").read_text(encoding="utf-8")
+    monkeypatch.setattr(swisscard, "read_text", lambda path: text)
+    monkeypatch.setattr(ocr, "is_scan", lambda path: False)
+    statement = tmp_path / "Quarterly Statement 09_30_2026.pdf"
+    statement.write_bytes(b"%PDF-1.7 ...")
+    found = importing.read(OWNER, [statement], setup)
+    assert by_name(found)[statement.name].label == LABELS["morganstanley"]
+    done = importing.stage(conn, tmp_path / "data" / "finanze.db", found, setup, NOW)
+    assert by_name(done)[statement.name].staged
+    assert len(staging.commit(conn, owner=OWNER, now=NOW)) == 1
+
+    account = conn.execute(
+        "SELECT kind, currency FROM accounts WHERE name = 'Morgan Stanley'"
+    ).fetchone()
+    assert tuple(account) == ("broker_cash", "USD")
+    number = conn.execute("SELECT source, account_number FROM statement_files").fetchone()
+    assert tuple(number) == ("morganstanley", "MSX00000001")  # whose account it is
+    held = conn.execute("SELECT quantity, price FROM positions").fetchall()
+    assert [tuple(row) for row in held] == [("4.135", "158.4000")]
+    # A move in kind has no price: it never stands in for a close.
+    moved = conn.execute(
+        "SELECT tr.quantity, tr.price FROM trades tr WHERE tr.quantity LIKE '-%' "
+        "ORDER BY tr.quantity"
+    ).fetchall()
+    assert [tuple(row) for row in moved] == [("-4.000", None), ("-6.000", None)]

@@ -46,7 +46,8 @@ from finanze.validation import (
 # Sources whose rows are booked on an account that another source's statement reconciles:
 # savings interest on the Revolut account (D8).
 _BOOKED_ON = {"revolut_savings": "revolut"}
-_KINDS = {"ibkr": "broker_cash", "tastytrade": "broker_cash", "finpension": "broker_cash"}
+_BROKERS = ("ibkr", "tastytrade", "finpension", "morganstanley")
+_KINDS = dict.fromkeys(_BROKERS, "broker_cash")
 _KINDS |= {"swisscard": "card"}
 # Only what is income or expense for one person can be internal to the family (D14).
 _BETWEEN_OWNERS = frozenset({Kind.EXPENSE, Kind.INCOME})

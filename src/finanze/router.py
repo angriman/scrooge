@@ -14,6 +14,7 @@ from finanze.extractors import (
     finpension,
     ibkr,
     migros,
+    morganstanley,
     ocr,
     revolut,
     revolut_savings,
@@ -48,6 +49,7 @@ LABELS = {
     "swisscard": "Swisscard invoice",
     "axa": "AXA pension certificate",
     "servisa": "Servisa pension certificate",
+    "morganstanley": "Morgan Stanley stock plan statement",
 }
 # What only a card invoice's text says: its issuer.
 _CARD_ISSUER = "Swisscard AECS"
@@ -98,17 +100,22 @@ def load_certificate(path: Path) -> Scanned | None:
     return None
 
 
-def _card_invoice(path: Path) -> str | None:
-    """The text of a card invoice; None for any other PDF, and for one that is no PDF."""
+def _pdf_statement(path: Path, name: str) -> tuple[str, Extraction] | None:
+    """A card invoice or a stock plan statement; None for any other PDF, and for one that is
+    no PDF."""
     if "swisscard" in path.name.lower():
-        return swisscard.read_text(path)
+        return "swisscard", swisscard.extract_account(swisscard.read_text(path), name)
     if ocr.is_scan(path):  # images of paper, and a file that is no PDF after all, have no text
         return None
     try:
         text = swisscard.read_text(path)
     except PdfminerException:
         return None
-    return text if _CARD_ISSUER in text else None
+    if _CARD_ISSUER in text:
+        return "swisscard", swisscard.extract_account(text, name)
+    if morganstanley.recognises(text):
+        return "morganstanley", morganstanley.extract(text, name)
+    return None
 
 
 def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
@@ -120,15 +127,14 @@ def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
     A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
     skipping it would drop a whole account from the month without a word.
 
-    A PDF is a card invoice when its name or its text says so; any other PDF (the copy of the
-    IBKR statement, a scan) is no statement here. `load_certificate` reads the scan of a
-    pension certificate.
+    A PDF is a card invoice when its name or its text says so, and a stock plan statement
+    when its text says so; any other PDF (the copy of the IBKR statement, a scan) is no
+    statement here. `load_certificate` reads the scan of a pension certificate.
     """
     name = name or path.name
     suffix = path.suffix.lower()
     if _named_pdf(path):
-        text = _card_invoice(path)
-        return None if text is None else ("swisscard", swisscard.extract_account(text, name))
+        return _pdf_statement(path, name)
     if suffix not in _TEXT_SUFFIXES:
         return None
     try:
