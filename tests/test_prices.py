@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from finanze import prices
-from finanze.prices import History, PriceError, Split, Yahoo, significant
+from finanze.prices import History, PriceError, Split, TreasuryDirect, Yahoo, significant
 
 FIXTURES = Path(__file__).parent / "fixtures" / "yahoo"
 CHART = (FIXTURES / "chart.json").read_bytes()
@@ -245,3 +245,39 @@ def test_no_connection_is_an_error_of_its_own(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     with pytest.raises(PriceError, match="no answer from the price source"):
         Yahoo().find("CH0000000001")
+
+
+TREASURY = Path(__file__).parent / "fixtures" / "treasury"
+
+
+def test_a_bill_matures_on_the_day_every_auction_of_it_names() -> None:
+    recorded = Recorded((TREASURY / "reopened.json").read_bytes())
+    assert TreasuryDirect(recorded).maturity("912797XX3") == date(2026, 11, 27)
+    [url] = recorded.asked
+    assert url.startswith("https://www.treasurydirect.gov/TA_WS/securities/search?")
+    assert parse_qs(urlsplit(url).query) == {"cusip": ["912797XX3"], "format": ["json"]}
+
+
+def test_a_bill_treasury_direct_does_not_know_has_no_maturity() -> None:
+    assert TreasuryDirect(Recorded(b"[]")).maturity("912797XX3") is None
+    other = b'[{"cusip": "912797YY2", "maturityDate": "2026-12-01T00:00:00"}]'
+    assert TreasuryDirect(Recorded(other)).maturity("912797XX3") is None
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (b"<html>busy</html>", "did not answer in JSON"),
+        (b'{"error": "no"}', "not in the expected form"),
+        (b'[{"cusip": "912797XX3"}]', "not in the expected form"),
+        (b'[{"cusip": "912797XX3", "maturityDate": "soon"}]', "not in the expected form"),
+        (
+            b'[{"cusip": "912797XX3", "maturityDate": "2026-11-27T00:00:00"},'
+            b' {"cusip": "912797XX3", "maturityDate": "2026-12-04T00:00:00"}]',
+            "more than one maturity",
+        ),
+    ],
+)
+def test_an_answer_that_does_not_give_one_maturity_is_an_error(answer: bytes, message: str) -> None:
+    with pytest.raises(PriceError, match=message):
+        TreasuryDirect(Recorded(answer)).maturity("912797XX3")

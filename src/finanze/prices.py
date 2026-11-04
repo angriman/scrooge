@@ -1,7 +1,9 @@
-"""Daily closes, splits and exchange rates from the network (D9, D10, D20).
+"""Daily closes, splits and exchange rates, and the maturity of a T-bill, from the network
+(D9, D10, D20).
 
-This is the only module that opens a connection, and only the price step of month close
-(`finanze.marketdata`) calls it. Nothing here touches the database: what is fetched is handed
+This is the only module that opens a connection, and only `finanze.marketdata` calls it: for
+`finanze prices`, and for the import page's button that looks up the bills an import stopped
+on (decided 2026-11-03). Nothing here touches the database: what is fetched is handed
 back, and stored by the caller, once.
 
 A source is asked for a range of days and never for one day: a day without a close (a
@@ -26,6 +28,7 @@ _DIGITS = 7  # what a close is worth: Yahoo sends single-precision floats (51.12
 _TIMEOUT = 30  # seconds
 _CHART = "https://query1.finance.yahoo.com/v8/finance/chart/"
 _SEARCH = "https://query2.finance.yahoo.com/v1/finance/search?"
+_SECURITIES = "https://www.treasurydirect.gov/TA_WS/securities/search?"
 
 
 class PriceError(Exception):
@@ -62,13 +65,20 @@ class PriceSource(Protocol):
         """The symbol this source knows an ISIN under, or None."""
 
 
+class MaturitySource(Protocol):
+    """Where the maturity of a T-bill comes from, by its CUSIP."""
+
+    def maturity(self, cusip: str) -> date | None:
+        """The day the bill `cusip` matures, or None when the source knows no such bill."""
+
+
 def rate_symbol(currency: str, base: str) -> str:
     """The symbol under which Yahoo quotes one unit of `currency` in `base`."""
     return f"{currency}{base}=X"
 
 
 def _get(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})  # noqa: S310  # the address is one of the two https constants above
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})  # noqa: S310  # the address is one of the https constants above
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:  # noqa: S310  # as above
             body: bytes = response.read()
@@ -116,6 +126,17 @@ class Yahoo:
     def find(self, isin: str) -> str | None:
         query = urlencode({"q": isin, "quotesCount": 5, "newsCount": 0})
         return parse_search(self._fetch(f"{_SEARCH}{query}"), isin)
+
+
+class TreasuryDirect:
+    """The US Treasury's own list of securities: public, no key. `fetch` is replaced in tests."""
+
+    def __init__(self, fetch: Callable[[str], bytes] = _get) -> None:
+        self._fetch = fetch
+
+    def maturity(self, cusip: str) -> date | None:
+        query = urlencode({"cusip": cusip, "format": "json"})
+        return parse_securities(self._fetch(f"{_SECURITIES}{query}"), cusip)
 
 
 def _epoch(day: date) -> int:
@@ -172,6 +193,24 @@ def parse_search(payload: bytes, isin: str) -> str | None:
     except (KeyError, IndexError, TypeError):
         msg = f"{isin}: the price source's answer is not in the expected form"
         raise PriceError(msg) from None
+
+
+def parse_securities(payload: bytes, cusip: str) -> date | None:
+    """Read TreasuryDirect's answer to a search by CUSIP: one entry per auction of the bill
+    (a reopened bill has several), all of them maturing on the same day."""
+    try:
+        found = {
+            date.fromisoformat(str(entry["maturityDate"])[:10])
+            for entry in _json(payload, cusip)
+            if entry["cusip"] == cusip
+        }
+    except (KeyError, TypeError, ValueError):
+        msg = f"{cusip}: TreasuryDirect's answer is not in the expected form"
+        raise PriceError(msg) from None
+    if len(found) > 1:
+        msg = f"{cusip}: TreasuryDirect gives more than one maturity: {sorted(found)}"
+        raise PriceError(msg)
+    return next(iter(found), None)
 
 
 def _zone(meta: dict[str, object]) -> tzinfo:

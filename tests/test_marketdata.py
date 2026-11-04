@@ -13,7 +13,7 @@ from finanze.marketdata import Refreshed
 from finanze.models import CashBalance, Holding, SecurityTrade
 from finanze.prices import Split
 from finanze.storage import db
-from tests.fakes import FakeSource
+from tests.fakes import FakeMaturities, FakeSource
 from tests.storage.helpers import AUGUST, SEPTEMBER, batch, rows, statement, trade
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -279,3 +279,11 @@ def test_days_before_the_first_stored_are_fetched_when_older_history_is_imported
     idle = FakeSource()
     marketdata.refresh(conn, idle, through=END, now=LATER)
     assert idle.asked == []  # the days before are not asked for twice
+
+
+def test_maturities_are_looked_up_and_the_unknown_bills_named() -> None:
+    source = FakeMaturities({"912797XX3": date(2026, 11, 27)})
+    looked = marketdata.maturities(source, {"912797ZZ1", "912797XX3"})
+    assert looked.found == {"912797XX3": date(2026, 11, 27)}
+    assert looked.unknown == ("912797ZZ1",)
+    assert source.asked == ["912797XX3", "912797ZZ1"]
