@@ -7,8 +7,8 @@ Statements are read offline; the only thing fetched is daily prices (see "Prices
 worth").
 
 Sources: Migros Bank (CSV), Revolut accounts and Revolut Savings (TSV/CSV), IBKR activity
-statement (CSV), Tastytrade transactions (CSV), Swisscard invoice (PDF), finpension pillar 3a
-transactions (CSV), and the scanned second-pillar certificates of AXA and Servisa (PDF, read
+statement (CSV), Tastytrade transactions (CSV), Swisscard invoice (PDF), Morgan Stanley stock
+plan quarterly statement (PDF), finpension pillar 3a transactions (CSV), and the scanned second-pillar certificates of AXA and Servisa (PDF, read
 with the local `tesseract`).
 
 ## Use
