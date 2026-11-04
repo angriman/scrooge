@@ -40,6 +40,15 @@ class UnknownInstrumentError(Exception):
     """A security trade has no asset tab (D12): the write is blocked until the user maps it."""
 
 
+class UnknownMaturityError(UnknownInstrumentError):
+    """T-bills were traded whose maturity neither the statement nor `instruments.yaml` gives."""
+
+    def __init__(self, bills: Sequence[str]) -> None:
+        self.bills = tuple(bills)
+        names = ", ".join(self.bills)
+        super().__init__(f"{names}: no maturity date; add 'maturity' to instruments.yaml")
+
+
 @dataclass(frozen=True, slots=True)
 class Rule:
     pattern: re.Pattern[str]
@@ -174,6 +183,27 @@ def load_instruments(path: Path) -> dict[str, Instrument]:
     return instruments
 
 
+def add_maturities(path: Path, found: Mapping[str, date]) -> None:
+    """Write when each bill of `found` matures into `path` (`instruments.yaml`, created if
+    missing): one line each, first under `instruments:`, the rest of the file as it was."""
+    text = path.read_text(encoding="utf-8") if path.exists() else "instruments:\n"
+    lines = text.splitlines(keepends=True)
+    heads = [n for n, line in enumerate(lines) if line.rstrip() == "instruments:"]
+    if not heads:
+        msg = f"{path}: no line 'instruments:' to write the maturities under"
+        raise ConfigError(msg)
+    listed = sorted(set(found) & set(load_instruments(path))) if path.exists() else []
+    if listed:
+        msg = f"{path}: {', '.join(listed)} listed without a maturity; add it there"
+        raise ConfigError(msg)
+    entries = (line for line in lines[heads[0] + 1 :] if line.strip() and line[0] in " \t")
+    first = next((line for line in entries if not line.lstrip().startswith("#")), "  ")
+    indent = first[: len(first) - len(first.lstrip())]
+    added = [f"{indent}{bill}: {{maturity: {day.isoformat()}}}\n" for bill, day in found.items()]
+    at = heads[0] + 1
+    path.write_text("".join([*lines[:at], *added, *lines[at:]]), encoding="utf-8")
+
+
 PERSONAL = "rules.{owner}.yaml"  # one person's own rules, next to the first rules file
 
 
@@ -238,8 +268,10 @@ def resolve_holding(holding: Holding, instruments: Mapping[str, Instrument]) -> 
 def resolve_instruments(
     transactions: Iterable[Transaction], instruments: dict[str, Instrument]
 ) -> tuple[Transaction, ...]:
-    """Apply `instruments.yaml` to security trades; a trade left without a tab is an error."""
+    """Apply `instruments.yaml` to security trades; a trade left without a tab is an error,
+    and so are bills left without a maturity, all named at once."""
     resolved: list[Transaction] = []
+    undated: list[str] = []
     for txn in transactions:
         if isinstance(txn, SecurityTrade):
             override = instruments.get(txn.ticker, Instrument())
@@ -248,11 +280,12 @@ def resolve_instruments(
                 msg = f"{txn.ticker}: no asset tab; add it to instruments.yaml (ETFs/Stocks/Bonds)"
                 raise UnknownInstrumentError(msg)
             maturity = txn.maturity or override.maturity
-            if tab == "Bonds" and maturity is None:
-                msg = f"{txn.ticker}: no maturity date; add 'maturity' to instruments.yaml"
-                raise UnknownInstrumentError(msg)
+            if tab == "Bonds" and maturity is None and txn.ticker not in undated:
+                undated.append(txn.ticker)
             ticker = override.ticker or txn.ticker
             resolved.append(replace(txn, asset_tab=tab, ticker=ticker, maturity=maturity))
         else:
             resolved.append(txn)
+    if undated:
+        raise UnknownMaturityError(undated)
     return tuple(resolved)

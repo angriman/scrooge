@@ -1,4 +1,5 @@
-"""The price step of month close: bring stored closes, splits and exchange rates up to date.
+"""The price step of month close: bring stored closes, splits and exchange rates up to date;
+and the maturities of the T-bills an import stopped on.
 
 This is the only caller of `finanze.prices`, the one module that uses the network (D9). What
 is fetched is stored once and never fetched again (D10): each run asks only for the days after
@@ -17,7 +18,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from finanze.prices import History, PriceError, PriceSource, rate_symbol
+from finanze.prices import History, MaturitySource, PriceError, PriceSource, rate_symbol
 from finanze.storage import db, holdings, store
 
 BASE = "CHF"  # every stored rate is francs per unit of the currency
@@ -215,3 +216,27 @@ def _rates(
             continue
         rates[currency] = history
     return rates
+
+
+@dataclass(frozen=True, slots=True)
+class Maturities:
+    """What `maturities` found, and the bills the source does not know."""
+
+    found: dict[str, date]
+    unknown: tuple[str, ...]
+
+
+def maturities(source: MaturitySource, cusips: Collection[str]) -> Maturities:
+    """Look up when each of `cusips` matures. Nothing is stored: the caller writes them down.
+
+    A source that cannot be reached, or answers in a form it should not, raises `PriceError`.
+    """
+    found: dict[str, date] = {}
+    unknown: list[str] = []
+    for cusip in sorted(cusips):
+        day = source.maturity(cusip)
+        if day is None:
+            unknown.append(cusip)
+        else:
+            found[cusip] = day
+    return Maturities(found, tuple(unknown))
