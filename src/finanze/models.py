@@ -70,13 +70,14 @@ class SecurityTrade(Transaction):
     `amount` is the signed cash flow excluding commissions (buys negative). `quantity` is signed
     (sells negative). `cost` is the asset tabs' "total paid": `-amount`, so positive for buys.
     It equals price x quantity for shares, but not for bonds (accrued interest is included).
+    `price` is None for shares moved in kind where the statement prints no price.
     `asset_tab` is what the statement says the instrument is, when it says so; `instruments.yaml`
     overrides it and must supply it otherwise (D12).
     """
 
     ticker: str
     quantity: Decimal
-    price: Decimal
+    price: Decimal | None
     cost: Decimal
     asset_tab: str = ""
     maturity: date | None = None

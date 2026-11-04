@@ -451,7 +451,13 @@ def _insert_trade(conn: sqlite3.Connection, txn_id: str, trade: SecurityTrade) -
     conn.execute(
         "INSERT INTO trades (transaction_id, instrument_id, quantity, price, cost_nano) "
         "VALUES (?, ?, ?, ?, ?)",
-        (txn_id, instrument, to_text(trade.quantity), to_text(trade.price), to_nano(trade.cost)),
+        (
+            txn_id,
+            instrument,
+            to_text(trade.quantity),
+            None if trade.price is None else to_text(trade.price),
+            to_nano(trade.cost),
+        ),
     )
 
 
