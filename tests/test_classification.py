@@ -9,6 +9,8 @@ from finanze import categories
 from finanze.classification import (
     Instrument,
     UnknownInstrumentError,
+    UnknownMaturityError,
+    add_maturities,
     append_rule,
     between_people,
     classify,
@@ -179,6 +181,63 @@ def test_bill_maturity_comes_from_instruments_when_the_statement_lacks_it(
         resolve_instruments([_trade("912797YY2", "Bonds")], instruments)
     with pytest.raises(ConfigError, match="maturity must be a date"):
         load_instruments(_rules(tmp_path, "instruments:\n  X: {maturity: soon}\n", "bad.yaml"))
+
+
+def test_every_bill_without_a_maturity_is_named_at_once() -> None:
+    trades = [
+        _trade("912797YY2", "Bonds"),
+        _trade("912797XX3", "Bonds"),
+        _trade("912797YY2", "Bonds"),
+    ]
+    with pytest.raises(UnknownMaturityError, match="912797YY2, 912797XX3: no maturity") as error:
+        resolve_instruments(trades, {})
+    assert error.value.bills == ("912797YY2", "912797XX3")
+
+
+COMMENTED = """\
+# What is held.
+instruments:
+    BIL: {tab: ETFs}   # an ETF
+    # A bill:
+    912797ZZ1: {maturity: 2026-12-24}
+"""
+
+
+def test_maturities_are_written_first_under_instruments_and_the_rest_is_kept(
+    tmp_path: Path,
+) -> None:
+    path = _rules(tmp_path, COMMENTED, "instruments.yaml")
+    add_maturities(path, {"912797XX3": date(2026, 11, 27), "912797YY2": date(2027, 2, 9)})
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[:4] == [
+        "# What is held.",
+        "instruments:",
+        "    912797XX3: {maturity: 2026-11-27}",  # indented like the entries already there
+        "    912797YY2: {maturity: 2027-02-09}",
+    ]
+    assert lines[4:] == COMMENTED.splitlines()[2:]
+    instruments = load_instruments(path)
+    assert instruments["912797YY2"].maturity == date(2027, 2, 9)
+    assert instruments["BIL"].tab == "ETFs"
+
+
+def test_maturities_start_a_missing_instruments_file(tmp_path: Path) -> None:
+    path = tmp_path / "instruments.yaml"
+    add_maturities(path, {"912797XX3": date(2026, 11, 27)})
+    assert path.read_text(encoding="utf-8") == "instruments:\n  912797XX3: {maturity: 2026-11-27}\n"
+    empty = _rules(tmp_path, "# nothing yet\ninstruments:\n", "empty.yaml")
+    add_maturities(empty, {"912797XX3": date(2026, 11, 27)})
+    assert load_instruments(empty)["912797XX3"].maturity == date(2026, 11, 27)
+
+
+def test_maturities_are_not_written_where_they_would_not_be_read(tmp_path: Path) -> None:
+    flow = _rules(tmp_path, "instruments: {BIL: {tab: ETFs}}\n", "flow.yaml")
+    with pytest.raises(ConfigError, match="no line 'instruments:'"):
+        add_maturities(flow, {"912797XX3": date(2026, 11, 27)})
+    listed = _rules(tmp_path, "instruments:\n  912797XX3: {tab: Bonds}\n", "listed.yaml")
+    with pytest.raises(ConfigError, match="912797XX3 listed without a maturity"):
+        add_maturities(listed, {"912797XX3": date(2026, 11, 27)})
+    assert listed.read_text(encoding="utf-8") == "instruments:\n  912797XX3: {tab: Bonds}\n"
 
 
 def test_trade_without_a_tab_blocks(tmp_path: Path) -> None:
