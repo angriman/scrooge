@@ -1,24 +1,29 @@
 # finanze-parser
 
 Parses bank and broker statements, reconciles every account against the statement's own
-balances, and stores the transactions in a local SQLite database, shown by a small web app.
-Nothing is sent anywhere.
+balances, and stores the transactions in a local SQLite database for two people, shown by a
+small web app: net worth day by day, holdings, cash flow, transactions, and an import page.
+Statements are read offline; the only thing fetched is daily prices (see "Prices and net
+worth").
 
 Sources: Migros Bank (CSV), Revolut accounts and Revolut Savings (TSV/CSV), IBKR activity
-statement (CSV), Tastytrade transactions (CSV), Swisscard invoice (PDF).
+statement (CSV), Tastytrade transactions (CSV), Swisscard invoice (PDF), finpension pillar 3a
+transactions (CSV), and the scanned second-pillar certificates of AXA and Servisa (PDF, read
+with the local `tesseract`).
 
 ## Use
 
 ```sh
 uv sync
-uv run finanze import statements/2026-09     # reconcile, classify, stage the month
-uv run finanze import statements/2026-09 --review   # answer once per unknown merchant; saved as rules
-uv run finanze commit 2026-09                # make it final
+uv run finanze import statements/            # recognise, reconcile, classify and stage
+uv run finanze import statements/ --review   # answer once per unknown merchant; saved as rules
+uv run finanze commit                        # commit everything staged for the person
+uv run finanze prices                        # fetch the closes and rates not stored yet
 uv run finanze serve                         # the web app
 ```
 
-Files are recognised by their content. The import stops if any account does not reconcile.
-See "The database" below.
+Files are recognised by their content, never by their name. A file that does not reconcile
+is refused on its own, and the others are staged. See "The database" below.
 
 ## Configuration
 
@@ -40,13 +45,16 @@ Keys of older configs that nothing reads any more (`locale`, `accounts`) are ign
 
 ## The database
 
-Each month is stored in a local SQLite database, one row per transaction:
+Statements are stored in a local SQLite database, one row per transaction. They are
+committed as they come, of any period: there are no months to close.
 
 ```
-finanze import <folder>    # reconcile, classify, then stage the month
-finanze commit 2026-09     # make it final; a copy of the database is saved first
-finanze reopen 2026-09     # take it back, to import it again
-finanze query --from 2026  # find committed transactions (see "Querying it" below)
+finanze import <path>...    # reconcile, classify, then stage the statements
+finanze commit              # commit what is staged; a copy of the database is saved first
+finanze statements          # the statements stored, staged ones first, with their ids
+finanze uncommit <id>       # take a committed statement back: it is staged again
+finanze discard <id>        # remove a staged statement and everything it staged
+finanze query --from 2026   # find committed transactions (see "Querying it" below)
 ```
 
 `finanze import --review` asks for the category of unmatched rows.
@@ -55,14 +63,20 @@ when several match you are asked which one); `?` lists the categories again.
 Answer `+Prestiti` to create a category that does not exist yet and use it (`+Casa:Giardino`
 puts an expense under the top-level category `Casa`; money received goes to the Entrate, which
 have no groups). It is saved in `categories.yaml`.
-A statement may cover several months (the pillar 3a report covers the account's whole
-history): keep it in a folder of its own, and give `commit` and `reopen` the first and the
-last month, e.g. `finanze commit 2022-09 2026-07`.
 
-A month belongs to one person. `finanze import` replaces whatever an earlier import of the same
-statements stored, and refuses a month that is already committed. A commit is refused while
-any transaction lacks a category, or when a statement's balance does not follow from the
-previous statement's balance plus what was booked in between.
+An import is for one person. Of each account a statement covers, what is already committed is
+left as it is, and the statement is staged from the day after; what it books on the day of the
+import waits for the next one, since that day is not over. A statement of an account that
+belongs to the other person is refused. A commit is refused while any staged row lacks a
+category, or when a statement's balance does not follow from the previous statement's balance
+plus what was booked in between; it is one transaction, all or nothing.
+
+Every file staged is kept as it came in `originals/`, next to the database, under its SHA-256;
+`finanze keep <path>...` adds the files of statements imported before that.
+
+A second-pillar pension certificate (the scan) is imported like any statement: it gives the
+pension fund's account the balance it states for its day, and the figure read is printed, to
+compare with the paper. A figure that does not read cleanly is refused, never guessed.
 
 Each transaction has two dates: `date`, the day it happened, and `booking_date`, the day it
 counts on for its statement (a card purchase made in August and billed in September has
@@ -95,7 +109,7 @@ More for the database:
 ### Querying it
 
 `finanze query` lists the transactions that match, oldest first, then what they add up to.
-It reads committed months only, and both people's unless `--owner` names one. The database
+It reads committed statements only, and both people's unless `--owner` names one. The database
 is the one in `finanze.yaml`, or `--db`.
 
 ```sh
@@ -140,6 +154,66 @@ By month:
 Amounts are never converted, so there is one total per currency. `By year` and `By month`
 appear only when the result spans more than one.
 
+## Prices and net worth
+
+`finanze prices` is the one command that goes online: it fetches from Yahoo the daily closes,
+splits and exchange rates not stored yet, and stores them for good (nothing is fetched twice).
+Run it once a day, after the markets close.
+
+Net worth is worked out for every day from the committed statements, at the close and the
+exchange rate of each day, in EUR, CHF, USD, GBP or JPY. It runs to the newest close stored:
+after the last day a person's statements cover, what they held then is valued at the later
+closes, and the pages say up to which day the statements go. Options and futures are not
+counted as assets; a pension fund is carried at what its last certificate states.
+
+## The web app
+
+`finanze serve` shows the pages on <http://127.0.0.1:8765>: the overview (net worth, its chart
+and what it is made of), holdings, cash flow, transactions (with CSV), months, statements and
+import (upload, review the categories, commit). The view is one person's or both together.
+
+It answers on this machine only, unless `serve` in `finanze.yaml` names another address; then
+it asks for a password on every page (`finanze password` prints the line to put there):
+
+```yaml
+serve:
+  host: 0.0.0.0
+  names: [nas.example.ts.net]   # every name or address typed in a browser to reach it
+  password: scrypt$...
+```
+
+A machine that only shows the data has `serve: {read_only: true}` and a copy of the database,
+sent there by `finanze publish <folder>`.
+
+## On the NAS
+
+The app runs as a container on a Synology NAS, over the one database; statements are imported
+on its import page and prices are fetched there by a daily task. Setting it up the first time,
+the commands that run inside the container and the prices task: `deploy/README.md`.
+
+GitHub builds the image: every tag `v*` runs `make check` and, when it passes, pushes the
+image to the repository's private registry (`ghcr.io/<owner>/finanze`, `.github/workflows/image.yml`).
+The NAS pulls it; no code is kept there.
+
+### Updating it
+
+Once the new version is merged into `main` and pushed:
+
+```sh
+make release VERSION=v0.2     # tag main, push the tag, wait for GitHub to build the image
+make nas-update               # on the NAS: pull the image, restart, drop the old one
+```
+
+- `make release` refuses uncommitted changes, and a `main` that is not what GitHub has. It
+  waits for the build and fails when `make check` or the build does; the NAS then keeps the
+  version it runs. It needs `gh`, signed in.
+- `make nas-update` reaches the NAS by `ssh nas`: a `Host nas` in `~/.ssh/config` (name, port,
+  user, key), or `make nas-update NAS=<host>`. `sudo` there asks for the DSM password.
+- A new schema is migrated as the app starts, after a copy of the database goes to
+  `data/backups/`. Everyone signs in again.
+- Going back: in `compose.yaml` on the NAS, `image: ghcr.io/<owner>/finanze:<older tag>` in
+  place of `:latest`, then `make nas-update`.
+
 ## Development
 
 `make check` runs ruff, `mypy --strict` and pytest with branch coverage. Real statements stay in
@@ -157,5 +231,5 @@ uv run finanze serve --config output/dev/finanze.yaml --rules output/dev/rules.y
 
 It never empties a folder it did not make, nor the real database's.
 
-`deploy/README.md` says how the web app runs as a container on a NAS, over a copy of the
-database. The image is not built by `make check`.
+`deploy/README.md` says how the web app runs as a container on the NAS. The image is built by
+GitHub, not by `make check`.
