@@ -327,11 +327,11 @@ def test_the_bills_are_valued_today_at_the_last_rate_stored(tmp_path: Path) -> N
     said = text(page.text)
     assert "Days to go and values are of 2026-10-21" in said
     assert "One that has matured since 2026-09-30 may be repaid already" in said
+    # a clock still on the last day committed: the ladder is never before the newest rate
     on_the_day = text(at(path).get("/holdings").text)
-    assert "Days to go and values are of 2026-09-30" in on_the_day
-    assert "matured since" not in on_the_day
-    assert "9,872.50 CHF" not in said  # the positions themselves are of the last day
-    assert "in securities on 2026-09-30" in said
+    assert "Days to go and values are of 2026-10-20" in on_the_day
+    assert "in securities on 2026-10-20" in said  # the newest rate stored
+    assert "Statements up to 2026-09-30: what was held then is valued at the latest" in said
 
 
 def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Path) -> None:

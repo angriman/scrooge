@@ -4,6 +4,13 @@ Only committed statements are read. For every day: the cash of each account, plu
 account held that day at the last close on or before it, each converted at that day's rate
 into the currency asked for. Nothing here is stored and nothing here writes.
 
+**The days run to the newest close or rate stored** (decided 2026-11-04), or to the last day
+committed statements cover when that is later. After the last day a person's statements
+cover, what they held then is carried: the same cash and the same quantities (a split still
+multiplies them), at the closes and rates of each day after, and a note says so. A bill
+goes on towards its face. So the first page shows what is held at the latest prices, not
+at those of the last statement.
+
 - **Cash** runs from the statement balances with what the account's own statements booked
   since; an account starts with its first statement and counts for nothing before. Money
   set aside inside an account (Revolut's savings, D8) stays part of it. An account that is
@@ -25,7 +32,7 @@ import sqlite3
 from bisect import bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import TypeVar
@@ -149,6 +156,7 @@ class _Account:
     kind: str
     currency: str
     source: str | None
+    through: date  # the last day the statements of its owner cover
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +167,9 @@ class Valued:
     series: tuple[Series, ...]
     notes: tuple[str, ...]
     security_notes: tuple[str, ...]  # those of `notes` that are about what is held
+    # owner -> the last day their committed statements cover: what they held then is
+    # carried to the last of `days`
+    through: dict[str, date] = field(default_factory=dict)
 
 
 def _days(first: date, last: date) -> tuple[date, ...]:
@@ -176,19 +187,30 @@ def _last_days(conn: sqlite3.Connection, owner: str | None) -> dict[str, date]:
     return {str(name): date.fromisoformat(day) for name, day in rows}
 
 
-def _accounts(conn: sqlite3.Connection, owners: Iterable[str]) -> dict[int, _Account]:
-    wanted = set(owners)
+def _priced_through(conn: sqlite3.Connection) -> list[date]:
+    """The newest day a close or a rate is stored for, if any is."""
+    newest = conn.execute(
+        "SELECT max(day) FROM (SELECT max(date) AS day FROM prices "
+        "UNION ALL SELECT max(date) FROM fx_rates)"
+    ).fetchone()[0]
+    return [date.fromisoformat(newest)] if newest else []
+
+
+def _accounts(conn: sqlite3.Connection, last_days: Mapping[str, date]) -> dict[int, _Account]:
     rows = conn.execute(
         "SELECT a.id, o.name, a.name, a.kind, a.currency, a.source FROM accounts a "
         "JOIN owners o ON o.id = a.owner_id ORDER BY a.id"
     ).fetchall()
     return {
-        int(r[0]): _Account(int(r[0]), r[1], r[2], r[3], r[4], r[5]) for r in rows if r[1] in wanted
+        int(r[0]): _Account(int(r[0]), r[1], r[2], r[3], r[4], r[5], last_days[r[1]])
+        for r in rows
+        if r[1] in last_days
     }
 
 
 def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
-    """Every series of `owner`, or of everyone, up to the last day all of them have committed.
+    """Every series of `owner`, or of everyone, up to the newest close or rate stored, or the
+    last day committed when that is later; each person carried from their own last day.
 
     None when nothing is committed, or nothing is known of what is.
     """
@@ -196,26 +218,35 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
     last_days = _last_days(conn, owner)
     if not last_days:
         return None
-    last = min(last_days.values())
     accounts = _accounts(conn, last_days)
-    flows = _flows(conn, accounts, last)
-    anchors = _anchors(conn, accounts, last)
+    through = {account.id: account.through for account in accounts.values()}
+    flows = _flows(conn, through)
+    anchors = _anchors(conn, through)
+    splits = _splits(conn)
     held = [
-        holding
+        _carried_from(holding, through[holding.account_id], splits.get(holding.instrument_id, []))
         for holding in holdings.held(conn, committed=True)
-        if holding.account_id in accounts and holding.steps and holding.steps[0].day <= last
+        if holding.account_id in accounts
+        and holding.steps
+        and holding.steps[0].day <= through[holding.account_id]
     ]
     starts = [min(booked) for booked in flows.values()]
     starts += [min(known) for known in anchors.values()]
     starts += [holding.steps[0].day for holding in held]
     if not starts:
         return None
+    last = max([*last_days.values(), *_priced_through(conn)])
     days = _days(min(starts), last)
-    notes: list[str] = []
+    notes = [
+        f"The statements of {name} end on {day}: from then on, what was held that day is "
+        f"valued at the closes and rates stored up to {last}."
+        for name, day in sorted(last_days.items())
+        if day < last
+    ]
     series = _cash(accounts, flows, anchors, days, notes)
     security_notes: list[str] = []
     series += _securities(conn, accounts, held, days, security_notes)
-    return Valued(days, tuple(series), (*notes, *security_notes), tuple(security_notes))
+    return Valued(days, tuple(series), (*notes, *security_notes), tuple(security_notes), last_days)
 
 
 # ---------------------------------------------------------------------------------- cash
@@ -227,10 +258,9 @@ class _Flow:
     aside: int = 0  # what went into the money set aside inside the account that day
 
 
-def _flows(
-    conn: sqlite3.Connection, accounts: Mapping[int, _Account], last: date
-) -> dict[int, dict[date, _Flow]]:
-    """account -> day -> what committed statements booked, oldest day first.
+def _flows(conn: sqlite3.Connection, through: Mapping[int, date]) -> dict[int, dict[date, _Flow]]:
+    """account -> day -> what committed statements booked up to the day in `through` (the
+    accounts counted), oldest day first.
 
     Rows that another source books on an account (the interest of Revolut's savings, D8) are
     not in its statement balance: they add to what is set aside there, and so does every
@@ -241,16 +271,14 @@ def _flows(
         "f.source IS NULL OR f.source IS a.source AS own "
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
-        "WHERE (f.id IS NULL OR f.committed_at IS NOT NULL) AND t.booking_date <= ? "
-        "ORDER BY t.booking_date",
-        (last.isoformat(),),
+        "WHERE (f.id IS NULL OR f.committed_at IS NOT NULL) ORDER BY t.booking_date"
     ).fetchall()
     fed_by_another = {int(r[0]) for r in rows if not r[4]}
     flows: dict[int, dict[date, _Flow]] = defaultdict(dict)
     for account, day_text, nano, kind, own in rows:
-        if account not in accounts:
-            continue
         day = date.fromisoformat(day_text)
+        if account not in through or day > through[account]:
+            continue
         flow = flows[account].get(day, _Flow())
         if not own:
             flow = _Flow(flow.nano, flow.aside + nano)
@@ -262,10 +290,9 @@ def _flows(
     return flows
 
 
-def _anchors(
-    conn: sqlite3.Connection, accounts: Mapping[int, _Account], last: date
-) -> dict[int, dict[date, int]]:
-    """account -> day -> the balance a statement gives, or that was typed, oldest first.
+def _anchors(conn: sqlite3.Connection, through: Mapping[int, date]) -> dict[int, dict[date, int]]:
+    """account -> day -> the balance a statement gives, or that was typed, up to the day in
+    `through` (the accounts counted), oldest first.
 
     A statement counts once it is committed. A pension certificate is a statement of the one
     day it is dated.
@@ -273,13 +300,13 @@ def _anchors(
     rows = conn.execute(
         "SELECT b.account_id, b.date, b.amount_nano FROM balances b "
         "LEFT JOIN statement_files f ON f.id = b.statement_file_id "
-        "WHERE b.date <= ? AND (f.id IS NULL OR f.committed_at IS NOT NULL) ORDER BY b.date",
-        (last.isoformat(),),
+        "WHERE f.id IS NULL OR f.committed_at IS NOT NULL ORDER BY b.date"
     ).fetchall()
     anchors: dict[int, dict[date, int]] = defaultdict(dict)
-    for account, day, nano in rows:
-        if account in accounts:
-            anchors[account][date.fromisoformat(day)] = int(nano)
+    for account, day_text, nano in rows:
+        day = date.fromisoformat(day_text)
+        if account in through and day <= through[account]:
+            anchors[account][day] = int(nano)
     return anchors
 
 
@@ -352,6 +379,29 @@ def _balances(
 # ---------------------------------------------------------------------------- securities
 
 
+def _splits(conn: sqlite3.Connection) -> dict[int, list[tuple[date, Decimal, Decimal]]]:
+    """instrument -> (day, new shares, old shares) of each split, oldest first."""
+    splits: dict[int, list[tuple[date, Decimal, Decimal]]] = defaultdict(list)
+    for instrument, day, new, old in conn.execute(
+        "SELECT instrument_id, date, numerator, denominator FROM splits ORDER BY date"
+    ):
+        splits[instrument].append((date.fromisoformat(day), Decimal(new), Decimal(old)))
+    return splits
+
+
+def _carried_from(
+    holding: holdings.Holding, last: date, splits: Sequence[tuple[date, Decimal, Decimal]]
+) -> holdings.Holding:
+    """`holding` as the statements up to `last` leave it: after that only a split changes it."""
+    steps = [step for step in holding.steps if step.day <= last]
+    quantity = steps[-1].quantity
+    for day, new, old in splits:
+        if day > last:
+            quantity = quantity * new / old
+            steps.append(holdings.Step(day, quantity))
+    return replace(holding, steps=tuple(steps))
+
+
 def _securities(
     conn: sqlite3.Connection,
     accounts: Mapping[int, _Account],
@@ -372,7 +422,11 @@ def _securities(
         symbol, kind, currency, maturity = instruments[holding.instrument_id]
         quote = None
         if kind in {"bill", "bond"}:
-            trades = lots.get((holding.account_id, holding.instrument_id), [])
+            trades = [
+                trade
+                for trade in lots.get((holding.account_id, holding.instrument_id), [])
+                if trade.day <= account.through
+            ]
             values = bill_values(trades, maturity, days)
             if not trades and any(step.quantity for step in holding.steps):
                 notes.append(f"{symbol} was bought before the history starts: it is not counted.")
@@ -556,10 +610,7 @@ def convert(
 def run(
     conn: sqlite3.Connection, *, owner: str | None = None, currency: str = DEFAULT_CURRENCY
 ) -> NetWorth:
-    """Net worth of `owner`, or of everyone, on every day, in `currency`.
-
-    For several people it ends on the last day all of them have committed.
-    """
+    """Net worth of `owner`, or of everyone, on every day, in `currency` (see `value`)."""
     return worth_of(conn, value(conn, owner), currency)
 
 

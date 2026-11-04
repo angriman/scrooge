@@ -32,9 +32,9 @@ units, without the cash of the account that the line of net worth also holds.
 
 **The ladder of bills** lists the bills held on `Portfolio.day`, but counts the days to their
 maturity from the day asked for (today, on the page) and values them on it: in a straight line
-from cost to face as net worth does, at the last exchange rate stored by then. Nothing newer
-than `Portfolio.day` is committed for everyone, so a bill bought since is not on it, and one
-that matured since is worth its face.
+from cost to face as net worth does, at the last exchange rate stored by then. Nothing is
+counted after the last day a person's statements cover (net worth carries what was held
+then), so a bill bought since is not on it, and one that matured since is worth its face.
 """
 
 from __future__ import annotations
@@ -130,6 +130,9 @@ class Portfolio:
     # account, valued on `ladder_day`: the day asked for, never before `day`. None: no bills.
     ladder: tuple[Rung, ...] = ()
     ladder_day: date | None = None
+    # the earliest last day the statements of those shown cover: what they held then is what
+    # is listed on `day` (`networth.value`); None: no such day
+    through: date | None = None
 
     @property
     def total(self) -> Decimal:
@@ -280,7 +283,9 @@ def positions_of(
         quote = series.quote
         quantity = series.quantity or Decimal(0)
         worth = series.values[-1].quantize(_CENT)
-        traded = trades.get((series.account_id, instrument), [])
+        # What was held on the last day a person's statements cover is carried after it.
+        through = valued.through[series.owner]
+        traded = [t for t in trades.get((series.account_id, instrument), []) if t.day <= through]
         cost = _cost(traded, splits[instrument], quantity, last[0])
         positions.append(
             Position(
@@ -303,7 +308,7 @@ def positions_of(
             )
         )
         if kind in _LADDER:
-            bills.append((positions[-1], [trade for trade in traded if trade.day <= last[0]]))
+            bills.append((positions[-1], traded))
     positions.sort(
         key=lambda p: (p.owner, networth.ASSETS.index(p.asset), -p.value, p.symbol, p.account)
     )
@@ -324,6 +329,7 @@ def positions_of(
         valued.security_notes,
         cash if pension else None,
         *_ladder(conn, bills, currency, max(today or last[0], last[0])),
+        through=min(valued.through.values()),
     )
 
 

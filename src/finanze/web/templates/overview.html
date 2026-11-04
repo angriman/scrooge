@@ -22,6 +22,9 @@
 {%- endfor %}
 {%- if shown and shown.day %}
 <p class="headline"><strong>{{ shown.total|money }} {{ shown.currency }}</strong> net worth on {{ shown.day }}</p>
+{%- if shown.through and shown.through < shown.day %}
+<p class="note">Statements up to {{ shown.through }}: what was held then is valued at the latest closes and rates stored.</p>
+{%- endif %}
 <form method="get" class="filter" id="view" data-auto>
   {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
   <input type="hidden" name="currency" value="{{ shown.currency }}">
