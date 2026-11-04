@@ -130,8 +130,11 @@ Scheduler > Create > Scheduled Task > User-defined script, user `root`, daily af
 markets close (say 23:30), script:
 
 ```sh
-docker exec finanze finanze prices
+/usr/local/bin/docker exec finanze finanze prices
 ```
+
+By its path: a scheduled task has no login shell, and DSM's `docker` is not on its `PATH`.
+Run it once by hand (select the task, Run; Action > View Result shows what it printed).
 
 It asks only for the days not stored yet, so a missed day is caught up the next time.
 
