@@ -2,6 +2,14 @@
 statements/*
 !statements/.gitkeep
 transactions_*.csv
+# The database, its snapshots and backups, the statements kept beside it, the NAS data folder
+*.db
+*.db.*
+*.db-*
+originals/
+backups/
+/data/
+.env
 # Generated: the NAS image folder, caches of runs
 output/
 # Personal: rules naming shops and people, what is held, own categories, account names.
