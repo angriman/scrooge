@@ -120,12 +120,13 @@ def test_only_what_happened_up_to_the_day_shown_makes_the_cost(conn: sqlite3.Con
     store.add_split(conn, instrument, day(3, 10), 2, 1)
     mine = agrees_with_net_worth(conn, OWNER, "USD")
     assert costs(mine)["IBKR USD", "WIDG"] == (D(25), D("800.00"))
-    # everyone is shown on 30 September: before the split, and before the purchase of October
+    # her statements end on 30 September: the split doubles what she held then, and her
+    # cost stays what it was
     everyone = agrees_with_net_worth(conn, None, "USD")
     assert [(p.quantity, p.cost_native) for p in everyone.positions if p.symbol == "WIDG"] == [
-        (D(7), D("350.00")),
-        (D(1), D("50.00")),
-        (D(10), D("500.00")),
+        (D(14), D("350.00")),
+        (D(2), D("50.00")),
+        (D(25), D("800.00")),
     ]
 
 
@@ -315,9 +316,8 @@ def test_the_ladder_is_valued_on_the_day_asked_for_at_the_last_rate_by_then(
     )
     rate(conn, "USD", day(1), "0.8")
     rate(conn, "USD", day(20, 10), "0.9")  # after the last day committed, before the one asked
-    rate(conn, "USD", day(25, 10), "1")  # after the one asked
     held = portfolio.run(conn, currency="CHF", today=day(21, 10))
-    assert (held.day, held.ladder_day) == (day(30), day(21, 10))
+    assert (held.through, held.day, held.ladder_day) == (day(30), day(20, 10), day(21, 10))
     due, later = held.ladder
     assert (due.position.symbol, due.days, due.value_native, due.value) == (
         "912797WW4",
@@ -327,7 +327,7 @@ def test_the_ladder_is_valued_on_the_day_asked_for_at_the_last_rate_by_then(
     )
     # 36 days after 15 September; at the rate of 20 October, not that of the last day
     assert (later.days, later.value_native, later.value) == (64, D(9904), D("8913.60"))
-    assert later.position.value_native == D("9872.50")  # the positions are of the last day
+    assert later.position.value_native == D("9902.50")  # the positions are of the last day
     assert later.interest == D(150)
 
 

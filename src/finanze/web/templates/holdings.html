@@ -14,6 +14,9 @@
 {#- The columns before the value in the currency asked for: a subtotal's label spans them. #}
 {%- set before = 7 if owner else 8 %}
 <p class="headline"><strong>{{ held.total|money }} {{ held.currency }}</strong> in securities on {{ held.day }}</p>
+{%- if held.through < held.day %}
+<p class="note">Statements up to {{ held.through }}: what was held then is valued at the latest closes and rates stored.</p>
+{%- endif %}
 <table class="narrow">
   <thead>
     <tr><th></th><th class="number">{{ held.currency }}</th><th class="number">Share</th></tr>
@@ -152,8 +155,8 @@
   These are the bills held on {{ held.day }}. Days to go and values are of {{ held.ladder_day }}:
   a bill grows in a straight line from what it cost to its face at maturity, and is in
   {{ held.currency }} at the last exchange rate stored by then.
-  {%- if held.ladder_day != held.day %} One that has matured since {{ held.day }} may be
-  repaid already, in statements not committed yet.{% endif %}
+  {%- if held.through < held.ladder_day %} One that has matured since {{ held.through }} may
+  be repaid already, in statements not committed yet.{% endif %}
   Interest is what a bill earns when it is repaid: its face less what it cost, in the
   currency of the bill.
 </p>

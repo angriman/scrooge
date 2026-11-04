@@ -88,6 +88,9 @@ class Overview:
     rest: Rest | None  # None: `top` is all of them
     securities: Part  # every holding together: `portfolio.Portfolio.total`
     worth: networth.NetWorth  # every day, of which the figures above are the last
+    # the earliest last day the statements of those shown cover: what they held then is
+    # valued on `day` at the latest closes (`networth.value`); None: no such day
+    through: date | None = None
 
 
 def _shares(values: list[Decimal], total: Decimal) -> list[Decimal | None]:
@@ -177,4 +180,5 @@ def run(
         rest=rest,
         securities=Part("Securities", held.total, _added(shares)),
         worth=worth,
+        through=min(valued.through.values()) if valued else None,
     )

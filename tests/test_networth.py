@@ -144,7 +144,7 @@ def test_a_committed_statement_with_no_figure_in_it_is_no_net_worth(
     assert networth.run(conn, currency="CHF").days == ()
 
 
-def test_net_worth_ends_on_the_last_day_committed_and_for_everyone_on_the_earliest(
+def test_net_worth_ends_on_the_last_day_committed_and_for_everyone_on_the_latest(
     conn: sqlite3.Connection,
 ) -> None:
     close(conn, account("migros", "Migros", "CHF", "1000"))
@@ -154,7 +154,9 @@ def test_net_worth_ends_on_the_last_day_committed_and_for_everyone_on_the_earlie
     staging.stage(conn, later, NOW)  # October is staged, not committed
     assert networth.run(conn, currency="CHF", owner=OWNER).days[-1] == day(30)
     assert networth.run(conn, currency="CHF", owner=PARTNER).days == (day(15),)
-    assert networth.run(conn, currency="CHF").days[-1] == day(15)
+    everyone = networth.run(conn, currency="CHF")
+    assert everyone.days[-1] == day(30)
+    assert line(everyone, PILLAR2, PARTNER)[day(30)] == D(500)  # carried from her last day
 
 
 def test_an_unknown_person_is_refused(conn: sqlite3.Connection) -> None:
@@ -712,14 +714,55 @@ def test_each_person_has_lines_of_their_own_and_the_views_add_up(conn: sqlite3.C
     assert by_asset[CASH][-1] == D(800) + D(9500) * D("0.8") + D(450)
 
 
-def test_several_people_end_on_the_last_day_all_of_them_have_committed(
+def test_several_people_each_count_up_to_their_own_last_day_and_are_carried_after(
     conn: sqlite3.Connection,
 ) -> None:
     both(conn)
     close(conn, account("migros", "Migros", "CHF", "800", month=OCTOBER), month=OCTOBER)
     assert networth.run(conn, owner=OWNER, currency="CHF").days[-1] == day(31, 10)
     assert networth.run(conn, owner=PARTNER, currency="CHF").days[-1] == day(30)
-    assert networth.run(conn, currency="CHF").days[-1] == day(30)
+    everyone = networth.run(conn, currency="CHF")
+    assert everyone.days[-1] == day(31, 10)
+    assert line(everyone, CASH, PARTNER)[day(31, 10)] == D(450)
+    assert everyone.notes[0] == (
+        f"The statements of {PARTNER} end on 2026-09-30: from then on, what was held that day "
+        "is valued at the closes and rates stored up to 2026-10-31."
+    )
+
+
+def test_what_was_held_on_the_last_day_is_valued_at_the_newest_closes(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15)), bought("SPRK", "2", "-100", day(16))))
+    sprk = conn.execute("SELECT id FROM instruments WHERE symbol = 'SPRK'").fetchone()[0]
+    store.add_split(conn, sprk, day(10, 10), 3, 1)  # still multiplies what was held
+    price(conn, "WIDG", day(30), "50")
+    price(conn, "WIDG", day(2, 11), "60")
+    price(conn, "SPRK", day(30), "50")
+    price(conn, "SPRK", day(12, 10), "20")
+    rate(conn, "USD", day(30), "0.8")
+    rate(conn, "USD", day(3, 11), "0.9")  # the newest of all
+    result = networth.run(conn, currency="CHF")
+    assert result.days[-1] == day(3, 11)
+    cash, etfs = line(result, CASH), line(result, ETFS)
+    assert [cash[d] for d in (day(30), day(3, 11))] == [D(9400) * D("0.8"), D(9400) * D("0.9")]
+    assert [etfs[d] for d in (day(30), day(1, 11), day(2, 11), day(3, 11))] == [
+        D(10 * 50 + 2 * 50) * D("0.8"),
+        D(10 * 50 + 6 * 20) * D("0.8"),
+        D(10 * 60 + 6 * 20) * D("0.8"),
+        D(10 * 60 + 6 * 20) * D("0.9"),
+    ]
+    assert result.notes == (
+        f"The statements of {OWNER} end on 2026-09-30: from then on, what was held that day "
+        "is valued at the closes and rates stored up to 2026-11-03.",
+    )
+
+
+def test_a_bill_goes_on_towards_its_face_after_the_last_day(conn: sqlite3.Connection) -> None:
+    close(conn, ibkr(bill("10000", "-9850", day(15)), opening="50000"))
+    rate(conn, "USD", day(24, 12), "1")
+    bills = line(networth.run(conn, currency="USD"), BILLS)
+    assert [bills[d] for d in (day(30), day(24, 12))] == [D("9872.50"), D(10000)]
 
 
 @settings(max_examples=25, deadline=None)

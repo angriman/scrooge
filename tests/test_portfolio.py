@@ -79,7 +79,7 @@ def test_cash_alone_is_no_position(conn: sqlite3.Connection) -> None:
     staging.commit(conn, owner=OWNER, now=NOW)
     assert len(networth.run(conn, currency="CHF").notes) == 2
     # neither the bank, nor what is typed, nor the pension fund; and none of their notes
-    assert portfolio.run(conn, currency="CHF") == Portfolio("CHF", day(30), (), ())
+    assert portfolio.run(conn, currency="CHF") == Portfolio("CHF", day(30), (), (), through=day(30))
 
 
 # -------------------------------------------------------------------------------- shares
@@ -114,6 +114,7 @@ def test_shares_are_listed_with_the_close_they_are_valued_at(conn: sqlite3.Conne
             ),
         ),
         (),
+        through=day(30),
     )
 
 
@@ -339,7 +340,7 @@ def test_positions_are_listed_by_person_kind_and_value(conn: sqlite3.Connection)
         agrees_with_net_worth(conn, None, currency)
 
 
-def test_several_people_are_shown_on_the_last_day_all_of_them_have_committed(
+def test_several_people_are_shown_on_the_latest_day_each_as_their_statements_leave_them(
     conn: sqlite3.Connection,
 ) -> None:
     family(conn)
@@ -349,9 +350,9 @@ def test_several_people_are_shown_on_the_last_day_all_of_them_have_committed(
     assert mine.day == day(31, 10)
     assert {p.symbol: p.quantity for p in mine.positions}["WIDG"] == 15
     everyone = agrees_with_net_worth(conn, None, "USD")
-    assert everyone.day == day(30)
+    assert (everyone.day, everyone.through) == (day(31, 10), day(30))
     assert [p.quantity for p in everyone.positions if (p.owner, p.symbol) == (OWNER, "WIDG")] == [
-        D(10)
+        D(15)
     ]
 
 

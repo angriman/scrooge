@@ -101,7 +101,9 @@ def test_the_months_page_says_how_far_each_account_is_committed(client: TestClie
 def test_the_view_is_everyone_or_one_person(client: TestClient) -> None:
     everyone = client.get("/", params={"currency": "CHF"})
     assert everyone.status_code == 200
-    assert "CHF net worth on 2026-07-31" in text(everyone.text)
+    said = text(everyone.text)
+    assert "CHF net worth on 2026-08-31" in said
+    assert "Statements up to 2026-07-31: what was held then is valued at the latest" in said
     assert '<a href="http://127.0.0.1:8765/?currency=CHF" aria-current="true">Everyone</a>' in (
         everyone.text
     )
