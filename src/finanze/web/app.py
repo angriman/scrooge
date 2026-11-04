@@ -21,7 +21,7 @@ import secrets
 import tempfile
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -50,6 +50,7 @@ from finanze import (
     categories,
     classification,
     importing,
+    marketdata,
     months,
     networth,
     overview,
@@ -57,9 +58,10 @@ from finanze import (
     query,
     staging,
 )
-from finanze.classification import UnknownInstrumentError
+from finanze.classification import UnknownInstrumentError, UnknownMaturityError
 from finanze.errors import ConfigError, ExtractionError
 from finanze.models import Kind
+from finanze.prices import MaturitySource, PriceError
 from finanze.storage import db, originals, store
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
@@ -96,6 +98,9 @@ _STALE = (
     "Choose the files again and send them from here."
 )
 _UPLOADS = 200  # files taken by one import: a year of monthly statements of every source
+# How long the files of an import that stopped on bills without a maturity are kept, for the
+# button that looks them up to import them again; in memory, like the sessions.
+_HELD = timedelta(hours=1)
 # What stops an import: nothing is stored, and the page says why.
 _REFUSED = (
     ExtractionError,
@@ -260,6 +265,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     names: Sequence[str] = (),
     password: str = "",
     read_only: bool = False,
+    maturities: MaturitySource | None = None,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
 
@@ -271,6 +277,9 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     are no other devices, so they are refused (D18). `read_only` is for a copy of the
     database, which may lie where nothing can be written: no page offers to change it, and
     nothing sent does.
+    `maturities` is where the import page looks up the T-bills an import stopped on: the one
+    thing a page asks the network for (decided 2026-11-03). Without it the page only says
+    which bills to add to `instruments.yaml`.
     """
     if names and not password:
         msg = "the app is not served under other names without a password"
@@ -293,6 +302,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/currency", _choose_currency, name="currency"),
             Route("/import", _import_page, name="import"),
             Route("/import", _import, methods=["POST"]),
+            Route("/import/maturities", writing(_look_up), methods=["POST"], name="look_up"),
             Route("/import/save", writing(_save), methods=["POST"], name="save"),
             Route("/import/commit", writing(_commit), methods=["POST"], name="commit_draft"),
             Route(
@@ -348,6 +358,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.clock = clock
     app.state.rules = rules
     app.state.imports = None if read_only else imports
+    app.state.maturities = maturities
+    app.state.held = {}
     app.state.access = access
     app.state.read_only = read_only
     app.state.hosts = hosts
@@ -421,12 +433,15 @@ def _networth(request: Request) -> Response:
     return RedirectResponse(request.url_for("overview").replace(query=request.url.query))
 
 
-def _import_form(
+def _import_form(  # noqa: PLR0913  # what the page shows after each of the forms sent to it
     request: Request,
     owner: str | None = None,
     error: str = "",
     done: importing.Read | None = None,
     status: int = 200,
+    *,
+    undated: _Undated | None = None,
+    notice: str = "",
 ) -> Response:
     """The page of the import: what was just uploaded, and everything staged for one person."""
     state = request.app.state
@@ -444,6 +459,8 @@ def _import_form(
             "owner": owner,
             "owners": list(state.imports.people) if state.imports else [],
             "error": error,
+            "undated": undated,
+            "notice": notice,
             "done": done,
             "draft": months.draft(conn, owner),
             "choices": query.choices(conn, owner),
@@ -481,6 +498,33 @@ async def _import(request: Request) -> Response:
     if not uploads:
         error = "Choose at least one file."
         return await run_in_threadpool(_import_form, request, owner, error, None, 400)
+    return await _staged(request, owner, uploads)
+
+
+@dataclass(frozen=True, slots=True)
+class _Held:
+    """The files of an import that stopped on bills without a maturity."""
+
+    owner: str
+    uploads: list[tuple[str, bytes]]
+    bills: tuple[str, ...]
+    until: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class _Undated:
+    """Bills an import stopped on, and the files kept to import again once they are dated
+    ("" when nothing can look them up)."""
+
+    bills: tuple[str, ...]
+    held: str
+
+
+async def _staged(
+    request: Request, owner: str, uploads: list[tuple[str, bytes]], notice: str = ""
+) -> Response:
+    """Read and stage `uploads` for `owner`, and the page that says what became of them."""
+    state = request.app.state
 
     def stage() -> importing.Read:
         with tempfile.TemporaryDirectory() as folder:
@@ -494,10 +538,73 @@ async def _import(request: Request) -> Response:
 
     try:
         done = await run_in_threadpool(stage)
+    except UnknownMaturityError as exc:
+        held = _hold(state, _Held(owner, uploads, exc.bills, state.clock() + _HELD))
+        undated = _Undated(exc.bills, held if state.maturities else "")
+        error = f"Nothing was imported: {exc}."
+        return await run_in_threadpool(
+            _import_form, request, owner, error, None, 409, undated=undated, notice=notice
+        )
     except _REFUSED as exc:
         error = f"Nothing was imported: {exc}."
-        return await run_in_threadpool(_import_form, request, owner, error, None, 409)
-    return await run_in_threadpool(_import_form, request, owner, "", done)
+        return await run_in_threadpool(
+            _import_form, request, owner, error, None, 409, notice=notice
+        )
+    return await run_in_threadpool(_import_form, request, owner, "", done, notice=notice)
+
+
+def _hold(state: State, held: _Held) -> str:
+    """Keep `held` for the button that looks its bills up; what has waited too long goes."""
+    now = state.clock()
+    for key in [key for key, kept in state.held.items() if kept.until <= now]:
+        del state.held[key]
+    key = secrets.token_urlsafe(16)
+    state.held[key] = held
+    return key
+
+
+async def _look_up(request: Request) -> Response:
+    """Look up the bills an import stopped on, write down when they mature, and import the
+    same files again."""
+    _own_origin(request)
+    state = request.app.state
+    if state.imports is None or state.maturities is None:
+        raise HTTPException(404)
+    async with request.form() as form:
+        token, key = str(form.get("token", "")), str(form.get("held", ""))
+    try:
+        _own_token(request, token)
+    except HTTPException:
+        return await run_in_threadpool(_import_form, request, None, _STALE, None, 403)
+    held = state.held.get(key)
+    if held is None or held.until <= state.clock():
+        error = "The files of that import are no longer kept: choose them again."
+        return await run_in_threadpool(_import_form, request, None, error, None, 409)
+    undated = _Undated(held.bills, key)
+    try:
+        looked = await run_in_threadpool(marketdata.maturities, state.maturities, held.bills)
+    except PriceError as exc:
+        error = f"TreasuryDirect could not tell: {exc}. Try again later, or add the maturity "
+        error += "to instruments.yaml."
+        return await run_in_threadpool(
+            _import_form, request, held.owner, error, None, 502, undated=undated
+        )
+    if looked.unknown:
+        error = f"TreasuryDirect knows no bill {', '.join(looked.unknown)}: add its maturity "
+        error += "to instruments.yaml."
+        return await run_in_threadpool(
+            _import_form, request, held.owner, error, None, 409, undated=undated
+        )
+    try:
+        classification.add_maturities(state.imports.instruments, looked.found)
+    except ConfigError as exc:
+        return await run_in_threadpool(
+            _import_form, request, held.owner, f"{exc}.", None, 409, undated=undated
+        )
+    del state.held[key]
+    days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
+    notice = f"{days} (TreasuryDirect), written in instruments.yaml."
+    return await _staged(request, held.owner, held.uploads, notice)
 
 
 def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:

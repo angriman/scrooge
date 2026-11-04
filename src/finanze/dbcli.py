@@ -43,7 +43,8 @@ is the one both people share: each person's `rules.<owner>.yaml` and `categories
 next to it, and answers and categories given are written there.
 `keep`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
 people.
-`prices` is the only command that uses the network (D9).
+`prices` is the only command that uses the network (D9); `serve` too, only when the import
+page's button looks up a T-bill's maturity (decided 2026-11-03).
 
 Every command but a read-only `serve` creates the database if there is none and brings its
 schema up to date: a database at an older schema is copied to `backups/` next to it first,
@@ -590,6 +591,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         names=reach.names,
         password=reach.password,
         read_only=reach.read_only,
+        maturities=prices.TreasuryDirect(),
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
     return OK

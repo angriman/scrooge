@@ -6,8 +6,18 @@
   <script src="{{ url_for('static', path='draft.js') }}" defer></script>
 {% endblock %}
 {% block main %}
+{%- if notice %}
+<p class="done" role="status">{{ notice }}</p>
+{%- endif %}
 {%- if error %}
 <p class="error" role="alert">{{ error }}</p>
+{%- endif %}
+{%- if undated and undated.held %}
+<form method="post" action="{{ url_for('look_up') }}" class="look-up">
+  <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="held" value="{{ undated.held }}">
+  <button>Look up {{ undated.bills | join(", ") }} on TreasuryDirect and import again</button>
+</form>
 {%- endif %}
 {%- if committed is not none %}
 <p class="done" role="status">{{ committed }} statement{{ "" if committed == 1 else "s" }} committed{% if committed %}: the other pages show them now{% endif %}.</p>
