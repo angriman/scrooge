@@ -14,7 +14,6 @@ the devices call it.
 | On the NAS, in `/volume1/docker/finanze/` | What |
 |---|---|
 | `compose.yaml` | copied once from `deploy/compose.yaml` and adapted |
-| `app/` | what the image is built from: `Dockerfile`, `pyproject.toml`, `uv.lock`, `src/`; replaced on every update |
 | `data/` | everything personal, mounted read-write as `/data` (below) |
 
 | In `data/` | What |
@@ -53,42 +52,61 @@ The data folder must belong to the user `compose.yaml` names: the app writes the
 terminal on the NAS: `sudo chown -R 1026:100 /volume1/docker/finanze/data` (the numbers of
 that user).
 
-## The image is built on the NAS
+## The image is built by GitHub
 
-The source is copied to the NAS and Container Manager builds it there. The other way,
-building on this machine and carrying the image over as a file, needs a container engine
-here and a build for another processor than this machine's; the NAS has the engine and is
-the processor the image is for. The price: the NAS needs the internet while it builds
-(the Python image, Tesseract, `uv`, the packages `uv.lock` names).
+Every tag `v*` pushed to GitHub runs `make check` and, when it passes, builds the image and
+pushes it to GitHub's registry, private like the repository: `ghcr.io/<owner>/finanze:<tag>`
+and `:latest` (`.github/workflows/image.yml`; `<owner>` in lower case). The NAS only pulls
+it: nothing is built there, and no code or git is kept there. The image is built for x86-64,
+the NAS's processor.
+
+## On this machine, once
+
+`make nas-update` reaches the NAS by `ssh nas`. In `~/.ssh/config`:
+
+```
+Host nas
+  HostName nas.example.ts.net
+  Port 22
+  User <DSM user>
+```
+
+Another name works too: `make nas-update NAS=<name>`. `make release` needs `gh`, signed in.
 
 ## First time
 
-1. On this machine, from the project folder:
+1. On GitHub, Settings > Developer settings > Personal access tokens > Tokens (classic): a
+   token for the NAS with the one scope `read:packages`, nothing else. It can read the
+   images and change nothing.
+
+2. In a terminal on the NAS, sign in once (the token is the password; Docker keeps it):
 
    ```sh
-   make nas-app
+   sudo docker login ghcr.io -u <github-user>
    ```
 
-   `output/nas/app/` now holds the committed code and `uv.lock`, and nothing else: no
-   config, no database, no statements, no rules.
-
-2. Copy to `/volume1/docker/finanze/` on the NAS (Finder or File Station): the folder
-   `output/nas/app` as `app`, and `deploy/compose.yaml`. Put the data in `data` next to
-   them (the move itself: `docs/nas-migration.md`).
-
-3. In `compose.yaml` on the NAS, adapt the two lines marked `PLACEHOLDER`: the data
+3. Copy `deploy/compose.yaml` to `/volume1/docker/finanze/` on the NAS (Finder or File
+   Station) and adapt the three lines marked `PLACEHOLDER`: the image's owner, the data
    folder, and `user`, the numbers of the NAS user that owns it (`id <user>` in a terminal
-   on the NAS prints them).
+   on the NAS prints them). Put the data in `data` next to it (the move itself:
+   `docs/nas-migration.md`).
 
-4. Container Manager > Project > Create: name `finanze`, path `/volume1/docker/finanze`,
-   use the `compose.yaml` found there, build and start. In a terminal on the NAS it is:
+4. On this machine, with `main` pushed, `make release VERSION=v1.0.0`: it tags `main`,
+   pushes the tag and waits for the image.
+
+5. Container Manager > Project > Create: name `finanze`, path `/volume1/docker/finanze`,
+   use the `compose.yaml` found there, and start. In a terminal on the NAS it is:
 
    ```sh
    cd /volume1/docker/finanze
-   sudo docker compose up -d --build
+   sudo docker compose up -d
    ```
 
-5. Open `http://nas.example.ts.net:8765`: it asks for the password.
+6. Open `http://nas.example.ts.net:8765`: it asks for the password.
+
+A NAS that built the image from an `app/` folder before: steps 1 to 4 (in step 3, only the
+`image:` line changes and the `build:` line goes), then `make nas-update`; the folder
+`app/` can then be removed.
 
 ## Commands
 
@@ -119,18 +137,25 @@ It asks only for the days not stored yet, so a missed day is caught up the next 
 
 ## A new version of the app
 
+On this machine, once the new version is committed to `main` and pushed:
+
 ```sh
-make nas-app
+make release VERSION=v1.2.3     # tag main, push the tag, wait for GitHub to build the image
+make nas-update                 # on the NAS: pull it, restart, drop the image it replaced
 ```
 
-Replace `/volume1/docker/finanze/app` with the new `output/nas/app`, then Container
-Manager > Project > finanze > Action > Build, or:
+`nas-update` asks for the DSM password (`sudo`). It is, on the NAS:
 
 ```sh
 cd /volume1/docker/finanze
-sudo docker compose up -d --build
-sudo docker image prune -f      # drop the image it replaced
+sudo docker compose pull
+sudo docker compose up -d
+sudo docker image prune -f
 ```
+
+With `image: ...:latest` that is the newest tag; with a tag in `compose.yaml`, the update is
+that line changed first. A release whose `make check` fails builds no image, and the NAS
+keeps running the one it has. Going back is the same with the older tag in `image:`.
 
 A version with a new schema brings the database up to date as it starts, after copying it
 to `data/backups/`; the log says so. When that fails the container does not start, and the
@@ -164,41 +189,5 @@ docker save finanze:latest | gzip > output/finanze-image.tar.gz
 ```
 
 Then Container Manager > Image > Action > Import > Add From File, or
-`sudo docker load -i finanze-image.tar.gz` on the NAS. Without `app/` there, take the
-`build:` line out of `compose.yaml`.
-
-## Later: pulling the image from GitHub
-
-The future way, once the repository is on GitHub: `.github/workflows/image.yml` builds the
-image for every tag `v*` that passes `make check` and pushes it to GitHub's registry, private
-like the repository, as `ghcr.io/<owner>/finanze:<tag>` and `:latest` (`<owner>` in lower
-case). The NAS then pulls it: nothing is built there, and `make nas-app` and `app/` are no
-longer needed. Until then, the steps above stand.
-
-1. On GitHub, Settings > Developer settings > Personal access tokens > Tokens (classic): a
-   token for the NAS with the one scope `read:packages`, nothing else. It can read the
-   images and change nothing.
-
-2. In a terminal on the NAS, sign in once (the token is the password; Docker keeps it):
-
-   ```sh
-   sudo docker login ghcr.io -u <github-user>
-   ```
-
-3. In `compose.yaml` on the NAS, in place of the two lines `image: finanze:latest` and
-   `build: ./app`, name the version to run:
-
-   ```yaml
-       image: ghcr.io/<owner>/finanze:v1.2.3   # or :latest
-   ```
-
-4. Start it, and later update it, with:
-
-   ```sh
-   cd /volume1/docker/finanze
-   sudo docker compose pull
-   sudo docker compose up -d
-   sudo docker image prune -f      # drop the image it replaced
-   ```
-
-   A new version is a new tag in `image:` (or, with `:latest`, only these commands).
+`sudo docker load -i finanze-image.tar.gz` on the NAS, and `image: finanze:latest` in
+`compose.yaml`.

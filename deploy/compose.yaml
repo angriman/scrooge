@@ -1,14 +1,16 @@
 # The app on the NAS (Synology Container Manager: Project), the one place the data lives and
 # changes. Steps: README.md, here.
 #
-# Lives on the NAS next to `app/`, the folder `make nas-app` writes. Two things to adapt,
-# both marked PLACEHOLDER. No password here or in the image: its digest is in
-# finanze.yaml, in the data folder.
+# Lives on the NAS next to the data folder. The image is built by GitHub
+# (.github/workflows/image.yml) and pulled from its registry. Three things to adapt, all
+# marked PLACEHOLDER. No password here or in the image: its digest is in finanze.yaml, in
+# the data folder.
 
 services:
   finanze:
-    image: finanze:latest
-    build: ./app
+    # PLACEHOLDER: the owner of the repository, in lower case. `latest` is the newest tag v*;
+    # a tag (`:v1.2.3`) keeps that version until this line changes.
+    image: ghcr.io/<owner>/finanze:latest
     container_name: finanze
 
     # PLACEHOLDER: the user and group of the NAS that own the data folder, as numbers
