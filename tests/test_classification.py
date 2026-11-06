@@ -86,7 +86,7 @@ def test_first_matching_rule_wins_and_matching_ignores_case(tmp_path: Path) -> N
                 tmp_path,
                 "rules:\n"
                 "  - {match: 'frischmarkt|konsum', category: Spesa}\n"
-                "  - {match: 'FRISCHMARKT', category: Ristoranti}\n"
+                "  - {match: 'FRISCHMARKT', category: Ristoranti e bar}\n"
                 "  - {match: 'acme', category: Stipendio, kind: income}\n",
             )
         ]
@@ -113,7 +113,7 @@ def test_rule_can_be_limited_to_an_account(tmp_path: Path) -> None:
 
 def test_earlier_rule_files_take_precedence_and_missing_files_are_skipped(tmp_path: Path) -> None:
     local = _rules(tmp_path, "rules:\n  - {match: 'bar', category: Regali}\n", "local.yaml")
-    shared = _rules(tmp_path, "rules:\n  - {match: 'bar', category: Ristoranti}\n")
+    shared = _rules(tmp_path, "rules:\n  - {match: 'bar', category: Ristoranti e bar}\n")
     rules = load_rules([tmp_path / "missing.yaml", local, shared])
     assert classify([_txn("Bar Sport")], rules)[0].category == "Regali"
 

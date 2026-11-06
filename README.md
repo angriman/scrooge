@@ -58,7 +58,7 @@ finanze query --from 2026   # find committed transactions (see "Querying it" bel
 ```
 
 `finanze import --review` asks for the category of unmatched rows.
-Answer with a category's number, its name or a part of it (`rist` is enough for `Ristoranti`;
+Answer with a category's number, its name or a part of it (`rist` is enough for `Ristoranti e bar`;
 when several match you are asked which one); `?` lists the categories again.
 Answer `+Prestiti` to create a category that does not exist yet and use it (`+Casa:Giardino`
 puts an expense under the top-level category `Casa`; money received goes to the Entrate, which
@@ -114,7 +114,7 @@ is the one in `finanze.yaml`, or `--db`.
 
 ```sh
 finanze query --from 2026-09 --to 2026-09             # one month
-finanze query --from 2025 --category Ristoranti       # a category since January 2025
+finanze query --from 2025 --category Spesa            # a category since January 2025
 finanze query --from 2025 --category Casa --summary   # a top-level category, totals only
 finanze query --owner Anna --account Revolut --kind income
 finanze query --text "meier" --min 500                # by counterparty or description

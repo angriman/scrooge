@@ -25,7 +25,7 @@ LUKAS = [
     txn("6100", date=date(2026, 8, 25), source_ref="5", **SALARY),
     txn("-200", date=date(2026, 8, 26), source_ref="6", category="Regali", counterparty=GIFT),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti", **EUR)]
+LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti e bar", **EUR)]
 ANNA = [
     txn("-60", date=date(2026, 8, 12), source_ref="1"),
     txn(

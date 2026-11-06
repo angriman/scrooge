@@ -18,7 +18,7 @@ NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
 START = date(2025, 1, 1)
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
-FOOD = {"category": "Ristoranti", "counterparty": "Trattoria Ölberg"}
+FOOD = {"category": "Ristoranti e bar", "counterparty": "Trattoria Ölberg"}
 
 # Lukas, January 2025 to September 2026; September is staged and not committed.
 LUKAS = [
@@ -100,7 +100,7 @@ def test_a_row_carries_what_the_page_shows(conn: sqlite3.Connection) -> None:
 def test_a_top_level_category_includes_its_leaves(conn: sqlite3.Connection) -> None:
     may = Filter(first=date(2025, 5, 1), last=date(2025, 5, 31), category="Ristoranti e bar")
     assert amounts(query.run(conn, may)) == ["-80"]
-    assert amounts(query.run(conn, Filter(category="Ristoranti"))) == ["-80", "-30"]
+    assert amounts(query.run(conn, Filter(category="Ristoranti e bar"))) == ["-80", "-30"]
 
 
 def test_a_category_over_years_is_summed_per_year_and_month(conn: sqlite3.Connection) -> None:

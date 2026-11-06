@@ -14,7 +14,7 @@ from finanze.classification import Patterns
 from finanze.models import Transaction
 
 _HELP = (
-    "Answer with a number, a name or a part of one (rist -> Ristoranti).\n"
+    "Answer with a number, a name or a part of one (rist -> Ristoranti e bar).\n"
     "  ?            list the categories again\n"
     "  +Name        a new category; +Group:Name puts an expense under a top-level category\n"
     "  (nothing)    skip these rows\n"

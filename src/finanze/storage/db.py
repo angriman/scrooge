@@ -1,13 +1,15 @@
 """Open the database and bring its schema up to date.
 
-Migrations are the numbered `.sql` files in `finanze.storage.migrations`, applied in order,
-each in one transaction together with its row in `schema_version`.
+Migrations are the numbered files in `finanze.storage.migrations`, applied in order, each in
+one transaction together with its row in `schema_version`: a `.sql` file is run as it is, a
+`.py` file is one whose `migrate(conn)` changes what SQL alone cannot (it computes in Python).
 """
 
 from __future__ import annotations
 
+import importlib
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from importlib import resources
@@ -19,6 +21,10 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT    NOT NULL
 ) STRICT
 """
+
+
+# The SQL of a `.sql` migration, or the `migrate` function of a `.py` one.
+Migration = str | Callable[[sqlite3.Connection], None]
 
 
 class MigrationError(Exception):
@@ -64,18 +70,23 @@ def timestamp(moment: datetime) -> str:
     return moment.isoformat(timespec="seconds")
 
 
-def migrations() -> list[tuple[int, str]]:
-    """(version, SQL) of every migration file, in order."""
-    found: list[tuple[int, str]] = []
-    for entry in resources.files("finanze.storage.migrations").iterdir():
-        if not entry.name.endswith(".sql"):
+def migrations() -> list[tuple[int, Migration]]:
+    """(version, migration) of every migration file, in order."""
+    package = "finanze.storage.migrations"
+    found: list[tuple[int, Migration]] = []
+    for entry in resources.files(package).iterdir():
+        stem, dot, suffix = entry.name.rpartition(".")
+        if not dot or suffix not in {"sql", "py"} or stem.startswith("_"):
             continue
-        number = entry.name.partition("_")[0]
+        number = stem.partition("_")[0]
         if not number.isdigit():
-            msg = f"migration {entry.name!r} must be named NNNN_description.sql"
+            msg = f"migration {entry.name!r} must be named NNNN_description.{suffix}"
             raise MigrationError(msg)
-        found.append((int(number), entry.read_text(encoding="utf-8")))
-    return sorted(found)
+        if suffix == "sql":
+            found.append((int(number), entry.read_text(encoding="utf-8")))
+        else:
+            found.append((int(number), importlib.import_module(f"{package}.{stem}").migrate))
+    return sorted(found, key=lambda migration: migration[0])
 
 
 def latest() -> int:
@@ -94,14 +105,18 @@ def migrate(conn: sqlite3.Connection, now: datetime) -> list[int]:
     """Apply the migrations the database has not seen yet; returns their versions."""
     conn.execute(_VERSION_TABLE)
     current = version(conn)
-    pending = [(number, sql) for number, sql in migrations() if number > current]
+    pending = [(number, step) for number, step in migrations() if number > current]
     known = latest()
     if current > known:
         msg = f"the database is at schema version {current}, this code knows up to {known}"
         raise MigrationError(msg)
-    for number, sql in pending:
+    for number, step in pending:
         try:
-            conn.executescript(f"BEGIN IMMEDIATE;\n{sql}")
+            if isinstance(step, str):
+                conn.executescript(f"BEGIN IMMEDIATE;\n{step}")
+            else:
+                conn.execute("BEGIN IMMEDIATE")
+                step(conn)
             conn.execute("INSERT INTO schema_version VALUES (?, ?)", (number, timestamp(now)))
         except BaseException:
             conn.execute("ROLLBACK")

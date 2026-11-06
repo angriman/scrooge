@@ -37,9 +37,9 @@ def _category(description: str) -> str:
     [
         ("Rossi Carburanti LNG Metano e GPL", "Carburante"),
         ("Parking Esempio Blava", "Parcheggi e pedaggi"),
-        ("RISTORANTE DA MARIO, LUGANO", "Ristoranti"),
-        ("ESEMPIO-RAMEN GMBH, BERN", "Ristoranti"),
-        ("MARIAS CAFÉ BISTRO, BERN", "Ristoranti"),
+        ("RISTORANTE DA MARIO, LUGANO", "Ristoranti e bar"),
+        ("ESEMPIO-RAMEN GMBH, BERN", "Ristoranti e bar"),
+        ("MARIAS CAFÉ BISTRO, BERN", "Ristoranti e bar"),
         ("Supermarket Esempio", "Spesa"),
         ("Elektrizitätswerk der Stadt Bern", "Utenze"),
         ("Muster Kranken-Versicherung AG, Beispielstrasse 21", "Assicurazione sanitaria"),
