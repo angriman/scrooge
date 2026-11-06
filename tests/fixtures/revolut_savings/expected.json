@@ -56,6 +56,20 @@
     "booking_date": "2026-09-29"
   },
   {
+    "date": "2026-09-19",
+    "account": "Revolut EUR",
+    "amount": "0.09",
+    "currency": "EUR",
+    "description": "BUY EUR Class R IE0000000001",
+    "kind": "interest",
+    "source_file": "savings.tsv",
+    "source_ref": "6",
+    "counterparty": "",
+    "category": "Interessi",
+    "confidence": "1",
+    "booking_date": "2026-09-19"
+  },
+  {
     "date": "2026-09-02",
     "account": "Revolut EUR",
     "amount": "0.04",
@@ -63,7 +77,7 @@
     "description": "Interest PAID EUR Class R IE0000000001",
     "kind": "interest",
     "source_file": "savings.tsv",
-    "source_ref": "7",
+    "source_ref": "9",
     "counterparty": "",
     "category": "Interessi",
     "confidence": "1",
