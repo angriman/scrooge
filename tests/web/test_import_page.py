@@ -54,7 +54,7 @@ def test_the_draft_of_the_person_is_below_the_upload(site: Site) -> None:
     files = tables(page)[1]
     assert [row[:4] for row in files] == [
         ["Migros Bank account statement", "Migros.csv", "2026-09-01 to 2026-09-30", "11"],
-        ["Revolut Savings statement", "Revolut Savings.tsv", "2026-09-01 to 2026-09-30", "5"],
+        ["Revolut Savings statement", "Revolut Savings.tsv", "2026-09-01 to 2026-09-30", "6"],
     ]
     # The same draft on a plain visit.
     assert tables(site.client.get("/import").text)[0] == files
@@ -90,7 +90,7 @@ def test_a_committed_statement_is_left_as_it_is_and_what_differs_is_said(site: S
             "Nothing new: all of it is committed already.",
         ]
     ]
-    assert "5 rows are booked on days already committed and stored there" in text(same.text)
+    assert "6 rows are booked on days already committed and stored there" in text(same.text)
     assert "Differs" not in same.text
 
     savings = site.folder / "Revolut Savings.tsv"

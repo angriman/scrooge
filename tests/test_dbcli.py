@@ -111,7 +111,7 @@ def test_import_says_what_became_of_each_file_and_what_is_next(run: Run) -> None
     assert "  staged swisscard.pdf (Swisscard invoice)\n" in run.output
     assert "  skipped ibkr.pdf (not a statement)\n" in run.output
     assert "  note: Revolut EUR includes rows with no balance to check against\n" in run.output
-    assert "108 transactions staged for Lukas.\n" in run.output
+    assert "109 transactions staged for Lukas.\n" in run.output
     assert run.output.endswith("Next: finanze commit\n")
     assert run.count("transactions") > 0
     assert run.count("committed_transactions") == 0
@@ -541,7 +541,7 @@ def test_owner_and_database_can_come_from_the_command_line(run: Run, tmp_path: P
     other = tmp_path / "other.db"
     assert run.load("--owner", "Anna", "--db", str(other)) == dbcli.OK
     assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
-    assert "108 transactions staged for Anna.\n" in run.output
+    assert "109 transactions staged for Anna.\n" in run.output
     assert other.exists()
     assert not run.database.exists()
 
@@ -658,7 +658,7 @@ def test_query_combines_account_amount_and_owner(closed: Run) -> None:
 def test_query_reads_both_people_without_an_owner_in_the_config(closed: Run) -> None:
     closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
     assert closed("query", "--summary") == dbcli.OK
-    assert closed.output.startswith("110 transactions\n")
+    assert closed.output.startswith("111 transactions\n")
 
 
 def test_query_refuses_a_name_it_does_not_know(closed: Run) -> None:
@@ -714,7 +714,7 @@ def test_the_config_says_where_the_rules_and_the_instruments_are(
     (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
     assert run("import", str(august)) == dbcli.OK  # the bill's maturity is in `instruments`
     assert run("import", str(run.folder)) == dbcli.OK
-    assert "108 transactions staged for Lukas.\n" in run.output  # every row has a category
+    assert "109 transactions staged for Lukas.\n" in run.output  # every row has a category
 
     served: list[Starlette] = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
@@ -1023,14 +1023,14 @@ def test_publish_copies_the_database_to_the_folder_and_says_what_went(
     assert closed("publish", str(share)) == dbcli.OK
     copy = share / "finanze.db"
     assert closed.output == (
-        f"Published {copy}: {copy.stat().st_size:,} bytes, 110 committed transactions, "
+        f"Published {copy}: {copy.stat().st_size:,} bytes, 111 committed transactions, "
         f"schema version {db.latest()}.\n"
     )
     # Only the database: not the config, the rules, the statements or the copies kept here.
     assert [file.name for file in share.iterdir()] == ["finanze.db"]
     assert (closed.database.parent / "backups").is_dir()
     with db.reading(copy) as conn:
-        assert conn.execute("SELECT count(*) FROM committed_transactions").fetchone()[0] == 110
+        assert conn.execute("SELECT count(*) FROM committed_transactions").fetchone()[0] == 111
 
 
 def test_publish_says_what_the_copy_holds_of_statements_that_are_not_committed(
