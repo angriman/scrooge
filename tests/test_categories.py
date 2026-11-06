@@ -146,8 +146,8 @@ def review_one(tmp_path: Path, *answers: str) -> tuple[str, list[str], str]:
 def test_review_takes_a_part_of_a_name_when_only_one_category_has_it(tmp_path: Path) -> None:
     text, asked, saved = review_one(tmp_path, "rist")
     assert len(asked) == 1
-    assert "To Jonas Example -> Ristoranti" in text
-    assert 'category: "Ristoranti"' in saved
+    assert "To Jonas Example -> Ristoranti e bar" in text
+    assert 'category: "Ristoranti e bar"' in saved
 
 
 def test_review_ignores_case_and_accents(tmp_path: Path) -> None:

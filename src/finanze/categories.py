@@ -22,7 +22,7 @@ USCITE: dict[str, tuple[str, ...]] = {
     "Casa": ("Affitto", "Utenze", "Arredamento e casa"),
     "Salute": ("Assicurazione sanitaria", "Dentista", "Medico/Farmacia"),
     "Alimentari": ("Spesa",),
-    "Ristoranti e bar": ("Ristoranti",),
+    "Ristoranti e bar": ("Ristoranti e bar",),
     "Trasporti": ("Treni", "Carburante", "Trasporti locali", "Voli", "Parcheggi e pedaggi"),
     "Telefonia": ("SIM",),
     "Abbonamenti": ("Abbonamenti digitali", "Revolut Metal"),

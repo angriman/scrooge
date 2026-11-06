@@ -39,7 +39,7 @@ SEPTEMBER_ROWS = [
     txn("-70", date=date(2026, 9, 8), source_ref="5", kind=Kind.INTERNAL, category="", **SEP),
     txn("-20", date=date(2026, 9, 9), source_ref="6", category="", counterparty="Kiosk", **SEP),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti", **EUR)]
+LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti e bar", **EUR)]
 SEPTEMBER_FILE = 3
 
 
@@ -164,10 +164,14 @@ def test_a_month_adds_up_what_is_committed_by_booking_date(conn: sqlite3.Connect
     )
     assert august.totals == (
         months.CategoryTotal("uscite", "Spesa", "CHF", 1, Decimal("-45.2")),
-        months.CategoryTotal("uscite", "Ristoranti", "EUR", 1, Decimal(-30)),
+        months.CategoryTotal("uscite", "Ristoranti e bar", "EUR", 1, Decimal(-30)),
         months.CategoryTotal("entrate", "Stipendio", "CHF", 1, Decimal(6000)),
     )
-    assert [row.category for row in august.categorized] == ["Spesa", "Ristoranti", "Stipendio"]
+    assert [row.category for row in august.categorized] == [
+        "Spesa",
+        "Ristoranti e bar",
+        "Stipendio",
+    ]
     assert all(row.changeable and not row.waiting for row in august.categorized)
     # September is staged, not committed: the month shows nothing of it yet.
     september = months.checklist(conn, OWNER, SEPTEMBER)
@@ -181,7 +185,7 @@ def test_the_rows_of_a_month_are_grouped_per_counterparty_direction_and_category
     found = [(g.name, g.incoming, g.category, [str(row.amount) for row in g.rows]) for g in groups]
     assert found == [
         ("KONSUM", False, "Spesa", ["-45.2"]),
-        ("KONSUM", False, "Ristoranti", ["-30"]),
+        ("KONSUM", False, "Ristoranti e bar", ["-30"]),
         ("KONSUM", True, "Stipendio", ["6000"]),
     ]
 

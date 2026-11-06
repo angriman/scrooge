@@ -313,7 +313,7 @@ def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection)
 
 def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None:
     lines = [
-        txn("-40", description="TWINT Anna Meier", category="Ristoranti"),
+        txn("-40", description="TWINT Anna Meier", category="Ristoranti e bar"),
         txn("25", description="Bonifico", counterparty="ANNA MEIER", category="Rimborsi"),
         txn("-12", description="KONSUM"),
         txn("-500", description="ANNA MEIER", kind=Kind.TRANSFER, category="Topup Revolut"),

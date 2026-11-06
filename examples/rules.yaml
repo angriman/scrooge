@@ -14,8 +14,8 @@ rules:
   - {match: 'PARKING|PARCHEGGIO|PARKHAUS|AUTOSTRAD|PEDAGGIO', category: Parcheggi e pedaggi}
 
   # --- Ristoranti e bar
-  - {match: 'RESTAURANT|RISTORANTE|TRATTORIA|OSTERIA|PIZZERIA|\bPIZZA|RAMEN|SUSHI|\bGRILL\b', category: Ristoranti}
-  - {match: 'GELAT|\bCAF[EÉ]\b|CAFF[EÈ]|\bKAFI\b|KAFFEE|COFFEE|\bBAR\b|BISTRO|BAKERY|B[AÄ]CKEREI|CONFISERIE|CONFISEUR', category: Ristoranti}
+  - {match: 'RESTAURANT|RISTORANTE|TRATTORIA|OSTERIA|PIZZERIA|\bPIZZA|RAMEN|SUSHI|\bGRILL\b', category: "Ristoranti e bar"}
+  - {match: 'GELAT|\bCAF[EÉ]\b|CAFF[EÈ]|\bKAFI\b|KAFFEE|COFFEE|\bBAR\b|BISTRO|BAKERY|B[AÄ]CKEREI|CONFISERIE|CONFISEUR', category: "Ristoranti e bar"}
 
   # --- Alimentari
   - {match: 'SUPERMARKET|SUPERMERCATO|HOFLADEN', category: Spesa}

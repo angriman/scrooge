@@ -21,7 +21,7 @@ BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
 
 LUKAS = [
     txn("-45.20", date=date(2025, 5, 3), source_ref="1"),
-    txn("-80", date=date(2025, 5, 20), source_ref="2", category="Ristoranti"),
+    txn("-80", date=date(2025, 5, 20), source_ref="2", category="Ristoranti e bar"),
     txn("20", date=date(2025, 5, 25), source_ref="3", kind=Kind.INCOME),  # a refund
     txn("6000", date=date(2025, 5, 25), source_ref="4", **SALARY),
     txn("-1850", date=date(2025, 6, 2), source_ref="5", category="Affitto"),
@@ -38,7 +38,7 @@ LUKAS = [
     txn("80", date=date(2026, 8, 20), source_ref="14", kind=Kind.INTEREST, category="Interessi"),
     txn("-35", date=date(2026, 8, 21), source_ref="15", kind=Kind.TRADING, category="Trading"),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 7, 5), source_ref="1", category="Ristoranti", **EUR)]
+LUKAS_EUR = [txn("-30", date=date(2026, 7, 5), source_ref="1", category="Ristoranti e bar", **EUR)]
 ANNA = [
     txn(
         "200",

@@ -88,7 +88,7 @@ SHOPS = """  - {match: 'ALPENBAHN', category: Treni}
   - {match: 'AEROSUR', category: Voli}
   - {match: 'MOBILHAUS', category: Arredamento e casa}
   - {match: 'TECHNIKUM', category: Elettronica}
-  - {match: 'FOOD RUN', category: Ristoranti}
+  - {match: 'FOOD RUN', category: "Ristoranti e bar"}
   - {match: 'KASSA BILLING', category: Acquisti vari}
 """
 FALLBACK = "\n  # make dev-db: whatever is left\n  - {match: '.', category: Regali}\n"

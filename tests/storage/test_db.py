@@ -162,7 +162,7 @@ def test_migration_0003_commits_the_statements_of_committed_months(
     every = db.migrations()
     monkeypatch.setattr(db, "migrations", lambda: every[:2])
     assert db.migrate(conn, NOW) == [1, 2]
-    monkeypatch.undo()
+    monkeypatch.setattr(db, "migrations", lambda: every[:3])
 
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
     conn.execute("INSERT INTO currencies VALUES ('CHF', 2)")
@@ -203,4 +203,35 @@ def test_migration_0003_commits_the_statements_of_committed_months(
     visible = conn.execute("SELECT id FROM committed_transactions")
     assert [row[0] for row in visible] == ["t1"]
     assert _tables(conn).isdisjoint({"months", "source_waivers"})
+    conn.close()
+
+
+def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:3])
+    assert db.migrate(conn, NOW) == [1, 2, 3]
+    monkeypatch.undo()
+
+    conn.executescript(
+        """
+        INSERT INTO categories (id, name, parent_id, side) VALUES
+            (1, 'Ristoranti e bar', NULL, 'uscite'),
+            (2, 'Ristoranti', 1, 'uscite'),
+            (3, 'Viaggi e svago', NULL, 'uscite'),
+            (4, 'Ristoranti', 3, 'uscite');
+        INSERT INTO overrides VALUES ('t1', 2, NULL, '', 'x');
+        """
+    )
+
+    assert db.migrate(conn, NOW) == [4]
+    names = conn.execute("SELECT id, name FROM categories ORDER BY id")
+    assert [tuple(row) for row in names] == [
+        (1, "Ristoranti e bar"),
+        (2, "Ristoranti e bar"),  # same row: what pointed to it follows
+        (3, "Viaggi e svago"),
+        (4, "Ristoranti"),  # only the one under its own group
+    ]
     conn.close()
