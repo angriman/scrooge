@@ -1,11 +1,17 @@
 import sqlite3
+from dataclasses import replace
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
+from finanze import staging
+from finanze.models import CashBalance, Transaction
 from finanze.storage import db
+from finanze.storage.ids import transaction_ids
 from tests.storage.conftest import NOW
+from tests.storage.helpers import CLOSED_AT, OWNER, batch, dump, migros, statement, txn
 
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
@@ -71,17 +77,40 @@ def test_a_database_from_newer_code_is_refused(conn: sqlite3.Connection) -> None
         db.migrate(conn, NOW)
 
 
-def test_a_misnamed_migration_file_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("name", ["first.sql", "fix.py"])
+def test_a_misnamed_migration_file_is_an_error(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     class Entry:
-        name = "first.sql"
+        def __init__(self, name: str) -> None:
+            self.name = name
 
     class Folder:
         def iterdir(self) -> list[Entry]:
-            return [Entry()]
+            return [Entry("__init__.py"), Entry("__pycache__"), Entry("notes.txt"), Entry(name)]
 
     monkeypatch.setattr("importlib.resources.files", lambda package: Folder())
-    with pytest.raises(db.MigrationError, match="NNNN"):
+    with pytest.raises(db.MigrationError, match=f"NNNN_description.{name.rpartition('.')[2]}"):
         db.migrations()
+
+
+def test_a_python_migration_runs_in_its_own_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    def add_owner(conn: sqlite3.Connection) -> None:
+        conn.execute("INSERT INTO a VALUES ('A')")
+
+    def failing(conn: sqlite3.Connection) -> None:
+        conn.execute("INSERT INTO a VALUES ('B')")
+        raise db.MigrationError("stop")
+
+    steps: list[tuple[int, db.Migration]] = [
+        (1, "CREATE TABLE a (name TEXT) STRICT;"),
+        (2, add_owner),
+        (3, failing),
+    ]
+    monkeypatch.setattr(db, "migrations", lambda: steps)
+    conn = db.connect(":memory:")
+    with pytest.raises(db.MigrationError, match="stop"):
+        db.migrate(conn, NOW)
+    assert [row[0] for row in conn.execute("SELECT name FROM a")] == ["A"]
+    assert db.version(conn) == 2
 
 
 def test_a_transaction_is_all_or_nothing(conn: sqlite3.Connection) -> None:
@@ -213,7 +242,7 @@ def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
     every = db.migrations()
     monkeypatch.setattr(db, "migrations", lambda: every[:3])
     assert db.migrate(conn, NOW) == [1, 2, 3]
-    monkeypatch.undo()
+    monkeypatch.setattr(db, "migrations", lambda: every[:4])
 
     conn.executescript(
         """
@@ -234,4 +263,77 @@ def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
         (3, "Viaggi e svago"),
         (4, "Ristoranti"),  # only the one under its own group
     ]
+    conn.close()
+
+
+TWICE = "Caff\u00c3\u00a8 \u00c3\u0096lberg"  # Caffè Ölberg, as Revolut's export spells it
+LOOKS_IT = "Konsum \u00e0\u0080\u0080"  # but is no UTF-8 read as Latin-1
+
+
+def _revolut_rows() -> list[Transaction]:
+    fields = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
+    return [
+        txn("-4.5", description=TWICE, counterparty=TWICE, source_ref="1", **fields),
+        txn("-4.5", description=TWICE, counterparty=TWICE, source_ref="2", **fields),  # alike
+        txn("-3", description=LOOKS_IT, counterparty="Konsum", source_ref="3", **fields),
+    ]
+
+
+def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:4])
+    assert db.migrate(conn, NOW) == [1, 2, 3, 4]
+    monkeypatch.undo()
+    rows = _revolut_rows()
+    revolut = statement(
+        "revolut", rows, [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(8))]
+    )
+    staging.stage(conn, batch(revolut, migros("100", "-1", description=TWICE)), CLOSED_AT)
+    return conn
+
+
+def test_migration_0005_reads_revolut_accents_as_the_extractor_now_does(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _staged_before_0005(monkeypatch)
+    before = transaction_ids(OWNER, [("revolut", row) for row in _revolut_rows()])
+    conn.execute("INSERT INTO overrides VALUES (?, NULL, 'expense', '', 'x')", (before[1],))
+
+    assert db.migrate(conn, NOW) == [5]
+    meant = [
+        replace(row, description="Caffè Ölberg", counterparty="Caffè Ölberg")
+        if row.description == TWICE
+        else row
+        for row in _revolut_rows()
+    ]
+    after = transaction_ids(OWNER, [("revolut", row) for row in meant])
+    assert after[2] == before[2]  # nothing to repair
+    stored = conn.execute(
+        "SELECT id, description, counterparty FROM transactions WHERE account_id = "
+        "(SELECT id FROM accounts WHERE name = 'Revolut EUR') ORDER BY source_ref"
+    )
+    assert [tuple(row) for row in stored] == [
+        (after[0], "Caffè Ölberg", "Caffè Ölberg"),
+        (after[1], "Caffè Ölberg", "Caffè Ölberg"),
+        (after[2], LOOKS_IT, "Konsum"),
+    ]
+    moved = conn.execute("SELECT transaction_id FROM overrides").fetchall()
+    assert [row[0] for row in moved] == [after[1]]
+    other = conn.execute("SELECT description FROM transactions WHERE description = ?", (TWICE,))
+    assert len(other.fetchall()) == 1  # Migros's own text is not Revolut's to repair
+    conn.close()
+
+
+def test_migration_0005_stops_at_a_row_whose_id_does_not_follow_from_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _staged_before_0005(monkeypatch)
+    first = transaction_ids(OWNER, [("revolut", _revolut_rows()[0])])[0]
+    conn.execute("UPDATE transactions SET id = 'typed' WHERE id = ?", (first,))
+    was = dump(conn)
+    with pytest.raises(db.MigrationError, match="transaction typed: its id does not follow"):
+        db.migrate(conn, NOW)
+    assert dump(conn) == was
+    assert db.version(conn) == 4
     conn.close()
