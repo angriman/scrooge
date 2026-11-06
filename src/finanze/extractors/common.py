@@ -15,6 +15,12 @@ from finanze.errors import ExtractionError
 _NUMBER = re.compile(r"[+-]?(\d+|\d{1,3}([,']\d{3})+)(\.\d+)?")
 _SWISS_DATE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 _SWISS_AMOUNT = re.compile(r"(\d{1,3}('\d{3})*)\.\d{2}")
+# The bytes of one UTF-8 character read back as Latin-1: a lead byte and its continuations.
+_TWICE_ENCODED = re.compile(
+    "[\u00c2-\u00df][\u0080-\u00bf]"
+    "|[\u00e0-\u00ef][\u0080-\u00bf]{2}"
+    "|[\u00f0-\u00f4][\u0080-\u00bf]{3}"
+)
 
 
 def parse_decimal(text: str, what: str) -> Decimal:
@@ -39,6 +45,20 @@ def parse_swiss_amount(text: str, what: str) -> Decimal:
         msg = f"cannot read amount {text!r} ({what})"
         raise ExtractionError(msg)
     return Decimal(text.replace("'", ""))
+
+
+def undo_double_encoding(text: str) -> str:
+    """`Caffè` for `CaffÃ¨`: each character whose UTF-8 bytes were read as Latin-1 and encoded
+    again. Text that only looks like it (bytes that are no UTF-8) is left as it is.
+    """
+
+    def decoded(match: re.Match[str]) -> str:
+        try:
+            return match[0].encode("latin-1").decode("utf-8")
+        except UnicodeDecodeError:
+            return match[0]
+
+    return _TWICE_ENCODED.sub(decoded, text)
 
 
 def only_match(pattern: re.Pattern[str], content: str, what: str) -> re.Match[str]:

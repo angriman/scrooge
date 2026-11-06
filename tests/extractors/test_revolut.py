@@ -167,3 +167,13 @@ def test_savings_are_recognised_in_italian_too() -> None:
     assert content != TSV
     rows = revolut.extract(content, source_file="chf.tsv").transactions
     assert [t.kind for t in rows if "Fondi" in t.description] == [Kind.INTERNAL]
+
+
+def test_accents_the_export_encodes_twice_are_read_as_they_were_meant() -> None:
+    twice = "Caff\u00c3\u00a8 \u00c3\u0096lberg"  # Caffè Ölberg, as the export spells it
+    row = f"Card Payment\tCurrent\t2026-09-08 9:00\t2026-09-09 9:00\t{twice}\t-4.5\t0.5\tEUR"
+    header = TSV.partition("\n")[0]
+    content = f"{header}\n{row}\tCOMPLETED\t45\n"
+    txn, fee = revolut.extract(content, source_file="eur.tsv").transactions
+    assert (txn.description, txn.counterparty) == ("Caffè Ölberg", "Caffè Ölberg")
+    assert (fee.description, fee.counterparty) == ("Fee: Caffè Ölberg", "Caffè Ölberg")

@@ -5,7 +5,8 @@ currency is an account of its own. Rows of a currency are in completion order an
 its running balance after each completed row, so every chain is checked here and its ends
 become the opening and closing balance. A row changes the balance by `Amount - Fee`. Pending
 and reverted rows never touched the balance. Savings are held under the same sheet account, so
-transfers to and from them are internal.
+transfers to and from them are internal. The export encodes every accented letter twice
+(`CaffÃ¨`): descriptions are read back as they were meant (`Caffè`).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from finanze.extractors.common import (
     parse_decimal,
     parse_iso_date,
     read_table,
+    undo_double_encoding,
 )
 from finanze.models import CashBalance, Extraction, Kind, Transaction
 
@@ -52,7 +54,7 @@ def extract(content: str, source_file: str) -> Extraction:
     """Parse the text of one Revolut statement, whatever period it covers."""
     delimiter = "\t" if "\t" in content.partition("\n")[0] else ","
     rows = [
-        (n, row)
+        (n, {**row, "Description": undo_double_encoding(row["Description"])})
         for n, row in enumerate(read_table(content, delimiter, _COLUMNS, "Revolut"), start=1)
         if _has_cash(row, n)
     ]

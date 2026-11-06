@@ -124,3 +124,20 @@ def test_only_match_wants_exactly_one() -> None:
         common.only_match(pattern, "nothing", "the total")
     with pytest.raises(ExtractionError, match="the total: found 2 times, expected once"):
         common.only_match(pattern, "Total 1\nTotal 2", "the total")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Caff\u00c3\u00a8 Nero", "Caff\u00e8 Nero"),
+        ("\u00c3\u0096BB", "\u00d6BB"),  # Ö, whose second byte is a control character
+        ("\u00c3\u0084ss Bar", "\u00c4ss Bar"),
+        ("Bistr\u00c3\u00b3 \u00e2\u0082\u00ac5", "Bistr\u00f3 \u20ac5"),  # three bytes: €
+        ("\u00f0\u009f\u008d\u0095 Pizza", "\U0001f355 Pizza"),  # four bytes
+        ("L\u00e4derach L\u00c3\u00a4derach", "L\u00e4derach L\u00e4derach"),  # one of each
+        ("Caf\u00e9 \u00d6lberg", "Caf\u00e9 \u00d6lberg"),  # right already
+        ("\u00e0\u0080\u0080", "\u00e0\u0080\u0080"),  # no UTF-8: an overlong zero
+    ],
+)
+def test_undo_double_encoding(text: str, expected: str) -> None:
+    assert common.undo_double_encoding(text) == expected
