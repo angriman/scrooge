@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from finanze import analysis, cashflow
@@ -129,11 +129,10 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
 
 
 def _employer(found: analysis.Rows, span: analysis.Span, days: tuple[date, date]) -> Decimal | None:
-    end = min(days[1], span.through)
-    start = analysis.year_before(end) + timedelta(days=1)
-    if end < days[0] or start < span.known:
+    window = analysis.window(span, days)
+    if window is None:
         return None
-    rows: list[Converted] = list(found.between(start, end))
+    rows: list[Converted] = list(found.between(*window))
     total = sum((each.amount for each in rows), Decimal(0))
     work = sum((each.amount for each in rows if group(each.row) == LAVORO), Decimal(0))
     return (work / total).quantize(_SHARE) if total > 0 else None

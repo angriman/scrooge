@@ -104,6 +104,17 @@ def periods(start: date, end: date, grouping: Grouping) -> list[str]:
     return names
 
 
+def window(span: Span, days: tuple[date, date]) -> tuple[date, date] | None:
+    """The twelve months that end with a period, or with the last day committed when the
+    period goes beyond it; None when no day of the period is committed, or when those months
+    are not all known."""
+    end = min(days[1], span.through)
+    start = year_before(end) + timedelta(days=1)
+    if end < days[0] or start < span.known:
+        return None
+    return start, end
+
+
 def year_before(day: date) -> date:
     """The same day a year earlier; 28 February for 29 February."""
     return day.replace(year=day.year - 1, day=min(day.day, 28 if day.month == 2 else day.day))
