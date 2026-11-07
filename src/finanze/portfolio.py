@@ -133,6 +133,26 @@ class Group:
 
 
 @dataclass(frozen=True, slots=True)
+class Holding:
+    """One instrument, whoever holds it and in whichever account."""
+
+    symbol: str
+    name: str
+    asset: str
+    currency: str  # of the instrument
+    positions: int  # how many of `Portfolio.positions` it is made of
+    value: Decimal  # in `Portfolio.currency`
+    share: Decimal  # of `Portfolio.total` in percent: the shares of its positions, added up
+    # In `Portfolio.currency`; None when that of any of its positions is not known.
+    cost: Decimal | None
+    gain: Decimal | None
+
+    @property
+    def return_percent(self) -> Decimal | None:
+        return _percent(self.gain, self.cost)
+
+
+@dataclass(frozen=True, slots=True)
 class Portfolio:
     currency: str
     day: date | None  # the last day of `networth.run` for the same people; None: no such day
@@ -197,6 +217,33 @@ class Portfolio:
             return dict.fromkeys(self.positions, Decimal(0))
         exact = [position.value * 100 / total for position in self.positions]
         return dict(zip(self.positions, shared_out(exact), strict=True))
+
+    @property
+    def holdings(self) -> tuple[Holding, ...]:
+        """The positions by instrument (its symbol, currency and kind), largest first."""
+        shares = self.shares
+        made_of: dict[tuple[str, str, str], list[Position]] = defaultdict(list)
+        for position in self.positions:
+            made_of[position.symbol, position.currency, position.asset].append(position)
+        holdings = []
+        for (symbol, currency, asset), parts in made_of.items():
+            value = sum((p.value for p in parts), Decimal(0))
+            known = all(p.cost is not None for p in parts)
+            cost = sum((p.cost or Decimal(0) for p in parts), Decimal(0)) if known else None
+            holdings.append(
+                Holding(
+                    symbol=symbol,
+                    name=next((p.name for p in parts if p.name), ""),
+                    asset=asset,
+                    currency=currency,
+                    positions=len(parts),
+                    value=value,
+                    share=sum((shares[p] for p in parts), Decimal(0)),
+                    cost=cost,
+                    gain=None if cost is None else value - cost,
+                )
+            )
+        return tuple(sorted(holdings, key=lambda h: (-h.value, h.symbol)))
 
     @property
     def groups(self) -> tuple[Group, ...]:

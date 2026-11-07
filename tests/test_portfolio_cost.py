@@ -503,6 +503,56 @@ def test_the_kinds_of_asset_group_everyone_s_positions_largest_first(
     assert Portfolio("USD", None, (), ()).groups == ()
 
 
+def test_an_instrument_is_one_holding_whoever_holds_it_and_wherever(
+    conn: sqlite3.Connection,
+) -> None:
+    family(conn)
+    held = agrees_with_net_worth(conn, None, "USD")
+    holdings = held.holdings
+    assert [(h.symbol, h.asset, h.positions, h.value) for h in holdings] == [
+        ("912797ZZ1", BILLS, 1, D("9872.50")),
+        ("GADG", STOCKS, 1, D("903.90")),
+        ("WIDG", ETFS, 3, D(900)),  # of both people, at two brokers
+        ("BOLT", ETFS, 1, D(500)),
+        ("SPRK", STOCKS, 1, D("401.40")),
+    ]
+    widg = [p for p in held.positions if p.symbol == "WIDG"]
+    [mine] = [h for h in holdings if h.symbol == "WIDG"]
+    assert mine.value == sum(p.value for p in widg)
+    assert mine.share == sum(held.shares[p] for p in widg)
+    assert sum(h.share for h in holdings) == 100
+    assert sum(h.value for h in holdings) == held.total
+    for holding in holdings:
+        parts = [p for p in held.positions if p.symbol == holding.symbol]
+        if any(p.cost is None for p in parts):
+            assert (holding.cost, holding.gain, holding.return_percent) == (None, None, None)
+        else:
+            assert holding.cost == sum(p.cost or 0 for p in parts)
+            assert holding.gain == holding.value - holding.cost
+    assert Portfolio("USD", None, (), ()).holdings == ()
+
+
+def test_one_position_of_an_unknown_cost_leaves_its_instrument_s_unknown(
+    conn: sqlite3.Connection,
+) -> None:
+    base = ibkr(bought("WIDG", "4", "-200", day(15)))
+    printed = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(
+        conn,
+        replace(base, extraction=replace(base.extraction, holdings=printed)),
+        account(
+            "revolut",
+            "Revolut USD",
+            "USD",
+            "100",
+            bought("WIDG", "2", "-100", day(15), account="Revolut USD"),
+        ),
+    )
+    price(conn, "WIDG", day(30), "55")
+    [holding] = portfolio.run(conn, currency="USD").holdings
+    assert (holding.value, holding.positions, holding.cost, holding.gain) == (D(660), 2, None, None)
+
+
 def test_a_gain_is_also_a_part_of_what_was_paid(conn: sqlite3.Connection) -> None:
     rows = [bought("WIDG", "10", "-500", day(15)), bought("GADG", "3", "-900", day(16))]
     close(conn, ibkr(*rows, moved("FREE", "5", "0", day(17))))
