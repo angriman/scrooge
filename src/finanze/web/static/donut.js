@@ -1,5 +1,5 @@
-// A ring beside its table (the overview's of what is held, the analysis page's of spending
-// and income): pointing at a slice, or at its row in the table beside it, prints its name,
+// A ring beside its table or list (the overview's of what is held, the analysis page's of
+// spending and income): pointing at a slice, or at its row or item beside it, prints its name,
 // amount and share in the middle of the ring; leaving it prints the whole again. On a phone a
 // tap does the same and a tap elsewhere goes back. Nothing here computes money: every figure
 // arrives printed, in the slice's own attributes.
@@ -23,7 +23,7 @@
       lines.forEach((line, n) => (line.textContent = texts[n]));
     }
 
-    for (const element of today.querySelectorAll(".slice, tr[data-slot]")) {
+    for (const element of today.querySelectorAll(".slice, tr[data-slot], li[data-slot]")) {
       element.addEventListener("pointerenter", () => show(element.dataset.slot));
       element.addEventListener("pointerleave", (event) => {
         if (event.pointerType === "mouse") show(null);
@@ -32,7 +32,7 @@
     rings.push({ today, show });
   }
   document.addEventListener("click", (event) => {
-    const pointed = event.target.closest(".today .slice, .today tr[data-slot]");
+    const pointed = event.target.closest(".today .slice, .today tr[data-slot], .today li[data-slot]");
     for (const ring of rings) {
       ring.show(pointed && ring.today.contains(pointed) ? pointed.dataset.slot : null);
     }

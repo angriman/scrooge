@@ -182,6 +182,13 @@ def _short(amount: Decimal) -> str:
     return f"{(amount / 1_000_000).quantize(Decimal('0.1'), ROUND_HALF_UP):,f}M"
 
 
+def _short_signed(amount: Decimal) -> str:
+    """`+12.3k`, `-850`: a change at a glance."""
+    return (
+        f"+{_short(amount)}" if amount.quantize(Decimal(1), ROUND_HALF_UP) > 0 else _short(amount)
+    )
+
+
 def _exact(number: Decimal) -> str:
     """`1,234.5`: a quantity or a price as it is stored, never rounded, without the zeros
     that say nothing."""
@@ -192,6 +199,7 @@ def _exact(number: Decimal) -> str:
 _templates.env.filters["money"] = _money
 _templates.env.filters["signed"] = _signed
 _templates.env.filters["short"] = _short
+_templates.env.filters["short_signed"] = _short_signed
 _templates.env.filters["exact"] = _exact
 _templates.env.filters["plain"] = lambda number: format(number, "f")
 _templates.env.globals["days"] = cashflow.days
@@ -406,6 +414,45 @@ def _ring(held: Sequence[overview.Part | _Slice], slots: Mapping[str, int] = _SL
     return arcs
 
 
+@dataclass(frozen=True, slots=True)
+class _Segment:
+    """One part of a bar cut in shares: a person's of net worth."""
+
+    part: overview.Part
+    slot: int
+    x: Decimal  # where it starts, in hundredths of the bar
+    width: Decimal  # its share
+
+
+def _split(parts: Sequence[overview.Part], slots: Mapping[str, int]) -> list[_Segment]:
+    """The parts side by side in one bar, each as wide as its share; no bar when a share is
+    missing or below zero, which a bar cannot show."""
+    if any(part.share is None or part.share < 0 for part in parts):
+        return []
+    segments = []
+    start = Decimal(0)
+    for part in parts:
+        width = part.share or Decimal(0)
+        segments.append(_Segment(part, slots[part.name], start, width))
+        start += width
+    return segments
+
+
+def _lengths(top: Sequence[overview.Holding]) -> dict[overview.Holding, Decimal]:
+    """How long each holding's bar is drawn, in hundredths of the largest's."""
+    most = max((holding.value for holding in top), default=Decimal(0))
+    if most <= 0:
+        return dict.fromkeys(top, Decimal(0))
+    return {
+        holding: (max(holding.value, Decimal(0)) * 100 / most).quantize(_TENTH) for holding in top
+    }
+
+
+def _person_slots(people: Sequence[query.Person]) -> dict[str, int]:
+    """The colour of each person, the same in the chart and the bar of the first page."""
+    return {person.name: n for n, person in enumerate(people, 1)}
+
+
 def _overview(request: Request) -> Response:
     asked = forms.networth_view(_viewed(request))
     errors = list(asked.errors)
@@ -437,6 +484,9 @@ def _overview(request: Request) -> Response:
         "parts": _parts(shown.worth, asked.by, people) if shown and shown.day else [],
         "slots": _SLOTS,
         "ring": _ring(shown.held) if shown else [],
+        "lengths": _lengths(shown.top) if shown else {},
+        "person_slots": _person_slots(people),
+        "split": _split(shown.people, _person_slots(people)) if shown else [],
         "checks": checks,
     }
     return _templates.TemplateResponse(request, "overview.html", context)
@@ -938,7 +988,7 @@ def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...])
     if by == "asset":
         slots = _SLOTS
     elif by == "owner":
-        slots = {person.name: n for n, person in enumerate(people, 1)}
+        slots = _person_slots(people)
     else:
         return parts
     stacked = [_Part(name, slots[name], values) for name, values in result.by(by).items()]

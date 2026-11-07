@@ -16,32 +16,45 @@
 {% macro address(page, person) -%}
 {{ url_for(page).include_query_params(currency=shown.currency, owner=person) if person else url_for(page).include_query_params(currency=shown.currency) }}
 {%- endmacro %}
+{#- The chart of this page cut another way, in the same currency and for the same people. #}
+{% macro cut(by) -%}
+{{ url_for('overview').include_query_params(currency=shown.currency, by=by, **({"owner": owner} if owner else {})) }}
+{%- endmacro %}
+{#- A change of net worth, coloured as good news or bad. #}
+{% macro moved(amount, text) -%}
+{% if amount is none %}–{% elif amount %}<span class="{{ 'better' if amount > 0 else 'worse' }}">{{ text }}</span>{% else %}{{ text }}{% endif %}
+{%- endmacro %}
 {% block main %}
 {%- for error in errors %}
 <p class="error" role="alert">{{ error }}</p>
 {%- endfor %}
 {%- if shown and shown.day %}
-<p class="headline"><strong>{{ shown.total|money }} {{ shown.currency }}</strong> net worth on {{ shown.day }}</p>
-{%- if shown.through and shown.through < shown.day %}
-<p class="note">Statements up to {{ shown.through }}: what was held then is valued at the latest closes and rates stored.</p>
-{%- endif %}
-<form method="get" class="filter" id="view" data-auto>
-  {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
-  <input type="hidden" name="currency" value="{{ shown.currency }}">
-  <label>Break the chart down by
-    <select name="by">
-      {%- for by in breakdowns %}
-      <option value="{{ by }}"{% if by == asked.by %} selected{% endif %}>{{ {"total": "nothing", "asset": "asset type", "owner": "person"}[by] }}</option>
-      {%- endfor %}
-    </select>
-  </label>
-  <button>Show</button>
-</form>
+<div class="tiles worth">
+  <section class="tile lead">
+    <h2>Net worth on {{ shown.day }}</h2>
+    <p class="value">{{ shown.total|money }} <small>{{ shown.currency }}</small></p>
+    <p class="then">Statements up to {{ shown.through or shown.day }}{% if shown.through and shown.through < shown.day %}: what was held then is valued at the latest closes and rates stored{% endif %}</p>
+  </section>
+  {%- for change in shown.changes %}
+  <section class="tile">
+    <h2>{{ {30: "In 30 days", 365: "In a year"}[change.days] }}</h2>
+    <p class="value">{{ moved(change.amount, change.amount|signed if change.amount is not none else "") }}{% if change.percent is not none %} <small>{{ change.percent|signed }}%</small>{% endif %}</p>
+    <p class="then">{% if change.before is none %}The history is shorter{% else %}From {{ change.before|money }}{% endif %}</p>
+  </section>
+  {%- endfor %}
+</div>
 <figure class="chart" id="networth" data-source="{{ source }}">
-  <div class="ranges" role="group" aria-label="Period shown">
-    {%- for months, label in [(3, "3M"), (12, "1Y"), (36, "3Y"), (0, "All")] %}
-    <button type="button" data-months="{{ months }}"{% if not months %} aria-pressed="true"{% endif %}>{{ label }}</button>
-    {%- endfor %}
+  <div class="toolbar">
+    <nav class="ranges" aria-label="Break the chart down by">
+      {%- for by in breakdowns if not (owner and by == "owner") %}
+      <a href="{{ cut(by) }}"{% if by == asked.by %} aria-current="true"{% endif %}>{{ {"total": "Total", "asset": "By asset type", "owner": "By person"}[by] }}</a>
+      {%- endfor %}
+    </nav>
+    <div class="ranges" role="group" aria-label="Period shown">
+      {%- for months, label in [(3, "3M"), (12, "1Y"), (36, "3Y"), (0, "All")] %}
+      <button type="button" data-months="{{ months }}"{% if not months %} aria-pressed="true"{% endif %}>{{ label }}</button>
+      {%- endfor %}
+    </div>
   </div>
   {%- if parts|length > 1 %}
   <ul class="legend" aria-label="Shown">
@@ -60,36 +73,100 @@
     Drag across the chart to zoom in, double-click to zoom out.
   </figcaption>
 </figure>
-<h2>By kind of asset</h2>
-<div class="today">
-  {%- if ring %}
-  <figure class="chart donut" id="held">
-    <svg viewBox="0 0 200 200" role="img" aria-labelledby="held-title">
-      <title id="held-title">What is held, {{ shown.held|sum(attribute="value")|money }} {{ shown.currency }}: {% for arc in ring %}{{ arc.part.name }} {{ arc.part.share }}%{{ ", " if not loop.last }}{% endfor %}</title>
-      <g transform="rotate(-90 100 100)">
+<div class="board">
+  <section class="panel">
+    <h2>What is held</h2>
+    {%- if ring %}
+    <div class="today">
+      <figure class="chart donut" id="held">
+        <svg viewBox="0 0 200 200" role="img" aria-labelledby="held-title">
+          <title id="held-title">What is held, {{ shown.held|sum(attribute="value")|money }} {{ shown.currency }}: {% for arc in ring %}{{ arc.part.name }} {{ arc.part.share }}%{{ ", " if not loop.last }}{% endfor %}</title>
+          <g transform="rotate(-90 100 100)">
+            {%- for arc in ring %}
+            <circle class="slice slot-{{ arc.slot }}" cx="100" cy="100" r="78" fill="none" pathLength="100" stroke-dasharray="{{ arc.dash }} {{ arc.gap }}" stroke-dashoffset="{{ arc.offset }}" data-slot="{{ arc.slot }}" data-name="{{ arc.part.name }}" data-value="{{ arc.part.value|short }}" data-share="{{ arc.part.share }}% of assets"><title>{{ arc.part.name }}: {{ arc.part.value|money }} {{ shown.currency }}, {{ arc.part.share }}% of assets</title></circle>
+            {%- endfor %}
+          </g>
+          <text class="what" x="100" y="80">Assets</text>
+          <text class="amount" x="100" y="106">{{ shown.held|sum(attribute="value")|short }}</text>
+          <text class="share" x="100" y="128">{{ shown.currency }}</text>
+        </svg>
+      </figure>
+      <ul class="parts">
         {%- for arc in ring %}
-        <circle class="slice slot-{{ arc.slot }}" cx="100" cy="100" r="78" fill="none" pathLength="100" stroke-dasharray="{{ arc.dash }} {{ arc.gap }}" stroke-dashoffset="{{ arc.offset }}" data-slot="{{ arc.slot }}" data-name="{{ arc.part.name }}" data-value="{{ arc.part.value|short }}" data-share="{{ arc.part.share }}% of assets"><title>{{ arc.part.name }}: {{ arc.part.value|money }} {{ shown.currency }}, {{ arc.part.share }}% of assets</title></circle>
+        {%- set part = shown.assets|selectattr("name", "equalto", arc.part.name)|first %}
+        {%- set before = part.then[-1] %}
+        <li data-slot="{{ arc.slot }}">
+          <span class="name"><span class="key slot-{{ arc.slot }}"></span>{{ arc.part.name }}</span>
+          <span class="amount">{{ arc.part.value|money }}</span>
+          <span class="pct">{{ arc.part.share }}%</span>
+          <small class="since">{% if before is not none %}{{ moved(part.value - before, (part.value - before)|short_signed) }} in a year{% endif %}</small>
+        </li>
         {%- endfor %}
-      </g>
-      <text class="what" x="100" y="80">Assets</text>
-      <text class="amount" x="100" y="106">{{ shown.held|sum(attribute="value")|short }}</text>
-      <text class="share" x="100" y="128">{{ shown.currency }}</text>
-    </svg>
+      </ul>
+    </div>
+    {%- endif %}
     {%- set owed = shown.assets|selectattr("value", "lt", 0)|list %}
     {%- if owed %}
-    <figcaption>
-      Owed, and not in the ring: {% for part in owed %}{{ part.name }} {{ part.value|money }}{{ ", " if not loop.last }}{% endfor %} {{ shown.currency }}.
-    </figcaption>
+    <p class="note">Owed, and not in the ring: {% for part in owed %}{{ part.name }} {{ part.value|money }}{{ ", " if not loop.last }}{% endfor %} {{ shown.currency }}.</p>
     {%- endif %}
-  </figure>
+  </section>
+  <section class="panel">
+    <h2>{{ "Largest holdings" if shown.rest else "Holdings" }}</h2>
+    {%- if shown.top %}
+    <ol class="ranked">
+      {%- for holding in shown.top %}
+      <li>
+        <span class="name">{{ holding.symbol }}{% if holding.name %}<small>{{ holding.name }}</small>{% endif %}</span>
+        <span class="amount">{{ holding.value|money }}<small>{{ percent(holding.share) }}</small></span>
+        <svg class="bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="100" height="4" rx="1"/><rect class="slot-{{ slots[holding.asset] }}" width="{{ lengths[holding] }}" height="4" rx="1"/></svg>
+      </li>
+      {%- endfor %}
+      {%- if shown.rest %}
+      <li class="rest">
+        <span class="name">The {{ shown.rest.count }} other{{ "" if shown.rest.count == 1 else "s" }}</span>
+        <span class="amount">{{ shown.rest.value|money }}<small>{{ percent(shown.rest.share) }}</small></span>
+      </li>
+      {%- endif %}
+    </ol>
+    <p class="sum">All securities <span>{{ shown.securities.value|money }} {{ shown.currency }}<small>{{ percent(shown.securities.share) }} of net worth</small></span></p>
+    <p><a href="{{ address('holdings', owner) }}">All holdings</a>, account by account, with what they cost.</p>
+    {%- else %}
+    <p>No securities are held on {{ shown.day }}.</p>
+    {%- endif %}
+  </section>
+</div>
+{%- if shown.people %}
+<section class="panel">
+  <h2>By person</h2>
+  {%- if split %}
+  <svg class="split" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="{% for segment in split %}{{ segment.part.name }} {{ segment.part.share }}%{{ ', ' if not loop.last }}{% endfor %}">
+    {%- for segment in split %}
+    <rect class="slot-{{ segment.slot }}" x="{{ segment.x }}" width="{{ segment.width }}" height="6"/>
+    {%- endfor %}
+  </svg>
   {%- endif %}
+  <ul class="people">
+    {%- for part in shown.people %}
+    {%- set before = part.then[-1] %}
+    <li>
+      <span class="name"><span class="key slot-{{ person_slots[part.name] }}"></span><a href="{{ address('overview', part.name) }}">{{ part.name }}</a></span>
+      <span class="amount">{{ part.value|money }}<small>{{ percent(part.share) }}</small></span>
+      <small class="since">{% if before is not none %}{{ moved(part.value - before, (part.value - before)|short_signed) }} in a year{% endif %}</small>
+    </li>
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}
+<h2>In detail</h2>
+<details>
+  <summary>Each kind of asset{% if shown.people %} and each person{% endif %}, against 30 days and a year before</summary>
   <table class="narrow tight">
     <thead>
       <tr><th></th><th class="number">{{ shown.currency }}</th><th class="number">Share</th><th class="number">30 days before</th><th class="number">A year before</th></tr>
     </thead>
     <tbody>
       {%- for part in shown.assets %}
-      <tr data-slot="{{ slots[part.name] }}">
+      <tr>
         <td><span class="key slot-{{ slots[part.name] }}"></span>{{ part.name }}</td>
         <td class="number">{{ part.value|money }}</td>
         <td class="number">{{ percent(part.share) }}</td>
@@ -110,98 +187,45 @@
       </tr>
     </tfoot>
   </table>
-</div>
-<p class="note">
-  The ring is what is held; a share in the table is a part of net worth, where what is owed
-  counts below zero, and so does its share.
-</p>
-<h2>{{ "Largest holdings" if shown.rest else "Holdings" }}</h2>
-{%- if shown.top %}
-<table class="narrow">
-  <thead>
-    <tr><th>Instrument</th><th>Kind</th><th class="number">{{ shown.currency }}</th><th class="number">Share of net worth</th><th></th></tr>
-  </thead>
-  <tbody>
-    {%- for holding in shown.top %}
-    <tr>
-      <td>{{ holding.symbol }}{% if holding.name %}<small>{{ holding.name }}</small>{% endif %}</td>
-      <td>{{ holding.asset }}</td>
-      <td class="number">{{ holding.value|money }}</td>
-      <td class="number">{{ percent(holding.share) }}</td>
-      <td class="share">{% if holding.share is not none %}<meter min="0" max="100" value="{{ [holding.share, 0]|max }}" title="{{ holding.share }}% of net worth"></meter>{% endif %}</td>
-    </tr>
-    {%- endfor %}
-    {%- if shown.rest %}
-    <tr>
-      <td colspan="2">The {{ shown.rest.count }} other{{ "" if shown.rest.count == 1 else "s" }}</td>
-      <td class="number">{{ shown.rest.value|money }}</td>
-      <td class="number">{{ percent(shown.rest.share) }}</td>
-      <td class="share"></td>
-    </tr>
-    {%- endif %}
-  </tbody>
-  <tfoot>
-    <tr><th colspan="2">All securities</th><td class="number">{{ shown.securities.value|money }}</td><td class="number">{{ percent(shown.securities.share) }}</td><td></td></tr>
-  </tfoot>
-</table>
-<p><a href="{{ address('holdings', owner) }}">All holdings</a>, account by account, with what they cost.</p>
-{%- else %}
-<p>No securities are held on {{ shown.day }}.</p>
-{%- endif %}
-<p class="note">
-  The same instrument in several accounts is one holding here.
-</p>
-{%- if shown.people %}
-<h2>By person</h2>
-<table class="narrow tight">
-  <thead>
-    <tr><th></th><th class="number">{{ shown.currency }}</th><th class="number">Share</th><th class="number">30 days before</th><th class="number">A year before</th></tr>
-  </thead>
-  <tbody>
-    {%- for part in shown.people %}
-    <tr>
-      <td><a href="{{ address('overview', part.name) }}">{{ part.name }}</a></td>
-      <td class="number">{{ part.value|money }}</td>
-      <td class="number">{{ percent(part.share) }}</td>
-      {%- for value in part.then %}
-      <td class="number">{{ then(value) }}</td>
+  <p class="note">
+    The ring is what is held; a share here is a part of net worth, where what is owed counts
+    below zero, and so does its share.
+  </p>
+  {%- if shown.people %}
+  <table class="narrow tight">
+    <thead>
+      <tr><th></th><th class="number">{{ shown.currency }}</th><th class="number">Share</th><th class="number">30 days before</th><th class="number">A year before</th></tr>
+    </thead>
+    <tbody>
+      {%- for part in shown.people %}
+      <tr>
+        <td>{{ part.name }}</td>
+        <td class="number">{{ part.value|money }}</td>
+        <td class="number">{{ percent(part.share) }}</td>
+        {%- for value in part.then %}
+        <td class="number">{{ then(value) }}</td>
+        {%- endfor %}
+      </tr>
       {%- endfor %}
-    </tr>
-    {%- endfor %}
-  </tbody>
-  <tfoot>
-    <tr>
-      <th>Net worth</th>
-      <td class="number">{{ shown.total|money }}</td>
-      <td class="number">{{ percent(shown.people|sum(attribute="share") if shown.total > 0 else none) }}</td>
-      {%- for change in shown.changes %}
-      <td class="number">{{ then(change.before) }}</td>
-      {%- endfor %}
-    </tr>
-  </tfoot>
-</table>
-{%- endif %}
-<h2>Change</h2>
-<table class="narrow tight">
-  <thead>
-    <tr><th></th><th class="number">{{ shown.currency }}</th><th class="number">Change since</th><th class="number">In percent</th></tr>
-  </thead>
-  <tbody>
-    {%- for change in shown.changes %}
-    <tr>
-      <td>{{ {30: "30 days before", 365: "A year before"}[change.days] }}</td>
-      <td class="number">{{ then(change.before) }}</td>
-      <td class="number">{% if change.amount is none %}–{% else %}{{ change.amount|signed }}{% endif %}</td>
-      <td class="number">{% if change.percent is none %}–{% else %}{{ change.percent|signed }}%{% endif %}</td>
-    </tr>
-    {%- endfor %}
-  </tbody>
-</table>
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>Net worth</th>
+        <td class="number">{{ shown.total|money }}</td>
+        <td class="number">{{ percent(shown.people|sum(attribute="share") if shown.total > 0 else none) }}</td>
+        {%- for change in shown.changes %}
+        <td class="number">{{ then(change.before) }}</td>
+        {%- endfor %}
+      </tr>
+    </tfoot>
+  </table>
+  {%- endif %}
+</details>
 <p class="note">
-  Options and futures are not counted as assets: what was paid or received for them is cash,
-  and what open positions are worth is in no line above. Shares not yet moved to a broker
-  that sends statements are not counted either. Only committed statements are shown: these
-  are the figures of {{ shown.day }}.
+  The same instrument in several accounts is one holding here. Options and futures are not
+  counted as assets: what was paid or received for them is cash, and what open positions are
+  worth is in no figure above. Shares not yet moved to a broker that sends statements are not
+  counted either. Only committed statements are shown: these are the figures of {{ shown.day }}.
 </p>
 {%- if checks %}
 <details>

@@ -95,12 +95,11 @@ def test_a_currency_chosen_is_remembered_and_the_page_shown_again_in_it(
     assert "expires" not in cookie.lower()
     for path in PAGES:
         assert chosen(client.get(path).text) == "CHF"
-    assert "net worth on 2026-09-30" in text(client.get("/").text)
-    assert " CHF net worth on" in text(client.get("/").text)
+    assert re.search(r"Net worth on 2026-09-30 [\d,.]+ CHF", text(client.get("/").text))
     assert " CHF</strong> in securities" in client.get("/holdings").text
     home = client.get("/").text
     assert "/networth.json?currency=CHF&amp;by=asset" in home  # what the chart draws
-    assert '<input type="hidden" name="currency" value="CHF">' in home  # the breakdown's form
+    assert "/?currency=CHF&amp;by=total" in home  # the breakdown's buttons
 
 
 def test_an_address_that_names_a_currency_is_shown_in_it_and_the_choice_stays(
@@ -109,7 +108,7 @@ def test_an_address_that_names_a_currency_is_shown_in_it_and_the_choice_stays(
     client.get("/currency", params={"currency": "CHF", "back": "/"})
     page = client.get("/", params={"currency": "EUR"}).text
     assert chosen(page) == "EUR"
-    assert " EUR net worth on" in text(page)
+    assert re.search(r"Net worth on [\d-]+ [\d,.]+ EUR", text(page))
     assert chosen(client.get("/").text) == "CHF"
 
 

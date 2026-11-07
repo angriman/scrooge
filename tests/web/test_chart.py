@@ -80,13 +80,12 @@ def source(html: str) -> str:
 def test_net_worth_is_in_euros_and_by_asset_type_unless_asked(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
-    assert "1,625.00 EUR net worth on 2026-09-30" in text(response.text)
-    # (800 + 500) / 0.8 on the last day, (1000 + 500) / 0.8 thirty days before: the changes
-    # come after the kinds, their total, the people and theirs.
-    assert tables(response.text)[4][0][:2] == ["30 days before", "1,875.00"]
+    # (800 + 500) / 0.8 on the last day, (1000 + 500) / 0.8 thirty days before.
+    assert "Net worth on 2026-09-30 1,625.00 EUR" in text(response.text)
+    assert "In 30 days -250.00 -13.33% From 1,875.00" in text(response.text)
     assert legend(response.text) == [("0", "Net worth"), ("1", "Cash")]
     assert source(response.text) == "http://127.0.0.1:8765/networth.json?currency=EUR&by=asset"
-    assert '<option value="asset" selected>asset type</option>' in response.text
+    assert 'by=asset" aria-current="true">By asset type</a>' in response.text
     assert "Options and futures are not counted as assets" in text(response.text)
 
 
@@ -94,7 +93,7 @@ def test_the_total_alone_is_one_line_without_a_legend(client: TestClient) -> Non
     response = client.get("/", params={"by": "total"})
     assert legend(response.text) == []
     assert source(response.text).endswith("?currency=EUR&by=total")
-    assert '<option value="total" selected>nothing</option>' in response.text
+    assert 'by=total" aria-current="true">Total</a>' in response.text
 
 
 def test_the_old_address_of_the_chart_leads_to_the_first_page(client: TestClient) -> None:
@@ -120,7 +119,7 @@ def test_the_parts_follow_the_total_each_with_its_colour(client: TestClient) -> 
         [PARTNER, "500.00", "38.46%", "500.00", NONE],
         [OWNER, "800.00", "61.54%", "1,000.00", NONE],
     ]
-    assert '<option value="owner" selected>person</option>' in response.text
+    assert 'by=owner" aria-current="true">By person</a>' in response.text
 
     response = client.get("/", params={"currency": "CHF", "by": "asset"})
     assert tables(response.text)[0] == [["Cash", "1,300.00", "100.00%", "1,500.00", NONE]]
@@ -131,9 +130,8 @@ def test_a_person_keeps_their_colour_when_looked_at_alone(client: TestClient) ->
     both = {name: slot for slot, name in legend(client.get("/?by=owner").text)}
     for person, worth in ((OWNER, "1,000.00"), (PARTNER, "625.00")):
         response = client.get("/", params={"owner": person, "by": "owner"})
-        assert f"{worth} EUR net worth on 2026-09-30" in text(response.text)
+        assert f"Net worth on 2026-09-30 {worth} EUR" in text(response.text)
         assert legend(response.text) == [("0", "Net worth"), (both[person], person)]
-        assert f'<input type="hidden" name="owner" value="{person}">' in response.text
         assert source(response.text).endswith(f"?currency=EUR&by=owner&owner={person}")
 
 
@@ -144,7 +142,7 @@ def test_what_a_statement_says_it_was_worth_is_set_beside_it(client: TestClient)
         ["2026-09-30", OWNER, "Migros", "Cash", "790.00", "800.00", "10.00", "CHF"],
     ]
     hers = client.get("/", params={"owner": PARTNER})
-    assert len(tables(hers.text)) == 3  # the kinds with their total, and the changes
+    assert len(tables(hers.text)) == 2  # the kinds with their total
     assert "Against the brokers" not in hers.text
 
 
@@ -194,7 +192,7 @@ def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: Te
     assert re.findall(r'<p class="error" role="alert">(.*?)</p>', response.text) == [
         error.replace("'", "&#39;") for error in errors
     ]
-    assert "1,625.00 EUR net worth on 2026-09-30" in text(response.text)
+    assert "Net worth on 2026-09-30 1,625.00 EUR" in text(response.text)
     # The chart draws what the page shows, not what was asked for.
     assert client.get(source(response.text)).json()["currency"] == "EUR"
     answer = client.get("/networth.json", params=asked)
@@ -230,7 +228,7 @@ def test_a_statement_valued_in_a_currency_without_a_rate_is_said_too(tmp_path: P
     assert "No exchange rate is stored for USD" in response.text
     # The figures themselves need no rate, and neither does the chart: only the brokers'
     # own figures are left out.
-    assert "1,000.00 CHF net worth on 2026-09-30" in text(response.text)
+    assert "Net worth on 2026-09-30 1,000.00 CHF" in text(response.text)
     assert 'id="networth"' in response.text
     assert "Against the brokers" not in response.text
     assert client.get("/networth.json", params={"currency": "CHF"}).status_code == 200
