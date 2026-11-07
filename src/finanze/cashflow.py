@@ -97,6 +97,48 @@ def days(name: str) -> tuple[date, date]:
     return query.span(name)
 
 
+@dataclass(frozen=True, slots=True)
+class Counted:
+    """A row the cash-flow page counts: neither a move between one's own accounts nor an
+    exchange. `side` is that of its category, `top` the top-level category of its leaf."""
+
+    day: date
+    owner: str
+    account: str
+    kind: Kind
+    currency: str
+    side: str  # INCOME or EXPENSES
+    top: str
+    leaf: str
+    amount_nano: int  # signed, in `currency`
+    counterparty: str
+    counterparty_owner: str | None  # the other person, when they are the counterparty
+
+    @property
+    def investing(self) -> bool:
+        return self.top in _INVESTING
+
+
+def counted(conn: sqlite3.Connection, owner: str | None = None) -> list[Counted]:
+    """Every committed row of `owner` (of everyone) that counts, oldest first. For everyone,
+    what the two paid each other is left out; for one person it is there, and marked."""
+    query.check_names(conn, query.Filter(owner=owner))
+    kinds = ", ".join("?" * len(_NOT_COUNTED))
+    found = conn.execute(
+        "SELECT date, owner, account, kind, currency, category_side, "  # noqa: S608  # only "?" marks are interpolated
+        "coalesce(category_parent, category), category, amount_nano, counterparty, "
+        f"counterparty_owner FROM committed_transactions "
+        f"WHERE kind NOT IN ({kinds}) AND category_side <> 'transfer' "
+        # One person: their rows. Everyone: all but what the two paid each other.
+        "AND CASE WHEN ? IS NULL THEN counterparty_owner IS NULL ELSE owner = ? END "
+        "ORDER BY date, id",
+        (*(kind.value for kind in _NOT_COUNTED), owner, owner),
+    ).fetchall()
+    return [
+        Counted(date.fromisoformat(row[0]), row[1], row[2], Kind(row[3]), *row[4:]) for row in found
+    ]
+
+
 def run(
     conn: sqlite3.Connection,
     *,
@@ -106,32 +148,17 @@ def run(
     grouping: Grouping = Grouping.MONTH,
 ) -> CashFlow:
     """Income and expenses from `first` to `last`, both included, of `owner` or of everyone."""
-    query.check_names(conn, query.Filter(owner=owner))
-    kinds = ", ".join("?" * len(_NOT_COUNTED))
-    found = conn.execute(
-        "SELECT date, currency, category_side, coalesce(category_parent, category), category, "  # noqa: S608  # only "?" marks are interpolated
-        f"amount_nano FROM committed_transactions WHERE kind NOT IN ({kinds}) "
-        "AND category_side <> 'transfer' "
-        "AND date >= coalesce(?, date) AND date <= coalesce(?, date) "
-        # One person: their rows. Everyone: all but what the two paid each other.
-        "AND CASE WHEN ? IS NULL THEN counterparty_owner IS NULL ELSE owner = ? END",
-        (
-            *(kind.value for kind in _NOT_COUNTED),
-            first and first.isoformat(),
-            last and last.isoformat(),
-            owner,
-            owner,
-        ),
-    ).fetchall()
     sums: dict[tuple[str, str, str, str], tuple[int, int]] = {}
-    for day, currency, side, top, leaf, nano in found:
+    for row in counted(conn, owner):
+        if (first and row.day < first) or (last and row.day > last):
+            continue
         # They sort as they are shown: "entrate" < "investing" < "uscite". Investing is named
         # by the leaf, which is the same whether money went in or came out.
-        where, category = (INVESTING, leaf) if top in _INVESTING else (side, top)
-        for name in (period(date.fromisoformat(day), grouping), ""):
-            key = (name, currency, where, category)
+        where, category = (INVESTING, row.leaf) if row.investing else (row.side, row.top)
+        for name in (period(row.day, grouping), ""):
+            key = (name, row.currency, where, category)
             count, total = sums.get(key, (0, 0))
-            sums[key] = (count + 1, total + nano)
+            sums[key] = (count + 1, total + row.amount_nano)
     every = [Line(*key, count, from_nano(total)) for key, (count, total) in sorted(sums.items())]
     lines = tuple(line for line in every if line.period)
     sides: dict[tuple[str, str], dict[str, Decimal]] = {}

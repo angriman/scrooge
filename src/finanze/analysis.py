@@ -1,0 +1,118 @@
+"""What the views of the analysis page share (plan decision 34): the rows the cash-flow page
+counts, each converted at the rate of its own day into one currency, and the range and the
+periods they are shown over.
+
+A range runs, unless asked otherwise, from the first row to the last day committed: for both
+people together, the earlier of their last days. A comparison with the months before a day is
+only made where every person shown has rows from the month of that day on.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from bisect import bisect_left, bisect_right
+from collections import defaultdict
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from datetime import date, timedelta
+from decimal import Decimal
+
+from finanze import cashflow, query
+from finanze.cashflow import Counted, Grouping
+from finanze.networth import convert, rates_on
+from finanze.storage.money import from_nano
+
+CENT = Decimal("0.01")
+
+
+@dataclass(frozen=True, slots=True)
+class Converted:
+    row: Counted
+    amount: Decimal  # in the currency asked for, signed as stored
+
+    @property
+    def day(self) -> date:
+        return self.row.day
+
+
+@dataclass(frozen=True, slots=True)
+class Span:
+    """A range with something to show in it."""
+
+    start: date
+    end: date
+    through: date  # the last day committed for everyone shown
+    known: date  # the first day of the month from which every person shown has rows
+
+
+@dataclass(frozen=True, slots=True)
+class Rows:
+    """The rows of a view, oldest first, and what tells how far they can be read."""
+
+    rows: tuple[Converted, ...]
+    days: tuple[date, ...]  # of the rows, in their order
+    through: date | None  # the last day committed for everyone shown; None: nothing is
+    known: date | None  # the first day of the month from which every person shown has rows
+
+    def between(self, first: date, last: date) -> Sequence[Converted]:
+        """The rows from `first` to `last`, both included."""
+        return self.rows[bisect_left(self.days, first) : bisect_right(self.days, last)]
+
+    def span(self, first: date | None, last: date | None) -> Span | None:
+        """The range asked for, its ends filled in; None when there is nothing to show."""
+        if self.through is None or self.known is None:
+            return None
+        return Span(first or self.rows[0].day, last or self.through, self.through, self.known)
+
+
+def rows(
+    conn: sqlite3.Connection,
+    owner: str | None,
+    currency: str,
+    wanted: Callable[[Counted], bool],
+) -> Rows:
+    """The counted rows of `owner` (of everyone) that are `wanted`, converted into
+    `currency`."""
+    found: dict[str, list[Counted]] = defaultdict(list)
+    for row in cashflow.counted(conn, owner):
+        if wanted(row):
+            found[row.currency].append(row)
+    converted: list[Converted] = []
+    for native, members in found.items():
+        rates = rates_on(conn, [row.day for row in members])
+        amounts = convert([from_nano(row.amount_nano) for row in members], native, currency, rates)
+        converted.extend(map(Converted, members, amounts))
+    converted.sort(key=lambda each: each.day)
+    firsts: dict[str, date] = {}
+    for each in converted:
+        firsts.setdefault(each.row.owner, each.day.replace(day=1))
+    return Rows(
+        tuple(converted),
+        tuple(each.day for each in converted),
+        _through(conn, owner),
+        max(firsts.values(), default=None),
+    )
+
+
+def periods(start: date, end: date, grouping: Grouping) -> list[str]:
+    """The names of the periods from the one of `start` to the one of `end`."""
+    names = []
+    day = start
+    while day <= end:
+        names.append(cashflow.period(day, grouping))
+        day = cashflow.days(names[-1])[1] + timedelta(days=1)
+    return names
+
+
+def year_before(day: date) -> date:
+    """The same day a year earlier; 28 February for 29 February."""
+    return day.replace(year=day.year - 1, day=min(day.day, 28 if day.month == 2 else day.day))
+
+
+def _through(conn: sqlite3.Connection, owner: str | None) -> date | None:
+    lasts = [
+        person.last
+        for person in query.people(conn)
+        if person.last is not None and owner in (None, person.name)
+    ]
+    return min(lasts, default=None)

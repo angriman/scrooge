@@ -27,6 +27,16 @@ class CashFlowRange:
     errors: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class AnalysisView:
+    first: date | None
+    last: date | None
+    owner: str | None
+    grouping: Grouping
+    currency: str
+    errors: tuple[str, ...]
+
+
 BREAKDOWNS = ("total", "asset", "owner")  # how the chart of the first page cuts its line
 DEFAULT_BREAKDOWN = "asset"  # the parts by asset type unless asked otherwise
 
@@ -74,6 +84,15 @@ def cashflow_range(params: Mapping[str, str]) -> CashFlowRange:
         grouping=Grouping.MONTH if by is None else Grouping(by),
         errors=tuple(errors),
     )
+
+
+def analysis_view(params: Mapping[str, str]) -> AnalysisView:
+    """`from`, `to`, `owner` and `by` as for the cash flow, and `currency` (euros when left
+    out)."""
+    span = cashflow_range(params)
+    errors = list(span.errors)
+    currency = _currency(params, errors)
+    return AnalysisView(span.first, span.last, span.owner, span.grouping, currency, tuple(errors))
 
 
 def transactions_filter(params: Mapping[str, str]) -> Parsed:
