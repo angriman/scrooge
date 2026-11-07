@@ -377,6 +377,48 @@ code {
 .donut .slot-6 { stroke: var(--series-6); }
 .donut .slot-7 { stroke: var(--series-7); }
 
+/* ---- income by source: a column of its groups per period, and the share from work. */
+
+.income {
+  max-width: 48rem;
+}
+
+.income svg {
+  display: block;
+  width: 100%;
+}
+
+.income .legend {
+  gap: 0.25rem 1rem;
+}
+
+.income .legend > span {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.income .grid { stroke: var(--grid); }
+.income .axis { stroke: var(--text-secondary); }
+.income .slot-1 { fill: var(--series-1); }
+.income .slot-2 { fill: var(--series-2); }
+.income .slot-3 { fill: var(--series-3); }
+
+.income .share {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.income text {
+  fill: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.income .period { text-anchor: middle; }
+
 .tip {
   background: var(--tip);
   border: 1px solid var(--line);
@@ -590,6 +632,9 @@ figcaption {
    under the name of its column, and any other table too wide scrolls inside itself. */
 
 @media (max-width: 40rem) {
+  /* The income chart is drawn half its size: its labels are written twice as large. */
+  .income text { font-size: 22px; }
+
   body {
     padding: 0 0.75rem 3rem;
   }

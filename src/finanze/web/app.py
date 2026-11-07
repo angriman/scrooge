@@ -50,6 +50,7 @@ from finanze import (
     categories,
     classification,
     importing,
+    income,
     marketdata,
     months,
     networth,
@@ -76,7 +77,7 @@ _SESSION = "finanze_session"  # the cookie of a signed-in browser
 _CURRENCY = "finanze_currency"
 # The pages that convert, and have the header's menu. The others show every amount in its own
 # currency (decided 2026-10-21).
-_CONVERTING = ("/", "/holdings")
+_CONVERTING = ("/", "/holdings", "/analysis")
 # The colour of each kind of asset, the same in the chart, the ring and their tables.
 # Neighbours in the stack wear neighbouring colours: those are the pairs the palette was
 # checked for.
@@ -299,6 +300,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/networth.json", _networth_json, name="networth_json"),
             Route("/holdings", _holdings, name="holdings"),
             Route("/cashflow", _cashflow, name="cashflow"),
+            Route("/analysis", _analysis, name="analysis"),
             Route("/currency", _choose_currency, name="currency"),
             Route("/import", _import_page, name="import"),
             Route("/import", _import, methods=["POST"]),
@@ -999,6 +1001,116 @@ def _cashflow(request: Request) -> Response:
         ),
     }
     return _templates.TemplateResponse(request, "cashflow.html", context)
+
+
+# The bars of income by source: the plot is _WIDTH by _HEIGHT, labels outside it. Each
+# group wears the colour of its place in the stack.
+_WIDTH, _HEIGHT = Decimal(600), Decimal(200)
+_INCOME_SLOTS = {group: n for n, group in enumerate(income.GROUPS, 1)}
+_LABELS = 8  # periods named under the bars, at most
+
+
+@dataclass(frozen=True, slots=True)
+class _Block:
+    group: str
+    slot: int
+    value: Decimal
+    y: Decimal
+    height: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class _Column:
+    period: income.Period
+    x: Decimal
+    width: Decimal
+    blocks: tuple[_Block, ...]
+    named: bool  # its period is written under it
+
+
+@dataclass(frozen=True, slots=True)
+class _Bars:
+    columns: tuple[_Column, ...]
+    top: Decimal  # the amount at the top of the plot
+    zero: Decimal  # where zero is drawn
+    shares: tuple[str, ...]  # the employer's share: the points of each unbroken run
+
+
+def _bars(periods: Sequence[income.Period]) -> _Bars:
+    """Each period a column of its groups, from zero up, and what was lost below it; the
+    employer's share a line across, 0 at the bottom of the plot and 100% at its top."""
+    highs = [sum((v for v in p.groups.values() if v > 0), Decimal(0)) for p in periods]
+    lows = [sum((v for v in p.groups.values() if v < 0), Decimal(0)) for p in periods]
+    top, bottom = max(highs, default=Decimal(0)), min(lows, default=Decimal(0))
+    scale = _HEIGHT / ((top - bottom) or 1)
+    step = _WIDTH / max(len(periods), 1)
+    every = -(-len(periods) // _LABELS)  # name one period in so many
+
+    def y(amount: Decimal) -> Decimal:
+        return ((top - amount) * scale).quantize(Decimal("0.1"))
+
+    columns: list[_Column] = []
+    shares: list[str] = []
+    run: list[str] = []  # the points of the share's run so far
+    for n, period in enumerate(periods):
+        blocks: list[_Block] = []
+        up = down = Decimal(0)
+        for group, value in period.groups.items():
+            start = up if value >= 0 else down
+            end = start + value
+            blocks.append(
+                _Block(
+                    group, _INCOME_SLOTS[group], value, y(max(start, end)), abs(y(end) - y(start))
+                )
+            )
+            up, down = (end, down) if value >= 0 else (up, end)
+        x = (step * n + step * Decimal("0.15")).quantize(Decimal("0.1"))
+        width = (step * Decimal("0.7")).quantize(Decimal("0.1"))
+        columns.append(
+            _Column(period, x, width, tuple(blocks), (len(periods) - 1 - n) % every == 0)
+        )
+        if period.employer is None:
+            if run:
+                shares.append(" ".join(run))
+            run = []
+        else:
+            middle = (step * n + step / 2).quantize(Decimal("0.1"))
+            run.append(f"{middle},{((1 - period.employer) * _HEIGHT).quantize(Decimal('0.1'))}")
+    if run:
+        shares.append(" ".join(run))
+    return _Bars(tuple(columns), top, y(Decimal(0)), tuple(shares))
+
+
+def _analysis(request: Request) -> Response:
+    asked = forms.analysis_view(_viewed(request))
+    errors = list(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        people = query.people(conn)
+        try:
+            result = income.run(
+                conn,
+                first=asked.first,
+                last=asked.last,
+                owner=asked.owner,
+                grouping=asked.grouping,
+                currency=asked.currency,
+            )
+        except networth.MissingRateError as exc:
+            errors.append(_sentence(exc))
+            result = None
+    context = {
+        "people": people,
+        "owner": asked.owner,
+        "asked": asked,
+        "errors": errors,
+        "given": request.query_params,
+        "groupings": list(cashflow.Grouping),
+        "result": result,
+        "bars": result and _bars(result.periods),
+        "slots": _INCOME_SLOTS,
+        "groups": income.GROUPS,
+    }
+    return _templates.TemplateResponse(request, "analysis.html", context)
 
 
 def _stored(request: Request) -> tuple[months.Statement, Path | None]:

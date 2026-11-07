@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Analysis{% endblock %}
+{% block head %}
+  <script src="{{ url_for('static', path='period.js') }}" defer></script>
+{%- endblock %}
+{% macro percent(share) -%}
+{% if share is none %}–{% else %}{{ (share * 100)|round(1) }}%{% endif %}
+{%- endmacro %}
+{% macro listed(category) -%}
+{{ url_for('transactions').include_query_params(**{"from": asked.first or "", "to": asked.last or "", "category": category}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}
+{%- endmacro %}
+{% block main %}
+<form method="get" class="filter">
+  {% if owner %}<input type="hidden" name="owner" value="{{ owner }}">{% endif %}
+  <label>From <input name="from" value="{{ given.get('from', '') }}" placeholder="2025" size="10" data-period="from"></label>
+  <label>To <input name="to" value="{{ given.get('to', '') }}" placeholder="2025-12" size="10" data-period="to"></label>
+  <label>By
+    <select name="by">
+      {%- for grouping in groupings %}
+      <option value="{{ grouping.value }}"{% if grouping == asked.grouping %} selected{% endif %}>{{ grouping.value }}</option>
+      {%- endfor %}
+    </select>
+  </label>
+  <button>Show</button>
+  <a href="{{ url_for('analysis') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}">Clear</a>
+</form>
+{%- for error in errors %}
+<p class="error" role="alert">{{ error }}</p>
+{%- endfor %}
+{%- if result %}
+<h2>Income by source</h2>
+<p class="note">
+  Each transaction in {{ result.currency }} at the rate of its own day. Lavoro is salary,
+  share-plan vests included; Investimenti is dividends, interest and trading, its losses
+  taken off; Altro is the rest. Securities bought and sold are not income, and neither is
+  what the two of you pay each other. The line is how much of all income came from work in
+  the twelve months up to each period.
+</p>
+{%- if result.periods %}
+{%- set total = result.sources|sum(attribute="total") %}
+{%- set work = result.sources|selectattr("group", "equalto", "Lavoro")|sum(attribute="total") %}
+<p class="headline">{{ total|money }} {{ result.currency }} of income{% if total > 0 %}, {{ percent(work / total) }} of it from work{% endif %}.</p>
+<figure class="chart income">
+  <svg viewBox="-4 -8 650 236" role="img" aria-labelledby="income-title">
+    <title id="income-title">Income per period by source, and the share from work</title>
+    <line class="grid" x1="0" x2="600" y1="0" y2="0"/>
+    <line class="axis" x1="0" x2="600" y1="{{ bars.zero }}" y2="{{ bars.zero }}"/>
+    {%- for column in bars.columns %}
+    <g><title>{{ column.period.name }}: {{ column.period.total|money }} {{ result.currency }}{% for block in column.blocks if block.value %}, {{ block.group }} {{ block.value|money }}{% endfor %}{% if column.period.employer is not none %}; {{ percent(column.period.employer) }} from work over 12 months{% endif %}</title>
+      {%- for block in column.blocks if block.height %}
+      <rect class="slot-{{ block.slot }}" x="{{ column.x }}" y="{{ block.y }}" width="{{ column.width }}" height="{{ block.height }}"/>
+      {%- endfor %}
+      {%- if column.named %}
+      <text class="period" x="{{ column.x + column.width / 2 }}" y="218">{{ column.period.name }}</text>
+      {%- endif %}
+    </g>
+    {%- endfor %}
+    {%- for points in bars.shares %}
+    <polyline class="share" points="{{ points }}"/>
+    {%- endfor %}
+    <text class="amount" x="2" y="12">{{ bars.top|short }}</text>
+    <text class="percent" x="606" y="4">100%</text>
+    <text class="percent" x="606" y="104">50%</text>
+    <text class="percent" x="606" y="204">0%</text>
+  </svg>
+  <figcaption class="legend">
+    {%- for group in groups %}
+    <span><span class="key slot-{{ slots[group] }}"></span>{{ group }}</span>
+    {%- endfor %}
+    <span><span class="key slot-0"></span>From work, 12 months</span>
+  </figcaption>
+</figure>
+<table class="cards">
+  <thead>
+    <tr><th>Period</th>{% for group in groups %}<th class="number">{{ group }}</th>{% endfor %}<th class="number">Total</th><th class="number">From work, 12 months</th></tr>
+  </thead>
+  <tbody>
+    {%- for period in result.periods|reverse %}
+    <tr>
+      <td class="date lead">{{ period.name }}</td>
+      {%- for group in groups %}
+      <td class="number" data-label="{{ group }}">{{ period.groups[group]|money }}</td>
+      {%- endfor %}
+      <td class="number total" data-label="Total">{{ period.total|money }}</td>
+      <td class="number" data-label="From work, 12 months">{{ percent(period.employer) }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- if result.sources %}
+<table class="narrow">
+  <thead><tr><th>Source</th><th class="number">{{ result.currency }}</th><th class="number">Share</th><th class="number">Rows</th></tr></thead>
+  <tbody>
+    {%- for source in result.sources %}
+    <tr>
+      <td><span class="key slot-{{ slots[source.group] }}" title="{{ source.group }}"></span><a href="{{ listed(source.leaf) }}">{{ source.leaf }}</a></td>
+      <td class="number">{{ source.total|money }}</td>
+      <td class="number">{{ percent(source.total / total if total > 0 else none) }}</td>
+      <td class="number">{{ source.count }}</td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- endif %}
+{%- if result.through %}
+<p class="note">Statements up to {{ result.through }}{% if not owner %}, for both of you{% endif %}.</p>
+{%- endif %}
+{%- else %}
+<p>Nothing is committed in this range.</p>
+{%- endif %}
+{%- endif %}
+{% endblock %}

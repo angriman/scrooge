@@ -1,4 +1,4 @@
-"""The currency the overview, net worth and holdings show their figures in: chosen once in the
+"""The currency the overview, holdings and analysis show their figures in: chosen once in the
 header, for all three. The other pages show every amount in its own currency."""
 
 import re
@@ -17,7 +17,7 @@ from tests.web.test_app import text
 from tests.web.test_holdings_page import errors
 
 SITE = "http://127.0.0.1:8765"
-PAGES = ["/", "/holdings"]  # those that convert
+PAGES = ["/", "/holdings", "/analysis"]  # those that convert
 NATIVE = ["/cashflow", "/transactions", "/months", "/import"]  # each amount in its currency
 WEB = Path(webapp.__file__).parent
 

@@ -21,6 +21,7 @@ PAGES = [  # in francs, the one currency of these rows: no exchange rate is need
     "/networth.json?currency=CHF",
     "/holdings?currency=CHF",
     "/cashflow",
+    "/analysis?currency=CHF",
     "/months",
 ]
 MONTHS = ["/months/Lukas/2026-08", "/months/Lukas/2026-09", "/months/Anna/2026-09"]
