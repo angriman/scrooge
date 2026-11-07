@@ -104,11 +104,14 @@ class Counted:
 
     day: date
     owner: str
+    account: str
+    kind: Kind
     currency: str
     side: str  # INCOME or EXPENSES
     top: str
     leaf: str
     amount_nano: int  # signed, in `currency`
+    counterparty: str
     counterparty_owner: str | None  # the other person, when they are the counterparty
 
     @property
@@ -122,15 +125,18 @@ def counted(conn: sqlite3.Connection, owner: str | None = None) -> list[Counted]
     query.check_names(conn, query.Filter(owner=owner))
     kinds = ", ".join("?" * len(_NOT_COUNTED))
     found = conn.execute(
-        "SELECT date, owner, currency, category_side, coalesce(category_parent, category), "  # noqa: S608  # only "?" marks are interpolated
-        f"category, amount_nano, counterparty_owner FROM committed_transactions "
+        "SELECT date, owner, account, kind, currency, category_side, "  # noqa: S608  # only "?" marks are interpolated
+        "coalesce(category_parent, category), category, amount_nano, counterparty, "
+        f"counterparty_owner FROM committed_transactions "
         f"WHERE kind NOT IN ({kinds}) AND category_side <> 'transfer' "
         # One person: their rows. Everyone: all but what the two paid each other.
         "AND CASE WHEN ? IS NULL THEN counterparty_owner IS NULL ELSE owner = ? END "
         "ORDER BY date, id",
         (*(kind.value for kind in _NOT_COUNTED), owner, owner),
     ).fetchall()
-    return [Counted(date.fromisoformat(row[0]), *row[1:]) for row in found]
+    return [
+        Counted(date.fromisoformat(row[0]), row[1], row[2], Kind(row[3]), *row[4:]) for row in found
+    ]
 
 
 def run(
