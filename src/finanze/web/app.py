@@ -57,6 +57,7 @@ from finanze import (
     overview,
     portfolio,
     query,
+    report,
     spending,
     staging,
 )
@@ -86,6 +87,7 @@ _SLOTS = {asset: n for n, asset in enumerate(networth.STACK, 1)}
 # The space between two slices of the ring, in hundredths of its circle; a slice not twice
 # that wide has none.
 _GAP = Decimal("0.6")
+_TENTH = Decimal("0.1")  # a slice's share of its ring, in percent
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -373,24 +375,33 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
 
 
 @dataclass(frozen=True, slots=True)
-class _Arc:
-    """One slice of the ring of what is held: a dash along a circle measured as 100."""
+class _Slice:
+    """A part of a ring other than the overview's: a category spent on, a source of income."""
 
-    part: overview.Part
+    name: str
+    value: Decimal
+    share: Decimal | None  # of the ring, in percent
+
+
+@dataclass(frozen=True, slots=True)
+class _Arc:
+    """One slice of a ring: a dash along a circle measured as 100."""
+
+    part: overview.Part | _Slice
     slot: int
     dash: Decimal  # how long it is drawn: its share, less the gap after it
     gap: Decimal  # the rest of the circle
     offset: Decimal  # where it starts, as a dash offset: the shares before it, below zero
 
 
-def _ring(held: Sequence[overview.Part]) -> list[_Arc]:
+def _ring(held: Sequence[overview.Part | _Slice], slots: Mapping[str, int] = _SLOTS) -> list[_Arc]:
     """The slices of the ring, clockwise from the top, in the order the chart stacks them."""
     arcs = []
     start = Decimal(0)
     for part in held:
         share = part.share or Decimal(0)  # every part held has one: their sum is above zero
         dash = share - _GAP if share > 2 * _GAP and len(held) > 1 else share
-        arcs.append(_Arc(part, _SLOTS[part.name], dash, 100 - dash, -start))
+        arcs.append(_Arc(part, slots[part.name], dash, 100 - dash, -start))
         start += share
     return arcs
 
@@ -1006,10 +1017,10 @@ def _cashflow(request: Request) -> Response:
 
 # The bars of the analysis page: the plot is _WIDTH by _HEIGHT, labels outside it. Each part
 # of a stack wears the colour of its place in it.
-_WIDTH, _HEIGHT = Decimal(600), Decimal(200)
+_WIDTH, _HEIGHT = Decimal(940), Decimal(220)
 _INCOME_SLOTS = {group: n for n, group in enumerate(income.GROUPS, 1)}
 _OTHERS_SLOT = 7  # the last colour of the palette: the categories not shown on their own
-_LABELS = 8  # periods named under the bars, at most
+_LABELS = 12  # periods named under the bars, at most
 
 
 @dataclass(frozen=True, slots=True)
@@ -1030,6 +1041,7 @@ class _Column:
     width: Decimal
     blocks: tuple[_Block, ...]
     named: bool  # its period is written under it
+    minor: bool  # one of every other period written: left out on a phone
 
 
 @dataclass(frozen=True, slots=True)
@@ -1073,8 +1085,10 @@ def _bars(
         x = (step * n + step * Decimal("0.15")).quantize(Decimal("0.1"))
         width = (step * Decimal("0.7")).quantize(Decimal("0.1"))
         total = sum(parts.values(), Decimal(0))
+        # Counted from the newest, which is always named.
         named = (len(periods) - 1 - n) % every == 0
-        columns.append(_Column(name, total, share, x, width, tuple(blocks), named))
+        minor = named and (len(periods) - 1 - n) // every % 2 == 1
+        columns.append(_Column(name, total, share, x, width, tuple(blocks), named, minor))
         if share is None:
             if run:
                 shares.append(" ".join(run))
@@ -1094,21 +1108,42 @@ def _spending_slots(parts: Sequence[str]) -> dict[str, int]:
     return {part: special.get(part, n) for n, part in enumerate(parts, 1)}
 
 
+def _slices(values: Sequence[tuple[str, Decimal]]) -> tuple[list[_Slice], list[_Slice]]:
+    """The parts above zero as slices of a ring, each its share of their sum, and those
+    below zero, which a ring cannot show."""
+    above = [(name, value) for name, value in values if value > 0]
+    whole = sum((value for _, value in above), Decimal(0))
+    slices = [_Slice(name, value, (value * 100 / whole).quantize(_TENTH)) for name, value in above]
+    return slices, [_Slice(name, value, None) for name, value in values if value < 0]
+
+
+def _spent_parts(spent: spending.Spending) -> list[tuple[str, Decimal]]:
+    """What the ring of spending shows: its largest categories, then the others together;
+    what was paid back is below zero."""
+    largest = {name for name in spent.parts if name not in (spending.OTHERS, spending.PAID_BACK)}
+    parts = [(c.name, c.spent) for c in spent.categories if c.name in largest]
+    rest = [c for c in spent.categories if c.name not in largest]
+    if rest:
+        parts.append((spending.OTHERS, sum((c.spent for c in rest), Decimal(0))))
+    if spent.paid_back:
+        parts.append((spending.PAID_BACK, -spent.paid_back))
+    return parts
+
+
+def _income_parts(earned: income.Income) -> list[tuple[str, Decimal]]:
+    totals = dict.fromkeys(income.GROUPS, Decimal(0))
+    for source in earned.sources:
+        totals[source.group] += source.total
+    return [(group, total) for group, total in totals.items() if total]
+
+
 def _analysis(request: Request) -> Response:
     asked = forms.analysis_view(_viewed(request))
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
         try:
-            earned = income.run(
-                conn,
-                first=asked.first,
-                last=asked.last,
-                owner=asked.owner,
-                grouping=asked.grouping,
-                currency=asked.currency,
-            )
-            spent = spending.run(
+            shown = report.run(
                 conn,
                 first=asked.first,
                 last=asked.last,
@@ -1118,24 +1153,33 @@ def _analysis(request: Request) -> Response:
             )
         except networth.MissingRateError as exc:
             errors.append(_sentence(exc))
-            earned, spent = None, None
-    slots = _spending_slots(spent.parts) if spent else {}
-    context = {
+            shown = None
+    context: dict[str, object] = {
         "people": people,
         "owner": asked.owner,
         "asked": asked,
         "errors": errors,
         "given": request.query_params,
         "groupings": list(cashflow.Grouping),
-        "result": earned,
-        "bars": earned
-        and _bars([(p.name, p.groups, p.employer) for p in earned.periods], _INCOME_SLOTS),
-        "slots": _INCOME_SLOTS,
-        "groups": income.GROUPS,
-        "spent": spent,
-        "spent_bars": spent and _bars([(p.name, p.parts, None) for p in spent.periods], slots),
-        "spent_slots": slots,
+        "shown": shown,
+        "plot": {"width": _WIDTH, "height": _HEIGHT},
     }
+    if shown:
+        earned, spent = shown.income, shown.spending
+        slots = _spending_slots(spent.parts)
+        spent_ring, spent_out = _slices(_spent_parts(spent))
+        income_ring, income_out = _slices(_income_parts(earned))
+        context |= {
+            "spent_slots": slots,
+            "spent_bars": _bars([(p.name, p.parts, None) for p in spent.periods], slots),
+            "spent_ring": _ring(spent_ring, slots),
+            "spent_out": spent_out,
+            "categories": {category.name: category for category in spent.categories},
+            "slots": _INCOME_SLOTS,
+            "bars": _bars([(p.name, p.groups, p.employer) for p in earned.periods], _INCOME_SLOTS),
+            "income_ring": _ring(income_ring, _INCOME_SLOTS),
+            "income_out": income_out,
+        }
     return _templates.TemplateResponse(request, "analysis.html", context)
 
 

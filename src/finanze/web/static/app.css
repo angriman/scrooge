@@ -377,10 +377,65 @@ code {
 .donut .slot-6 { stroke: var(--series-6); }
 .donut .slot-7 { stroke: var(--series-7); }
 
+/* ---- the analysis page's headline figures: a tile each, what it was a year before under. */
+
+.ranges {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.tiles {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin: 0.75rem 0 1rem;
+}
+
+.tile {
+  background: var(--soft);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.tile h2 {
+  font-size: 0.85rem;
+  font-weight: 400;
+  margin: 0;
+  opacity: 0.75;
+}
+
+.tile .value {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin: 0.2rem 0;
+  white-space: nowrap;
+}
+
+.tile .value small {
+  font-size: 1rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.tile .then {
+  font-size: 0.85rem;
+  margin: 0;
+  opacity: 0.85;
+}
+
+/* A change of a tenth or more: good news or bad. */
+.better { color: #0f8a5f; }
+.worse { color: #c4421a; }
+
+@media (prefers-color-scheme: dark) {
+  .better { color: #3cc48f; }
+  .worse { color: #f07a4f; }
+}
+
 /* ---- the analysis page's bars: a column of its parts per period, and a share as a line. */
 
 .stacked {
-  max-width: 48rem;
+  margin: 1rem 0;
 }
 
 .stacked svg {
@@ -640,8 +695,9 @@ figcaption {
    under the name of its column, and any other table too wide scrolls inside itself. */
 
 @media (max-width: 40rem) {
-  /* The bars are drawn half their size: its labels are written twice as large. */
-  .stacked text { font-size: 22px; }
+  /* The bars are drawn a third of their size: their labels are written larger. */
+  .stacked text { font-size: 28px; }
+  .stacked .minor { display: none; }
 
   body {
     padding: 0 0.75rem 3rem;

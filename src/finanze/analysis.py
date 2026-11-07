@@ -59,10 +59,12 @@ class Rows:
         return self.rows[bisect_left(self.days, first) : bisect_right(self.days, last)]
 
     def span(self, first: date | None, last: date | None) -> Span | None:
-        """The range asked for, its ends filled in; None when there is nothing to show."""
+        """The range asked for, its ends filled in; None when there is nothing to show, or
+        when it ends before it starts."""
         if self.through is None or self.known is None:
             return None
-        return Span(first or self.rows[0].day, last or self.through, self.through, self.known)
+        start, end = first or self.rows[0].day, last or self.through
+        return Span(start, end, self.through, self.known) if start <= end else None
 
 
 def rows(
