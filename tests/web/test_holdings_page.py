@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from finanze import portfolio
 from finanze.models import Holding, SecurityTrade
 from finanze.storage import db
 from finanze.web import app as webapp
@@ -546,6 +547,13 @@ def test_the_bills_stand_on_a_line_of_days_one_bar_a_day(client: TestClient) -> 
         (f"2026-12-24: 912797ZZ1 ({OWNER}) 9,872.50 EUR today", "991.0"),
     ]
     assert '<text class="day" x="1000.0" y="108">24 Dec</text>' in page
+    # where the line is too narrow for its words, a phone, the same as a list
+    due = re.search(r'<ol class="due">(.*?)</ol>', page, re.DOTALL)
+    assert due is not None
+    assert [text(item) for item in re.findall(r"<li>(.*?)</li>", due[1])] == [
+        "2026-09-28 matured 5,000.00",
+        "2026-12-24 in 85 days 9,872.50",
+    ]
 
 
 def test_bills_due_the_same_day_are_one_bar(tmp_path: Path) -> None:
@@ -574,3 +582,41 @@ def test_bills_due_the_same_day_are_one_bar(tmp_path: Path) -> None:
     # the two of the same day together, the tallest; the one without a day has no place
     assert bars == [("2026-11-30: 912797AA9 4,959.33, 912797BB8 4,959.33 USD today", "0.0")]
     assert listed(page, "gains")[-1].startswith("912797CC7")
+
+
+def test_past_the_colours_there_are_the_smallest_accounts_are_grey_together() -> None:
+    def held_in(account: str, value: int) -> portfolio.Position:
+        return portfolio.Position(
+            OWNER,
+            account,
+            "VT",
+            "",
+            "etf",
+            "ETFs",
+            "USD",
+            Decimal(1),
+            None,
+            None,
+            False,
+            None,
+            Decimal(value),
+            Decimal(value),
+        )
+
+    values = {f"Broker {n}": 10 * n for n in range(1, 10)}
+    held = portfolio.Portfolio(
+        "USD", NOW, tuple(held_in(name, value) for name, value in values.items()), ()
+    )
+    accounts = dict(webapp._lenses(held, [], OWNER))["Account"]
+    assert [(piece.name, piece.value, piece.slot) for piece in accounts] == [
+        ("Broker 9", Decimal(90), 1),
+        ("Broker 8", Decimal(80), 2),
+        ("Broker 7", Decimal(70), 3),
+        ("Broker 6", Decimal(60), 4),
+        ("Broker 5", Decimal(50), 5),
+        ("Broker 4", Decimal(40), 6),
+        ("3 others", Decimal(60), 8),
+    ]
+    seven = portfolio.Portfolio("USD", NOW, held.positions[:7], ())
+    shown = dict(webapp._lenses(seven, [], OWNER))["Account"]
+    assert [piece.slot for piece in shown] == [1, 2, 3, 4, 5, 6, 7]

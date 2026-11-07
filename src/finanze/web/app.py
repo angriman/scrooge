@@ -86,6 +86,8 @@ _CONVERTING = ("/", "/holdings", "/analysis")
 # Neighbours in the stack wear neighbouring colours: those are the pairs the palette was
 # checked for.
 _SLOTS = {asset: n for n, asset in enumerate(networth.STACK, 1)}
+_COLOURS = 7  # the series colours there are
+_REST = _COLOURS + 1  # grey, for what is folded together
 # The space between two slices of the ring, in hundredths of its circle; a slice not twice
 # that wide has none.
 _GAP = Decimal("0.6")
@@ -102,6 +104,7 @@ _LOGO_HEADERS = {
 # The holdings page's map of positions and line of bills, in the units of their SVG.
 _MAP = (Decimal(1000), Decimal(420))
 _LINE = (Decimal(1000), Decimal(90))
+_APART = Decimal(64)  # the least room between two days written under the line
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -1052,7 +1055,15 @@ def _lenses(
     lenses = [("Kind", shapes.pieces(held.by_asset, _SLOTS))]
     for title, cut in (("Currency", cuts["currency"]), ("Account", cuts["account"])):
         ranked = sorted(cut, key=lambda name: -cut[name])
-        lenses.append((title, shapes.pieces(cut, {n: i % 7 + 1 for i, n in enumerate(ranked)})))
+        slots = {name: n for n, name in enumerate(ranked, 1)}
+        shown, others = dict(cut), None
+        if len(ranked) > _COLOURS:  # one colour each for the largest, the rest grey together
+            rest = ranked[_COLOURS - 1 :]
+            others = f"{len(rest)} others"
+            shown = {name: cut[name] for name in ranked[: _COLOURS - 1]}
+            shown[others] = sum((cut[name] for name in rest), Decimal(0))
+            slots[others] = _REST
+        lenses.append((title, shapes.pieces(shown, slots, last=others)))
     if owner is None and len(people) > 1:
         by_owner: dict[str, Decimal] = defaultdict(Decimal)
         for position in held.positions:
@@ -1110,7 +1121,7 @@ def _holdings(request: Request) -> Response:
             ),
             "lenses": _lenses(held, people, asked.owner),
             "accounts": len({(p.owner, p.account) for p in held.positions}),
-            "due": list(zip(due.items(), marks, strict=True)),
+            "due": list(zip(due.items(), shapes.spaced(marks, _APART), strict=True)),
             "next": next(
                 (rung for rung in rungs if rung.days is not None and rung.days >= 0), None
             ),

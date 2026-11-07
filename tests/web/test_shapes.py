@@ -71,7 +71,8 @@ def test_a_gain_goes_right_of_the_middle_and_a_loss_left() -> None:
 def test_bills_stand_on_the_line_of_days_to_their_maturity() -> None:
     on = date(2026, 11, 7)
     maturities = [date(2026, 11, 1), date(2026, 12, 7), None, date(2027, 1, 6)]
-    marks, last = shapes.line_of_days(maturities, [D(50), D(100), D(70), D(25)], on, D(600), D(80))
+    values = [D(50), D(100), D(70), D(25)]
+    marks, last = shapes.line_of_days(maturities, values, on, D(600), D(80))
     assert marks == [Mark(D(0), D(40)), Mark(D(300), D(80)), None, Mark(D(600), D(20))]
     assert last == date(2027, 1, 6)
     assert shapes.line_of_days([None], [D(1)], on, D(600), D(80)) == ([None], None)
@@ -80,3 +81,19 @@ def test_bills_stand_on_the_line_of_days_to_their_maturity() -> None:
         [Mark(D(0), D(0))],
         on,
     )
+
+
+def test_what_is_written_on_the_line_of_days_is_never_too_near() -> None:
+    on = date(2026, 11, 7)
+    maturities = [date.fromordinal(on.toordinal() + 10 * n) for n in range(1, 7)]
+    marks, _ = shapes.line_of_days([*maturities, None], [D(1)] * 7, on, D(60), D(10))
+    # at 10, 20, ... 60; a day only 25 after "Today" and the last day written, an amount
+    # only 25 after the last amount written
+    assert [(m.x, m.dated, m.priced) for m in shapes.spaced(marks, D(25)) if m] == [
+        (D(10), False, True),
+        (D(20), False, False),
+        (D(30), True, False),
+        (D(40), False, True),
+        (D(50), False, False),
+        (D(60), True, False),
+    ]

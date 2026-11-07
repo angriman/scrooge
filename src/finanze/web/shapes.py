@@ -8,7 +8,7 @@ they are drawn in, to a tenth.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
@@ -50,6 +50,8 @@ class Mark:
 
     x: Decimal  # its middle, in the units of the line
     height: Decimal
+    dated: bool = True  # its day is written under it: no other is too near, nor "Today"
+    priced: bool = True  # its amount is written over it: no other is too near
 
 
 def _tenth(number: Decimal) -> Decimal:
@@ -102,9 +104,14 @@ def squarify(values: Sequence[Decimal], width: Decimal, height: Decimal) -> list
     return rects
 
 
-def pieces(values: Mapping[str, Decimal], slots: Mapping[str, int]) -> list[Piece]:
-    """`values` above zero side by side in one bar, largest first, each as wide as its share."""
-    above = sorted(((n, v) for n, v in values.items() if v > 0), key=lambda item: -item[1])
+def pieces(
+    values: Mapping[str, Decimal], slots: Mapping[str, int], last: str | None = None
+) -> list[Piece]:
+    """`values` above zero side by side in one bar, largest first (`last` after them all),
+    each as wide as its share."""
+    above = sorted(
+        ((n, v) for n, v in values.items() if v > 0), key=lambda item: (item[0] == last, -item[1])
+    )
     total = sum((value for _, value in above), Decimal(0))
     if not above:
         return []
@@ -155,3 +162,17 @@ def line_of_days(
         marks.append(Mark(_tenth(x), _tenth(tall)))
     end = None if last is None else date.fromordinal(on.toordinal() + last)
     return marks, end
+
+
+def spaced(marks: Sequence[Mark | None], apart: Decimal) -> list[Mark | None]:
+    """`marks` with a day written only `apart` from the last day written and from the start,
+    where "Today" is, and an amount only `apart` from the last amount written."""
+    found = list(marks)
+    dated, priced = Decimal(0), -apart  # where the last day and amount are written
+    for n, mark in sorted(enumerate(marks), key=lambda item: item[1].x if item[1] else 0):
+        if mark is None:
+            continue
+        found[n] = replace(mark, dated=mark.x - dated >= apart, priced=mark.x - priced >= apart)
+        dated = mark.x if mark.x - dated >= apart else dated
+        priced = mark.x if mark.x - priced >= apart else priced
+    return found

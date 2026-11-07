@@ -308,6 +308,7 @@ code {
 .slot-5 { background: var(--series-5, #eda100); }
 .slot-6 { background: var(--series-6, #e87ba4); }
 .slot-7 { background: var(--series-7, #008300); }
+.slot-8 { background: var(--text-secondary, GrayText); }
 
 .plot {
   min-height: 420px;
@@ -631,6 +632,7 @@ code {
 .bar .slot-5, .split .slot-5 { fill: var(--series-5); }
 .bar .slot-6, .split .slot-6 { fill: var(--series-6); }
 .bar .slot-7, .split .slot-7 { fill: var(--series-7); }
+.split .slot-8 { fill: var(--text-secondary); }
 
 .sum {
   border-top: 2px solid var(--line);
@@ -816,6 +818,27 @@ code {
 
 .line .end { text-anchor: start; }
 .line .end.last { text-anchor: end; }
+
+/* What the line shows, as a list where it is too narrow for its words: on a phone. */
+.due {
+  display: none;
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.due li {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.due li:last-child { border-bottom: none; }
+.due small { color: var(--text-secondary); }
+.due .number { margin-left: auto; }
 
 /* ---- the analysis page's bars: a column of its parts per period, and a share as a line. */
 
@@ -1379,8 +1402,12 @@ figcaption {
     display: none;
   }
 
-  .line text {
-    font-size: 34px;
+  .line {
+    display: none;
+  }
+
+  .due {
+    display: block;
   }
 
   /* The ring above its kinds, the panels one under the other. */
