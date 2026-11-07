@@ -66,6 +66,7 @@ from finanze import (
 )
 from finanze.classification import UnknownInstrumentError, UnknownMaturityError
 from finanze.errors import ConfigError, ExtractionError
+from finanze.extractors.common import month_end
 from finanze.models import Kind
 from finanze.prices import MaturitySource, PriceError
 from finanze.storage import db, originals, store
@@ -709,6 +710,7 @@ def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
     return files
 
 
+_WIDE = Decimal(1000)  # the timeline of statements, in the units of its SVG
 _BEHIND = 35  # days an account may end before the newest day committed for its person
 # Pension certificates come once or twice a year: such an account is never behind.
 _NOT_MONTHLY = frozenset({"axa", "servisa"})
@@ -738,13 +740,62 @@ def _accounts(lines: Sequence[months.Coverage]) -> list[_Account]:
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class _Run:
+    """Days an account has statements for, and where they are drawn on the timeline."""
+
+    span: months.Span
+    band: shapes.Band
+
+
+@dataclass(frozen=True, slots=True)
+class _Row:
+    track: months.Track
+    behind: bool
+    runs: list[_Run]
+
+
+@dataclass(frozen=True, slots=True)
+class _Timeline:
+    """The statements of every account along the months, a row each, a group per person."""
+
+    first: date
+    last: date
+    width: Decimal
+    ticks: list[shapes.Tick]
+    groups: list[tuple[str, list[_Row]]]
+
+
+def _timeline(
+    tracks: Sequence[months.Track], accounts: Sequence[_Account], today: date
+) -> _Timeline | None:
+    """The months from the first a statement covers to the end of this one, or of the last
+    covered if later; None without statements."""
+    spans = [span for track in tracks for span in track.spans]
+    if not spans:
+        return None
+    first = min(span.first for span in spans).replace(day=1)
+    last = month_end(max(today, *(span.last for span in spans)))
+    behind = {(a.coverage.owner, a.coverage.account, a.coverage.source): a.behind for a in accounts}
+    groups: dict[str, list[_Row]] = {}
+    for track in tracks:
+        found = shapes.bands([(span.first, span.last) for span in track.spans], first, last, _WIDE)
+        runs = [_Run(span, band) for span, band in zip(track.spans, found, strict=True)]
+        key = (track.owner, track.account, track.source)
+        groups.setdefault(track.owner, []).append(_Row(track, behind[key], runs))
+    ticks = shapes.months_axis(first, last, _WIDE)
+    return _Timeline(first, last, _WIDE, ticks, list(groups.items()))
+
+
 def _months(request: Request) -> Response:
     owner = _owner(request)
     with db.reading(request.app.state.database) as conn:
         query.check_names(conn, query.Filter(owner=owner))
         lines = months.listing(conn, owner)
         accounts = _accounts(months.coverage(conn, owner))
+        tracks = months.timeline(conn, owner)
         people = query.people(conn)
+    today = request.app.state.clock().date()
     shown = [person for person in people if owner in (None, person.name)]
     context = {
         "people": people,
@@ -752,6 +803,7 @@ def _months(request: Request) -> Response:
         "owner": owner,
         "lines": lines,
         "coverage": accounts,
+        "timeline": _timeline(tracks, accounts, today),
         "behind": _BEHIND,
     }
     return _templates.TemplateResponse(request, "months.html", context)

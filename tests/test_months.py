@@ -156,6 +156,39 @@ def test_coverage_says_how_far_each_account_is_committed_and_staged(
     )
 
 
+def test_the_timeline_has_the_days_each_account_has_statements_for(
+    conn: sqlite3.Connection,
+) -> None:
+    august = (date(2026, 8, 1), date(2026, 8, 31))
+    tracks = months.timeline(conn)
+    assert [(t.owner, t.account, t.label) for t in tracks] == [
+        (PARTNER, "Migros", LABELS["migros"]),
+        (OWNER, "Migros", LABELS["migros"]),
+        (OWNER, "Revolut EUR", LABELS["revolut"]),
+    ]
+    assert tracks[0].spans == (months.Span(*august, False),)
+    assert tracks[1].spans == (
+        months.Span(date(2026, 9, 1), date(2026, 9, 30), False),
+        months.Span(*august, True),
+    )
+    assert tracks[2].spans == (months.Span(*august, True),)
+    assert months.timeline(conn, OWNER) == tracks[1:]
+
+
+def test_statements_that_overlap_or_follow_on_are_one_run_and_a_gap_is_not() -> None:
+    d = date
+    joined = months._joined(
+        [(d(2026, 3, 1), d(2026, 3, 31)), (d(2026, 1, 1), d(2026, 1, 31)),
+         (d(2026, 2, 1), d(2026, 2, 10)), (d(2026, 2, 5), d(2026, 2, 28)),
+         (d(2026, 5, 1), d(2026, 5, 31))],
+        True,
+    )  # fmt: skip
+    assert joined == [
+        months.Span(d(2026, 1, 1), d(2026, 3, 31), True),
+        months.Span(d(2026, 5, 1), d(2026, 5, 31), True),
+    ]
+
+
 def test_a_month_adds_up_what_is_committed_by_booking_date(conn: sqlite3.Connection) -> None:
     august = months.checklist(conn, OWNER, AUGUST)
     assert august.files == (

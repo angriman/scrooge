@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from finanze import portfolio
@@ -52,6 +52,23 @@ class Mark:
     height: Decimal
     dated: bool = True  # its day is written under it: no other is too near, nor "Today"
     priced: bool = True  # its amount is written over it: no other is too near
+
+
+@dataclass(frozen=True, slots=True)
+class Tick:
+    """A month's first day on the axis of the timeline of statements."""
+
+    x: Decimal
+    label: str  # "" where there is no room to write it
+    year: bool  # a January: its label is the year, and its line is the heavy one
+
+
+@dataclass(frozen=True, slots=True)
+class Band:
+    """A run of days on the timeline: where it starts and how wide it is."""
+
+    x: Decimal
+    width: Decimal
 
 
 def _tenth(number: Decimal) -> Decimal:
@@ -176,3 +193,38 @@ def spaced(marks: Sequence[Mark | None], apart: Decimal) -> list[Mark | None]:
         dated = mark.x if mark.x - dated >= apart else dated
         priced = mark.x if mark.x - priced >= apart else priced
     return found
+
+
+def months_axis(first: date, last: date, width: Decimal, room: Decimal = Decimal(34)) -> list[Tick]:
+    """A tick for each month from `first`, the first day of one, to `last`, the last day of
+    one, over `width`: a January is written as its year, other months as their name only when
+    each has `room`."""
+    total = (last - first).days + 1
+    ticks = []
+    day = first
+    while day <= last:
+        ahead = date.fromordinal(day.toordinal() + 31).replace(day=1)
+        month = Decimal((min(ahead, last + timedelta(days=1)) - day).days) * width / total
+        label = str(day.year) if day.month == 1 else day.strftime("%b") if month >= room else ""
+        ticks.append(Tick(_tenth(width * (day - first).days / total), label, day.month == 1))
+        day = ahead
+    return ticks
+
+
+def bands(
+    spans: Sequence[tuple[date, date]],
+    first: date,
+    last: date,
+    width: Decimal,
+    least: Decimal = Decimal(3),
+) -> list[Band]:
+    """Each of `spans`, days from the first to the last included, as a band over `width`
+    that spans `first` to `last`; a day alone is still `least` wide."""
+    total = (last - first).days + 1
+    return [
+        Band(
+            _tenth(width * (start - first).days / total),
+            max(_tenth(width * ((end - start).days + 1) / total), least),
+        )
+        for start, end in spans
+    ]

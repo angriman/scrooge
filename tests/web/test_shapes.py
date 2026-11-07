@@ -97,3 +97,29 @@ def test_what_is_written_on_the_line_of_days_is_never_too_near() -> None:
         (D(50), False, False),
         (D(60), True, False),
     ]
+
+
+def test_the_axis_of_months_has_a_tick_each_and_names_a_month_only_where_there_is_room() -> None:
+    first, last = date(2025, 11, 1), date(2026, 3, 31)  # 151 days
+    ticks = shapes.months_axis(first, last, D(1000))
+    assert [(t.label, t.year) for t in ticks] == [
+        ("Nov", False),
+        ("Dec", False),
+        ("2026", True),
+        ("Feb", False),
+        ("Mar", False),
+    ]
+    assert [t.x for t in ticks] == [D("0.0"), D("198.7"), D("404.0"), D("609.3"), D("794.7")]
+    narrow = shapes.months_axis(first, last, D(100))  # 20 units a month: no room for a name
+    assert [t.label for t in narrow] == ["", "", "2026", "", ""]
+
+
+def test_a_run_of_days_is_a_band_of_its_width_and_a_day_alone_is_still_seen() -> None:
+    first, last = date(2026, 1, 1), date(2026, 1, 31)  # 31 days
+    found = shapes.bands(
+        [(date(2026, 1, 1), date(2026, 1, 10)), (date(2026, 1, 21), date(2026, 1, 21))],
+        first,
+        last,
+        D(31),
+    )
+    assert found == [shapes.Band(D("0.0"), D("10.0")), shapes.Band(D("20.0"), D("3"))]

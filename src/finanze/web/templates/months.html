@@ -1,6 +1,64 @@
 {% extends "base.html" %}
 {% block title %}Months{% endblock %}
 {% block main %}
+{%- if timeline %}
+{%- set committed = coverage|map(attribute="coverage.committed")|select|list %}
+{%- set late = coverage|selectattr("behind")|list|length %}
+<div class="tiles">
+  <section class="tile lead">
+    <h2>Committed up to</h2>
+    <p class="value">{{ committed|max if committed else "nothing" }}</p>
+    <p class="then">{{ shown|sum(attribute="committed") }} statement{{ "" if shown|sum(attribute="committed") == 1 else "s" }}, {{ shown|sum(attribute="transactions") }} transactions</p>
+  </section>
+  <section class="tile">
+    <h2>Accounts</h2>
+    <p class="value">{{ coverage|length }}</p>
+    <p class="then{% if late %} worse{% endif %}">{% if late %}{{ late }} behind: a statement is probably missing{% else %}none behind{% endif %}</p>
+  </section>
+  <section class="tile">
+    <h2>Staged</h2>
+    <p class="value">{{ shown|sum(attribute="staged") }}</p>
+    <p class="then">{% if shown|sum(attribute="staged") %}waiting to be <a href="{{ url_for('import') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}">committed</a>{% else %}nothing waits{% endif %}</p>
+  </section>
+</div>
+<section class="panel">
+  <h2>Statements, month by month</h2>
+  {%- for person, rows in timeline.groups %}
+  <div class="timeline">
+    <h3>{{ person }}</h3>
+    <div class="row axis-row">
+      <span></span>
+      <svg viewBox="0 0 {{ timeline.width }} 22" role="presentation">
+        {%- for tick in timeline.ticks %}
+        {%- if tick.label %}
+        <text class="{{ 'year' if tick.year else 'month' }}" x="{{ tick.x + 4 }}" y="16">{{ tick.label }}</text>
+        {%- endif %}
+        {%- endfor %}
+      </svg>
+    </div>
+    {%- for row in rows %}
+    <div class="row{% if row.behind %} behind{% endif %}">
+      <span class="who">{{ row.track.account }} <small>{{ row.track.label }}{% if row.behind %} · <strong>behind</strong>{% endif %}</small></span>
+      <svg viewBox="0 0 {{ timeline.width }} 18" preserveAspectRatio="none" role="img" aria-label="{{ row.track.owner }}, {{ row.track.account }}: {% for run in row.runs %}{{ 'committed' if run.span.committed else 'staged' }} {{ run.span.first }} to {{ run.span.last }}{{ '; ' if not loop.last }}{% endfor %}">
+        {%- for tick in timeline.ticks %}
+        <line class="{{ 'year' if tick.year else 'grid' }}" x1="{{ tick.x }}" x2="{{ tick.x }}" y1="0" y2="18" vector-effect="non-scaling-stroke"/>
+        {%- endfor %}
+        {%- for run in row.runs %}
+        <rect class="{{ 'committed' if run.span.committed else 'staged' }}" x="{{ run.band.x }}" y="3" width="{{ run.band.width }}" height="12"><title>{{ "Committed" if run.span.committed else "Staged" }}: {{ run.span.first }} to {{ run.span.last }}</title></rect>
+        {%- endfor %}
+      </svg>
+    </div>
+    {%- endfor %}
+  </div>
+  {%- endfor %}
+  <p class="legend"><span class="swatch committed"></span> committed <span class="swatch staged"></span> staged, not yet committed. A gap is a stretch no statement covers; an account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person.</p>
+</section>
+{%- endif %}
+{%- if timeline %}
+<h2>In detail</h2>
+<details>
+  <summary>How far each account is committed, and every month</summary>
+{%- endif %}
 {%- if shown %}
 <section>
   <h2>How far each account is committed</h2>
@@ -60,5 +118,8 @@
 </section>
 {%- else %}
 <p>Nothing is committed yet: <a href="{{ url_for('import') }}">import</a> statements and commit them.</p>
+{%- endif %}
+{%- if timeline %}
+</details>
 {%- endif %}
 {% endblock %}

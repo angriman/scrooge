@@ -112,10 +112,8 @@ def test_a_pension_fund_is_never_behind(tmp_path: Path) -> None:
 
 def test_an_account_a_few_weeks_behind_is_not_flagged(tmp_path: Path) -> None:
     july = (date(2026, 7, 1), date(2026, 7, 31))
-    assert (
-        "behind"
-        not in committed_pair(tmp_path / "f.db", july).get("/months").text.partition("</table>")[0]
-    )
+    page = committed_pair(tmp_path / "f.db", july).get("/months").text
+    assert "<strong>behind</strong>" not in page
 
 
 def test_an_empty_database_says_how_to_start(tmp_path: Path) -> None:

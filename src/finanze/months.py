@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from finanze import router, staging
@@ -31,6 +31,29 @@ class MonthLine:
     month: date
     statements: int  # committed files that cover the month
     transactions: int  # committed, booked in the month
+
+
+@dataclass(frozen=True, slots=True)
+class Span:
+    """Days one account has statements for, committed or staged."""
+
+    first: date
+    last: date
+    committed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Track:
+    """The days an account has statements for: runs of days, staged ones first."""
+
+    owner: str
+    account: str
+    source: str
+    spans: tuple[Span, ...]
+
+    @property
+    def label(self) -> str:
+        return router.LABELS.get(self.source, self.source)
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,6 +309,39 @@ def coverage(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Covera
             )
         )
     return tuple(lines)
+
+
+def _joined(spans: list[tuple[date, date]], committed: bool) -> list[Span]:
+    """`spans` as runs: statements that overlap or follow on day after day are one."""
+    runs: list[Span] = []
+    for first, last in sorted(spans):
+        if runs and first <= runs[-1].last + timedelta(days=1):
+            runs[-1] = Span(runs[-1].first, max(runs[-1].last, last), committed)
+        else:
+            runs.append(Span(first, last, committed))
+    return runs
+
+
+def timeline(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Track, ...]:
+    """Of every account a source feeds, of `owner` or of everyone, the days its statements
+    cover: staged ones before committed ones, so that drawn in that order a day committed
+    hides the same day staged."""
+    found = conn.execute(
+        "SELECT o.name, a.name, f.source, f.period_start, f.period_end, "
+        "f.committed_at IS NOT NULL "
+        "FROM statement_accounts s JOIN statement_files f ON f.id = s.statement_file_id "
+        "JOIN accounts a ON a.id = s.account_id JOIN owners o ON o.id = a.owner_id "
+        "WHERE o.name = coalesce(?, o.name) ORDER BY o.name, a.name, f.source",
+        (owner,),
+    ).fetchall()
+    grouped: dict[tuple[str, str, str], dict[bool, list[tuple[date, date]]]] = {}
+    for name, account, source, first, last, committed in found:
+        states = grouped.setdefault((name, account, source), {False: [], True: []})
+        states[bool(committed)].append((_day(first), _day(last)))
+    return tuple(
+        Track(name, account, source, (*_joined(states[False], False), *_joined(states[True], True)))
+        for (name, account, source), states in grouped.items()
+    )
 
 
 def listing(conn: sqlite3.Connection, owner: str | None = None) -> tuple[MonthLine, ...]:
