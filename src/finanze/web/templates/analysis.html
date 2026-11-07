@@ -2,43 +2,73 @@
 {% block title %}Analysis{% endblock %}
 {% block head %}
   <script src="{{ url_for('static', path='period.js') }}" defer></script>
+  <script src="{{ url_for('static', path='donut.js') }}" defer></script>
 {%- endblock %}
 {% macro percent(share) -%}
 {% if share is none %}–{% else %}{{ (share * 100)|round(1) }}%{% endif %}
 {%- endmacro %}
-{% macro change(now, before) -%}
-{% if before is none or not before %}–{% else %}{{ "%+.0f"|format((now / before - 1) * 100) }}%{% endif %}
+{#- How much `now` is above `before`, in percent: coloured from a tenth up, as good news when
+    more is `better` ("more" for income, "less" for spending). #}
+{% macro change(now, before, better="more") -%}
+{% if before is none or not before or before < 0 %}–{% else -%}
+{%- set by = (now / before - 1) * 100 -%}
+{%- set mood = "" if by|abs < 10 else ("better" if (by > 0) == (better == "more") else "worse") -%}
+<span{% if mood %} class="{{ mood }}"{% endif %}>{{ "%+.0f"|format(by) }}%</span>
+{%- endif %}
 {%- endmacro %}
 {% macro listed(category) -%}
-{{ url_for('transactions').include_query_params(**{"from": asked.first or "", "to": asked.last or "", "category": category}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}
+{{ url_for('transactions').include_query_params(**{"from": shown.savings.first or "", "to": shown.savings.last or "", "category": category}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}
+{%- endmacro %}
+{% macro range(shortcut) -%}
+{%- set wanted = {"from": shortcut.first, "to": shortcut.last, "by": given.get("by", ""), "owner": owner or "", "currency": given.get("currency", "")} -%}
+{{ url_for('analysis') }}{% for name, value in wanted.items() if value %}{{ "?" if loop.first else "&" }}{{ name }}={{ value|urlencode }}{% endfor %}
 {%- endmacro %}
 {#- A column per period, its parts stacked from zero and what is below zero under it, and
     the shares as a line when there are any. #}
-{% macro chart(id, title, bars, slots, currency, line=None) -%}
-<svg viewBox="-4 -8 650 236" role="img" aria-labelledby="{{ id }}">
+{% macro chart(id, title, bars, currency, line=None) -%}
+<svg viewBox="-4 -8 {{ plot.width + 60 }} {{ plot.height + 36 }}" role="img" aria-labelledby="{{ id }}">
   <title id="{{ id }}">{{ title }}</title>
-  <line class="grid" x1="0" x2="600" y1="0" y2="0"/>
-  <line class="axis" x1="0" x2="600" y1="{{ bars.zero }}" y2="{{ bars.zero }}"/>
+  <line class="grid" x1="0" x2="{{ plot.width }}" y1="0" y2="0"/>
+  <line class="axis" x1="0" x2="{{ plot.width }}" y1="{{ bars.zero }}" y2="{{ bars.zero }}"/>
   {%- for column in bars.columns %}
   <g><title>{{ column.name }}: {{ column.total|money }} {{ currency }}{% for block in column.blocks if block.value %}, {{ block.part }} {{ block.value|money }}{% endfor %}{% if column.share is not none %}; {{ percent(column.share) }} {{ line }}{% endif %}</title>
     {%- for block in column.blocks if block.height %}
     <rect class="slot-{{ block.slot }}" x="{{ column.x }}" y="{{ block.y }}" width="{{ column.width }}" height="{{ block.height }}"/>
     {%- endfor %}
     {%- if column.named %}
-    <text class="period" x="{{ column.x + column.width / 2 }}" y="218">{{ column.name }}</text>
+    <text class="period{% if column.minor %} minor{% endif %}" x="{{ column.x + column.width / 2 }}" y="{{ plot.height + 20 }}">{{ column.name }}</text>
     {%- endif %}
   </g>
   {%- endfor %}
   {%- for points in bars.shares %}
   <polyline class="share" points="{{ points }}"/>
   {%- endfor %}
-  <text class="amount" x="2" y="12">{{ bars.top|short }}</text>
+  <text class="amount" x="4" y="14">{{ bars.top|short }}</text>
   {%- if line %}
-  <text class="percent" x="606" y="4">100%</text>
-  <text class="percent" x="606" y="104">50%</text>
-  <text class="percent" x="606" y="204">0%</text>
+  <text class="percent" x="{{ plot.width + 6 }}" y="4">100%</text>
+  <text class="percent" x="{{ plot.width + 6 }}" y="{{ plot.height / 2 + 4 }}">50%</text>
+  <text class="percent" x="{{ plot.width + 6 }}" y="{{ plot.height + 4 }}">0%</text>
   {%- endif %}
 </svg>
+{%- endmacro %}
+{#- A ring of the parts above zero, as on the overview; what is below zero is a line under it. #}
+{% macro ring(id, label, arcs, out, currency) -%}
+<figure class="chart donut">
+  <svg viewBox="0 0 200 200" role="img" aria-labelledby="{{ id }}">
+    <title id="{{ id }}">{{ label }}: {% for arc in arcs %}{{ arc.part.name }} {{ arc.part.share }}%{{ ", " if not loop.last }}{% endfor %}</title>
+    <g transform="rotate(-90 100 100)">
+      {%- for arc in arcs %}
+      <circle class="slice slot-{{ arc.slot }}" cx="100" cy="100" r="78" fill="none" pathLength="100" stroke-dasharray="{{ arc.dash }} {{ arc.gap }}" stroke-dashoffset="{{ arc.offset }}" data-slot="{{ arc.slot }}" data-name="{{ arc.part.name }}" data-value="{{ arc.part.value|short }}" data-share="{{ arc.part.share }}%"><title>{{ arc.part.name }}: {{ arc.part.value|money }} {{ currency }}, {{ arc.part.share }}%</title></circle>
+      {%- endfor %}
+    </g>
+    <text class="what" x="100" y="80">{{ label }}</text>
+    <text class="amount" x="100" y="106">{{ arcs|map(attribute="part.value")|sum|short }}</text>
+    <text class="share" x="100" y="128">{{ currency }}</text>
+  </svg>
+  {%- if out %}
+  <figcaption>Not in the ring: {% for part in out %}{{ part.name }} {{ part.value|money }}{{ ", " if not loop.last }}{% endfor %} {{ currency }}.</figcaption>
+  {%- endif %}
+</figure>
 {%- endmacro %}
 {% block main %}
 <form method="get" class="filter">
@@ -53,140 +83,216 @@
     </select>
   </label>
   <button>Show</button>
-  <a href="{{ url_for('analysis') }}{% if owner %}?owner={{ owner|urlencode }}{% endif %}">Clear</a>
 </form>
 {%- for error in errors %}
 <p class="error" role="alert">{{ error }}</p>
 {%- endfor %}
-{%- if result and result.periods %}
-<h2>Income by source</h2>
-<p class="note">
-  Each transaction in {{ result.currency }} at the rate of its own day. Lavoro is salary,
-  share-plan vests included; Investimenti is dividends, interest and trading, its losses
-  taken off; Altro is the rest. Securities bought and sold are not income, and neither is
-  what the two of you pay each other. The line is how much of all income came from work in
-  the twelve months up to each period.
-</p>
-{%- set total = result.sources|sum(attribute="total") %}
-{%- set work = result.sources|selectattr("group", "equalto", "Lavoro")|sum(attribute="total") %}
-<p class="headline">{{ total|money }} {{ result.currency }} of income{% if total > 0 %}, {{ percent(work / total) }} of it from work{% endif %}.</p>
-<figure class="chart stacked">
-  {{ chart("income-title", "Income per period by source, and the share from work", bars, slots, result.currency, "from work over 12 months") }}
-  <figcaption class="legend">
-    {%- for group in groups %}
-    <span><span class="key slot-{{ slots[group] }}"></span>{{ group }}</span>
-    {%- endfor %}
-    <span><span class="key slot-0"></span>From work, 12 months</span>
-  </figcaption>
-</figure>
-<table class="cards">
-  <thead>
-    <tr><th>Period</th>{% for group in groups %}<th class="number">{{ group }}</th>{% endfor %}<th class="number">Total</th><th class="number">From work, 12 months</th></tr>
-  </thead>
-  <tbody>
-    {%- for period in result.periods|reverse %}
-    <tr>
-      <td class="date lead">{{ period.name }}</td>
-      {%- for group in groups %}
-      <td class="number" data-label="{{ group }}">{{ period.groups[group]|money }}</td>
-      {%- endfor %}
-      <td class="number total" data-label="Total">{{ period.total|money }}</td>
-      <td class="number" data-label="From work, 12 months">{{ percent(period.employer) }}</td>
-    </tr>
-    {%- endfor %}
-  </tbody>
-</table>
-{%- if result.sources %}
-<table class="narrow">
-  <thead><tr><th>Source</th><th class="number">{{ result.currency }}</th><th class="number">Share</th><th class="number">Rows</th></tr></thead>
-  <tbody>
-    {%- for source in result.sources %}
-    <tr>
-      <td><span class="key slot-{{ slots[source.group] }}" title="{{ source.group }}"></span><a href="{{ listed(source.leaf) }}">{{ source.leaf }}</a></td>
-      <td class="number">{{ source.total|money }}</td>
-      <td class="number">{{ percent(source.total / total if total > 0 else none) }}</td>
-      <td class="number">{{ source.count }}</td>
-    </tr>
-    {%- endfor %}
-  </tbody>
-</table>
+{%- if shown %}
+{%- if shown.shortcuts %}
+<nav class="choice ranges" aria-label="Range">
+  {%- for shortcut in shown.shortcuts %}
+  <a href="{{ range(shortcut) }}"{% if given.get('from', '') == shortcut.first and given.get('to', '') == shortcut.last %} aria-current="true"{% endif %}>{{ shortcut.label }}</a>
+  {%- endfor %}
+</nav>
 {%- endif %}
+{%- set saved = shown.savings %}
+{%- if saved.totals %}
+{%- set now, before = saved.totals, saved.year_before %}
+<p class="note">From {{ saved.first }} to {{ saved.last }}, in {{ saved.currency }} at the rate of each day{% if not owner %}, for both of you{% endif %}.</p>
+<div class="tiles">
+  <section class="tile">
+    <h2>Income</h2>
+    <p class="value">{{ now.income|money }}</p>
+    <p class="then">{% if before %}{{ change(now.income, before.income) }} on a year before{% else %}No year before to compare{% endif %}</p>
+  </section>
+  <section class="tile">
+    <h2>Spent</h2>
+    <p class="value">{{ now.spent|money }}</p>
+    <p class="then">{% if before %}{{ change(now.spent, before.spent, "less") }} on a year before{% else %}No year before to compare{% endif %}</p>
+  </section>
+  <section class="tile">
+    <h2>Saved</h2>
+    <p class="value">{{ now.saved|money }}{% if now.rate is not none %} <small>{{ percent(now.rate) }}</small>{% endif %}</p>
+    <p class="then">{% if before and before.rate is not none %}{{ percent(before.rate) }} a year before{% else %}No year before to compare{% endif %}</p>
+  </section>
+  <section class="tile">
+    <h2>From work</h2>
+    <p class="value">{{ percent(now.from_work) }}</p>
+    <p class="then">{% if before and before.from_work is not none %}{{ percent(before.from_work) }} a year before{% else %}of income{% endif %}</p>
+  </section>
+</div>
 {%- endif %}
-{%- if spent and spent.periods %}
+
+{%- set spent = shown.spending %}
+{%- if spent.periods %}
 {%- set other = people|rejectattr("name", "equalto", owner)|map(attribute="name")|first %}
 <h2>Where the money goes</h2>
-<p class="note">
-  What was spent, in {{ spent.currency }} at the rate of each day: a refund lowers its
-  category{% if owner %}, and what {{ other }} paid you back lowers the total{% else %}, and
-  what the two of you pay each other is left out{% endif %}. Each category is set against the
-  median month of the twelve before the range, and against the same range a year before, once
-  those months are known.
-</p>
 <p class="headline">{{ spent.net|money }} {{ spent.currency }} spent{% if spent.paid_back %} once {{ other }} paid back {{ spent.paid_back|money }}{% endif %}, {{ (spent.net / spent.months)|money }} a month.</p>
+<div class="today">
+  {{ ring("spent-ring", "Spent", spent_ring, spent_out, spent.currency) }}
+  <table class="narrow tight">
+    <thead><tr><th>Category</th><th class="number">{{ spent.currency }}</th><th class="number">Share</th><th class="number">On the usual month</th></tr></thead>
+    <tbody>
+      {%- for arc in spent_ring %}
+      {%- set category = categories.get(arc.part.name) %}
+      <tr data-slot="{{ arc.slot }}">
+        <td><span class="key slot-{{ arc.slot }}"></span>{% if category %}<a href="{{ listed(category.name) }}">{{ category.name }}</a>{% else %}{{ arc.part.name }}{% endif %}</td>
+        <td class="number">{{ arc.part.value|money }}</td>
+        <td class="number">{{ arc.part.share }}%</td>
+        <td class="number">{% if category %}{{ change(category.monthly, category.usual, "less") }}{% else %}–{% endif %}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
 <figure class="chart stacked">
-  {{ chart("spent-title", "Spending per period by category", spent_bars, spent_slots, spent.currency) }}
+  {{ chart("spent-title", "Spending per period by category", spent_bars, spent.currency) }}
   <figcaption class="legend">
     {%- for part in spent.parts %}
     <span><span class="key slot-{{ spent_slots[part] }}"></span>{{ part }}</span>
     {%- endfor %}
   </figcaption>
 </figure>
-<table class="cards">
-  <thead>
-    <tr><th>Category</th><th class="number">Spent</th><th class="number">Share</th><th class="number">A month</th><th class="number">Usual month</th><th class="number">Change</th><th class="number">A year before</th><th class="number">Change</th></tr>
-  </thead>
-  <tbody>
-    {%- for category in spent.categories %}
-    <tr>
-      <td class="lead"><a href="{{ listed(category.name) }}">{{ category.name }}</a></td>
-      <td class="number total" data-label="Spent">{{ category.spent|money }}</td>
-      <td class="number" data-label="Share">{{ percent(category.share) }}</td>
-      <td class="number" data-label="A month">{{ category.monthly|money }}</td>
-      <td class="number" data-label="Usual month">{% if category.usual is none %}–{% else %}{{ category.usual|money }}{% endif %}</td>
-      <td class="number" data-label="Against the usual month">{{ change(category.monthly, category.usual) }}</td>
-      <td class="number" data-label="A year before">{% if category.year_before is none %}–{% else %}{{ category.year_before|money }}{% endif %}</td>
-      <td class="number" data-label="Against a year before">{{ change(category.spent, category.year_before) }}</td>
-    </tr>
-    {%- if category.leaves|length > 1 %}
-    {%- for leaf in category.leaves %}
-    <tr class="leaf">
-      <td class="lead"><a href="{{ listed(leaf.name) }}">{{ leaf.name }}</a></td>
-      <td class="number total" data-label="Spent">{{ leaf.spent|money }}</td>
-      <td class="wide" colspan="6"></td>
-    </tr>
-    {%- endfor %}
-    {%- endif %}
-    {%- endfor %}
-  </tbody>
-</table>
+<details>
+  <summary>Every category, against the usual month and a year before</summary>
+  <p class="note">
+    A refund lowers its category{% if owner %}, and what {{ other }} paid you back lowers the
+    total{% else %}, and what the two of you pay each other is left out{% endif %}. The usual
+    month is the median of the twelve before the range; both comparisons need those months
+    known.
+  </p>
+  <table class="cards">
+    <thead>
+      <tr><th>Category</th><th class="number">Spent</th><th class="number">Share</th><th class="number">A month</th><th class="number">Usual month</th><th class="number">Change</th><th class="number">A year before</th><th class="number">Change</th></tr>
+    </thead>
+    <tbody>
+      {%- for category in spent.categories %}
+      <tr>
+        <td class="lead"><a href="{{ listed(category.name) }}">{{ category.name }}</a></td>
+        <td class="number total" data-label="Spent">{{ category.spent|money }}</td>
+        <td class="number" data-label="Share">{{ percent(category.share) }}</td>
+        <td class="number" data-label="A month">{{ category.monthly|money }}</td>
+        <td class="number" data-label="Usual month">{% if category.usual is none %}–{% else %}{{ category.usual|money }}{% endif %}</td>
+        <td class="number" data-label="Against the usual month">{{ change(category.monthly, category.usual, "less") }}</td>
+        <td class="number" data-label="A year before">{% if category.year_before is none %}–{% else %}{{ category.year_before|money }}{% endif %}</td>
+        <td class="number" data-label="Against a year before">{{ change(category.spent, category.year_before, "less") }}</td>
+      </tr>
+      {%- if category.leaves|length > 1 %}
+      {%- for leaf in category.leaves %}
+      <tr class="leaf">
+        <td class="lead"><a href="{{ listed(leaf.name) }}">{{ leaf.name }}</a></td>
+        <td class="number total" data-label="Spent">{{ leaf.spent|money }}</td>
+        <td class="wide" colspan="6"></td>
+      </tr>
+      {%- endfor %}
+      {%- endif %}
+      {%- endfor %}
+    </tbody>
+  </table>
+</details>
 {%- if spent.merchants %}
-<h3>Where it was spent</h3>
-<table class="cards">
-  <thead>
-    <tr><th>Merchant</th><th>Category</th><th class="number">Spent</th><th class="number">Times</th><th class="number">Average</th><th>First</th><th>Last</th></tr>
-  </thead>
-  <tbody>
-    {%- for merchant in spent.merchants %}
-    <tr>
-      <td class="lead">{{ merchant.name }}</td>
-      <td data-label="Category">{{ merchant.category }}</td>
-      <td class="number total" data-label="Spent">{{ merchant.spent|money }}</td>
-      <td class="number" data-label="Times">{{ merchant.count }}</td>
-      <td class="number" data-label="Average">{{ merchant.average|money }}</td>
-      <td class="date" data-label="First">{{ merchant.first }}</td>
-      <td class="date" data-label="Last">{{ merchant.last }}</td>
-    </tr>
+<details>
+  <summary>The {{ spent.merchants|length }} largest merchants</summary>
+  <table class="cards">
+    <thead>
+      <tr><th>Merchant</th><th>Category</th><th class="number">Spent</th><th class="number">Times</th><th class="number">Average</th><th>First</th><th>Last</th></tr>
+    </thead>
+    <tbody>
+      {%- for merchant in spent.merchants %}
+      <tr>
+        <td class="lead">{{ merchant.name }}</td>
+        <td data-label="Category">{{ merchant.category }}</td>
+        <td class="number total" data-label="Spent">{{ merchant.spent|money }}</td>
+        <td class="number" data-label="Times">{{ merchant.count }}</td>
+        <td class="number" data-label="Average">{{ merchant.average|money }}</td>
+        <td class="date" data-label="First">{{ merchant.first }}</td>
+        <td class="date" data-label="Last">{{ merchant.last }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if spent.other_merchants %}
+  <p class="note">And {{ spent.other_merchants }} more, {{ spent.other_spent|money }} {{ spent.currency }} together.</p>
+  {%- endif %}
+</details>
+{%- endif %}
+{%- endif %}
+
+{%- set result = shown.income %}
+{%- if result.periods %}
+{%- set total = result.sources|sum(attribute="total") %}
+<h2>Where income comes from</h2>
+<p class="headline">{{ total|money }} {{ result.currency }} of income.</p>
+<div class="today">
+  {{ ring("income-ring", "Income", income_ring, income_out, result.currency) }}
+  <table class="narrow tight">
+    <thead><tr><th>Source</th><th class="number">{{ result.currency }}</th><th class="number">Share</th></tr></thead>
+    <tbody>
+      {%- for arc in income_ring %}
+      <tr data-slot="{{ arc.slot }}">
+        <td><span class="key slot-{{ arc.slot }}"></span>{{ arc.part.name }}</td>
+        <td class="number">{{ arc.part.value|money }}</td>
+        <td class="number">{{ arc.part.share }}%</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+<figure class="chart stacked">
+  {{ chart("income-title", "Income per period by source, and the share from work", bars, result.currency, "from work over 12 months") }}
+  <figcaption class="legend">
+    {%- for group in slots %}
+    <span><span class="key slot-{{ slots[group] }}"></span>{{ group }}</span>
     {%- endfor %}
-  </tbody>
-</table>
-{%- if spent.other_merchants %}
-<p class="note">And {{ spent.other_merchants }} more, {{ spent.other_spent|money }} {{ spent.currency }} together.</p>
+    <span><span class="key slot-0"></span>From work, 12 months</span>
+  </figcaption>
+</figure>
+<details>
+  <summary>Each period, and every source</summary>
+  <p class="note">
+    Lavoro is salary, share-plan vests included; Investimenti is dividends, interest and
+    trading, its losses taken off; Altro is the rest. Securities bought and sold are not
+    income, and neither is what the two of you pay each other. From work is the share of
+    income in the twelve months up to each period, once they are all known.
+  </p>
+  <table class="cards">
+    <thead>
+      <tr><th>Period</th>{% for group in slots %}<th class="number">{{ group }}</th>{% endfor %}<th class="number">Total</th><th class="number">From work, 12 months</th><th class="number">Saved, 12 months</th></tr>
+    </thead>
+    <tbody>
+      {%- for period in result.periods|reverse %}
+      {%- set rate = (saved.periods|selectattr("name", "equalto", period.name)|first).rate %}
+      <tr>
+        <td class="date lead">{{ period.name }}</td>
+        {%- for group in slots %}
+        <td class="number" data-label="{{ group }}">{{ period.groups[group]|money }}</td>
+        {%- endfor %}
+        <td class="number total" data-label="Total">{{ period.total|money }}</td>
+        <td class="number" data-label="From work, 12 months">{{ percent(period.employer) }}</td>
+        <td class="number" data-label="Saved, 12 months">{{ percent(rate) }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if result.sources %}
+  <table class="narrow">
+    <thead><tr><th>Source</th><th class="number">{{ result.currency }}</th><th class="number">Share</th><th class="number">Rows</th></tr></thead>
+    <tbody>
+      {%- for source in result.sources %}
+      <tr>
+        <td><span class="key slot-{{ slots[source.group] }}" title="{{ source.group }}"></span><a href="{{ listed(source.leaf) }}">{{ source.leaf }}</a></td>
+        <td class="number">{{ source.total|money }}</td>
+        <td class="number">{{ percent(source.total / total if total > 0 else none) }}</td>
+        <td class="number">{{ source.count }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+</details>
 {%- endif %}
-{%- endif %}
-{%- endif %}
-{%- if result and spent %}
-{%- if result.periods or spent.periods %}
-<p class="note">Statements up to {{ result.through }}{% if not owner %}, for both of you{% endif %}.</p>
+{%- if saved.totals %}
+<p class="note">Statements up to {{ saved.through }}{% if not owner %}, for both of you{% endif %}. Salary is counted as it arrives: what a pension fund takes from it first is not seen.</p>
 {%- else %}
 <p>Nothing is committed in this range.</p>
 {%- endif %}

@@ -296,3 +296,21 @@ def test_periods_categories_and_merchants_add_up_to_what_was_spent(
     assert abs(sum(c.spent for c in result.categories) - result.spent) <= slack
     by_merchants = sum((m.spent for m in result.merchants), result.other_spent)
     assert abs(by_merchants - result.spent) <= slack
+
+
+def test_what_was_paid_back_is_not_spending_a_year_later_either() -> None:
+    # His food every month, and her 900 paid back in July 2025, which is not food.
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    back = txn(
+        "900",
+        date=date(2025, 7, 15),
+        source_ref="back",
+        kind=Kind.INCOME,
+        category="Rimborsi",
+        counterparty="ANNA MEIER",
+    )
+    rows = [*monthly("-100", 5, "food", counterparty=SHOP), back]
+    close(connection, OWNER, (START, END), END, ("migros", rows))
+    july = spent(connection, first=date(2026, 7, 1), last=date(2026, 7, 31))
+    assert [(c.name, c.year_before) for c in july.categories] == [("Alimentari", D(100))]

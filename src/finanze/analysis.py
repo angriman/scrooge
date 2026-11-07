@@ -59,10 +59,12 @@ class Rows:
         return self.rows[bisect_left(self.days, first) : bisect_right(self.days, last)]
 
     def span(self, first: date | None, last: date | None) -> Span | None:
-        """The range asked for, its ends filled in; None when there is nothing to show."""
+        """The range asked for, its ends filled in; None when there is nothing to show, or
+        when it ends before it starts."""
         if self.through is None or self.known is None:
             return None
-        return Span(first or self.rows[0].day, last or self.through, self.through, self.known)
+        start, end = first or self.rows[0].day, last or self.through
+        return Span(start, end, self.through, self.known) if start <= end else None
 
 
 def rows(
@@ -89,7 +91,7 @@ def rows(
     return Rows(
         tuple(converted),
         tuple(each.day for each in converted),
-        _through(conn, owner),
+        through(conn, owner),
         max(firsts.values(), default=None),
     )
 
@@ -104,12 +106,30 @@ def periods(start: date, end: date, grouping: Grouping) -> list[str]:
     return names
 
 
+def window(span: Span, days: tuple[date, date]) -> tuple[date, date] | None:
+    """The twelve months that end with a period, or with the last day committed when the
+    period goes beyond it; None when no day of the period is committed, or when those months
+    are not all known."""
+    end = min(days[1], span.through)
+    start = year_before(end) + timedelta(days=1)
+    if end < days[0] or start < span.known:
+        return None
+    return start, end
+
+
+def add_months(month: date, n: int) -> date:
+    """The first day of the month `n` months after (before, below zero) that of `month`."""
+    index = month.year * 12 + month.month - 1 + n
+    return date(index // 12, index % 12 + 1, 1)
+
+
 def year_before(day: date) -> date:
     """The same day a year earlier; 28 February for 29 February."""
     return day.replace(year=day.year - 1, day=min(day.day, 28 if day.month == 2 else day.day))
 
 
-def _through(conn: sqlite3.Connection, owner: str | None) -> date | None:
+def through(conn: sqlite3.Connection, owner: str | None) -> date | None:
+    """The last day committed for `owner`, or for everyone: the earliest of their last days."""
     lasts = [
         person.last
         for person in query.people(conn)
