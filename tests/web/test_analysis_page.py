@@ -6,10 +6,12 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from finanze import spending
 from finanze.models import Kind
 from finanze.storage import db, store
 from finanze.web import app as webapp
-from tests.storage.helpers import OWNER, txn
+from tests import test_spending as spent
+from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.test_income import salaries
 from tests.web.builders import BUILT, close
 from tests.web.test_app import text
@@ -124,3 +126,68 @@ def test_the_share_stops_where_the_statements_do(client: TestClient) -> None:
     page = client.get("/analysis", params={**IN_2026, "to": "2026-12"}).text
     [line] = re.findall(r'<polyline class="share" points="([^"]+)"/>', page)
     assert len(line.split()) == 8  # September to December: no day of them is committed
+
+
+@pytest.fixture(scope="module")
+def spender(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
+    """The rows of the spending tests, and a bill that gives Casa a second leaf."""
+    path: Path = tmp_path_factory.mktemp("spending") / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, BUILT)
+    bill = txn("-90", date=date(2026, 7, 3), source_ref="bill", category="Utenze")
+    lukas = (("migros", [*spent.LUKAS, bill]), ("ibkr", spent.LUKAS_USD))
+    close(conn, OWNER, (spent.START, spent.END), *lukas)
+    close(conn, PARTNER, (date(2026, 7, 1), spent.END), ("migros", spent.ANNA))
+    store.set_rate(conn, spent.START, "USD", Decimal("0.90"), source="fetched:yahoo")
+    conn.close()
+    return TestClient(webapp.create_app(path), base_url=SITE)
+
+
+def test_where_the_money_goes(spender: TestClient) -> None:
+    page = spender.get("/analysis", params={**IN_2026, "owner": OWNER}).text
+    assert "14,654.50 CHF spent once Anna paid back 900.00, 1,831.81 a month." in text(page)
+    assert "what Anna paid you back lowers the total" in text(page)
+    _, _, categories, merchants = tables(page)
+    assert categories[:3] == [
+        ["Casa", "14,490.00", "93.2%", "1,811.25", "1,800.00", "+1%", "14,400.00", "+1%"],
+        ["Affitto", "14,400.00", ""],
+        ["Utenze", "90.00", ""],
+    ]
+    # Nothing was spent on it before: there is no change to give.
+    none = "\N{EN DASH}"
+    assert ["Regali", "200.00", "1.3%", "25.00", "0.00", none, "0.00", none] in categories
+    assert merchants[0] == [
+        "Hans Muster",
+        "Casa",
+        "14,400.00",
+        "8",
+        "1,800.00",
+        "2026-01-01",
+        "2026-08-01",
+    ]
+    assert ["Migros", "Casa", "90.00", "1", "90.00", "2026-07-03", "2026-07-03"] in merchants
+
+
+def test_what_was_paid_back_hangs_below_zero(spender: TestClient) -> None:
+    july = {"from": "2026-07", "to": "2026-07", "currency": "CHF", "owner": OWNER}
+    page = spender.get("/analysis", params=july).text
+    spending = page.partition("Where the money goes")[2]
+    legend = re.findall(r'<span class="key slot-(\d)"></span>([^<]+)</span>', spending)
+    assert legend == [("1", "Casa"), ("2", "Regali"), ("3", "Alimentari"), ("0", "Paid back")]
+    [zero] = re.findall(r'<line class="axis" x1="0" x2="600" y1="([\d.]+)"', spending)
+    assert re.search(rf'<rect class="slot-0" x="[\d.]+" y="{zero}"', spending)
+    assert '<polyline class="share"' not in spending
+
+
+def test_both_people_spend_without_what_they_pay_each_other(spender: TestClient) -> None:
+    page = spender.get("/analysis", params={"from": "2026-07", "currency": "CHF"}).text
+    assert "what the two of you pay each other is left out" in text(page)
+    assert "paid back" not in text(page).partition("Where the money goes")[2]
+
+
+def test_many_merchants_are_added_up_past_the_largest(
+    spender: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(spending, "MERCHANTS", 2)
+    page = spender.get("/analysis", params={**IN_2026, "owner": OWNER}).text
+    assert "And 4 more, 334.50 CHF together." in text(page)
