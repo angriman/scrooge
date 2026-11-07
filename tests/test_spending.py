@@ -1,0 +1,298 @@
+import sqlite3
+from collections.abc import Iterator
+from datetime import date
+from decimal import Decimal
+
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from finanze import query, spending
+from finanze.cashflow import Counted, Grouping
+from finanze.models import Kind, Transaction
+from finanze.networth import MissingRateError
+from finanze.spending import Category, Leaf, Merchant
+from finanze.storage import db, store
+from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
+from tests.test_income import salaries
+
+START, END = date(2025, 1, 1), date(2026, 8, 31)
+SHOP = "KONSUM-1234 ZUERICH"
+LANDLORD = "Hans Muster, Beispielweg 8, 5000 Aarau"
+
+
+def monthly(amount: str, day: int, ref: str, **fields: object) -> list[Transaction]:
+    return [
+        txn(
+            amount,
+            date=date(2025 + n // 12, n % 12 + 1, day),
+            source_ref=f"{ref}{n}",
+            **fields,
+        )
+        for n in range(20)
+    ]
+
+
+LUKAS = [
+    *monthly("-1800", 1, "rent", category="Affitto", counterparty=LANDLORD),
+    *monthly("-100", 5, "food", counterparty=SHOP),
+    *salaries("5000", START, 20),
+    # The same shop, written another way, and a refund from it.
+    txn("-50", date=date(2026, 7, 8), source_ref="1", counterparty="Konsum-77 Zuerich"),
+    txn("30", date=date(2026, 7, 20), source_ref="2", kind=Kind.INCOME, counterparty=SHOP),
+    txn(
+        "-60",
+        date=date(2025, 3, 12),
+        source_ref="3",
+        category="Ristoranti e bar",
+        counterparty="MARIAS CAFÉ BISTRO, ZÜRICH",
+    ),
+    txn(
+        "-40",
+        date=date(2026, 3, 10),
+        source_ref="4",
+        category="Ristoranti e bar",
+        counterparty="MARIAS CAFÉ BISTRO, ZÜRICH",
+    ),
+    # Paid to the other person, and paid back by her.
+    txn(
+        "-200", date=date(2026, 7, 10), source_ref="5", category="Regali", counterparty="Anna Meier"
+    ),
+    txn(
+        "900",
+        date=date(2026, 7, 15),
+        source_ref="6",
+        kind=Kind.INCOME,
+        category="Rimborsi",
+        counterparty="ANNA MEIER",
+    ),
+    # Securities are not spending.
+    txn(
+        "-9920",
+        date=date(2026, 7, 3),
+        source_ref="7",
+        kind=Kind.SECURITY_TRADE,
+        category="Investimenti",
+    ),
+]
+LUKAS_USD = [
+    txn(
+        "-5",
+        date=date(2026, 2, 1),
+        source_ref="1",
+        kind=Kind.COMMISSION,
+        category="Commissioni",
+        counterparty="/ESZ6",
+        account="IBKR USD",
+        currency="USD",
+        source_file="ibkr.csv",
+    )
+]
+ANNA = [
+    txn("-60", date=date(2026, 7, 12), source_ref="1", counterparty=SHOP),
+    txn(
+        "200",
+        date=date(2026, 7, 10),
+        source_ref="2",
+        kind=Kind.INCOME,
+        category="Rimborsi",
+        counterparty="LUKAS MEIER",
+    ),
+]
+
+
+@pytest.fixture(scope="module")
+def conn() -> Iterator[sqlite3.Connection]:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    close(connection, OWNER, (START, END), END, ("migros", LUKAS), ("ibkr", LUKAS_USD))
+    close(connection, PARTNER, (date(2026, 7, 1), END), END, ("migros", ANNA))
+    store.set_rate(connection, START, "USD", Decimal("0.90"), source="fetched:yahoo")
+    store.set_rate(connection, START, "EUR", Decimal("0.95"), source="fetched:yahoo")
+    yield connection
+    connection.close()
+
+
+def spent(  # the keywords of `run`, with this file's defaults
+    conn: sqlite3.Connection,
+    *,
+    first: date | None = date(2026, 1, 1),
+    last: date | None = END,
+    owner: str | None = OWNER,
+    grouping: Grouping = Grouping.MONTH,
+    currency: str = "CHF",
+) -> spending.Spending:
+    return spending.run(
+        conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency
+    )
+
+
+def D(value: str | int) -> Decimal:  # reads like the type it makes
+    return Decimal(value)
+
+
+def test_each_category_against_its_usual_month_and_the_year_before(
+    conn: sqlite3.Connection,
+) -> None:
+    result = spent(conn)
+    assert result.months == 8
+    assert (result.spent, result.paid_back, result.net) == (D("15464.50"), D(900), D("14564.50"))
+    assert result.categories == (
+        Category(
+            "Casa",
+            8,
+            D(14400),
+            D("0.931"),
+            D(1800),
+            D(1800),
+            D(14400),
+            (Leaf("Affitto", 8, D(14400)),),
+        ),
+        # Eight months of shopping, the same shop once more, a refund from it.
+        Category(
+            "Alimentari",
+            10,
+            D(820),
+            D("0.053"),
+            D("102.50"),
+            D(100),
+            D(800),
+            (Leaf("Spesa", 10, D(820)),),
+        ),
+        Category("Regali", 1, D(200), D("0.013"), D(25), D(0), D(0), (Leaf("Regali", 1, D(200)),)),
+        Category(
+            "Ristoranti e bar",
+            1,
+            D(40),
+            D("0.003"),
+            D(5),
+            D(0),
+            D(60),
+            (Leaf("Ristoranti e bar", 1, D(40)),),
+        ),
+        # 5 USD at 0.90.
+        Category(
+            "Banca e broker",
+            1,
+            D("4.50"),
+            D("0.000"),
+            D("0.56"),
+            D(0),
+            D(0),
+            (Leaf("Commissioni", 1, D("4.50")),),
+        ),
+    )
+
+
+def test_merchants_are_named_without_numbers_places_or_addresses(
+    conn: sqlite3.Connection,
+) -> None:
+    result = spent(conn)
+    assert result.merchants == (
+        Merchant("Hans Muster", "Casa", 8, D(14400), date(2026, 1, 1), date(2026, 8, 1)),
+        Merchant("KONSUM ZUERICH", "Alimentari", 10, D(820), date(2026, 1, 5), date(2026, 8, 5)),
+        Merchant("Anna Meier", "Regali", 1, D(200), date(2026, 7, 10), date(2026, 7, 10)),
+        Merchant(
+            "MARIAS CAFÉ BISTRO", "Ristoranti e bar", 1, D(40), date(2026, 3, 10), date(2026, 3, 10)
+        ),
+        # A fee is the account's, whatever it names.
+        Merchant("IBKR USD", "Banca e broker", 1, D("4.50"), date(2026, 2, 1), date(2026, 2, 1)),
+    )
+    assert result.merchants[1].average == D(82)
+    assert (result.other_merchants, result.other_spent) == (0, D(0))
+
+
+def test_only_the_largest_merchants_are_listed(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(spending, "MERCHANTS", 2)
+    result = spent(conn)
+    assert [merchant.name for merchant in result.merchants] == ["Hans Muster", "KONSUM ZUERICH"]
+    assert (result.other_merchants, result.other_spent) == (3, D("244.50"))
+
+
+def test_each_period_stacks_the_largest_categories_and_hangs_what_came_back(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    july = spent(conn, first=date(2026, 7, 1), last=date(2026, 7, 31))
+    assert july.parts == ("Casa", "Regali", "Alimentari", "Paid back")
+    assert july.periods[0].parts == {
+        "Casa": D(1800),
+        "Regali": D(200),
+        "Alimentari": D(120),
+        "Paid back": D(-900),
+    }
+    assert july.periods[0].total == D(1220)
+    monkeypatch.setattr(spending, "SHOWN", 1)
+    fewer = spent(conn)
+    assert fewer.parts == ("Casa", "Others", "Paid back")
+    by_name = {period.name: period.parts for period in fewer.periods}
+    assert by_name["2026-02"] == {"Casa": D(1800), "Others": D("104.50"), "Paid back": D(0)}
+
+
+def test_both_people_without_what_they_pay_each_other(conn: sqlite3.Connection) -> None:
+    both = spent(conn, owner=None, first=date(2026, 7, 1), last=date(2026, 7, 31))
+    assert both.parts == ("Casa", "Alimentari")
+    assert (both.spent, both.paid_back) == (D(1980), D(0))
+    hers = spent(conn, owner=PARTNER, first=date(2026, 7, 1), last=date(2026, 7, 31))
+    assert (hers.spent, hers.paid_back, hers.net) == (D(60), D(200), D(-140))
+    # Her months before July are not known: nothing to set them against.
+    assert (hers.categories[0].usual, hers.categories[0].year_before) == (None, None)
+
+
+def test_the_usual_month_needs_the_twelve_before_the_range(conn: sqlite3.Connection) -> None:
+    result = spent(conn, first=date(2025, 12, 1), last=date(2025, 12, 31))
+    assert result.categories[0].usual is None
+    assert result.categories[0].year_before is None
+
+
+def test_each_row_is_converted_at_the_rate_of_its_own_day(conn: sqlite3.Connection) -> None:
+    euros = spent(conn, first=date(2026, 2, 1), last=date(2026, 2, 28), currency="EUR")
+    assert euros.spent == D("2004.74")  # 1800 + 100 + 4.50 francs at 0.95
+    with pytest.raises(MissingRateError, match="GBP"):
+        spent(conn, currency="GBP")
+    with pytest.raises(query.QueryError):
+        spent(conn, owner="Nobody")
+
+
+def test_an_empty_database_spends_nothing() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    result = spending.run(connection, currency="CHF")
+    assert (result.periods, result.categories, result.through) == ((), (), None)
+
+
+def test_a_row_without_a_counterparty_is_the_accounts() -> None:
+    row = Counted(
+        date(2026, 7, 1),
+        OWNER,
+        "Revolut CHF",
+        Kind.EXPENSE,
+        "CHF",
+        "uscite",
+        "Casa",
+        "Utenze",
+        0,
+        " 42 ",
+        None,
+    )
+    assert spending.merchant(row) == "Revolut CHF"
+
+
+@given(
+    first=st.dates(date(2024, 6, 1), date(2026, 12, 31)),
+    days=st.integers(0, 700),
+    grouping=st.sampled_from(list(Grouping)),
+    owner=st.sampled_from([OWNER, PARTNER, None]),
+)
+def test_periods_categories_and_merchants_add_up_to_what_was_spent(
+    conn: sqlite3.Connection, first: date, days: int, grouping: Grouping, owner: str | None
+) -> None:
+    last = date.fromordinal(first.toordinal() + days)
+    result = spent(conn, first=first, last=last, grouping=grouping, owner=owner, currency="EUR")
+    slack = Decimal("0.01") * (len(result.periods) + len(result.categories) + 5)
+    by_periods = sum((period.total for period in result.periods), Decimal(0))
+    assert abs(by_periods - result.net) <= slack
+    assert abs(sum(c.spent for c in result.categories) - result.spent) <= slack
+    by_merchants = sum((m.spent for m in result.merchants), result.other_spent)
+    assert abs(by_merchants - result.spent) <= slack
