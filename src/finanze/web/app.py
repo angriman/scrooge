@@ -19,11 +19,13 @@ import csv
 import io
 import secrets
 import tempfile
+from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from typing import TypeVar
 from urllib.parse import parse_qs, quote, urlsplit
 
 from starlette.applications import Starlette
@@ -68,7 +70,7 @@ from finanze.prices import MaturitySource, PriceError
 from finanze.storage import db, originals, store
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
-from finanze.web import auth, forms
+from finanze.web import auth, forms, shapes
 
 HOST = "127.0.0.1"  # where the app is served unless `finanze.yaml` names another address
 _HOSTS = (HOST, "localhost")
@@ -97,6 +99,9 @@ _LOGO_HEADERS = {
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "private, max-age=86400",
 }
+# The holdings page's map of positions and line of bills, in the units of their SVG.
+_MAP = (Decimal(1000), Decimal(420))
+_LINE = (Decimal(1000), Decimal(90))
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -424,6 +429,9 @@ def _ring(held: Sequence[overview.Part | _Slice], slots: Mapping[str, int] = _SL
     return arcs
 
 
+_Listed = TypeVar("_Listed", overview.Holding, portfolio.Holding)
+
+
 @dataclass(frozen=True, slots=True)
 class _Segment:
     """One part of a bar cut in shares: a person's of net worth."""
@@ -448,7 +456,7 @@ def _split(parts: Sequence[overview.Part], slots: Mapping[str, int]) -> list[_Se
     return segments
 
 
-def _lengths(top: Sequence[overview.Holding]) -> dict[overview.Holding, Decimal]:
+def _lengths(top: Sequence[_Listed]) -> dict[_Listed, Decimal]:
     """How long each holding's bar is drawn, in hundredths of the largest's."""
     most = max((holding.value for holding in top), default=Decimal(0))
     if most <= 0:
@@ -1032,6 +1040,27 @@ def _networth_json(request: Request) -> Response:
     )
 
 
+def _lenses(
+    held: portfolio.Portfolio, people: Sequence[query.Person], owner: str | None
+) -> list[tuple[str, list[shapes.Piece]]]:
+    """What is held cut by kind, by currency, by account and (everyone's) by person."""
+    cuts: dict[str, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    for position in held.positions:
+        account = position.account if owner else f"{position.account} ({position.owner})"
+        cuts["currency"][position.currency] += position.value
+        cuts["account"][account] += position.value
+    lenses = [("Kind", shapes.pieces(held.by_asset, _SLOTS))]
+    for title, cut in (("Currency", cuts["currency"]), ("Account", cuts["account"])):
+        ranked = sorted(cut, key=lambda name: -cut[name])
+        lenses.append((title, shapes.pieces(cut, {n: i % 7 + 1 for i, n in enumerate(ranked)})))
+    if owner is None and len(people) > 1:
+        by_owner: dict[str, Decimal] = defaultdict(Decimal)
+        for position in held.positions:
+            by_owner[position.owner] += position.value
+        lenses.append(("Person", shapes.pieces(by_owner, _person_slots(people))))
+    return lenses
+
+
 def _holdings(request: Request) -> Response:
     asked = forms.holdings_view(_viewed(request))
     errors = list(asked.errors)
@@ -1043,13 +1072,49 @@ def _holdings(request: Request) -> Response:
         except networth.MissingRateError as exc:
             errors.append(_sentence(exc))
             held = None
-    context = {
+    context: dict[str, object] = {
         "people": people,
         "owner": asked.owner,
         "asked": asked,
         "errors": errors,
         "held": held,
+        "slots": _SLOTS,
+        "logos": _logos(request.app.state.database),
+        "map": {"width": _MAP[0], "height": _MAP[1]},
+        "line": {"width": _LINE[0], "height": _LINE[1]},
     }
+    if held and held.positions:
+        holdings = held.holdings
+        gains = sorted(
+            holdings,
+            key=lambda h: (h.return_percent is None, -(h.return_percent or 0), h.symbol),
+        )
+        rungs = held.ladder
+        # The bills that mature on the same day are one bar.
+        due: dict[date, list[portfolio.Rung]] = defaultdict(list)
+        for rung in rungs:
+            if rung.position.maturity is not None:
+                due[rung.position.maturity].append(rung)
+        marks, _ = shapes.line_of_days(
+            list(due),
+            [sum((rung.value for rung in same), Decimal(0)) for same in due.values()],
+            held.ladder_day or today,
+            *_LINE,
+        )
+        context |= {
+            "holdings": holdings,
+            "rects": shapes.squarify([h.value for h in holdings], *_MAP),
+            "lengths": _lengths(holdings),
+            "gains": list(
+                zip(gains, shapes.reaches([h.return_percent for h in gains]), strict=True)
+            ),
+            "lenses": _lenses(held, people, asked.owner),
+            "accounts": len({(p.owner, p.account) for p in held.positions}),
+            "due": list(zip(due.items(), marks, strict=True)),
+            "next": next(
+                (rung for rung in rungs if rung.days is not None and rung.days >= 0), None
+            ),
+        }
     return _templates.TemplateResponse(request, "holdings.html", context)
 
 

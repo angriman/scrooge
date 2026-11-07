@@ -657,6 +657,166 @@ code {
   grid-column: 1 / -1;
 }
 
+/* ---- the holdings page: the positions as a map (a rectangle each, as large as its value)
+   or as a list, how they are spread, the gain of each, the bills on a line of days. */
+
+.views .toolbar h2 {
+  margin: 0 0 0.5rem;
+}
+
+.map {
+  display: block;
+  width: 100%;
+}
+
+.views .listing {
+  display: none;
+}
+
+.listing li {
+  grid-template-columns: 1.75rem minmax(0, 5fr) minmax(0, 4fr) 9rem;
+}
+
+.views[data-view="list"] .map {
+  display: none;
+}
+
+.views[data-view="list"] .listing {
+  display: block;
+}
+
+.map rect {
+  stroke: var(--surface, Canvas);
+  stroke-width: 3;
+}
+
+.map .slot-1 { fill: var(--series-1); }
+.map .slot-2 { fill: var(--series-2); }
+.map .slot-3 { fill: var(--series-3); }
+.map .slot-4 { fill: var(--series-4); }
+.map .slot-5 { fill: var(--series-5); }
+.map .slot-6 { fill: var(--series-6); }
+.map .slot-7 { fill: var(--series-7); }
+
+.map .tag {
+  fill: #ffffff;
+  stroke: none;
+}
+
+.map text {
+  fill: #ffffff;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.map .symbol {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.lens {
+  margin: 0 0 1rem;
+}
+
+.lens h3 {
+  font-size: 0.85rem;
+  font-weight: 400;
+  margin: 0 0 0.35rem;
+  opacity: 0.75;
+}
+
+.lens .split {
+  margin: 0 0 0.4rem;
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  gap: 0.2rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.keys .pct {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.gains {
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gains li {
+  align-items: center;
+  display: grid;
+  gap: 0.15rem 0.75rem;
+  grid-template-columns: 1.75rem minmax(0, 3fr) minmax(0, 4fr) 6.5rem;
+  padding: 0.25rem 0;
+}
+
+.gains .bar {
+  grid-area: auto;
+}
+
+.gains .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gains .amount {
+  text-align: right;
+}
+
+.gains small {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.gains .unknown {
+  font-size: 0.8rem;
+  height: auto;
+  opacity: 0.6;
+}
+
+.bar .up { fill: #0f8a5f; }
+.bar .down { fill: #c4421a; }
+.bar .zero { fill: currentColor; }
+
+@media (prefers-color-scheme: dark) {
+  .bar .up { fill: #3cc48f; }
+  .bar .down { fill: #f07a4f; }
+}
+
+.line {
+  display: block;
+  width: 100%;
+}
+
+.line rect { fill: var(--series-2); }
+.line .axis { stroke: var(--text-secondary); }
+
+.line text {
+  fill: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+
+.line .amount {
+  fill: var(--text-primary);
+  font-weight: 600;
+}
+
+.line .end { text-anchor: start; }
+.line .end.last { text-anchor: end; }
+
 /* ---- the analysis page's bars: a column of its parts per period, and a share as a line. */
 
 .stacked {
@@ -1200,6 +1360,27 @@ figcaption {
 
   .worth .lead .value small {
     display: inline;
+  }
+
+  /* A phone lists the holdings unless the map was chosen. */
+  .views .map {
+    display: none;
+  }
+
+  .views .listing {
+    display: block;
+  }
+
+  .views[data-view="map"] .map {
+    display: block;
+  }
+
+  .views[data-view="map"] .listing {
+    display: none;
+  }
+
+  .line text {
+    font-size: 34px;
   }
 
   /* The ring above its kinds, the panels one under the other. */

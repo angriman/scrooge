@@ -250,7 +250,8 @@ def test_the_page_brings_its_own_chart_and_keeps_its_own_colours(client: TestCli
         address = f"http://127.0.0.1:8765/static/{asset}"
         assert address in page
         assert client.get(address).status_code == 200
-    # only this page has charts: the others have the script of the header alone
+    # the chart's scripts are this page's: the holdings page has the header's and its switch
     assert re.findall(r"<script[^>]*>", client.get("/holdings").text) == [
-        '<script src="http://127.0.0.1:8765/static/choose.js" defer>'
+        '<script src="http://127.0.0.1:8765/static/choose.js" defer>',
+        '<script src="http://127.0.0.1:8765/static/views.js" defer>',
     ]

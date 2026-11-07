@@ -96,7 +96,7 @@ def test_a_currency_chosen_is_remembered_and_the_page_shown_again_in_it(
     for path in PAGES:
         assert chosen(client.get(path).text) == "CHF"
     assert re.search(r"Net worth on 2026-09-30 [\d,.]+ CHF", text(client.get("/").text))
-    assert " CHF</strong> in securities" in client.get("/holdings").text
+    assert re.search(r"Securities on [\d-]+ [\d,.]+ CHF", text(client.get("/holdings").text))
     home = client.get("/").text
     assert "/networth.json?currency=CHF&amp;by=asset" in home  # what the chart draws
     assert "/?currency=CHF&amp;by=total" in home  # the breakdown's buttons

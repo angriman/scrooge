@@ -1,7 +1,18 @@
 {% extends "base.html" %}
+{% from "marks.html" import mark with context %}
 {% block title %}Holdings{% endblock %}
+{% block head %}
+  <script src="{{ url_for('static', path='views.js') }}" defer></script>
+{%- endblock %}
 {% macro known(amount) -%}
 {% if amount is none %}–{% else %}{{ amount|money }}{% endif %}
+{%- endmacro %}
+{#- A gain or a loss, coloured as good news or bad. #}
+{% macro moved(amount, text) -%}
+{% if amount is none %}–{% elif amount %}<span class="{{ 'better' if amount > 0 else 'worse' }}">{{ text }}</span>{% else %}{{ text }}{% endif %}
+{%- endmacro %}
+{% macro percent(share) -%}
+{% if share is none %}–{% else %}{{ share|signed }}%{% endif %}
 {%- endmacro %}
 {% block main %}
 {%- for error in errors %}
@@ -13,28 +24,133 @@
 {%- set groups = held.groups %}
 {#- The columns before the value in the currency asked for: a subtotal's label spans them. #}
 {%- set before = 7 if owner else 8 %}
-<p class="headline"><strong>{{ held.total|money }} {{ held.currency }}</strong> in securities on {{ held.day }}</p>
-{%- if held.through < held.day %}
-<p class="note">Statements up to {{ held.through }}: what was held then is valued at the latest closes and rates stored.</p>
-{%- endif %}
-<table class="narrow">
-  <thead>
-    <tr><th></th><th class="number">{{ held.currency }}</th><th class="number">Share</th></tr>
-  </thead>
-  <tbody>
-    {%- for group in groups %}
-    <tr>
-      <td>{{ group.asset }}</td>
-      <td class="number">{{ group.value|money }}</td>
-      <td class="number">{{ group.share }}%</td>
-    </tr>
+<div class="tiles worth">
+  <section class="tile lead">
+    <h2>Securities on {{ held.day }}</h2>
+    <p class="value">{{ held.total|money }} <small>{{ held.currency }}</small></p>
+    <p class="then">Statements up to {{ held.through }}{% if held.through < held.day %}: what was held then is valued at the latest closes and rates stored{% endif %}</p>
+  </section>
+  <section class="tile">
+    <h2>Gain or loss</h2>
+    <p class="value">{{ moved(held.gain, held.gain|signed) }}{% if held.return_percent is not none %} <small>{{ percent(held.return_percent) }}</small>{% endif %}</p>
+    <p class="then">On a cost of {{ held.cost|money }}{% if held.unknown_cost %}; {{ held.unknown_cost }} without a known cost{% endif %}</p>
+  </section>
+  <section class="tile">
+    <h2>Holdings</h2>
+    <p class="value">{{ holdings|length }}</p>
+    <p class="then">{{ held.positions|length }} position{{ "" if held.positions|length == 1 else "s" }} in {{ accounts }} account{{ "" if accounts == 1 else "s" }}</p>
+  </section>
+  {%- if next %}
+  <section class="tile">
+    <h2>Next maturity</h2>
+    <p class="value">{{ next.position.maturity }}</p>
+    <p class="then">{% if next.days == 0 %}Today{% else %}In {{ next.days }} day{{ "" if next.days == 1 else "s" }}{% endif %}, {{ next.value|money }}</p>
+  </section>
+  {%- endif %}
+</div>
+<section class="panel views" data-views="positions">
+  <div class="toolbar">
+    <h2>{{ holdings|length }} holding{{ "" if holdings|length == 1 else "s" }}</h2>
+    <div class="ranges" role="group" aria-label="Shown as">
+      <button type="button" data-view="map" hidden>Map</button>
+      <button type="button" data-view="list" hidden>List</button>
+    </div>
+  </div>
+  <svg class="map" viewBox="0 0 {{ map.width }} {{ map.height }}" role="img" aria-label="What is held, each holding as large as its value">
+    {%- for holding in holdings %}
+    {%- set rect = rects[loop.index0] %}
+    {%- if rect.width and rect.height %}
+    <clipPath id="tile-{{ loop.index }}"><rect x="{{ rect.x }}" y="{{ rect.y }}" width="{{ rect.width }}" height="{{ rect.height }}"/></clipPath>
+    <g clip-path="url(#tile-{{ loop.index }})"><title>{{ holding.symbol }}{% if holding.name %} {{ holding.name }}{% endif %}: {{ holding.value|money }} {{ held.currency }}, {{ holding.share }}%{% if holding.return_percent is not none %}, {{ percent(holding.return_percent) }} on its cost{% endif %}</title>
+      <rect class="slot-{{ slots[holding.asset] }}" x="{{ rect.x }}" y="{{ rect.y }}" width="{{ rect.width }}" height="{{ rect.height }}"/>
+      {%- if rect.width >= 120 and rect.height >= 72 %}
+      {%- if holding.asset == "Bills" or holding.symbol in logos %}
+      <rect class="tag" x="{{ rect.x + 10 }}" y="{{ rect.y + 10 }}" width="30" height="30" rx="6"/>
+      <image x="{{ rect.x + 13 }}" y="{{ rect.y + 13 }}" width="24" height="24" href="{{ url_for('static', path='icons/bill.svg') if holding.asset == 'Bills' else url_for('logo', name=logos[holding.symbol]) }}"/>
+      {%- endif %}
+      <text class="symbol" x="{{ rect.x + 10 }}" y="{{ rect.y + 62 }}">{{ holding.symbol }}</text>
+      <text x="{{ rect.x + 10 }}" y="{{ rect.y + 84 }}">{{ holding.value|short }} · {{ holding.share }}%</text>
+      {%- if holding.return_percent is not none and rect.height >= 104 %}
+      <text x="{{ rect.x + 10 }}" y="{{ rect.y + 104 }}">{{ percent(holding.return_percent) }}</text>
+      {%- endif %}
+      {%- elif rect.width >= 64 and rect.height >= 30 %}
+      <text class="symbol" x="{{ rect.x + 8 }}" y="{{ rect.y + 22 }}">{{ holding.symbol }}</text>
+      {%- endif %}
+    </g>
+    {%- endif %}
     {%- endfor %}
-  </tbody>
-  <tfoot>
-    <tr><th>All</th><td class="number">{{ held.total|money }}</td><td class="number">{{ groups|sum(attribute="share") }}%</td></tr>
-  </tfoot>
-</table>
-<h2>Positions</h2>
+  </svg>
+  <ol class="ranked listing">
+    {%- for holding in holdings %}
+    <li>
+      {{ mark(holding.symbol, holding.asset, slots[holding.asset], logos) }}
+      <span class="name">{{ holding.symbol }}{% if holding.name %}<small>{{ holding.name }}</small>{% endif %}</span>
+      <svg class="bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="100" height="4" rx="1"/><rect class="slot-{{ slots[holding.asset] }}" width="{{ lengths[holding] }}" height="4" rx="1"/></svg>
+      <span class="amount">{{ holding.value|money }}<small>{{ holding.share }}%{% if holding.return_percent is not none %} · {{ moved(holding.gain, percent(holding.return_percent)) }}{% endif %}</small></span>
+    </li>
+    {%- endfor %}
+  </ol>
+  <p class="sum">All securities <span>{{ held.total|money }} {{ held.currency }}</span></p>
+</section>
+<div class="board">
+  <section class="panel">
+    <h2>How it is spread</h2>
+    {%- for title, cut in lenses %}
+    <div class="lens">
+      <h3>{{ title }}</h3>
+      <svg class="split" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="By {{ title|lower }}: {% for piece in cut %}{{ piece.name }} {{ piece.share }}%{{ ', ' if not loop.last }}{% endfor %}">
+        {%- for piece in cut %}
+        <rect class="slot-{{ piece.slot }}" x="{{ piece.x }}" width="{{ piece.share }}" height="6"><title>{{ piece.name }}: {{ piece.value|money }} {{ held.currency }}, {{ piece.share }}%</title></rect>
+        {%- endfor %}
+      </svg>
+      <ul class="keys">
+        {%- for piece in cut %}
+        <li><span class="key slot-{{ piece.slot }}"></span>{{ piece.name }} <span class="pct">{{ piece.share }}%</span></li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {%- endfor %}
+  </section>
+  <section class="panel">
+    <h2>Gain or loss on what it cost</h2>
+    <ol class="gains">
+      {%- for holding, reach in gains %}
+      <li>
+        {{ mark(holding.symbol, holding.asset, slots[holding.asset], logos) }}
+        <span class="name">{{ holding.symbol }}</span>
+        {%- if reach %}
+        <svg class="bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="100" height="4"/><rect class="{{ 'up' if holding.gain >= 0 else 'down' }}" x="{{ reach.x }}" width="{{ reach.width }}" height="4"/><rect class="zero" x="49.8" width="0.4" height="4"/></svg>
+        <span class="amount">{{ moved(holding.gain, percent(holding.return_percent)) }}<small>{{ holding.gain|signed }}</small></span>
+        {%- else %}
+        <span class="bar unknown">cost not known</span>
+        <span class="amount">–</span>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ol>
+    <p class="note">In {{ held.currency }}: each lot at the exchange rate of the day it was bought, so a gain counts what the currency did too.</p>
+  </section>
+</div>
+{%- if held.ladder %}
+<section class="panel">
+  <h2>Bills by maturity</h2>
+  <svg class="line" viewBox="-70 -40 {{ line.width + 140 }} {{ line.height + 90 }}" role="img" aria-label="Bills, each where it matures from {{ held.ladder_day }}">
+    <line class="axis" x1="0" x2="{{ line.width }}" y1="{{ line.height }}" y2="{{ line.height }}"/>
+    {%- for (day, same), at in due %}
+    {%- set worth = same|sum(attribute="value") %}
+    <g><title>{{ day }}: {% for rung in same %}{{ rung.position.symbol }}{% if not owner %} ({{ rung.position.owner }}){% endif %} {{ rung.value|money }}{{ ", " if not loop.last }}{% endfor %} {{ held.currency }} today</title>
+      <rect x="{{ at.x - 9 }}" y="{{ line.height - at.height }}" width="18" height="{{ at.height }}" rx="2"/>
+      <text class="amount" x="{{ at.x }}" y="{{ line.height - at.height - 6 }}">{{ worth|short }}</text>
+      <text class="day" x="{{ at.x }}" y="{{ line.height + 18 }}">{{ day.strftime("%d %b") }}</text>
+    </g>
+    {%- endfor %}
+    <text class="end" x="0" y="{{ line.height + 18 }}">Today</text>
+  </svg>
+</section>
+{%- endif %}
+<h2>In detail</h2>
+<details>
+  <summary>Every position, account by account, with its price and cost</summary>
 <table class="cards">
   <thead>
     <tr>
@@ -102,6 +218,7 @@
   day it is from, when that is not {{ held.day }}; &ldquo;last trade&rdquo; is the price of
   a trade standing in where no close is stored.
 </p>
+</details>
 {%- if held.pension_cash is not none %}
 <p class="note">
   Pillar 3a is the fund units only. The cash of the pension account,
@@ -111,7 +228,8 @@
 {%- endif %}
 {%- set ladder = held.ladder %}
 {%- if ladder %}
-<h2>Bills by maturity</h2>
+<details>
+  <summary>Every bill, with its face, cost and interest</summary>
 <table class="cards">
   <thead>
     <tr>
@@ -160,6 +278,7 @@
   Interest is what a bill earns when it is repaid: its face less what it cost, in the
   currency of the bill.
 </p>
+</details>
 {%- endif %}
 {%- else %}
 <p>No securities are held on {{ held.day }}.</p>

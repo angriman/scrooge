@@ -111,6 +111,18 @@ def headers(html: str) -> list[list[str]]:
     return [[text(cell) for cell in re.findall(r"<th[^>]*>(.*?)</th>", head)] for head in heads]
 
 
+def tiles(html: str) -> list[str]:
+    """What each tile of the page says."""
+    found = re.findall(r'<section class="tile[^"]*">(.*?)</section>', html, re.DOTALL)
+    return [text(tile) for tile in found]
+
+
+def lenses(html: str) -> dict[str, str]:
+    """How what is held is spread: each cut's title -> its parts and their shares."""
+    found = re.findall(r'aria-label="By (\w+): ([^"]*)"', html)
+    return {cut.capitalize(): parts for cut, parts in found}
+
+
 def errors(html: str) -> list[str]:
     found: list[str] = re.findall(r'<p class="error" role="alert">(.*?)</p>', html)
     return found
@@ -122,15 +134,10 @@ def test_everyone_s_positions_are_listed_by_kind_with_what_they_add_up_to(
     response = client.get("/holdings")
     assert response.status_code == 200
     page = response.text
-    assert "17,051.00 EUR in securities on 2026-09-30" in text(page)
-    summary, total, etfs, stocks, bills, everything, _ = tables(page)
-    assert summary == [
-        ["ETFs", "909.50", "5.34%"],
-        ["Stocks", "1,269.00", "7.44%"],
-        ["Bills", "14,872.50", "87.22%"],
-    ]
-    assert total == [["All", "17,051.00", "100.00%"]]
-    assert headers(page)[1] == [
+    assert tiles(page)[0] == "Securities on 2026-09-30 17,051.00 EUR Statements up to 2026-09-30"
+    etfs, stocks, bills, everything, _ = tables(page)
+    assert lenses(page)["Kind"] == "Bills 87.22%, Stocks 7.44%, ETFs 5.34%"
+    assert headers(page)[0] == [
         "Instrument",
         "Person",
         "Account",
@@ -188,25 +195,28 @@ def test_everyone_s_positions_are_listed_by_kind_with_what_they_add_up_to(
     assert bills[1][:6] == ["912797ZZ1", OWNER, "IBKR USD", "10,000", NONE, "9,872.50 USD"]
     assert bills[-1] == ["All Bills", "14,872.50", "87.22%", ""]
     assert everything == [["All 6", "17,051.00", "100.00%", ""]]
-    assert re.findall(r"<script[^>]*>", page) == [f'<script src="{SITE}/static/choose.js" defer>']
+    assert re.findall(r"<script[^>]*>", page) == [
+        f'<script src="{SITE}/static/choose.js" defer>',
+        f'<script src="{SITE}/static/views.js" defer>',
+    ]
     assert " style=" not in page
 
 
 def test_the_columns_of_every_row_line_up(client: TestClient) -> None:
     for owner, columns in ((None, 11), (OWNER, 10)):
         page = client.get("/holdings", params={"owner": owner} if owner else {}).text
-        assert len(headers(page)[1]) == columns
-        body = page.partition("<h2>Positions</h2>")[2].partition("</table>")[0]
+        assert len(headers(page)[0]) == columns
+        body = page.partition("<summary>Every position")[2].partition("</table>")[0]
         for row in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.DOTALL):
             spans = [int(n or 1) for n in re.findall(r"<t[dh](?: colspan=\"(\d+)\")?[ >]", row)]
             assert sum(spans) == columns
-        ladder = page.partition("<h2>Bills by maturity</h2>")[2]
+        ladder = page.partition("<summary>Every bill")[2]
         assert {len(row) for row in tables(ladder)[0]} == {len(headers(ladder)[0])} == {columns - 1}
 
 
 def test_a_price_that_is_only_that_of_a_trade_is_marked(client: TestClient) -> None:
     page = client.get("/holdings").text
-    gadget = tables(page)[3][1]
+    gadget = tables(page)[1][1]
     assert gadget[3:8] == [
         "3",
         "300 USD last trade, 2026-09-16",
@@ -225,10 +235,14 @@ def test_one_person_s_positions_need_no_column_for_the_person(client: TestClient
     response = client.get("/holdings", params={"owner": PARTNER})
     assert response.status_code == 200
     page = response.text
-    assert "374.50 EUR in securities on 2026-09-30" in text(page)
+    assert tiles(page)[0].startswith("Securities on 2026-09-30 374.50 EUR")
     assert all("Person" not in titles for titles in headers(page))
-    summary, total, etfs, everything = tables(page)
-    assert (summary, total) == ([["ETFs", "374.50", "100.00%"]], [["All", "374.50", "100.00%"]])
+    etfs, everything = tables(page)
+    assert lenses(page) == {
+        "Kind": "ETFs 100.00%",
+        "Currency": "USD 100.00%",
+        "Account": "IBKR USD 100.00%",  # hers alone: no person beside it, and no cut by person
+    }
     assert etfs[1][:3] == ["WIDG Widget &lt;Index&gt; Fund", "IBKR USD", "7"]
     assert everything == [["All 1", "374.50", "100.00%", ""]]
     assert "Bills by maturity" not in page  # she holds none
@@ -238,12 +252,11 @@ def test_one_person_s_positions_need_no_column_for_the_person(client: TestClient
 def test_the_figures_are_in_the_currency_asked_for(client: TestClient) -> None:
     response = client.get("/holdings", params={"currency": "chf"})
     page = response.text
-    assert "13,640.80 CHF in securities on 2026-09-30" in text(page)
+    assert tiles(page)[0].startswith("Securities on 2026-09-30 13,640.80 CHF")
     assert "<option selected>CHF</option>" in page
-    assert headers(page)[0] == ["", "CHF", "Share"]
-    assert headers(page)[1][8] == "Value in CHF"
+    assert headers(page)[0][8] == "Value in CHF"
     # what is in the instrument's currency stays as it is
-    assert tables(page)[2][1][4:9] == [
+    assert tables(page)[0][1][4:9] == [
         "53.5 USD close of 2026-09-18",
         "535.00 USD",
         "500.00",
@@ -257,13 +270,13 @@ def test_a_currency_that_cannot_be_read_is_reported_and_euros_shown(client: Test
     response = client.get("/holdings", params={"currency": "XAU"})
     assert response.status_code == 200
     assert errors(response.text) == ["&#39;XAU&#39; is not one of EUR, CHF, USD, GBP, JPY."]
-    assert "17,051.00 EUR in securities" in text(response.text)
+    assert tiles(response.text)[0].startswith("Securities on 2026-09-30 17,051.00 EUR")
     assert "<option selected>EUR</option>" in response.text
 
 
 def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: TestClient) -> None:
     page = client.get("/holdings", params={"currency": "CHF"}).text
-    assert headers(page)[2] == [
+    assert headers(page)[1] == [
         "Maturity",
         "Days to go",
         "Bill",
@@ -302,7 +315,7 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
         ],
     ]
     mine = client.get("/holdings", params={"owner": OWNER}).text
-    assert "Person" not in headers(mine)[2]
+    assert "Person" not in headers(mine)[1]
     assert [row[:3] for row in tables(mine)[-1]] == [
         ["2026-09-28", "matured 2 days ago", DUE],
         ["2026-12-24", "85", "912797ZZ1"],
@@ -330,7 +343,7 @@ def test_the_bills_are_valued_today_at_the_last_rate_stored(tmp_path: Path) -> N
     # a clock still on the last day committed: the ladder is never before the newest rate
     on_the_day = text(at(path).get("/holdings").text)
     assert "Days to go and values are of 2026-10-20" in on_the_day
-    assert "in securities on 2026-10-20" in said  # the newest rate stored
+    assert "Securities on 2026-10-20" in said  # the newest rate stored
     assert "Statements up to 2026-09-30: what was held then is valued at the latest" in said
 
 
@@ -365,9 +378,9 @@ def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Pa
 
 def test_a_cost_that_is_not_known_is_a_dash(odd: TestClient) -> None:
     page = odd.get("/holdings", params={"currency": "CHF", "owner": OWNER}).text
-    assert "750.00 CHF in securities on 2026-09-30" in text(page)
-    summary, _, etfs, pension, _ = tables(page)
-    assert summary == [["ETFs", "440.00", "58.67%"], ["Pillar 3a", "310.00", "41.33%"]]
+    assert tiles(page)[0].startswith("Securities on 2026-09-30 750.00 CHF")
+    etfs, pension, _ = tables(page)
+    assert lenses(page)["Kind"] == "ETFs 58.67%, Pillar 3a 41.33%"
     assert etfs[1] == [
         "WIDG",
         "IBKR USD",
@@ -467,3 +480,97 @@ def test_the_page_forbids_loading_from_elsewhere(client: TestClient) -> None:
     assert sent["content-security-policy"] == "default-src 'self'; frame-ancestors 'none'"
     assert sent["x-content-type-options"] == "nosniff"
     assert sent["referrer-policy"] == "no-referrer"
+
+
+def listed(html: str, name: str) -> list[str]:
+    """What each item of the list of class `name` says."""
+    found = re.search(rf'<ol class="{name}">(.*?)</ol>', html, re.DOTALL)
+    return [text(item) for item in found.group(1).split("</li>")[:-1]] if found else []
+
+
+def test_the_figures_come_first_the_holdings_as_a_map_or_a_list(client: TestClient) -> None:
+    page = client.get("/holdings").text
+    assert tiles(page)[1:] == [
+        "Gain or loss +91.00 +0.54% On a cost of 16,960.00",
+        "Holdings 5 6 positions in 2 accounts",  # the same broker's, of two people
+        "Next maturity 2026-12-24 In 85 days, 9,872.50",  # not the one that has matured
+    ]
+    # Each instrument once, largest first: a rectangle of the map and an item of the list.
+    assert re.findall(r'<g clip-path="url\(#tile-\d\)"><title>([^:]*):', page) == [
+        "912797ZZ1",
+        "912797WW4",
+        "WIDG Widget &lt;Index&gt; Fund",
+        "GADG",
+        "SPRK",
+    ]
+    assert listed(page, "ranked listing") == [
+        "912797ZZ1 9,872.50 57.90% · +0.23%",
+        "912797WW4 5,000.00 29.32% · +1.01%",
+        "WI WIDG Widget &lt;Index&gt; Fund 909.50 5.34% · +7.00%",  # of both people
+        "GA GADG 900.00 5.28% · +0.00%",
+        "SP SPRK 369.00 2.16% · -10.00%",
+    ]
+    # The switch is for the script to show: without it the screen's width decides.
+    assert '<section class="panel views" data-views="positions">' in page
+    assert '<button type="button" data-view="map" hidden>Map</button>' in page
+    assert lenses(page) == {
+        "Kind": "Bills 87.22%, Stocks 7.44%, ETFs 5.34%",
+        "Currency": "USD 100.00%",
+        "Account": f"IBKR USD ({OWNER}) 97.80%, IBKR USD ({PARTNER}) 2.20%",
+        "Person": f"{OWNER} 97.80%, {PARTNER} 2.20%",
+    }
+
+
+def test_the_gains_are_listed_best_first_and_a_cost_not_known_last(
+    client: TestClient, odd: TestClient
+) -> None:
+    assert listed(client.get("/holdings").text, "gains") == [
+        "WI WIDG +7.00% +59.50",
+        "912797WW4 +1.01% +50.00",
+        "912797ZZ1 +0.23% +22.50",
+        "GA GADG +0.00% +0.00",
+        "SP SPRK -10.00% -41.00",
+    ]
+    page = odd.get("/holdings", params={"currency": "CHF", "owner": OWNER}).text
+    assert listed(page, "gains")[-1] == f"WI WIDG cost not known {NONE}"
+    assert tiles(page)[1] == (
+        "Gain or loss +10.00 +3.33% On a cost of 300.00; 1 without a known cost"
+    )
+
+
+def test_the_bills_stand_on_a_line_of_days_one_bar_a_day(client: TestClient) -> None:
+    page = client.get("/holdings").text
+    bars = re.findall(r"<g><title>([^<]*)</title>\s*<rect x=\"([^\"]*)\"", page)
+    assert bars == [
+        (f"2026-09-28: 912797WW4 ({OWNER}) 5,000.00 EUR today", "-9.0"),  # matured: at the start
+        (f"2026-12-24: 912797ZZ1 ({OWNER}) 9,872.50 EUR today", "991.0"),
+    ]
+    assert '<text class="day" x="1000.0" y="108">24 Dec</text>' in page
+
+
+def test_bills_due_the_same_day_are_one_bar(tmp_path: Path) -> None:
+    path = tmp_path / "finanze.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+
+    def other(cusip: str, maturity: date) -> SecurityTrade:
+        return bought(
+            cusip, "5000", "-4950", day(16), asset_tab="Bonds", price=Decimal(99), maturity=maturity
+        )
+
+    close(
+        conn,
+        ibkr(
+            other("912797AA9", day(30, 11)),
+            other("912797BB8", day(30, 11)),
+            other("912797CC7", day(2, 10)),
+            opening="50000",
+        ),
+    )
+    conn.execute("UPDATE instruments SET maturity = NULL WHERE symbol = '912797CC7'")
+    conn.close()
+    page = at(path).get("/holdings", params={"currency": "USD", "owner": OWNER}).text
+    bars = re.findall(r"<g><title>([^<]*)</title>\s*<rect x=\"[^\"]*\" y=\"([^\"]*)\"", page)
+    # the two of the same day together, the tallest; the one without a day has no place
+    assert bars == [("2026-11-30: 912797AA9 4,959.33, 912797BB8 4,959.33 USD today", "0.0")]
+    assert listed(page, "gains")[-1].startswith("912797CC7")
