@@ -19,6 +19,9 @@
 {% macro listed(category) -%}
 {{ url_for('transactions').include_query_params(**{"from": shown.savings.first or "", "to": shown.savings.last or "", "category": category}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}
 {%- endmacro %}
+{% macro spanned(first, last, category=None) -%}
+{{ url_for('transactions').include_query_params(**{"from": first, "to": last}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}{% if category %}&amp;category={{ category|urlencode }}{% endif %}
+{%- endmacro %}
 {% macro range(shortcut) -%}
 {%- set wanted = {"from": shortcut.first, "to": shortcut.last, "by": given.get("by", ""), "owner": owner or "", "currency": given.get("currency", "")} -%}
 {{ url_for('analysis') }}{% for name, value in wanted.items() if value %}{{ "?" if loop.first else "&" }}{{ name }}={{ value|urlencode }}{% endfor %}
@@ -289,6 +292,72 @@
     </tbody>
   </table>
   {%- endif %}
+</details>
+{%- endif %}
+{%- set flow = shown.cashflow %}
+{%- if flow.balances %}
+<details>
+  <summary>Income and expenses in each currency, as they were paid</summary>
+  <p class="note">
+    By the day each transaction really happened, in its own currency, so nothing here is
+    converted. Transfers between own accounts and currency exchanges are left out{% if not owner %}, and so is what the two of you
+    paid each other{% endif %}. Investing is securities bought and sold and the results of trading:
+    it is not part of income, expenses or what was left.
+  </p>
+  {%- for currency in flow.balances|map(attribute="currency")|unique|sort %}
+  {%- set balances = flow.balances|selectattr("currency", "equalto", currency)|list %}
+  {%- set totals = flow.totals|selectattr("currency", "equalto", currency)|list %}
+  {%- set most = [balances|map(attribute="income")|max, -(balances|map(attribute="expenses")|min), 1]|max %}
+  <h3>{{ currency }}</h3>
+  <table class="cards">
+    <thead>
+      <tr><th>Period</th><th class="number">Income</th><th class="number">Expenses</th><th></th><th class="number">Left</th><th class="number">Investing</th></tr>
+    </thead>
+    <tbody>
+      {%- for item in balances|reverse %}
+      {%- set first, last = days(item.period) %}
+      <tr>
+        <td class="date lead"><a href="{{ spanned(first, last) }}">{{ item.period }}</a></td>
+        <td class="number" data-label="Income">{{ item.income|money }}</td>
+        <td class="number" data-label="Expenses">{{ item.expenses|money }}</td>
+        <td class="bars">
+          <meter class="income" min="0" max="{{ most }}" value="{{ [item.income, 0]|max }}" title="Income {{ item.income|money }}"></meter>
+          <meter class="expenses" min="0" max="{{ most }}" value="{{ [-item.expenses, 0]|max }}" title="Expenses {{ item.expenses|money }}"></meter>
+        </td>
+        <td class="number total" data-label="Left">{{ item.net|money }}</td>
+        <td class="number" data-label="Investing">{{ item.investing|money }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th class="lead">All {{ balances|length }}</th>
+        <td class="number" data-label="Income">{{ balances|sum(attribute="income")|money }}</td>
+        <td class="number" data-label="Expenses">{{ balances|sum(attribute="expenses")|money }}</td>
+        <td></td>
+        <td class="number total" data-label="Left">{{ balances|sum(attribute="net")|money }}</td>
+        <td class="number" data-label="Investing">{{ balances|sum(attribute="investing")|money }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  {%- for side, title in sides %}
+  {%- set lines = totals|selectattr("side", "equalto", side)|list %}
+  {%- if lines %}
+  <table class="narrow">
+    <thead><tr><th>{{ currency }} {{ title|lower }}</th><th class="number">Total</th><th class="number">Rows</th></tr></thead>
+    <tbody>
+      {%- for line in lines|sort(attribute="total", reverse=(side == "entrate")) %}
+      <tr>
+        <td><a href="{{ spanned(shown.savings.first or '', shown.savings.last or '', line.category) }}">{{ line.category }}</a></td>
+        <td class="number">{{ line.total|money }}</td>
+        <td class="number">{{ line.count }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+  {%- endfor %}
+  {%- endfor %}
 </details>
 {%- endif %}
 {%- if saved.totals %}

@@ -329,7 +329,6 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/networth", _networth, name="networth"),
             Route("/networth.json", _networth_json, name="networth_json"),
             Route("/holdings", _holdings, name="holdings"),
-            Route("/cashflow", _cashflow, name="cashflow"),
             Route("/analysis", _analysis, name="analysis"),
             Route("/currency", _choose_currency, name="currency"),
             Route("/import", _import_page, name="import"),
@@ -1193,29 +1192,6 @@ def _holdings(request: Request, notice: str = "", status: int = 200) -> Response
     return _templates.TemplateResponse(request, "holdings.html", context, status_code=status)
 
 
-def _cashflow(request: Request) -> Response:
-    asked = forms.cashflow_range(request.query_params)
-    with db.reading(request.app.state.database) as conn:
-        result = cashflow.run(
-            conn, first=asked.first, last=asked.last, owner=asked.owner, grouping=asked.grouping
-        )
-        people = query.people(conn)
-    context = {
-        "people": people,
-        "owner": asked.owner,
-        "asked": asked,
-        "given": request.query_params,
-        "groupings": list(cashflow.Grouping),
-        "result": result,
-        "sides": (
-            (cashflow.INCOME, "Income"),
-            (cashflow.EXPENSES, "Expenses"),
-            (cashflow.INVESTING, "Investing"),
-        ),
-    }
-    return _templates.TemplateResponse(request, "cashflow.html", context)
-
-
 # The bars of the analysis page: the plot is _WIDTH by _HEIGHT, labels outside it. Each part
 # of a stack wears the colour of its place in it.
 _WIDTH, _HEIGHT = Decimal(940), Decimal(220)
@@ -1362,6 +1338,11 @@ def _analysis(request: Request) -> Response:
         "errors": errors,
         "given": request.query_params,
         "groupings": list(cashflow.Grouping),
+        "sides": (
+            (cashflow.INCOME, "Income"),
+            (cashflow.EXPENSES, "Expenses"),
+            (cashflow.INVESTING, "Investing"),
+        ),
         "shown": shown,
         "plot": {"width": _WIDTH, "height": _HEIGHT},
     }

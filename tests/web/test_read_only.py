@@ -20,7 +20,6 @@ PAGES = [  # in francs, the one currency of these rows: no exchange rate is need
     "/?currency=CHF",
     "/networth.json?currency=CHF",
     "/holdings?currency=CHF",
-    "/cashflow",
     "/analysis?currency=CHF",
     "/months",
 ]

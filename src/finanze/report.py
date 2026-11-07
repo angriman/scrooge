@@ -1,5 +1,6 @@
-"""Everything the analysis page shows for one range: what was saved, where the money went
-and where income came from (plan decision 34).
+"""Everything the analysis page shows for one range: what was saved, where the money went,
+where income came from (plan decision 34) and, folded, income against expenses in each
+currency (the cash flow, merged in 2026-11-07, decision 35).
 
 Without a range it is the last twelve months: those up to the month of the last day
 committed, that one included (agreed 2026-11-07). Shortcuts name the other ranges people
@@ -12,7 +13,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
-from finanze import analysis, income, query, savings, spending
+from finanze import analysis, cashflow, income, query, savings, spending
 from finanze.cashflow import Grouping
 from finanze.networth import DEFAULT_CURRENCY
 
@@ -31,6 +32,7 @@ class Report:
     savings: savings.Savings
     spending: spending.Spending
     income: income.Income
+    cashflow: cashflow.CashFlow  # in each currency as stored: nothing is converted
     shortcuts: tuple[Shortcut, ...]
 
 
@@ -56,6 +58,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
             conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency
         ),
         income.run(conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency),
+        cashflow.run(conn, first=first, last=last, owner=owner, grouping=grouping),
         _shortcuts(conn, owner, through),
     )
 

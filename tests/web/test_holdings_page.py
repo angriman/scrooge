@@ -15,8 +15,8 @@ from finanze.storage import db
 from finanze.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 
 SITE = "http://127.0.0.1:8765"
 NONE = "\u2013"  # what a cell shows where there is no figure

@@ -14,8 +14,8 @@ from finanze.storage import db
 from finanze.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, bill, bought, close, ibkr, rate, spent
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 
 FIRST, LAST = date(2026, 8, 31), date(2026, 9, 30)  # the opening balance, and 30 days of rows
 DAYS = 31

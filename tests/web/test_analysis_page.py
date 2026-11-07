@@ -14,8 +14,8 @@ from tests import test_spending as spent
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.test_income import salaries
 from tests.web.builders import BUILT, close
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 
 SITE = "http://127.0.0.1:8765"
 TRADE = {"kind": Kind.TRADING, "category": "Trading"}
@@ -37,6 +37,11 @@ LUKAS_USD = [
     )
 ]
 IN_2026 = {"from": "2026-01", "currency": "CHF"}
+
+
+def before_cash_flow(page: str) -> str:
+    """The page up to the folded cash flow, whose tables come last."""
+    return page.partition("Income and expenses in each currency")[0]
 
 
 @pytest.fixture(scope="module")
@@ -75,7 +80,7 @@ def test_the_last_twelve_months_unless_asked(client: TestClient) -> None:
 def test_income_by_source(client: TestClient) -> None:
     page = client.get("/analysis", params=IN_2026).text
     assert "40,305.00 CHF of income." in text(page)
-    ring, periods, sources = tables(page)
+    ring, periods, sources = tables(before_cash_flow(page))
     assert ring == [
         ["Lavoro", "40,000.00", "99.2%"],
         ["Investimenti", "290.00", "0.7%"],
@@ -103,9 +108,8 @@ def test_a_loss_is_not_in_the_ring(client: TestClient) -> None:
 
 
 def test_before_twelve_months_of_income_there_is_no_share(client: TestClient) -> None:
-    _, periods, _ = tables(
-        client.get("/analysis", params={"currency": "CHF", "to": "2025-12"}).text
-    )
+    page = client.get("/analysis", params={"currency": "CHF", "to": "2025-12"}).text
+    _, periods, _ = tables(before_cash_flow(page))
     assert [row[5] for row in periods[:2]] == ["100.0%", "\N{EN DASH}"]  # December, November
 
 

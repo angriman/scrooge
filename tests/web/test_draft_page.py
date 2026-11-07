@@ -27,8 +27,8 @@ from tests.web.builders import (
     stage_rows,
     token,
 )
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 
 WEB = Path(webapp.__file__).parent
 

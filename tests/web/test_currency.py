@@ -18,7 +18,7 @@ from tests.web.test_holdings_page import errors
 
 SITE = "http://127.0.0.1:8765"
 PAGES = ["/", "/holdings", "/analysis"]  # those that convert
-NATIVE = ["/cashflow", "/transactions", "/months", "/import"]  # each amount in its currency
+NATIVE = ["/transactions", "/months", "/import"]  # each amount in its currency
 WEB = Path(webapp.__file__).parent
 
 

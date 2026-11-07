@@ -1,12 +1,13 @@
 import re
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
 
 from finanze.models import Kind
-from finanze.storage import db
+from finanze.storage import db, store
 from finanze.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close
@@ -42,12 +43,13 @@ ANNA = [
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """July and August 2026, committed for both."""
-    path: Path = tmp_path_factory.mktemp("cashflow") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("analysis-cashflow") / "finanze.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     span = (date(2026, 7, 1), date(2026, 8, 31))
     close(conn, OWNER, span, ("migros", LUKAS), ("revolut", LUKAS_EUR))
     close(conn, PARTNER, span, ("migros", ANNA))
+    store.set_rate(conn, date(2026, 7, 1), "EUR", Decimal("0.95"), source="fetched:yahoo")
     conn.close()
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
 
@@ -62,11 +64,21 @@ def tables(html: str) -> list[list[list[str]]]:
     return found
 
 
+def flow(page: str) -> str:
+    """The folded cash flow of the analysis: the part of the page after its summary."""
+    return page.partition("Income and expenses in each currency")[2]
+
+
+def get(client: TestClient, **params: str) -> str:
+    return client.get("/analysis", params={"currency": "CHF", **params}).text
+
+
 def test_each_currency_has_its_periods_newest_first_and_their_sum(client: TestClient) -> None:
-    response = client.get("/cashflow")
+    response = client.get("/analysis", params={"currency": "CHF"})
     assert response.status_code == 200
-    assert re.findall(r"<h2>(.*?)</h2>", response.text) == ["CHF", "EUR"]
-    chf, chf_sum, income, expenses, investing, eur, eur_sum, eur_expenses = tables(response.text)
+    page = flow(response.text)
+    assert re.findall(r"<h3>(.*?)</h3>", page) == ["CHF", "EUR"]
+    chf, chf_sum, income, expenses, investing, eur, eur_sum, eur_expenses = tables(page)
     assert chf == [
         # Without what they paid each other.
         ["2026-08", "6,100.00", "-60.00", "", "6,040.00", "-500.00"],
@@ -79,12 +91,11 @@ def test_each_currency_has_its_periods_newest_first_and_their_sum(client: TestCl
     assert eur == [["2026-08", "0.00", "-30.00", "", "-30.00", "0.00"]]
     assert eur_sum == [["All 1", "0.00", "-30.00", "", "-30.00", "0.00"]]
     assert eur_expenses == [["Ristoranti e bar", "-30.00", "1"]]
-    assert "what the two of you paid each other" in text(response.text)
-    assert f'<a href="{SITE}/cashflow" aria-current="page">Cash flow</a>' in response.text
+    assert "what the two of you paid each other" in text(page)
 
 
 def test_the_bars_are_drawn_to_the_largest_amount_of_the_currency(client: TestClient) -> None:
-    page = client.get("/cashflow").text
+    page = flow(get(client))
     bars = re.findall(r'<meter class="(\w+)" min="0" max="([\d.]+)" value="([\d.]+)"', page)
     assert bars == [
         ("income", "6100", "6100"),
@@ -95,41 +106,52 @@ def test_the_bars_are_drawn_to_the_largest_amount_of_the_currency(client: TestCl
         ("expenses", "30", "30"),
     ]
     assert 'title="Expenses -1,895.20"' in page
-    assert "style=" not in page  # the page's own policy would refuse it
+    assert "style=" not in get(client)  # the page's own policy would refuse it
 
 
 def test_one_person_sees_what_they_paid_the_other(client: TestClient) -> None:
-    his, _, _, expenses, *_ = tables(client.get("/cashflow", params={"owner": "Lukas"}).text)
+    his, _, _, expenses, *_ = tables(flow(get(client, owner="Lukas")))
     assert his[0] == ["2026-08", "6,100.00", "-200.00", "", "5,900.00", "-500.00"]
     assert ["Regali", "-200.00", "1"] in expenses
-    hers = client.get("/cashflow", params={"owner": "Anna"})
-    assert tables(hers.text)[0] == [["2026-08", "200.00", "-60.00", "", "140.00", "0.00"]]
-    assert "what the two of you paid each other" not in text(hers.text)
+    hers = flow(get(client, owner="Anna"))
+    assert tables(hers)[0] == [["2026-08", "200.00", "-60.00", "", "140.00", "0.00"]]
+    assert "what the two of you paid each other" not in text(hers)
 
 
 def test_periods_and_categories_link_to_their_transactions(client: TestClient) -> None:
-    page = client.get("/cashflow", params={"owner": "Lukas", "from": "2026-08"}).text
+    page = flow(get(client, owner="Lukas", **{"from": "2026-08"}))
     page = page.replace(f"{SITE}/transactions?from=", "?").replace("&amp;", "&")
     assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas">2026-08</a>' in page
-    assert '<a href="?2026-08-01&to=&owner=Lukas&category=Regali">Regali</a>' in page
-    followed = client.get("/transactions?from=2026-08-01&to=&owner=Lukas&category=Regali")
+    # A category is listed over the range shown, which the page spells out.
+    assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas&category=Regali">Regali</a>' in page
+    followed = client.get("/transactions?from=2026-08-01&to=2026-08-31&owner=Lukas&category=Regali")
     assert "1 transaction · -200.00 CHF" in text(followed.text)
 
 
 def test_the_range_and_the_grouping_come_from_the_form(client: TestClient) -> None:
-    year = client.get("/cashflow", params={"by": "year", "to": "2026-07"})
-    assert tables(year.text)[0] == [["2026", "6,000.00", "-1,895.20", "", "4,104.80", "0.00"]]
-    assert '<option value="year" selected>year</option>' in year.text
-    assert 'name="to" value="2026-07"' in year.text
-    weeks = client.get("/cashflow", params={"by": "week", "owner": "Anna"})
-    assert [row[0] for row in tables(weeks.text)[0]] == ["2026-W35", "2026-W33"]
-    quarter = client.get("/cashflow", params={"by": "quarter"})
-    assert "transactions?from=2026-07-01&amp;to=2026-09-30" in quarter.text
+    year = get(client, by="year", to="2026-07")
+    assert tables(flow(year))[0] == [["2026", "6,000.00", "-1,895.20", "", "4,104.80", "0.00"]]
+    weeks = get(client, by="week", owner="Anna")
+    assert [row[0] for row in tables(flow(weeks))[0]] == ["2026-W35", "2026-W33"]
+    quarter = get(client, by="quarter")
+    assert "transactions?from=2026-07-01&amp;to=2026-09-30" in flow(quarter)
 
 
-def test_what_cannot_be_read_is_said_and_an_empty_range_too(client: TestClient) -> None:
-    response = client.get("/cashflow", params={"by": "decade", "from": "2030"})
-    assert response.status_code == 200
-    assert "&#39;decade&#39; is not week, month, quarter or year." in response.text
-    assert "Nothing is committed in this range." in response.text
-    assert client.get("/cashflow", params={"owner": "Zoe"}).status_code == 404
+def test_without_a_range_it_is_the_twelve_months_the_rest_of_the_page_shows(
+    client: TestClient,
+) -> None:
+    page = get(client)
+    assert "From 2025-09-01 to 2026-08-31" in text(page)
+    assert tables(flow(get(client, **{"from": "2026-08"})))[0][0][0] == "2026-08"
+    assert len(tables(flow(get(client, **{"from": "2026-08"})))[0]) == 1
+
+
+def test_an_empty_range_has_no_cash_flow(client: TestClient) -> None:
+    page = get(client, **{"from": "2030"})
+    assert "Income and expenses in each currency" not in page
+    assert "Nothing is committed in this range." in page
+
+
+def test_the_cash_flow_page_is_gone(client: TestClient) -> None:
+    assert client.get("/cashflow").status_code == 404
+    assert "Cash flow" not in client.get("/").text

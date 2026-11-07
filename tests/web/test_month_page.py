@@ -22,8 +22,8 @@ from tests.web.builders import (
     household,
     row_id,
 )
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 
 
 @pytest.fixture

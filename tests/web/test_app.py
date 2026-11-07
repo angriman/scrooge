@@ -75,7 +75,7 @@ def text(html: str) -> str:
 
 
 def test_the_months_page_says_how_far_each_account_is_committed(client: TestClient) -> None:
-    from tests.web.test_cashflow_page import tables  # noqa: PLC0415  # it imports this module
+    from tests.web.test_analysis_cashflow import tables  # noqa: PLC0415  # it imports this module
 
     response = client.get("/months")
     assert response.status_code == 200

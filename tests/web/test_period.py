@@ -39,7 +39,7 @@ def fields(page: str) -> list[str]:
     return re.findall(r'<input name="(?:from|to)"[^>]*>', form)
 
 
-@pytest.mark.parametrize("path", ["/transactions", "/cashflow"])
+@pytest.mark.parametrize("path", ["/transactions", "/analysis"])
 def test_the_from_and_to_fields_are_marked_for_the_picker(client: TestClient, path: str) -> None:
     page = client.get(path, params={"from": "2026-07", "to": "2026"}).text
     first, last = fields(page)

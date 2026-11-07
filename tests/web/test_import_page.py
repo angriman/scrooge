@@ -4,8 +4,8 @@ from finanze import staging
 from finanze.storage import db
 from tests.conftest import FILES
 from tests.web.builders import CLICKED, SITE, Site
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 
 
 def test_the_page_asks_whose_statements_and_which_files(site: Site) -> None:

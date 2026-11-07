@@ -16,8 +16,8 @@ from finanze.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, close
 from tests.test_overview import household
+from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
-from tests.web.test_cashflow_page import tables
 from tests.web.test_holdings_page import NONE, errors, headers
 
 SITE = "http://127.0.0.1:8765"

@@ -19,7 +19,7 @@ ROWS = [
     txn("6000", date=date(2026, 8, 25), source_ref="1", kind=Kind.INCOME, category="Stipendio"),
     txn("-45.20", date=date(2026, 8, 3), source_ref="2", category="Spesa", counterparty="Bakery"),
 ]
-PAGES = ["/", "/holdings", "/cashflow", "/analysis", "/transactions", "/months"]
+PAGES = ["/", "/holdings", "/analysis", "/transactions", "/months"]
 
 
 @pytest.fixture(scope="module")
@@ -68,7 +68,9 @@ def test_a_transaction_names_its_cells_for_the_card_it_becomes(client: TestClien
 
 
 def test_a_period_of_the_cash_flow_says_what_each_figure_is(client: TestClient) -> None:
-    assert cells(client.get("/cashflow").text, "cards") == [
+    page = client.get("/analysis", params={"currency": "CHF"}).text
+    folded = page.partition("Income and expenses in each currency")[2]
+    assert cells(folded, "cards") == [
         '<td class="date lead">',
         '<td class="number" data-label="Income">',
         '<td class="number" data-label="Expenses">',
