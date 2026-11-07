@@ -171,17 +171,20 @@ def png_size(path: Path) -> tuple[int, int]:
 
 
 def test_the_icons_are_drawn_here_and_name_no_other_site() -> None:
-    # One drawing, the net worth chart's bands under its line; `make icons` draws the PNGs.
+    # The app's: the net worth chart's bands under its line, `make icons` draws the PNGs;
+    # and the mark of a bill, a government building.
     folder = WEB / "static" / "icons"
     assert sorted(f.name for f in folder.iterdir()) == [
         "apple-touch-icon.png",
+        "bill.svg",
         "icon-32.png",
         "icon.svg",
     ]
-    drawing = (folder / "icon.svg").read_text(encoding="utf-8")
-    # The namespace is a name, not an address anything is fetched from.
-    drawing = drawing.replace('xmlns="http://www.w3.org/2000/svg"', "", 1)
-    assert not re.search(r"https?:|//\w|href|<image|<script|<style|url\(", drawing)
+    for name in ("icon.svg", "bill.svg"):
+        drawing = (folder / name).read_text(encoding="utf-8")
+        # The namespace is a name, not an address anything is fetched from.
+        drawing = drawing.replace('xmlns="http://www.w3.org/2000/svg"', "", 1)
+        assert not re.search(r"https?:|//\w|href|<image|<script|<style|url\(", drawing)
     assert png_size(folder / "icon-32.png") == (32, 32)
     assert png_size(folder / "apple-touch-icon.png") == (180, 180)
 

@@ -535,9 +535,40 @@ code {
   align-items: center;
   display: grid;
   gap: 0.15rem 0.75rem;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) 6.5rem;
+  grid-template-columns: 1.75rem minmax(0, 5fr) minmax(0, 4fr) 6.5rem;
   padding: 0.3rem 0;
 }
+
+/* A holding's logo, its bill icon or its letters: on white, so that a dark mark shows on
+   the dark page too. */
+.mark {
+  align-items: center;
+  background: #ffffff;
+  border-radius: 0.4rem;
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 1.75rem;
+  justify-content: center;
+  object-fit: contain;
+  padding: 0.2rem;
+  width: 1.75rem;
+}
+
+.mark.letters {
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.mark.letters.slot-1 { background: var(--series-1, #2a78d6); }
+.mark.letters.slot-2 { background: var(--series-2, #eb6834); }
+.mark.letters.slot-3 { background: var(--series-3, #7a5cd6); }
+.mark.letters.slot-4 { background: var(--series-4, #1baf7a); }
+.mark.letters.slot-5 { background: var(--series-5, #eda100); }
+.mark.letters.slot-6 { background: var(--series-6, #e87ba4); }
+.mark.letters.slot-7 { background: var(--series-7, #008300); }
 
 .ranked .name {
   overflow: hidden;
@@ -551,7 +582,7 @@ code {
 }
 
 .ranked .rest .name {
-  grid-column: 1 / 3;
+  grid-column: 1 / 4;
 }
 
 .ranked small,
@@ -575,13 +606,13 @@ code {
 
 .bar {
   display: block;
-  grid-area: 1 / 2;
+  grid-area: 1 / 3;
   height: 0.55rem;
   width: 100%;
 }
 
 .ranked .amount {
-  grid-area: 1 / 3;
+  grid-area: 1 / 4;
 }
 
 .split {

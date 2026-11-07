@@ -88,6 +88,15 @@ _SLOTS = {asset: n for n, asset in enumerate(networth.STACK, 1)}
 # that wide has none.
 _GAP = Decimal("0.6")
 _TENTH = Decimal("0.1")  # a slice's share of its ring, in percent
+# Beside the database: the logo of a holding, `<symbol>.svg` or `.png`, the user's own files
+# (decided 2026-11-07). They are never fetched, and a holding without one wears its letters.
+_LOGOS = "logos"
+_LOGO_TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
+# A logo opened on its own runs nothing and loads nothing: an SVG may hold a script.
+_LOGO_HEADERS = {
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "cache-control": "private, max-age=86400",
+}
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -337,6 +346,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             ),
             Route("/statements/{number:int}", _statement, name="statement"),
             Route("/statements/{number:int}/original", _original, name="original"),
+            Route("/logos/{name}", _logo, name="logo"),
             Route(
                 "/statements/{number:int}/discard",
                 writing(_discard),
@@ -487,6 +497,7 @@ def _overview(request: Request) -> Response:
         "lengths": _lengths(shown.top) if shown else {},
         "person_slots": _person_slots(people),
         "split": _split(shown.people, _person_slots(people)) if shown else [],
+        "logos": _logos(request.app.state.database),
         "checks": checks,
     }
     return _templates.TemplateResponse(request, "overview.html", context)
@@ -1298,6 +1309,28 @@ def _original(request: Request) -> Response:
         raise HTTPException(404)
     name = Path(statement.filename).name
     return FileResponse(original, filename=name, media_type="application/octet-stream")
+
+
+def _logos(database: Path) -> dict[str, str]:
+    """Symbol -> the file of its logo, in the folder of logos beside `database`."""
+    folder = database.parent / _LOGOS
+    if not folder.is_dir():
+        return {}
+    return {
+        path.stem: path.name
+        for path in sorted(folder.iterdir())
+        if path.suffix.lower() in _LOGO_TYPES and path.is_file()
+    }
+
+
+def _logo(request: Request) -> Response:
+    """A logo of the folder of logos; only a file listed there, never a path."""
+    database: Path = request.app.state.database
+    name = request.path_params["name"]
+    if name not in _logos(database).values():
+        raise HTTPException(404)
+    path = database.parent / _LOGOS / name
+    return FileResponse(path, media_type=_LOGO_TYPES[path.suffix.lower()], headers=_LOGO_HEADERS)
 
 
 def _transactions(request: Request) -> Response:

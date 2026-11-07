@@ -1,0 +1,12 @@
+{#- What marks a holding beside its name: a bill or bond the icon of bills, any other its
+    logo when the folder of logos has one, else the first letters of its symbol on its kind's
+    colour. `logos` is symbol -> file. #}
+{% macro mark(symbol, asset, slot, logos) -%}
+{%- if asset == "Bills" -%}
+<img class="mark" src="{{ url_for('static', path='icons/bill.svg') }}" alt="" width="24" height="24">
+{%- elif symbol in logos -%}
+<img class="mark" src="{{ url_for('logo', name=logos[symbol]) }}" alt="" width="24" height="24">
+{%- else -%}
+<span class="mark letters slot-{{ slot }}" aria-hidden="true">{{ symbol[:2] }}</span>
+{%- endif %}
+{%- endmacro %}

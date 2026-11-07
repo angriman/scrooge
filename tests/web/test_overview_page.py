@@ -117,8 +117,8 @@ def test_everyone_s_net_worth_is_the_headline_with_what_it_is_made_of(client: Te
     ]
     assert items(page, "ranked") == [
         "912797ZZ1 9,872.50 32.00%",
-        "GADG &lt;Gadget&gt; Inc 900.00 2.92%",
-        "WIDG Widget Index Fund 900.00 2.92%",  # three accounts, one row
+        "GA GADG &lt;Gadget&gt; Inc 900.00 2.92%",  # its letters: no logo
+        "WI WIDG Widget Index Fund 900.00 2.92%",  # three accounts, one row
     ]
     # Each bar is as long as its share of the largest, in the colour of its kind.
     assert bars(page) == [("2", "100.0"), ("6", "9.1"), ("5", "9.1")]
@@ -274,7 +274,7 @@ def test_one_person_s_overview_is_not_cut_by_person(client: TestClient) -> None:
     assert "<h2>By person</h2>" not in page
     assert items(page, "people") == []
     assert items(page, "parts") == ["Cash 7,760.00 96.04%", "ETFs 320.00 3.96%"]
-    assert items(page, "ranked") == ["WIDG Widget Index Fund 320.00 3.96%"]
+    assert items(page, "ranked") == ["WI WIDG Widget Index Fund 320.00 3.96%"]
     kinds, total = tables(page)
     assert kinds == [
         ["Cash", "7,760.00", "96.04%", "8,080.00", NONE],
@@ -318,7 +318,7 @@ def test_the_holdings_beyond_the_largest_are_one_line(
     page = client.get("/", params={"currency": "USD"}).text
     assert items(page, "ranked") == [
         "912797ZZ1 9,872.50 32.00%",
-        "GADG &lt;Gadget&gt; Inc 900.00 2.92%",
+        "GA GADG &lt;Gadget&gt; Inc 900.00 2.92%",
         "The 1 other 900.00 2.92%",
     ]
     assert len(bars(page)) == 2  # the rest has none
