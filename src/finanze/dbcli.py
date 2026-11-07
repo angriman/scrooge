@@ -1,5 +1,5 @@
-"""`finanze import | commit | statements | uncommit | discard | balance | keep | prices | query |
-serve | password | publish`: the database from the terminal.
+"""`finanze import | commit | statements | uncommit | discard | balance | keep | logo | prices |
+query | serve | password | publish`: the database from the terminal.
 
     finanze import <path>...  reconcile and classify the statements, then stage them
     finanze commit            make what is staged visible to the dashboards
@@ -9,6 +9,8 @@ serve | password | publish`: the database from the terminal.
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
     finanze keep <path>...    keep the files of statements imported before originals were kept
+    finanze logo <symbol> <file>
+                              keep an SVG or PNG as the logo of an instrument (--remove to drop it)
     finanze prices            fetch the closes, splits and exchange rates not stored yet
     finanze query [filters]   list the committed transactions that match, with their totals
     finanze serve             show the database as web pages, on this machine only unless
@@ -41,8 +43,11 @@ file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; with
 `rules.yaml` and `instruments.yaml`, in the folder the command runs in. The first rules file
 is the one both people share: each person's `rules.<owner>.yaml` and `categories.yaml` are
 next to it, and answers and categories given are written there.
-`keep`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
+`keep`, `logo`, `prices`, `query`, `serve` and `publish` are the exceptions: they are about both
 people.
+`logo` keeps the image in the database (decided 2026-11-07), under the symbol `instruments`
+has for it: a ticker, an ISIN or a CUSIP. The holdings page lists the holdings that still have
+none. Nothing fetches a logo.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
@@ -106,7 +111,7 @@ from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
 from finanze.models import Kind
 from finanze.staging import People, StagingError
-from finanze.storage import db, originals, store
+from finanze.storage import db, logos, originals, store
 from finanze.storage.db import MigrationError
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
@@ -121,6 +126,7 @@ COMMANDS = (
     "discard",
     "balance",
     "keep",
+    "logo",
     "prices",
     "query",
     "serve",
@@ -128,7 +134,7 @@ COMMANDS = (
     "publish",
 )
 # Commands that are not about one person's statements.
-_READ_BOTH = ("keep", "prices", "query", "serve", "publish")
+_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 # Where the rules and the instruments are read from when neither a flag nor the config says.
 RULES = ["rules.yaml"]
@@ -143,6 +149,7 @@ _ERRORS = (
     MigrationError,
     PrecisionError,
     store.UnknownCategoryError,
+    logos.LogoError,
     store.AccountMismatchError,
     query.QueryError,
     publish.PublishError,
@@ -216,6 +223,11 @@ def _parser() -> argparse.ArgumentParser:
         metavar="path",
         help="statement files, or folders holding them (subfolders are not searched)",
     )
+    mark = commands.add_parser("logo", parents=[files], help="keep an instrument's logo")
+    mark.add_argument("symbol", help="the instrument's symbol: a ticker, an ISIN or a CUSIP")
+    mark.add_argument("file", type=Path, nargs="?", help="an SVG or PNG image of at most 256 KiB")
+    mark.add_argument("--source", default="", help="where the image came from (default: its name)")
+    mark.add_argument("--remove", action="store_true", help="drop the logo of the symbol")
     fetch = commands.add_parser("prices", parents=[files], help="fetch closes and rates")
     fetch.add_argument(
         "--through",
@@ -418,10 +430,13 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     try:
         if args.command == "publish":
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
-        if args.command == "query":
-            return _query(conn, args, out)
-        if args.command == "keep":
-            return _keep(conn, path, _files(args.paths), out)
+        about_data: dict[str, Callable[[], int]] = {
+            "query": lambda: _query(conn, args, out),
+            "keep": lambda: _keep(conn, path, _files(args.paths), out),
+            "logo": lambda: _logo(conn, args, now, out),
+        }
+        if args.command in about_data:
+            return about_data[args.command]()
         if args.command == "prices":
             return _prices(conn, args, config, console, now)
         labels = _labels(config, args.config)
@@ -806,6 +821,25 @@ def _keep(conn: sqlite3.Connection, database: Path, files: Sequence[Path], out: 
         name for digest, name in known.items() if originals.find(folder, digest, name) is None
     )
     out.writelines(f"  no original: {name}\n" for name in without)
+    return OK
+
+
+def _logo(conn: sqlite3.Connection, args: argparse.Namespace, now: datetime, out: TextIO) -> int:
+    """Keep the image `args.file` as the logo of `args.symbol`, or drop it with `--remove`."""
+    if args.remove:
+        logos.remove(conn, args.symbol)
+        out.write(f"{args.symbol}: logo removed.\n")
+        return OK
+    if args.file is None:
+        msg = "logo: name the file, or --remove"
+        raise ConfigError(msg)
+    try:
+        image = args.file.read_bytes()
+    except OSError as exc:
+        msg = f"{args.file}: {exc.strerror}"
+        raise ConfigError(msg) from None
+    logo = logos.add(conn, args.symbol, image, args.source or args.file.name, now)
+    out.write(f"{args.symbol}: {logo.media_type} logo kept ({len(image)} bytes).\n")
     return OK
 
 

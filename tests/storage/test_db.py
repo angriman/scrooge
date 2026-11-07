@@ -39,7 +39,11 @@ def test_no_column_can_hold_a_float(conn: sqlite3.Connection) -> None:
         assert strict == 1, table
         columns = conn.execute("SELECT name, type FROM pragma_table_info(?)", (table,))
         for column in columns.fetchall():
-            assert column["type"] in {"INTEGER", "TEXT"}, (table, column["name"])
+            # a logo is an image, kept as the bytes it came as
+            kinds = {"INTEGER", "TEXT"}
+            if (table, column["name"]) == ("logos", "image"):
+                kinds = {*kinds, "BLOB"}
+            assert column["type"] in kinds, (table, column["name"])
 
 
 def test_foreign_keys_are_enforced(conn: sqlite3.Connection) -> None:
@@ -300,7 +304,7 @@ def test_migration_0005_reads_revolut_accents_as_the_extractor_now_does(
     before = transaction_ids(OWNER, [("revolut", row) for row in _revolut_rows()])
     conn.execute("INSERT INTO overrides VALUES (?, NULL, 'expense', '', 'x')", (before[1],))
 
-    assert db.migrate(conn, NOW) == [5]
+    assert db.migrate(conn, NOW)[0] == 5
     meant = [
         replace(row, description="Caffè Ölberg", counterparty="Caffè Ölberg")
         if row.description == TWICE

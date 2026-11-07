@@ -1200,6 +1200,35 @@ def test_keep_takes_in_the_files_of_statements_imported_earlier(run: Run) -> Non
     assert len(kept(run)) == len(FILES)
 
 
+def test_logo_keeps_an_image_for_an_instrument_and_drops_it(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    image = run.folder / "widg.svg"
+    image.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>', encoding="utf-8")
+    assert run("logo", "WIDG", str(image)) == dbcli.OK
+    assert run.output == "WIDG: image/svg+xml logo kept (41 bytes).\n"
+    conn = db.connect(run.database)
+    where = "SELECT source FROM logos WHERE symbol = 'WIDG'"
+    assert conn.execute(where).fetchone()[0] == "widg.svg"
+    assert run("logo", "WIDG", str(image), "--source", "the issuer's site") == dbcli.OK
+    assert conn.execute(where).fetchone()[0] == "the issuer's site"
+    conn.close()
+    assert run("logo", "WIDG", "--remove") == dbcli.OK
+    assert run.output == "WIDG: logo removed.\n"
+
+
+def test_logo_refuses_what_it_cannot_keep(run: Run) -> None:
+    assert run.load() == dbcli.OK
+    image = run.folder / "notes.txt"
+    assert run("logo", "WIDG", str(image)) == dbcli.FAILED
+    assert "neither a PNG nor an SVG" in run.output
+    assert run("logo", "WIDG", str(run.folder / "missing.svg")) == dbcli.FAILED
+    assert "missing.svg" in run.output
+    assert run("logo", "WIDG") == dbcli.FAILED
+    assert "name the file, or --remove" in run.output
+    assert run("logo", "WIDG", "--remove") == dbcli.FAILED
+    assert "no logo to remove" in run.output
+
+
 def test_an_export_that_disagrees_with_a_committed_month_says_where(run: Run) -> None:
     savings = run.folder / "old" / "savings" / "Revolut Savings.tsv"
     savings.parent.mkdir(parents=True)

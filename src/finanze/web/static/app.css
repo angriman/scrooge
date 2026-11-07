@@ -1659,3 +1659,16 @@ nav a.import {
 tr.behind td strong {
   color: #c0392b;
 }
+
+/* ---- the holdings without a logo: a file field each. */
+
+.unmarked {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.unmarked li { border-bottom: 1px solid var(--line); padding: 0.4rem 0; }
+.unmarked li:last-child { border-bottom: none; }
+.unmarked .filter { margin-bottom: 0; }
+.unmarked small { color: var(--text-secondary); }

@@ -18,6 +18,7 @@ from __future__ import annotations
 import csv
 import io
 import secrets
+import sqlite3
 import tempfile
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -68,6 +69,7 @@ from finanze.errors import ConfigError, ExtractionError
 from finanze.models import Kind
 from finanze.prices import MaturitySource, PriceError
 from finanze.storage import db, originals, store
+from finanze.storage import logos as store_logos
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
 from finanze.web import auth, forms, shapes
@@ -92,15 +94,14 @@ _REST = _COLOURS + 1  # grey, for what is folded together
 # that wide has none.
 _GAP = Decimal("0.6")
 _TENTH = Decimal("0.1")  # a slice's share of its ring, in percent
-# Beside the database: the logo of a holding, `<symbol>.svg` or `.png`, the user's own files
-# (decided 2026-11-07). They are never fetched, and a holding without one wears its letters.
-_LOGOS = "logos"
-_LOGO_TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
+# The logo of a holding is the user's own image, kept in the database (decided 2026-11-07).
+# It is never fetched, and a holding without one wears its letters.
 # A logo opened on its own runs nothing and loads nothing: an SVG may hold a script.
 _LOGO_HEADERS = {
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "private, max-age=86400",
 }
+_DIGEST = 12  # how much of a logo's digest its address carries, to change when the image does
 # The holdings page's map of positions and line of bills, in the units of their SVG.
 _MAP = (Decimal(1000), Decimal(420))
 _LINE = (Decimal(1000), Decimal(90))
@@ -354,7 +355,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             ),
             Route("/statements/{number:int}", _statement, name="statement"),
             Route("/statements/{number:int}/original", _original, name="original"),
-            Route("/logos/{name}", _logo, name="logo"),
+            Route("/logos/{symbol}", _logo, name="logo"),
+            Route("/holdings/logo", writing(_set_logo), methods=["POST"], name="set_logo"),
             Route(
                 "/statements/{number:int}/discard",
                 writing(_discard),
@@ -479,6 +481,7 @@ def _overview(request: Request) -> Response:
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
+        logos = _logos(request, conn)
         try:
             shown = overview.run(conn, owner=asked.owner, currency=asked.currency, top=overview.TOP)
         except networth.MissingRateError as exc:
@@ -508,7 +511,7 @@ def _overview(request: Request) -> Response:
         "lengths": _lengths(shown.top) if shown else {},
         "person_slots": _person_slots(people),
         "split": _split(shown.people, _person_slots(people)) if shown else [],
-        "logos": _logos(request.app.state.database),
+        "logos": logos,
         "checks": checks,
     }
     return _templates.TemplateResponse(request, "overview.html", context)
@@ -1072,17 +1075,25 @@ def _lenses(
     return lenses
 
 
-def _holdings(request: Request) -> Response:
+def _holdings(request: Request, notice: str = "", status: int = 200) -> Response:
     asked = forms.holdings_view(_viewed(request))
-    errors = list(asked.errors)
+    errors = [notice] if notice else []
+    errors.extend(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
+        logos = _logos(request, conn)
         try:
             today = request.app.state.clock().date()
             held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
         except networth.MissingRateError as exc:
             errors.append(_sentence(exc))
             held = None
+        # Bills wear their own icon; every other holding is asked for a logo it has not got.
+        without = (
+            store_logos.missing(conn, [h.symbol for h in held.holdings if h.asset != "Bills"])
+            if held and held.positions
+            else []
+        )
     context: dict[str, object] = {
         "people": people,
         "owner": asked.owner,
@@ -1090,7 +1101,8 @@ def _holdings(request: Request) -> Response:
         "errors": errors,
         "held": held,
         "slots": _SLOTS,
-        "logos": _logos(request.app.state.database),
+        "logos": logos,
+        "without_logo": without,
         "map": {"width": _MAP[0], "height": _MAP[1]},
         "line": {"width": _LINE[0], "height": _LINE[1]},
     }
@@ -1126,7 +1138,7 @@ def _holdings(request: Request) -> Response:
                 (rung for rung in rungs if rung.days is not None and rung.days >= 0), None
             ),
         }
-    return _templates.TemplateResponse(request, "holdings.html", context)
+    return _templates.TemplateResponse(request, "holdings.html", context, status_code=status)
 
 
 def _cashflow(request: Request) -> Response:
@@ -1387,26 +1399,56 @@ def _original(request: Request) -> Response:
     return FileResponse(original, filename=name, media_type="application/octet-stream")
 
 
-def _logos(database: Path) -> dict[str, str]:
-    """Symbol -> the file of its logo, in the folder of logos beside `database`."""
-    folder = database.parent / _LOGOS
-    if not folder.is_dir():
-        return {}
+def _logos(request: Request, conn: sqlite3.Connection) -> dict[str, str]:
+    """Symbol -> the address of its logo, which changes with the image."""
     return {
-        path.stem: path.name
-        for path in sorted(folder.iterdir())
-        if path.suffix.lower() in _LOGO_TYPES and path.is_file()
+        symbol: str(request.url_for("logo", symbol=symbol).include_query_params(v=digest[:_DIGEST]))
+        for symbol, digest in store.logo_digests(conn).items()
     }
 
 
 def _logo(request: Request) -> Response:
-    """A logo of the folder of logos; only a file listed there, never a path."""
-    database: Path = request.app.state.database
-    name = request.path_params["name"]
-    if name not in _logos(database).values():
+    """The logo of a symbol, as it was kept: the image and nothing else."""
+    with db.reading(request.app.state.database) as conn:
+        logo = store.logo(conn, request.path_params["symbol"])
+    if logo is None:
         raise HTTPException(404)
-    path = database.parent / _LOGOS / name
-    return FileResponse(path, media_type=_LOGO_TYPES[path.suffix.lower()], headers=_LOGO_HEADERS)
+    return Response(logo.image, media_type=logo.media_type, headers=_LOGO_HEADERS)
+
+
+async def _set_logo(request: Request) -> Response:
+    """Keep the image sent as the logo of a holding that has none."""
+    _own_origin(request)
+    async with request.form(max_files=1) as form:
+        token = str(form.get("token", ""))
+        symbol = str(form.get("symbol", ""))
+        part = form.get("file")
+        image = await part.read() if isinstance(part, UploadFile) else b""
+        name = Path(part.filename).name if isinstance(part, UploadFile) and part.filename else ""
+    _own_token(request, token)
+    state = request.app.state
+
+    def keep() -> str:
+        conn = db.connect(state.database)
+        try:
+            store_logos.add(conn, symbol, image, name, state.clock())
+        except store_logos.LogoError as exc:
+            return f"No logo was kept: {exc}."
+        finally:
+            conn.close()
+        return ""
+
+    error = await run_in_threadpool(keep)
+    if error:
+        return await run_in_threadpool(_holdings, request, error, 409)
+    return RedirectResponse(
+        str(
+            request.url_for("holdings").include_query_params(
+                **{key: value for key, value in request.query_params.items() if key == "owner"}
+            )
+        ),
+        303,
+    )
 
 
 def _transactions(request: Request) -> Response:

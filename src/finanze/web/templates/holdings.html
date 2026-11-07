@@ -66,7 +66,7 @@
       {%- if rect.width >= 120 and rect.height >= 72 %}
       {%- if holding.asset == "Bills" or holding.symbol in logos %}
       <rect class="tag" x="{{ rect.x + 10 }}" y="{{ rect.y + 10 }}" width="30" height="30" rx="6"/>
-      <image x="{{ rect.x + 13 }}" y="{{ rect.y + 13 }}" width="24" height="24" href="{{ url_for('static', path='icons/bill.svg') if holding.asset == 'Bills' else url_for('logo', name=logos[holding.symbol]) }}"/>
+      <image x="{{ rect.x + 13 }}" y="{{ rect.y + 13 }}" width="24" height="24" href="{{ url_for('static', path='icons/bill.svg') if holding.asset == 'Bills' else logos[holding.symbol] }}"/>
       {%- endif %}
       <text class="symbol" x="{{ rect.x + 10 }}" y="{{ rect.y + 62 }}">{{ holding.symbol }}</text>
       <text x="{{ rect.x + 10 }}" y="{{ rect.y + 84 }}">{{ holding.value|short }} · {{ holding.share }}%</text>
@@ -156,6 +156,28 @@
     <li><span>{{ day }}</span> <small>{% if days > 0 %}in {{ days }} day{{ "s" if days != 1 }}{% elif days == 0 %}today{% else %}matured{% endif %}</small> <span class="number">{{ same|sum(attribute="value")|money }}</span></li>
     {%- endfor %}
   </ol>
+</section>
+{%- endif %}
+{%- if without_logo %}
+<section class="panel logos">
+  <h2>{{ without_logo|length }} holding{{ "" if without_logo|length == 1 else "s" }} without a logo</h2>
+  <ul class="unmarked">
+    {%- for symbol in without_logo %}
+    <li>
+      {%- if importing %}
+      <form method="post" action="{{ url_for('set_logo').include_query_params(owner=owner) if owner else url_for('set_logo') }}" enctype="multipart/form-data" class="filter">
+        <input type="hidden" name="token" value="{{ token }}">
+        <input type="hidden" name="symbol" value="{{ symbol }}">
+        <label>{{ symbol }} <input type="file" name="file" accept="image/svg+xml,image/png" required></label>
+        <button>Keep</button>
+      </form>
+      {%- else %}
+      <strong>{{ symbol }}</strong> <small>finanze logo {{ symbol }} &lt;file&gt;</small>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+  <p class="note">Each wears its letters until it has one. An SVG or PNG of at most 256 KiB; the app never looks one up, so the image is yours to choose.</p>
 </section>
 {%- endif %}
 <h2>In detail</h2>

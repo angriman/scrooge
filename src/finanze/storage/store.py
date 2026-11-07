@@ -803,3 +803,36 @@ def set_override(
         "VALUES (?, ?, ?, ?)",
         (txn_id, category, kind, created_at),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Logo:
+    media_type: str
+    image: bytes
+    digest: str  # SHA-256 of `image`, hex
+
+
+def set_logo(conn: sqlite3.Connection, symbol: str, logo: Logo, source: str, added_at: str) -> None:
+    """Keep `logo` for the instrument `symbol`, in place of any it had."""
+    conn.execute(
+        "INSERT OR REPLACE INTO logos (symbol, media_type, image, digest, source, added_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (symbol, logo.media_type, logo.image, logo.digest, source, added_at),
+    )
+
+
+def remove_logo(conn: sqlite3.Connection, symbol: str) -> bool:
+    """Forget the logo of `symbol`; False when it had none."""
+    return conn.execute("DELETE FROM logos WHERE symbol = ?", (symbol,)).rowcount > 0
+
+
+def logo_digests(conn: sqlite3.Connection) -> dict[str, str]:
+    """Symbol -> the digest of its logo, for every symbol that has one."""
+    return dict(conn.execute("SELECT symbol, digest FROM logos ORDER BY symbol").fetchall())
+
+
+def logo(conn: sqlite3.Connection, symbol: str) -> Logo | None:
+    row = conn.execute(
+        "SELECT media_type, image, digest FROM logos WHERE symbol = ?", (symbol,)
+    ).fetchone()
+    return None if row is None else Logo(row[0], bytes(row[1]), row[2])
