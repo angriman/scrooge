@@ -219,7 +219,7 @@ def _categories(
 def _usual(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:
     """top -> the median of what was spent in each of the twelve months before the range."""
     month = span.start.replace(day=1)
-    starts = [_add_months(month, n) for n in range(-12, 0)]
+    starts = [analysis.add_months(month, n) for n in range(-12, 0)]
     if starts[0] < span.known:
         return None
     sums: dict[str, list[Decimal]] = defaultdict(lambda: [Decimal(0)] * 12)
@@ -270,8 +270,3 @@ def _merchants(spent: list[Converted]) -> list[Merchant]:
 
 def _months(start: date, end: date) -> int:
     return (end.year - start.year) * 12 + end.month - start.month + 1
-
-
-def _add_months(month: date, n: int) -> date:
-    index = month.year * 12 + month.month - 1 + n
-    return date(index // 12, index % 12 + 1, 1)

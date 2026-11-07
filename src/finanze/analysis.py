@@ -89,7 +89,7 @@ def rows(
     return Rows(
         tuple(converted),
         tuple(each.day for each in converted),
-        _through(conn, owner),
+        through(conn, owner),
         max(firsts.values(), default=None),
     )
 
@@ -115,12 +115,19 @@ def window(span: Span, days: tuple[date, date]) -> tuple[date, date] | None:
     return start, end
 
 
+def add_months(month: date, n: int) -> date:
+    """The first day of the month `n` months after (before, below zero) that of `month`."""
+    index = month.year * 12 + month.month - 1 + n
+    return date(index // 12, index % 12 + 1, 1)
+
+
 def year_before(day: date) -> date:
     """The same day a year earlier; 28 February for 29 February."""
     return day.replace(year=day.year - 1, day=min(day.day, 28 if day.month == 2 else day.day))
 
 
-def _through(conn: sqlite3.Connection, owner: str | None) -> date | None:
+def through(conn: sqlite3.Connection, owner: str | None) -> date | None:
+    """The last day committed for `owner`, or for everyone: the earliest of their last days."""
     lasts = [
         person.last
         for person in query.people(conn)
