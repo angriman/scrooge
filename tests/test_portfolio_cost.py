@@ -70,6 +70,58 @@ def test_the_cost_stays_in_the_currency_of_the_instrument(conn: sqlite3.Connecti
     assert (position.cost_native, position.gain_native) == (D(500), D(35))
 
 
+def test_in_the_currency_shown_each_lot_cost_what_it_did_at_the_rate_of_its_day(
+    conn: sqlite3.Connection,
+) -> None:
+    """A gain in francs is the change of the price and of the dollar since each purchase."""
+    rows = [
+        bought("WIDG", "10", "-500", day(5)),
+        bought("WIDG", "10", "-600", day(16)),
+        bought("WIDG", "-15", "900", day(20)),  # all of the first lot and half of the second
+    ]
+    close(conn, ibkr(*rows))
+    price(conn, "WIDG", day(30), "61.5")
+    rate(conn, "USD", day(1), "0.7")
+    rate(conn, "USD", day(10), "0.75")
+    rate(conn, "USD", day(29), "0.8")
+    [position] = agrees_with_net_worth(conn, None, "CHF").positions
+    # 300 dollars of the lot of the 16th, at 0.75 then; 307.50 dollars at 0.8 now
+    assert (position.cost_native, position.cost) == (D("300.00"), D("225.00"))
+    assert (position.value, position.gain) == (D("246.00"), D("21.00"))
+    assert position.gain_native == D("7.50")
+    assert position.return_percent == D("9.33")  # 2.50% of it is the price, the rest the dollar
+    [in_dollars] = portfolio.run(conn, currency="USD").positions
+    assert (in_dollars.cost, in_dollars.gain) == (D("300.00"), D("7.50"))
+
+
+def test_a_cost_not_known_is_not_known_in_any_currency(conn: sqlite3.Connection) -> None:
+    base = ibkr(bought("WIDG", "4", "-200", day(15)))
+    printed = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=printed)))
+    rate(conn, "USD", day(1), "0.8")
+    [position] = portfolio.run(conn, currency="CHF").positions
+    assert (position.cost, position.gain, position.return_percent) == (None, None, None)
+
+
+def test_the_gain_of_everything_held_is_that_of_what_has_a_known_cost(
+    conn: sqlite3.Connection,
+) -> None:
+    rows = [bought("WIDG", "10", "-500", day(15)), bought("GADG", "3", "-900", day(16))]
+    base = ibkr(*rows)
+    printed = (
+        Holding("IBKR USD", "WIDG", "USD", D(10), D("53.5"), D(535), "ETFs"),
+        Holding("IBKR USD", "GADG", "USD", D(3), D(290), D(870), "Stocks"),
+        Holding("IBKR USD", "OLDS", "USD", D(2), D(50), D(100), "Stocks"),  # bought before
+    )
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=printed)))
+    for symbol, close_ in (("WIDG", "53.5"), ("GADG", "290"), ("OLDS", "50")):
+        price(conn, symbol, day(30), close_)
+    held = portfolio.run(conn, currency="USD")
+    assert (held.cost, held.gain, held.unknown_cost) == (D(1400), D(5), 1)
+    assert held.return_percent == D("0.36")
+    assert portfolio.Portfolio("USD", None, (), ()).return_percent is None
+
+
 def test_a_loss_is_a_gain_below_zero(conn: sqlite3.Connection) -> None:
     close(conn, ibkr(bought("WIDG", "3", "-100", day(15))))
     price(conn, "WIDG", day(30), "30.111")
@@ -253,10 +305,11 @@ def test_lots_follow_the_quantity_held_through_splits_and_no_cost_is_lost(
     assert None not in handed_out.values()
     left = sum(cost for _, _, cost in lots)
     assert sum(cost or 0 for cost in handed_out.values()) + left == paid
-    assert portfolio._cost([*trades, later], splits, held, last) == from_nano(left).quantize(
-        D("0.01")
-    )
-    assert portfolio._cost(trades, splits, held + 1, last) is None
+    found = portfolio._lots([*trades, later], splits, held, last)
+    assert found is not None
+    assert sum((cost for _, cost in found), D(0)) == from_nano(left)
+    assert all(bought <= last for bought, _ in found)
+    assert portfolio._lots(trades, splits, held + 1, last) is None
 
 
 # -------------------------------------------------------------------------------- ladder

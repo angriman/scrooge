@@ -16,15 +16,17 @@ less the cash of the pension account, to the cent. `value_native` is in the inst
 own currency and has no sum to meet: it is simply rounded.
 
 **What a position cost** is what was paid for the lots still held, first in, first out (D13,
-the lots of `storage.bills`), in the instrument's own currency: it is not converted, which
-would take the rate of the day of each purchase. It is what the rows store as the total
-paid: the amount of the trade without the broker's commission, which is a row of its own;
-for shares awarded, or moved in in kind with a price, what they were worth the day they
-came. A trade is in the currency of its instrument, always: an instrument is its symbol and
-its currency. A split changes the quantity of the lots held before it, not what they cost.
-The cost is unknown, never guessed, when the lots do not add up to the quantity held (the
-history starts with shares already held; or a split left a fraction that is no exact
-decimal), or when a lot still held came in without a price. Shares moved in kind between
+the lots of `storage.bills`), in the instrument's own currency (`cost_native`), and in the
+currency asked for (`cost`) with each lot at the exchange rate of the day it was bought (or
+came in), so that a gain in that currency is the change of the price and of the rate since
+(decided 2026-11-07). It is what the rows store as the total paid: the amount of the trade
+without the broker's commission, which is a row of its own; for shares awarded, or moved in
+in kind with a price, what they were worth the day they came. A trade is in the currency of
+its instrument, always: an instrument is its symbol and its currency. A split changes the
+quantity of the lots held before it, not what they cost. The cost is unknown, never guessed,
+when the lots do not add up to the quantity held (the history starts with shares already
+held; or a split left a fraction that is no exact decimal), or when a lot still held came in
+without a price. Shares moved in kind between
 two accounts do not take their cost along: nothing in the rows links the two sides.
 
 `Portfolio.by_asset`, `total` and `shares` add up the positions only: of `Pillar 3a` the fund
@@ -41,7 +43,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_FLOOR, Decimal
@@ -78,6 +80,10 @@ class Position:
     # when it is not known (see the module).
     cost_native: Decimal | None = None
     gain_native: Decimal | None = None  # `value_native` less `cost_native`
+    # The same in `Portfolio.currency`, each lot at the rate of the day it was bought; None
+    # when it is not known.
+    cost: Decimal | None = None
+    gain: Decimal | None = None  # `value` less `cost`
 
     @property
     def gain_percent(self) -> Decimal | None:
@@ -86,6 +92,17 @@ class Position:
         if self.gain_native is None or not self.cost_native:
             return None
         return (self.gain_native * 100 / self.cost_native).quantize(_CENT)
+
+    @property
+    def return_percent(self) -> Decimal | None:
+        """`gain` in percent of `cost`: in `Portfolio.currency`, with the change of the rate."""
+        return _percent(self.gain, self.cost)
+
+
+def _percent(gain: Decimal | None, cost: Decimal | None) -> Decimal | None:
+    if gain is None or not cost:
+        return None
+    return (gain * 100 / cost).quantize(_CENT)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +155,25 @@ class Portfolio:
     def total(self) -> Decimal:
         """What all the positions are worth, in `currency`."""
         return sum((position.value for position in self.positions), Decimal(0))
+
+    @property
+    def cost(self) -> Decimal:
+        """What the positions whose cost is known cost, in `currency`."""
+        return sum((p.cost for p in self.positions if p.cost is not None), Decimal(0))
+
+    @property
+    def gain(self) -> Decimal:
+        """What the positions whose cost is known gained, in `currency`."""
+        return sum((p.gain for p in self.positions if p.gain is not None), Decimal(0))
+
+    @property
+    def unknown_cost(self) -> int:
+        """How many positions have no known cost, and are in neither sum above."""
+        return sum(1 for position in self.positions if position.cost is None)
+
+    @property
+    def return_percent(self) -> Decimal | None:
+        return _percent(self.gain, self.cost)
 
     @property
     def by_asset(self) -> dict[str, Decimal]:
@@ -209,10 +245,11 @@ def _lot_events(
     return events, prod(old for _, _, old in splits)
 
 
-def _cost(
+def _lots(
     trades: Sequence[networth.LotTrade], splits: Sequence[_Split], held: Decimal, last: date
-) -> Decimal | None:
-    """What the lots that make up `held` at the end of `last` cost; None when it is not known."""
+) -> list[tuple[date, Decimal]] | None:
+    """The day each lot that makes up `held` at the end of `last` was bought and what it cost;
+    None when that is not known."""
     events, per_share = _lot_events(trades, splits, last)
     lots = open_lots(events)
     if sum((left for _, left, _ in lots), Decimal(0)) != held * per_share:
@@ -220,7 +257,21 @@ def _cost(
     unpriced = {trade.event.txn_id for trade in trades if not trade.priced}
     if any(purchase in unpriced for purchase, _, _ in lots):
         return None
-    return from_nano(sum(paid for _, _, paid in lots)).quantize(_CENT)
+    bought_on = {trade.event.txn_id: trade.day for trade in trades}
+    return [(bought_on[purchase], from_nano(paid)) for purchase, _, paid in lots]
+
+
+def _converted(
+    lots: Sequence[tuple[date, Decimal]],
+    currency: str,
+    into: str,
+    rates: Mapping[str, Sequence[Decimal]],
+    days: Mapping[date, int],
+) -> Decimal:
+    """What `lots` of `currency` cost in `into`, each at the rate of the day it was bought."""
+    on = {name: [series[days[day]] for day, _ in lots] for name, series in rates.items()}
+    paid = networth.convert([cost for _, cost in lots], currency, into, on)
+    return sum(paid, Decimal(0)).quantize(_CENT)
 
 
 def run(
@@ -275,18 +326,36 @@ def positions_of(
         (last[0].isoformat(),),
     ):
         splits[split_of].append((date.fromisoformat(day), int(new), int(old)))
+    held_ids = [series.instrument_id for series in held if series.instrument_id is not None]
+    # What was held on the last day a person's statements cover is carried after it.
+    traded = [
+        [t for t in trades.get((s.account_id, i), []) if t.day <= valued.through[s.owner]]
+        for s, i in zip(held, held_ids, strict=True)
+    ]
+    lots = [
+        _lots(made_of, splits[i], s.quantity or Decimal(0), last[0])
+        for s, i, made_of in zip(held, held_ids, traded, strict=True)
+    ]
+    bought = sorted({day for each in lots for day, _ in each or ()})
+    on_days = networth.rates_on(conn, bought)
+    index = {day: n for n, day in enumerate(bought)}
     positions: list[Position] = []
     bills: list[tuple[Position, list[networth.LotTrade]]] = []
-    held_ids = [series.instrument_id for series in held if series.instrument_id is not None]
-    for series, instrument, value in zip(held, held_ids, values, strict=True):
+    for series, instrument, value, made_of, its_lots in zip(
+        held, held_ids, values, traded, lots, strict=True
+    ):
         symbol, name, kind, maturity = instruments[instrument]
         quote = series.quote
         quantity = series.quantity or Decimal(0)
         worth = series.values[-1].quantize(_CENT)
-        # What was held on the last day a person's statements cover is carried after it.
-        through = valued.through[series.owner]
-        traded = [t for t in trades.get((series.account_id, instrument), []) if t.day <= through]
-        cost = _cost(traded, splits[instrument], quantity, last[0])
+        cost = (
+            None if its_lots is None else sum((c for _, c in its_lots), Decimal(0)).quantize(_CENT)
+        )
+        converted = (
+            None
+            if its_lots is None
+            else _converted(its_lots, series.currency, currency, on_days, index)
+        )
         positions.append(
             Position(
                 owner=series.owner,
@@ -305,10 +374,12 @@ def positions_of(
                 value=value,
                 cost_native=cost,
                 gain_native=None if cost is None else worth - cost,
+                cost=converted,
+                gain=None if converted is None else value - converted,
             )
         )
         if kind in _LADDER:
-            bills.append((positions[-1], traded))
+            bills.append((positions[-1], made_of))
     positions.sort(
         key=lambda p: (p.owner, networth.ASSETS.index(p.asset), -p.value, p.symbol, p.account)
     )
