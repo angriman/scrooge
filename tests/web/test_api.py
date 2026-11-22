@@ -138,7 +138,10 @@ def test_every_address_under_app_is_its_page_or_one_of_its_files(database: Path,
 def test_the_page_may_run_its_own_script_and_no_other(database: Path, spa: Path) -> None:
     client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
     digest = base64.b64encode(hashlib.sha256(b'start("/app")').digest()).decode()
-    policy = f"default-src 'self'; script-src 'self' 'sha256-{digest}'; frame-ancestors 'none'"
+    policy = (
+        f"default-src 'self'; script-src 'self' 'sha256-{digest}'; "
+        "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
+    )
     assert client.get("/app").headers["content-security-policy"] == policy
     assert client.get("/").headers["content-security-policy"] == policy
 

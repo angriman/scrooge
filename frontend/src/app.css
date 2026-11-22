@@ -1,0 +1,8 @@
+/* The stylesheet of the app: Tailwind, then the design system of src/lib/design. */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/ibm-plex-sans';
+
+@import './lib/design/tokens/palette.css';
+@import './lib/design/tokens/night.css';
+@import './lib/design/tokens/theme.css';

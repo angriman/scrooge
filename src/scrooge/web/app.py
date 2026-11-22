@@ -441,7 +441,8 @@ def _shell(spa: Path) -> bytes | None:
 def _headers(shell: bytes | None) -> dict[str, str]:
     """`_HEADERS`, letting the scripts of `shell` run: the frontend's page starts itself with
     one written in it, which the policy allows by its digest and nothing else written in a
-    page."""
+    page. Its elements carry style attributes (where a chart places a mark, where a menu
+    opens), which it allows too; a stylesheet still comes only from here."""
     if shell is None:
         return _HEADERS
     digests = [
@@ -450,7 +451,10 @@ def _headers(shell: bytes | None) -> dict[str, str]:
     ]
     if not digests:
         return _HEADERS
-    policy = f"default-src 'self'; script-src 'self' {' '.join(digests)}; frame-ancestors 'none'"
+    policy = (
+        f"default-src 'self'; script-src 'self' {' '.join(digests)}; "
+        "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
+    )
     return {**_HEADERS, "content-security-policy": policy}
 
 

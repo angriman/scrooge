@@ -1,0 +1,109 @@
+/* What Tailwind calls the roles of the theme (tokens/night.css), and the scales every theme
+ * shares: type, corners. A class names a role (`bg-panel`, `text-ink-secondary`,
+ * `fill-data-3`), never a colour, so that changing a theme changes no component. Tailwind's
+ * own colours are left out: a class can only name a role. */
+
+/* `dark:` is the night theme, for the rare component that has to differ beyond its tokens. */
+@custom-variant dark (&:where([data-theme='night'], [data-theme='night'] *));
+
+@theme inline {
+	--color-*: initial;
+	--color-transparent: transparent;
+	--color-current: currentColor;
+
+	--color-sunken: var(--surface-sunken);
+	--color-page: var(--surface-page);
+	--color-panel: var(--surface-panel);
+	--color-raised: var(--surface-raised);
+
+	--color-line: var(--line);
+	--color-line-strong: var(--line-strong);
+
+	--color-ink: var(--ink);
+	--color-ink-secondary: var(--ink-secondary);
+	--color-ink-muted: var(--ink-muted);
+
+	--color-brand: var(--brand);
+	--color-brand-hover: var(--brand-hover);
+	--color-brand-soft: var(--brand-soft);
+	--color-on-brand: var(--on-brand);
+	--color-focus: var(--focus);
+
+	--color-gain: var(--gain);
+	--color-gain-soft: var(--gain-soft);
+	--color-loss: var(--loss);
+	--color-loss-soft: var(--loss-soft);
+	--color-caution: var(--caution);
+	--color-caution-soft: var(--caution-soft);
+
+	--color-data-1: var(--data-1);
+	--color-data-2: var(--data-2);
+	--color-data-3: var(--data-3);
+	--color-data-4: var(--data-4);
+	--color-data-5: var(--data-5);
+	--color-data-6: var(--data-6);
+	--color-data-7: var(--data-7);
+	--color-data-8: var(--data-8);
+	--color-data-other: var(--data-other);
+	--color-chart-grid: var(--chart-grid);
+	--color-chart-axis: var(--chart-axis);
+
+	--font-sans: var(--font-ui);
+
+	/* Type, dense: the body is 14px, the size of a figure in a table. Each step says what it
+	 * is for, not how big it is. */
+	--text-caption: 0.75rem;
+	--text-caption--line-height: 1rem;
+	--text-small: 0.8125rem;
+	--text-small--line-height: 1.125rem;
+	--text-body: 0.875rem;
+	--text-body--line-height: 1.25rem;
+	--text-title: 1rem;
+	--text-title--line-height: 1.375rem;
+	--text-heading: 1.25rem;
+	--text-heading--line-height: 1.625rem;
+	--text-figure: 1.75rem;
+	--text-figure--line-height: 2rem;
+	--text-hero: 2.5rem;
+	--text-hero--line-height: 2.75rem;
+
+	/* Corners grow with what they hold: a mark (a legend's swatch, a bar), a control, a
+	 * panel, the one block a page leads with. */
+	--radius-mark: 0.125rem;
+	--radius-control: 0.375rem;
+	--radius-panel: 0.625rem;
+	--radius-lead: 0.875rem;
+}
+
+@layer base {
+	html {
+		background-color: var(--surface-page);
+		color: var(--ink);
+		font-family: var(--font-ui);
+		font-size: 100%;
+		/* Figures of one width: columns of amounts line up, and a number that changes does not
+		 * shake what is next to it. */
+		font-variant-numeric: tabular-nums;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	body {
+		font-size: var(--text-body);
+		line-height: var(--text-body--line-height);
+	}
+
+	*,
+	::before,
+	::after {
+		border-color: var(--line);
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--focus);
+		outline-offset: 2px;
+	}
+
+	::selection {
+		background-color: var(--brand-soft);
+	}
+}

@@ -1,0 +1,58 @@
+/* Night: the dark theme, a slate-navy desk for reading many figures at once. It gives every
+ * role a colour of the palette; a light theme (Alpine) will be another file giving the same
+ * roles, under [data-theme='alpine']. Night is also what a page without a theme wears. */
+
+:root,
+[data-theme='night'] {
+	color-scheme: dark;
+
+	/* Surfaces, from the deepest up: wells (inputs, tracks), the page, panels on it, and
+	 * what floats above them (menus, tooltips, a hovered row). */
+	--surface-sunken: var(--navy-950);
+	--surface-page: var(--navy-900);
+	--surface-panel: var(--navy-850);
+	--surface-raised: var(--navy-800);
+
+	/* Lines: the hairline between things, and the one that has to be seen (inputs). */
+	--line: var(--navy-750);
+	--line-strong: var(--navy-700);
+
+	/* Text: what is read, what explains it, and what can be skipped (captions, axes). */
+	--ink: var(--mist-100);
+	--ink-secondary: var(--mist-400);
+	--ink-muted: var(--mist-500);
+
+	/* The one colour of the app's own: what is chosen, links, the main action. */
+	--brand: var(--indigo-400);
+	--brand-hover: var(--indigo-300);
+	--brand-soft: color-mix(in srgb, var(--indigo-400) 16%, transparent);
+	--on-brand: var(--indigo-950);
+	--focus: var(--indigo-300);
+
+	/* Signals: money gained or coming in, money lost or going out, and what needs a look. */
+	--gain: var(--teal-400);
+	--gain-soft: color-mix(in srgb, var(--teal-400) 14%, transparent);
+	--loss: var(--rose-400);
+	--loss-soft: color-mix(in srgb, var(--rose-400) 14%, transparent);
+	--caution: var(--amber-400);
+	--caution-soft: color-mix(in srgb, var(--amber-400) 14%, transparent);
+
+	/* Data: the colours of the series of a chart, in the order they are handed out
+	 * (src/lib/design/data.ts says which series gets which), and the one of the rest. */
+	--data-1: var(--indigo-400);
+	--data-2: var(--teal-400);
+	--data-3: var(--amber-400);
+	--data-4: var(--sky-400);
+	--data-5: var(--violet-400);
+	--data-6: var(--rose-400);
+	--data-7: var(--lime-400);
+	--data-8: var(--sand-400);
+	--data-other: var(--navy-600);
+
+	/* The scaffolding of a chart: gridlines and the axis. */
+	--chart-grid: var(--navy-750);
+	--chart-axis: var(--mist-500);
+
+	/* Type: one family for everything, its figures of one width so that columns line up. */
+	--font-ui: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, sans-serif;
+}
