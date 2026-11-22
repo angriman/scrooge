@@ -539,7 +539,8 @@ def _share_values(
     for day, price in zip(days, _carried(closes, days), strict=True):
         index = bisect_right(when, day)
         # Like an account, a holding starts with the first thing known about it: nothing
-        # is counted before, even where the history begins with shares already held.
+        # is counted before. Shares held when the account's statements begin are known from
+        # their first day (`holdings.held`).
         quantity = steps[index - 1][1] if index else Decimal(0)
         values.append(quantity * price)
     return values

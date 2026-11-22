@@ -251,3 +251,38 @@ def test_importing_a_statement_again_replaces_what_it_printed(conn: sqlite3.Conn
     ).fetchall()
     assert [tuple(row) for row in printed] == [("WIDG", "15", "50", 750_000_000_000, "2026-09-30")]
     assert conn.execute("SELECT count(*) FROM statement_files").fetchone()[0] == 1
+
+
+def test_shares_held_when_the_statements_begin_are_held_from_their_first_day(
+    conn: sqlite3.Connection,
+) -> None:
+    stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "14"}, buy("4", day(15))))
+    [held] = holdings.held(conn)
+    assert held.steps[:2] == (Step(day(1), D(10)), Step(day(15), D(14)))
+
+
+def test_a_split_before_the_statements_begin_is_in_their_first_day(
+    conn: sqlite3.Connection,
+) -> None:
+    stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "40"}))
+    instrument = conn.execute("SELECT id FROM instruments").fetchone()[0]
+    conn.execute("INSERT INTO splits VALUES (?, '2026-08-10', 4, 1)", (instrument,))
+    [held] = holdings.held(conn)
+    assert held.opening == 10
+    assert held.steps == (Step(day(1), D(40)), Step(day(30), D(40)))
+
+
+def test_a_first_trade_on_the_first_day_is_where_the_holding_starts(
+    conn: sqlite3.Connection,
+) -> None:
+    stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "14"}, buy("4", day(1))))
+    [held] = holdings.held(conn)
+    assert held.steps[0] == Step(day(1), D(14))
+
+
+def test_a_short_opening_is_not_booked_from_the_first_day(conn: sqlite3.Connection) -> None:
+    # The statement leads back to -4 held: a buy before it is missing, not a short position.
+    stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "0"}, buy("4", day(15))))
+    [held] = holdings.held(conn)
+    assert held.opening == -4
+    assert held.steps[0] == Step(day(15), D(0))

@@ -221,7 +221,8 @@ def test_shares_held_from_before_the_history_starts_are_priced(conn: sqlite3.Con
     )
     source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
     marketdata.refresh(conn, source, through=date(2026, 10, 5), now=NOW)
-    assert source.asked[0] == ("WIDG", END - timedelta(days=10), date(2026, 10, 5))
+    # Held when the statement begins: priced from its first day.
+    assert source.asked[0] == ("WIDG", SEPTEMBER - timedelta(days=10), date(2026, 10, 5))
 
 
 def test_a_statement_that_says_none_was_held_yet_is_not_the_first_day(

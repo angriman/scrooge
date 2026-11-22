@@ -3,7 +3,10 @@
 The quantity held is derived: the trades and the shares moved in kind add up, a split
 multiplies what is held on its day, and a statement that prints its holdings is a known point.
 From a known point the quantity runs forward with what was booked since; before the first one
-it runs backward, so that a history which starts with shares already held is right too. A
+it runs backward, so that a history which starts with shares already held is right too. What
+was held when an account's statements begin counts from their first day (decided
+2026-11-22): a share kept all through a yearly statement, never traded, is held all year, not
+only from the day the statement prints it. A
 statement that prints something else than what the rows before it lead to is a mismatch: a
 missing statement, or a split that is not stored yet.
 
@@ -81,7 +84,12 @@ class Holding:
     mismatches: tuple[Mismatch, ...]
 
     def on(self, day: date) -> Decimal:
-        """What was held at the end of `day`."""
+        """What was held at the end of `day`.
+
+        Before the first step it is `opening`, also for days before the account's statements
+        begin: what was held then is not known, and net worth counts nothing for them (it
+        starts at the first step). Nothing reads it there today.
+        """
         quantity = self.opening
         for step in self.steps:
             if step.day > day:
@@ -182,11 +190,42 @@ def held(
         splits[instrument].append(
             Change(date.fromisoformat(day), _SPLIT, Decimal(numerator), Decimal(denominator))
         )
+    starts = _first_days(conn, owner_id, committed=committed)
     holdings: list[Holding] = []
     for (account, instrument), moves in sorted(changes.items()):
         opening, steps, mismatches = timeline([*moves, *splits.get(instrument, [])])
+        start = starts.get(account)
+        if opening > 0 and start is not None:
+            # Held when the account's statements begin: known from their first day, not only
+            # from the first trade or the day a statement prints it.
+            steps = _from(start, opening, steps)
         holdings.append(Holding(account, instrument, opening, tuple(steps), tuple(mismatches)))
     return holdings
+
+
+def _from(start: date, opening: Decimal, steps: list[Step]) -> list[Step]:
+    """`steps` from `start` on, the first one what was held that day: a split stored for a
+    day before the account's statements is in it, not a step of its own before them."""
+    before = [step for step in steps if step.day < start]
+    after = [step for step in steps if step.day >= start]
+    if after and after[0].day == start:
+        return after
+    return [Step(start, before[-1].quantity if before else opening), *after]
+
+
+def _first_days(
+    conn: sqlite3.Connection, owner_id: int | None, *, committed: bool
+) -> dict[int, date]:
+    """account -> the first day its statements cover; none for an account only ever typed."""
+    rows = conn.execute(
+        "SELECT s.account_id, min(f.period_start) FROM statement_accounts s "  # noqa: S608  # only fixed text is joined
+        "JOIN statement_files f ON f.id = s.statement_file_id "
+        "WHERE f.owner_id = coalesce(?, f.owner_id) "
+        + _committed("f.id", committed)
+        + "GROUP BY s.account_id",
+        (owner_id,),
+    )
+    return {int(account): date.fromisoformat(day) for account, day in rows}
 
 
 def _printed(

@@ -519,8 +519,10 @@ def test_holdings_a_statement_prints_are_where_the_quantity_starts_from(
     close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
     result = networth.run(conn, currency="USD")
     etfs = line(result, ETFS)
-    # counted from the first thing known about them: the statement, at its close
-    assert [etfs[d] for d in (day(29), day(30))] == [D(0), D(550)]
+    # Held when the statement begins: counted from its first day, not only from its close.
+    # Nothing is counted before the statement.
+    assert [etfs[d] for d in (day(1), day(29), day(30))] == [D(550), D(550), D(550)]
+    assert etfs[day(31, 8)] == D(0)  # the day its opening balance is for
 
 
 def test_fund_units_and_cash_of_a_pension_account_are_one_asset(conn: sqlite3.Connection) -> None:
