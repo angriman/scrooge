@@ -12,7 +12,16 @@ from scrooge import query, staging
 from scrooge.models import CashBalance, Kind
 from scrooge.query import Filter
 from scrooge.storage import db, store
-from tests.storage.helpers import OWNER, PARTNER, batch, close, statement, txn
+from tests.storage.helpers import (
+    OWNER,
+    PARTNER,
+    batch,
+    certificate,
+    certified,
+    close,
+    statement,
+    txn,
+)
 
 NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
 START = date(2025, 1, 1)
@@ -200,6 +209,30 @@ def test_people_are_listed_with_what_is_committed_and_what_is_staged(
     july = date(2026, 7, 1)
     assert anna == query.Person(PARTNER, 1, july, date(2026, 7, 31), staged=0, transactions=2)
     assert lukas == query.Person(OWNER, 2, START, date(2026, 8, 31), staged=1, transactions=8)
+
+
+def test_a_certificate_is_a_statement_but_covers_no_days_of_the_person() -> None:
+    conn = db.connect(":memory:")
+    db.migrate(conn, NOW)
+    end = date(2025, 12, 31)
+    close(conn, OWNER, (START, end), end, ("migros", [txn("-45.20", date=date(2025, 5, 3))]))
+    scans = certified(certificate(date(2026, 1, 1), "9400"), certificate(date(2023, 1, 1), "8000"))
+    staging.stage(conn, scans, NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    anna, lukas = query.people(conn)
+    assert anna.committed == 0
+    assert (lukas.committed, lukas.first, lukas.last) == (3, START, end)
+    conn.close()
+
+
+def test_a_person_with_certificates_alone_has_no_days_covered() -> None:
+    conn = db.connect(":memory:")
+    db.migrate(conn, NOW)
+    staging.stage(conn, certified(certificate(date(2026, 1, 1), "9400")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    _, lukas = query.people(conn)
+    assert lukas == query.Person(OWNER, 1, None, None, staged=0, transactions=0)
+    conn.close()
 
 
 def test_a_person_with_nothing_committed_is_listed_too() -> None:

@@ -344,6 +344,28 @@ def test_a_pension_fund_is_a_line_of_its_own_from_the_day_of_its_certificate(
     assert networth.checks(conn) == ()
 
 
+def test_a_certificate_after_the_statements_is_no_day_they_cover(conn: sqlite3.Connection) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    staging.stage(conn, certified(certificate(day(10, 10), "36000.50")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    valued = networth.value(conn, OWNER)
+    assert valued is not None
+    assert valued.through == {OWNER: day(30)}  # what the statements cover
+    assert valued.days[-1] == day(10, 10)  # the fund's own day is still shown
+    assert line(networth.run(conn, currency="CHF"), PILLAR2)[day(10, 10)] == D("36000.50")
+    assert networth.checks(conn) == ()
+
+
+def test_a_person_with_certificates_alone_counts_up_to_the_last_of_them(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, certified(certificate(day(5), "100"), certificate(day(9), "200")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    valued = networth.value(conn, OWNER)
+    assert valued is not None
+    assert valued.through == {OWNER: day(9)}
+
+
 def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Connection) -> None:
     rate(conn, "EUR", day(1), "0.95")
     rate(conn, "EUR", day(15), "0.94")

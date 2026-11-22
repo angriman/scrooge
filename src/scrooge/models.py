@@ -155,6 +155,11 @@ class Rate:
     rate: Decimal
 
 
+# The sources of pension certificates: statements of one day that cover none of the days
+# around it.
+CERTIFICATE_SOURCES = ("axa", "servisa")
+
+
 @dataclass(frozen=True, slots=True)
 class PensionCertificate:
     """What a second-pillar certificate states: the retirement assets on one day.
