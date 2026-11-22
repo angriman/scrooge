@@ -33,7 +33,6 @@ OTHERS = "Others"  # the rest of the categories, together
 PAID_BACK = "Paid back"  # what the other person paid, in one person's view
 MERCHANTS = 20  # the merchants listed; the others are added up
 _FEES = frozenset({Kind.COMMISSION, Kind.TAX, Kind.INTEREST})
-_SHARE = Decimal("0.001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,10 +149,9 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
         *([PAID_BACK] if came_back else []),  # even when they net to nothing
     )
     periods = []
-    for name in analysis.periods(span.start, span.end, grouping):
-        days = cashflow.days(name)
+    for name, days, in_period in found.by_period(span, grouping):
         totals = dict.fromkeys(parts, Decimal(0))
-        for each in found.between(max(days[0], span.start), min(days[1], span.end)):
+        for each in in_period:
             if paid_back(each.row):
                 part = PAID_BACK
             else:
@@ -199,7 +197,7 @@ def _categories(
                 name,
                 len(rows),
                 amount.quantize(CENT),
-                (amount / total).quantize(_SHARE) if total > 0 else None,
+                analysis.share(amount, total),
                 (amount / months).quantize(CENT),
                 None if usual is None else usual.get(name, Decimal(0)),
                 None if year is None else year.get(name, Decimal(0)),
@@ -233,11 +231,11 @@ def _usual(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | No
 
 def _year_before(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:
     """top -> what was spent in the range a year earlier."""
-    start, end = analysis.year_before(span.start), analysis.year_before(span.end)
-    if start < span.known:
+    before = span.year_before()
+    if before is None:
         return None
     sums: dict[str, Decimal] = defaultdict(Decimal)
-    for each in found.between(start, end):
+    for each in found.between(*before):
         if not paid_back(each.row):
             sums[each.row.top] -= each.amount
     return {top: total.quantize(CENT) for top, total in sums.items()}

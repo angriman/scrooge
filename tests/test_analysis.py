@@ -184,3 +184,75 @@ def test_a_range_that_ends_before_it_starts_has_no_span() -> None:
 
 def test_nothing_committed_means_no_span() -> None:
     assert Rows((), (), None, None).span(None, None) is None
+
+
+def test_a_share_is_a_part_of_the_total_to_the_thousandth() -> None:
+    assert analysis.share(Decimal(1), Decimal(3)) == Decimal("0.333")
+    assert analysis.share(Decimal(2), Decimal(3)) == Decimal("0.667")
+    assert analysis.share(Decimal(30), Decimal(120)) == Decimal("0.250")
+
+
+def test_a_share_of_nothing_is_unknown() -> None:
+    assert analysis.share(Decimal(5), Decimal(0)) is None
+
+
+def test_a_share_of_a_negative_total_is_unknown() -> None:
+    assert analysis.share(Decimal(5), Decimal(-10)) is None
+
+
+def test_nothing_out_of_a_total_is_a_share_of_zero() -> None:
+    assert analysis.share(Decimal(0), Decimal(10)) == Decimal("0.000")
+
+
+def test_a_negative_part_is_a_negative_share() -> None:
+    assert analysis.share(Decimal(-5), Decimal(10)) == Decimal("-0.500")
+
+
+def test_the_range_a_year_before_has_both_ends_a_year_earlier() -> None:
+    span = Span(date(2026, 3, 1), date(2026, 5, 31), date(2026, 6, 15), date(2025, 3, 1))
+    assert span.year_before() == (date(2025, 3, 1), date(2025, 5, 31))
+
+
+def test_the_range_a_year_before_is_unknown_when_it_starts_before_the_known_months() -> None:
+    span = Span(date(2026, 3, 1), date(2026, 5, 31), date(2026, 6, 15), date(2025, 4, 1))
+    assert span.year_before() is None
+
+
+def test_the_range_a_year_before_may_start_on_the_first_known_day() -> None:
+    known = Span(date(2026, 3, 1), date(2026, 3, 31), date(2026, 6, 15), date(2025, 3, 1))
+    assert known.year_before() == (date(2025, 3, 1), date(2025, 3, 31))
+    late = Span(date(2026, 3, 1), date(2026, 3, 31), date(2026, 6, 15), date(2025, 3, 2))
+    assert late.year_before() is None
+
+
+def test_the_rows_within_a_period_are_those_of_its_days() -> None:
+    span = Span(date(2026, 3, 1), date(2026, 6, 15), date(2026, 6, 15), date(2026, 3, 1))
+    april = FOUND.within(span, (date(2026, 4, 1), date(2026, 4, 30)))
+    assert [each.day for each in april] == [date(2026, 4, 1), date(2026, 4, 30)]
+
+
+def test_the_rows_within_a_period_cut_by_the_range_stop_at_its_ends() -> None:
+    span = Span(date(2026, 4, 2), date(2026, 4, 29), date(2026, 6, 15), date(2026, 3, 1))
+    assert FOUND.within(span, (date(2026, 4, 1), date(2026, 4, 30))) == ()
+    wide = Span(date(2026, 3, 20), date(2026, 4, 15), date(2026, 6, 15), date(2026, 3, 1))
+    inside = FOUND.within(wide, (date(2026, 3, 1), date(2026, 4, 30)))
+    assert [each.day for each in inside] == [date(2026, 4, 1)]
+
+
+def test_by_period_lists_each_period_with_its_whole_days_and_the_rows_in_the_range() -> None:
+    span = Span(date(2026, 3, 10), date(2026, 4, 15), date(2026, 6, 15), date(2026, 3, 1))
+    found = [
+        (name, days, [each.day for each in inside])
+        for name, days, inside in FOUND.by_period(span, Grouping.MONTH)
+    ]
+    assert found == [
+        ("2026-03", (date(2026, 3, 1), date(2026, 3, 31)), []),  # the 5th is before the range
+        ("2026-04", (date(2026, 4, 1), date(2026, 4, 30)), [date(2026, 4, 1)]),
+    ]
+
+
+def test_by_period_of_a_range_inside_one_period_is_that_period_alone() -> None:
+    span = Span(date(2026, 4, 1), date(2026, 4, 1), date(2026, 6, 15), date(2026, 3, 1))
+    [(name, days, inside)] = list(FOUND.by_period(span, Grouping.YEAR))
+    assert (name, days) == ("2026", (date(2026, 1, 1), date(2026, 12, 31)))
+    assert [each.day for each in inside] == [date(2026, 4, 1)]
