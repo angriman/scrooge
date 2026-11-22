@@ -4,15 +4,13 @@
 [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fangriman%2Fscrooge%2Fbadges%2Fcoverage.json)](https://github.com/angriman/scrooge/actions/workflows/coverage.yml)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 
-Parses bank and broker statements, reconciles every account against the statement's own
-balances, and stores the transactions in a local SQLite database for two people. A small web
-app shows net worth day by day, holdings, cash flow and transactions, and has an import page.
-Statements are read offline; the only thing fetched is daily prices.
+Parses bank and broker statements, checks them against their own balances and keeps the
+transactions in a local SQLite database for two people, with a small web app for net worth,
+holdings, cash flow and transactions. Everything is offline except fetching daily prices.
 
-Sources: Migros Bank (CSV), Revolut and Revolut Savings (TSV/CSV), IBKR activity statement
-(CSV), Tastytrade (CSV), Swisscard invoice (PDF), Morgan Stanley stock plan quarterly
-statement (PDF), Charles Schwab Equity Award Center (CSV), finpension pillar 3a (CSV), and the
-scanned second-pillar certificates of AXA and Servisa (PDF, read with the local `tesseract`).
+Sources: Migros Bank, Revolut, Revolut Savings, IBKR, Tastytrade, Swisscard, Morgan Stanley
+stock plan, Charles Schwab Equity Awards, finpension 3a, and the scanned pension certificates
+of AXA and Servisa.
 
 ## Use
 
