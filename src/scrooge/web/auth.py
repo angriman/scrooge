@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -79,6 +80,8 @@ class Access:
     _sessions: dict[str, datetime] = field(default_factory=dict)  # session -> its last moment
     _wrong: int = 0  # wrong passwords in a row
     _closed_until: datetime | None = None
+    _checking: bool = False  # a password is being checked: the digest is slow
+    _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         check(self.stored)
@@ -87,12 +90,28 @@ class Access:
         """A new session for the right password, None for a wrong one.
 
         Each wrong password in a row doubles the wait before the next attempt, whoever
-        makes it; an attempt during the wait is not looked at (`TooSoonError`).
+        makes it; an attempt during the wait is not looked at (`TooSoonError`), nor one
+        made while another is still being checked, so guesses sent at once do not all
+        get in before the first wrong one closes the door.
         """
-        if self._closed_until is not None and now < self._closed_until:
-            left = self._closed_until - now
-            raise TooSoonError(-(-left // timedelta(seconds=1)))
-        if not matches(password, self.stored):
+        with self._lock:
+            if self._closed_until is not None and now < self._closed_until:
+                left = self._closed_until - now
+                raise TooSoonError(-(-left // timedelta(seconds=1)))
+            if self._checking:
+                raise TooSoonError(1)
+            self._checking = True
+        right = False
+        try:
+            right = matches(password, self.stored)  # slow: not under the lock
+        finally:
+            with self._lock:  # the door is never open between the check and its record
+                self._checking = False
+                session = self._record(right, now)
+        return session
+
+    def _record(self, right: bool, now: datetime) -> str | None:
+        if not right:
             self._wrong += 1
             wait = min(timedelta(seconds=2 ** min(self._wrong - 1, 16)), LONGEST_WAIT)
             self._closed_until = now + wait
