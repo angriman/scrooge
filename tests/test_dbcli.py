@@ -575,14 +575,18 @@ def test_a_file_that_needs_a_category_ends_the_import_with_a_request_to_review(
     assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
 
 
-def test_a_refusal_comes_before_a_request_for_categories(run: Run) -> None:
+def test_a_refusal_ends_the_import_with_failure_even_when_others_need_categories(
+    run: Run,
+) -> None:
     statement = run.folder / "Migros.csv"
     statement.write_text(
         statement.read_text(encoding="utf-8").replace("-1288.18", "-1288.19"), encoding="utf-8"
     )
     run.rules.write_text("rules: []\n", encoding="utf-8")
-    assert run.load() == dbcli.NEEDS_REVIEW
+    assert run.load() == dbcli.FAILED
     assert "  refused Migros.csv" in run.output
+    assert "  staged IBKR.csv (IBKR activity statement)\n" in run.output
+    assert "transactions need a category" in run.output
 
 
 def test_owner_and_database_can_come_from_the_command_line(run: Run, tmp_path: Path) -> None:
