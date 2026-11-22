@@ -495,7 +495,10 @@ def _store_certificates(
                 raise CertificatesDisagreeError(
                     certificate.account, stated.currency, on, balance, standing
                 )
-        store.set_closing_balance(conn, account, stated.as_of, stated.balance, file_id)
+        if not store.is_committed_balance(conn, account, stated.as_of):
+            # A day a committed certificate states as its year's opening stays its own: the
+            # figure was checked above and discarding this file must not take it away.
+            store.set_closing_balance(conn, account, stated.as_of, stated.balance, file_id)
         if stated.opened:
             store.set_opening_balance(conn, account, *stated.opened, file_id)
         stored.add(file_id)

@@ -992,6 +992,37 @@ def test_a_new_scan_replaces_the_balance_the_year_began_with_too(conn: sqlite3.C
     assert rows(conn, "SELECT filename FROM statement_files") == [("again.pdf",)]
 
 
+def test_a_staged_certificate_never_takes_a_day_from_a_committed_one(
+    conn: sqlite3.Connection,
+) -> None:
+    yearly = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.30"))
+    staging.stage(conn, certified(yearly), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    before = rows(conn, BALANCES)
+    own = certificate(YEAR_BEFORE, "58240.30")
+    staging.stage(conn, certified(own), LATER)
+    assert rows(conn, BALANCES) == before
+    own_id = rows(conn, "SELECT id FROM statement_files WHERE filename = ?", own.filename)[0][0]
+    staging.discard(conn, owner=OWNER, file_id=own_id)
+    assert rows(conn, BALANCES) == before
+
+
+def test_a_balance_passes_to_the_certificate_that_still_states_its_day(
+    conn: sqlite3.Connection,
+) -> None:
+    yearly = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58240.30"))
+    own = certificate(YEAR_BEFORE, "58240.30")
+    for scan in (yearly, own):
+        staging.stage(conn, certified(scan), NOW)
+        staging.commit(conn, owner=OWNER, now=NOW)
+    yearly_id = rows(conn, "SELECT id FROM statement_files WHERE filename = ?", yearly.filename)
+    staging.uncommit(conn, owner=OWNER, file_id=yearly_id[0][0])
+    staging.discard(conn, owner=OWNER, file_id=yearly_id[0][0])
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2025-01-01", 58_240_300_000_000, "statement", own.filename)
+    ]
+
+
 @pytest.mark.parametrize("together", [True, False])
 @pytest.mark.parametrize("yearly_first", [True, False])
 def test_a_day_belongs_to_its_own_certificate_whichever_comes_first(
@@ -2203,12 +2234,31 @@ def test_a_statement_not_yet_over_replaces_the_staged_part_of_itself(
     staged = staging.stage(conn, october(content="whole"), NOW)
     assert (staged.transactions, staged.later) == (3, 0)
     # the rows are the new file's; the shorter file keeps the balance it closed on, as a
-    # shorter export does when a longer one replaces it
+    # shorter export does when a longer one replaces it (the opening one is the new file's
+    # once the shorter is discarded, see below)
     assert rows(conn, "SELECT count(*) FROM transactions") == [(3,)]
     assert rows(conn, "SELECT period_end FROM statement_files ORDER BY id") == [
         ("2026-10-07",),
         ("2026-10-31",),
     ]
+
+
+def test_discarding_the_shorter_file_leaves_the_longer_one_its_opening_balance(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, october(), OCTOBER_FIRST)
+    staging.stage(conn, october(content="whole"), NOW)
+    shorter = rows(conn, "SELECT id FROM statement_files WHERE period_end = '2026-10-07'")[0][0]
+    staging.discard(conn, owner=OWNER, file_id=shorter)
+    assert rows(
+        conn,
+        "SELECT b.date, b.amount_nano, f.period_end FROM balances b "
+        "JOIN statement_files f ON f.id = b.statement_file_id ORDER BY 1",
+    ) == [
+        ("2026-09-30", 100_000_000_000, "2026-10-31"),
+        ("2026-10-31", 65_000_000_000, "2026-10-31"),
+    ]
+    assert [f.filename for f in staging.commit(conn, owner=OWNER, now=NOW)] == ["migros.csv"]
 
 
 def test_a_statement_that_begins_today_has_nothing_to_stage_yet(conn: sqlite3.Connection) -> None:

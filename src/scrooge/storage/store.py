@@ -340,9 +340,31 @@ def later_committed(conn: sqlite3.Connection, file_id: int) -> list[str]:
 
 
 def delete_file(conn: sqlite3.Connection, file_id: int) -> None:
-    """Remove a statement file and everything it gave the accounts."""
-    for table in ("transactions", "balances", "positions"):
+    """Remove a statement file and everything it gave the accounts.
+
+    A balance is stored once per account and day, under one file; where another file of the
+    same source and account states that day too (it closes on it, or opens from it) the
+    balance is kept and becomes that file's.
+    """
+    for table in ("transactions", "positions"):
         conn.execute(f"DELETE FROM {table} WHERE statement_file_id = ?", (file_id,))  # noqa: S608  # the table names are the literals above
+    owned = conn.execute(
+        "SELECT account_id, date FROM balances WHERE statement_file_id = ?", (file_id,)
+    ).fetchall()
+    for account, day in owned:
+        heir = conn.execute(
+            "SELECT o.id FROM statement_files o "
+            "JOIN statement_accounts s ON s.statement_file_id = o.id AND s.account_id = ?1 "
+            "WHERE o.id <> ?2 AND o.source = (SELECT source FROM statement_files WHERE id = ?2) "
+            "AND (o.period_end = ?3 OR date(o.period_start, '-1 day') = ?3) ORDER BY o.id",
+            (account, file_id, day),
+        ).fetchone()
+        if heir is not None:
+            conn.execute(
+                "UPDATE balances SET statement_file_id = ? WHERE account_id = ? AND date = ?",
+                (heir[0], account, day),
+            )
+    conn.execute("DELETE FROM balances WHERE statement_file_id = ?", (file_id,))
     conn.execute("DELETE FROM statement_files WHERE id = ?", (file_id,))
 
 
@@ -541,6 +563,16 @@ def set_closing_balance(
         "statement_file_id) VALUES (?, ?, ?, 'statement', ?)",
         (account, day.isoformat(), to_nano(amount), statement_file),
     )
+
+
+def is_committed_balance(conn: sqlite3.Connection, account: int, day: date) -> bool:
+    """Whether the balance stored for the account on `day` is owned by a committed file."""
+    found = conn.execute(
+        "SELECT 1 FROM balances b JOIN statement_files f ON f.id = b.statement_file_id "
+        "WHERE b.account_id = ? AND b.date = ? AND f.committed_at IS NOT NULL",
+        (account, day.isoformat()),
+    ).fetchone()
+    return found is not None
 
 
 def set_opening_balance(
