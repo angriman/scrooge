@@ -1,3 +1,5 @@
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -125,3 +127,62 @@ def test_the_right_password_ends_the_count_of_wrong_ones() -> None:
     assert access.enter(WORDS, second(3)) is not None
     assert access.enter("wrong", second(4)) is None
     assert access.enter(WORDS, second(5)) is not None  # one second again, not four
+
+
+def test_a_guess_made_while_another_is_being_checked_is_refused_unchecked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access = auth.Access(STORED)
+    started, release = threading.Event(), threading.Event()
+    checked: list[str] = []
+
+    def slow(password: str, stored: str) -> bool:
+        checked.append(password)
+        started.set()
+        release.wait(5)
+        return False
+
+    monkeypatch.setattr(auth, "matches", slow)
+    first = threading.Thread(target=access.enter, args=("first", NOW))
+    first.start()
+    assert started.wait(5)
+    with pytest.raises(auth.TooSoonError, match="wait 1 second and try again"):
+        access.enter(WORDS, NOW)
+    release.set()
+    first.join(5)
+    assert checked == ["first"]
+    with pytest.raises(auth.TooSoonError):  # and the wrong one closed the door
+        access.enter(WORDS, NOW)
+
+
+def test_guesses_sent_at_once_are_checked_one_at_a_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access = auth.Access(STORED)
+    count = 8
+    barrier = threading.Barrier(count)
+    lock = threading.Lock()
+    checked: list[str] = []
+    outcomes: list[str | None] = []
+
+    def slow(password: str, stored: str) -> bool:
+        with lock:
+            checked.append(password)
+        time.sleep(0.05)
+        return False
+
+    def guess(n: int) -> None:
+        barrier.wait(5)
+        try:
+            outcomes.append(access.enter(f"wrong {n}", NOW))
+        except auth.TooSoonError:
+            outcomes.append("waiting")
+
+    monkeypatch.setattr(auth, "matches", slow)
+    threads = [threading.Thread(target=guess, args=(n,)) for n in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    assert len(checked) == 1
+    assert sorted(map(str, outcomes)) == sorted(["None"] + ["waiting"] * (count - 1))
