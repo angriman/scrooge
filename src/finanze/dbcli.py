@@ -8,9 +8,11 @@ prices | query | serve | password | publish`: the database from the terminal.
     finanze uncommit <id>     take a committed statement back: it is staged again
     finanze discard <id>      remove a staged statement and everything it staged
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
-                              type what an account without statements held on a day
+                              type what an account without statements, or a pension fund
+                              between its certificates, held on a day (--remove: take it back)
     finanze position <account> <YYYY-MM-DD> <symbol> <quantity> <currency>
                               type how many shares of one stock or ETF it held on a day
+                              (--remove: take it back)
     finanze keep <path>...    keep the files of statements imported before originals were kept
     finanze logo <symbol> <file>
                               keep an SVG or PNG as the logo of an instrument (--remove to drop it)
@@ -238,10 +240,17 @@ def _parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name, parents=[shared], help=text)
         command.add_argument("id", type=int, help="the statement, as `finanze statements` lists it")
     typed = commands.add_parser("balance", parents=[shared], help="type an account's balance")
-    typed.add_argument("account", help="name of an account that has no statements")
+    typed.add_argument(
+        "account", help="name of an account that has no statements, or of a pension fund"
+    )
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
-    typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
-    typed.add_argument("currency", help="CHF, EUR, ...")
+    typed.add_argument(
+        "amount", type=_amount, nargs="?", help="what it held at the end of that day"
+    )
+    typed.add_argument("currency", nargs="?", help="CHF, EUR, ...")
+    typed.add_argument(
+        "--remove", action="store_true", help="remove the balance typed for that day instead"
+    )
     held = commands.add_parser(
         "position", parents=[shared], help="type how many shares an account held"
     )
@@ -249,9 +258,12 @@ def _parser() -> argparse.ArgumentParser:
     held.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     held.add_argument("symbol", help="the ticker, as Yahoo knows it (e.g. AAPL, NESN.SW)")
     held.add_argument(
-        "quantity", type=_quantity, help="shares held at the end of that day; 0: none"
+        "quantity", type=_quantity, nargs="?", help="shares held at the end of that day; 0: none"
     )
-    held.add_argument("currency", help="the currency it trades in: USD, CHF, ...")
+    held.add_argument("currency", nargs="?", help="the currency it trades in: USD, CHF, ...")
+    held.add_argument(
+        "--remove", action="store_true", help="remove what was typed of it that day instead"
+    )
     held.add_argument(
         "--tab",
         choices=("Stocks", "ETFs"),
@@ -630,6 +642,24 @@ def _typed(session: _Session, args: argparse.Namespace, config: dict[str, object
     A day that is not over yet is refused: what was held at its end is not known.
     """
     conn, owner, out = session.conn, session.owner, session.console.out
+    figure = args.quantity if args.command == "position" else args.amount
+    if args.remove:
+        if figure is not None:
+            msg = f"`{args.command} --remove` takes no figure: it removes the one typed"
+            raise StagingError(msg)
+        symbol = (
+            _known_as(args.symbol.upper(), _instruments(args, config))
+            if args.command == "position"
+            else ""
+        )
+        staging.remove_typed(conn, owner=owner, account=args.account, day=args.day, symbol=symbol)
+        what = f"{symbol} of " if symbol else ""
+        out.write(f"Removed what was typed of {what}{args.account} of {owner} for {args.day}.\n")
+        return OK
+    if figure is None or args.currency is None:
+        needed = "quantity" if args.command == "position" else "amount"
+        msg = f"`{args.command}` needs the {needed} and the currency"
+        raise StagingError(msg)
     currency = args.currency.upper()
     today = session.now.date()
     if args.day > today:

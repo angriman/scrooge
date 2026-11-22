@@ -84,7 +84,10 @@ def ensure_account(  # noqa: PLR0913  # one argument per column
         msg = f"account {name!r} is in {row['currency']}, not {currency}"
         raise AccountMismatchError(msg)
     if (row["source"] is None) != (source is None):
-        msg = f"account {name!r} cannot have both statements and typed balances"
+        msg = (
+            f"account {name!r} cannot have both statements and typed balances (what was typed "
+            "is removed with `finanze balance --remove` and `finanze position --remove`)"
+        )
         raise AccountMismatchError(msg)
     return int(row["id"])
 
@@ -505,10 +508,14 @@ def apply_overrides(conn: sqlite3.Connection) -> None:
     )
 
 
-def balance_on(conn: sqlite3.Connection, account: int, day: date) -> Decimal | None:
-    """The balance stored for the account on `day`, if any."""
+def balance_on(
+    conn: sqlite3.Connection, account: int, day: date, *, stated: bool = False
+) -> Decimal | None:
+    """The balance stored for the account on `day`, if any; with `stated`, only one that a
+    statement or a certificate gives, not one typed."""
+    only = "AND source = 'statement'" if stated else ""
     row = conn.execute(
-        "SELECT amount_nano FROM balances WHERE account_id = ? AND date = ?",
+        f"SELECT amount_nano FROM balances WHERE account_id = ? AND date = ? {only}",  # noqa: S608  # only fixed text is joined
         (account, day.isoformat()),
     ).fetchone()
     return None if row is None else from_nano(int(row[0]))
@@ -533,6 +540,59 @@ def set_opening_balance(
         "statement_file_id) VALUES (?, ?, ?, 'statement', ?)",
         (account, day.isoformat(), to_nano(amount), statement_file),
     )
+
+
+def typed_on(conn: sqlite3.Connection, account: int, day: date) -> bool:
+    """Whether a balance was typed for the account on `day`."""
+    found = conn.execute(
+        "SELECT 1 FROM balances WHERE account_id = ? AND date = ? AND source = 'manual'",
+        (account, day.isoformat()),
+    ).fetchone()
+    return found is not None
+
+
+def first_stated_day(conn: sqlite3.Connection, account: int) -> date | None:
+    """The first day a statement or a certificate gives the account a balance for."""
+    first = conn.execute(
+        "SELECT min(date) FROM balances WHERE account_id = ? AND source = 'statement'",
+        (account,),
+    ).fetchone()[0]
+    return None if first is None else date.fromisoformat(first)
+
+
+def remove_typed_balance(conn: sqlite3.Connection, account: int, day: date) -> bool:
+    """Remove the balance typed for the account on `day`; False when there was none."""
+    gone = conn.execute(
+        "DELETE FROM balances WHERE account_id = ? AND date = ? AND source = 'manual'",
+        (account, day.isoformat()),
+    )
+    return gone.rowcount > 0
+
+
+def remove_typed_holding(conn: sqlite3.Connection, account: int, symbol: str, day: date) -> bool:
+    """Remove what was typed of `symbol` for the account on `day`; False when nothing was."""
+    gone = conn.execute(
+        "DELETE FROM positions WHERE account_id = ? AND date = ? AND source = 'manual' "
+        "AND instrument_id IN (SELECT id FROM instruments WHERE symbol = ?)",
+        (account, day.isoformat(), symbol),
+    )
+    return gone.rowcount > 0
+
+
+def drop_if_empty(conn: sqlite3.Connection, account: int) -> bool:
+    """Remove an account that only ever was typed once nothing is left of it, so that its
+    name can be fed by statements or certificates after all."""
+    left = conn.execute(
+        "SELECT (SELECT count(*) FROM balances WHERE account_id = :a) "
+        "+ (SELECT count(*) FROM positions WHERE account_id = :a) "
+        "+ (SELECT count(*) FROM transactions WHERE account_id = :a) "
+        "+ (SELECT count(*) FROM statement_accounts WHERE account_id = :a)",
+        {"a": account},
+    ).fetchone()[0]
+    if left:
+        return False
+    conn.execute("DELETE FROM accounts WHERE id = ? AND source IS NULL", (account,))
+    return True
 
 
 def set_typed_balance(conn: sqlite3.Connection, account: int, day: date, amount: Decimal) -> None:

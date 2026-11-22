@@ -419,6 +419,55 @@ def test_the_balance_a_yearly_certificate_opens_with_is_shown_too(
     assert (run.count("statement_files"), run.count("balances")) == (1, 2)
 
 
+def test_a_pension_fund_figure_typed_between_certificates_is_pillar_2(
+    run: Run, pillar2: Path
+) -> None:
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert run("commit") == dbcli.OK
+    assert run("balance", "Pillar 2 AXA", "2026-06-30", "36500", "CHF") == dbcli.OK
+    assert run.output == "Pillar 2 AXA of Lukas: 36500 CHF on 2026-06-30.\n"
+    assert run("balance", "Pillar 2 AXA", "2026-03-01", "1", "CHF") == dbcli.FAILED
+    assert "has a certificate for 2026-03-01, which says 35,802.00 CHF" in run.output
+
+    conn = db.connect(run.database)
+    try:
+        valued = networth.value(conn, "Lukas")
+        axa = conn.execute("SELECT id FROM accounts WHERE name = 'Pillar 2 AXA'").fetchone()[0]
+    finally:
+        conn.close()
+    assert valued is not None
+    [series] = [s for s in valued.series if s.account_id == axa]
+    assert series.asset == networth.PILLAR2
+    on = dict(zip(valued.days, series.values, strict=True))
+    assert on[date(2026, 6, 29)] == Decimal("35802.00")
+    assert on[date(2026, 6, 30)] == Decimal(36500)  # after the last statement day too
+
+    assert any(
+        note.startswith("Pillar 2 AXA of Lukas is carried at what its certificates state, or was")
+        for note in valued.notes
+    )
+
+
+def test_what_was_typed_is_removed_by_remove(run: Run, pillar2: Path) -> None:
+    assert run.load(folder=pillar2) == dbcli.OK
+    assert run("commit") == dbcli.OK
+    assert run("balance", "Pillar 2 AXA", "2026-06-30", "36500", "CHF") == dbcli.OK
+    assert run("balance", "--remove", "Pillar 2 AXA", "2026-06-30") == dbcli.OK
+    assert run.output == "Removed what was typed of Pillar 2 AXA of Lukas for 2026-06-30.\n"
+    assert run("balance", "--remove", "Pillar 2 AXA", "2026-06-30") == dbcli.FAILED
+    assert "nothing was typed for Pillar 2 AXA of Lukas on 2026-06-30" in run.output
+    assert run("balance", "--remove", "Pillar 2 AXA", "2026-06-30", "1") == dbcli.FAILED
+    assert "`balance --remove` takes no figure" in run.output
+    assert run("balance", "Pillar 2 AXA", "2026-06-30") == dbcli.FAILED
+    assert "`balance` needs the amount and the currency" in run.output
+
+    assert run("position", "Broker", "2026-06-30", "ABCD", "3", "USD") == dbcli.OK
+    assert run("position", "--remove", "Broker", "2026-06-30", "abcd") == dbcli.OK
+    assert run.output == "Removed what was typed of ABCD of Broker of Lukas for 2026-06-30.\n"
+    assert run("position", "Broker", "2026-06-30", "ABCD") == dbcli.FAILED
+    assert "`position` needs the quantity and the currency" in run.output
+
+
 def test_a_certificate_read_again_after_its_commit_changes_nothing(run: Run, pillar2: Path) -> None:
     assert run.load(folder=pillar2) == dbcli.OK
     assert run("commit") == dbcli.OK

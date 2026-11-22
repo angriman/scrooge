@@ -975,21 +975,116 @@ def test_two_certificates_of_one_account_for_one_day_are_refused(conn: sqlite3.C
     assert rows(conn, "SELECT count(*) FROM balances") == [(2,)]
 
 
-def test_a_pension_account_is_fed_by_certificates_or_typed_never_both(
+def test_a_pension_account_fed_by_certificates_takes_typed_balances_between_them(
     conn: sqlite3.Connection,
 ) -> None:
-    def typed(account: str) -> None:
+    """What the fund shows online between two certificates (decided 2026-11-21)."""
+
+    def typed(account: str, day: date, amount: str = "5", currency: str = "CHF") -> None:
         staging.type_balance(
-            conn, owner=OWNER, account=account, day=MARCH, amount=Decimal(5), currency="CHF"
+            conn, owner=OWNER, account=account, day=day, amount=Decimal(amount), currency=currency
         )
 
-    staging.stage(conn, certified(certificate(MARCH, "35802.00")), NOW)
-    with pytest.raises(store.AccountMismatchError, match="both statements and typed balances"):
-        typed("Pillar 2 AXA")
-    typed("Pillar 2 Servisa")
+    march = certificate(MARCH, "35802.00")
+    staging.stage(conn, certified(march), NOW)
+    typed("Pillar 2 AXA", date(2026, 6, 30), "36500.25")
+    typed("Pillar 2 AXA", date(2026, 6, 30), "36500.50")  # corrected
+    assert rows(conn, BALANCES) == [
+        ("Pillar 2 AXA", "2026-03-01", 35_802_000_000_000, "statement", march.filename),
+        ("Pillar 2 AXA", "2026-06-30", 36_500_500_000_000, "manual", None),
+    ]
+    # Not on the day of a certificate, and not in another currency.
+    with pytest.raises(
+        store.AccountMismatchError,
+        match=r"Pillar 2 AXA has a certificate for 2026-03-01, which says 35,802\.00 CHF",
+    ):
+        typed("Pillar 2 AXA", MARCH)
+    with pytest.raises(store.AccountMismatchError, match="'Pillar 2 AXA' is in CHF, not EUR"):
+        typed("Pillar 2 AXA", date(2026, 7, 31), currency="EUR")
+    # A pension fund never seen in a certificate is a typed account as any other, and stays one.
+    typed("Pillar 2 Servisa", MARCH)
     with pytest.raises(store.AccountMismatchError, match="both statements and typed balances"):
         staging.stage(conn, certified(certificate(MARCH, "1", issuer="Servisa")), NOW)
-    assert rows(conn, "SELECT count(*) FROM balances") == [(2,)]
+    assert rows(conn, "SELECT count(*) FROM balances") == [(3,)]
+
+
+def _type_pension(conn: sqlite3.Connection, day: date, amount: str) -> None:
+    staging.type_balance(
+        conn, owner=OWNER, account="Pillar 2 AXA", day=day, amount=Decimal(amount), currency="CHF"
+    )
+
+
+def test_a_certificate_of_a_day_typed_is_refused_until_the_figure_is_removed(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, certified(certificate(YEAR_BEFORE, "58000.00")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    _type_pension(conn, JANUARY, "84000")
+    _type_pension(conn, MARCH, "86000")
+    before = dump(conn)
+    # The yearly certificate of 2026-01-01 states that day and the one its year began with.
+    yearly = certificate(JANUARY, "84710.65", opened=(YEAR_BEFORE, "58000.00"))
+    with pytest.raises(staging.CommittedError, match="for which a figure was typed: remove it"):
+        staging.stage(conn, certified(yearly), LATER)
+    assert dump(conn) == before  # nothing typed is replaced, so nothing is lost
+
+    staging.remove_typed(conn, owner=OWNER, account="Pillar 2 AXA", day=JANUARY)
+    staging.stage(conn, certified(yearly), LATER)
+    assert rows(conn, BALANCES) == [
+        (
+            "Pillar 2 AXA",
+            "2025-01-01",
+            58_000_000_000_000,
+            "statement",
+            f"scan AXA {YEAR_BEFORE}.pdf",
+        ),
+        ("Pillar 2 AXA", "2026-01-01", 84_710_650_000_000, "statement", yearly.filename),
+        ("Pillar 2 AXA", "2026-03-01", 86_000_000_000_000, "manual", None),
+    ]
+    # Discarding the certificate leaves what was typed as it was.
+    file_id = rows(conn, "SELECT id FROM statement_files WHERE filename = ?", yearly.filename)
+    staging.discard(conn, owner=OWNER, file_id=file_id[0][0])
+    assert ("Pillar 2 AXA", "2026-03-01", 86_000_000_000_000, "manual", None) in rows(
+        conn, BALANCES
+    )
+
+
+def test_a_pension_fund_is_typed_from_its_first_certificate_s_day_on(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, certified(certificate(JANUARY, "84000.00")), NOW)
+    with pytest.raises(store.AccountMismatchError, match="first certificate's day, 2026-01-01"):
+        _type_pension(conn, YEAR_BEFORE, "58000")
+    with pytest.raises(store.AccountMismatchError, match="has a certificate for 2026-01-01"):
+        _type_pension(conn, JANUARY, "84000")
+    _type_pension(conn, MARCH, "86000")
+
+
+def test_a_fund_typed_before_its_first_certificate_takes_it_once_what_was_typed_is_removed(
+    conn: sqlite3.Connection,
+) -> None:
+    _type_pension(conn, MARCH, "86000")  # a typed account, since no certificate is known
+    with pytest.raises(store.AccountMismatchError, match="finanze balance --remove"):
+        staging.stage(conn, certified(certificate(JANUARY, "84000.00")), NOW)
+    staging.remove_typed(conn, owner=OWNER, account="Pillar 2 AXA", day=MARCH)
+    assert rows(conn, "SELECT count(*) FROM accounts") == [(0,)]  # nothing was left of it
+    staging.stage(conn, certified(certificate(JANUARY, "84000.00")), NOW)
+    _type_pension(conn, MARCH, "86000")
+    assert rows(conn, "SELECT kind, source FROM accounts") == [("manual", "axa")]
+
+
+def test_removing_what_was_never_typed_is_an_error(conn: sqlite3.Connection) -> None:
+    with pytest.raises(staging.NothingStagedError, match="nothing was typed for Kasse"):
+        staging.remove_typed(conn, owner=OWNER, account="Kasse", day=MARCH)
+    _type_pension(conn, MARCH, "1")
+    with pytest.raises(staging.NothingStagedError, match="nothing ABCD was typed"):
+        staging.remove_typed(conn, owner=OWNER, account="Pillar 2 AXA", day=MARCH, symbol="ABCD")
+    holding = TypedHolding("ABCD", Decimal(2), "CHF")
+    staging.type_holding(conn, owner=OWNER, account="Pillar 2 AXA", day=JANUARY, holding=holding)
+    staging.remove_typed(conn, owner=OWNER, account="Pillar 2 AXA", day=MARCH)
+    assert rows(conn, "SELECT count(*) FROM accounts") == [(1,)]  # it still holds ABCD
+    staging.remove_typed(conn, owner=OWNER, account="Pillar 2 AXA", day=JANUARY, symbol="ABCD")
+    assert rows(conn, "SELECT count(*) FROM accounts") == [(0,)]
 
 
 @given(

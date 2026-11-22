@@ -17,7 +17,8 @@ held at the latest prices, not at those of the last statement.
   only ever typed is carried flat between the days it was typed for.
 - **A second-pillar pension fund** has no assets to follow: it is valued like cash in francs,
   on a line of its own (`Pillar 2`), nothing before the day of its first certificate, then
-  what each certificate states until the day of the next one (decided 2026-10-10).
+  what each certificate states until the day of the next one (decided 2026-10-10), or what
+  was typed for it in between, as the fund shows it online (decided 2026-11-21).
 - **Shares, ETFs and funds** are the quantity held (`storage.holdings`) times the last close
   on or before the day: typed, then printed by a statement, then fetched. Without any close
   the price of the last trade stands in, and a note says so.
@@ -159,6 +160,7 @@ class _Account:
     # The last day the statements of its owner cover; for a typed account, its last day typed
     # when that is later (decided 2026-11-21: a balance or position typed today counts today).
     through: date
+    typed: bool = False  # a balance or position was typed for it
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +235,7 @@ def _accounts(
             r[4],
             r[5],
             max(last_days.get(r[1], date.min), typed.get(int(r[0]), ("", date.min))[1]),
+            int(r[0]) in typed,
         )
         for r in rows
         if r[1] in people
@@ -366,7 +369,8 @@ def _cash(
         elif account.kind == _CARRIED_FLAT:
             notes.append(
                 f"{account.name} of {account.owner} is carried at what its certificates "
-                f"state, the last one for {max(known)}."
+                f"state{', or was typed' if account.typed else ''}, the last "
+                f"{'for' if account.typed else 'one for'} {max(known)}."
             )
         asset = CASH
         if account.kind == "card":

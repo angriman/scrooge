@@ -149,6 +149,15 @@ More for the database:
     `NESN.SW`), not a second one.
 - What is typed counts from its day even when that is after the last day the statements
   cover, and a person with typed accounts alone counts too. A day after today is refused.
+- A pension fund's account takes typed balances too, between its certificates:
+  `finanze balance "Pillar 2 AXA" 2026-11-21 60000 CHF` is what the fund shows online that
+  day. It stays Pillar 2, carried until the next figure. Typing starts on the fund's first
+  certificate's day, and a day a certificate states cannot be typed. A certificate of a day
+  that has a typed figure is refused until that figure is removed, so discarding the
+  certificate can never take it with it.
+- `finanze balance --remove <account> <day>` and `finanze position --remove <account> <day>
+  <ticker>` take back what was typed. An account that only ever was typed is removed once
+  nothing is left of it, so a fund typed before its first certificate can take it then.
 
 ### Querying it
 

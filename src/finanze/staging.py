@@ -480,7 +480,15 @@ def _store_certificates(
         store.link_accounts(conn, file_id, [account])
         days = [(stated.as_of, stated.balance), *([stated.opened] if stated.opened else [])]
         for on, balance in days:  # what is left on a day now is another certificate's
-            standing = store.balance_on(conn, account, on)
+            if store.typed_on(conn, account, on):
+                # Never replaced: a discarded certificate would take the typed figure with it.
+                msg = (
+                    f"{certificate.filename} states {certificate.account} on {on}, for which a "
+                    f"figure was typed: remove it with `finanze balance --remove "
+                    f'"{certificate.account}" {on}`, then import it again'
+                )
+                raise CommittedError(msg)
+            standing = store.balance_on(conn, account, on, stated=True)
             if standing is not None and standing != balance:
                 raise CertificatesDisagreeError(
                     certificate.account, stated.currency, on, balance, standing
@@ -807,14 +815,63 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
     """Record what an account without statements held at the end of `day`.
 
     For accounts that are only ever typed (a closed bank): the account is created on first
-    use, and can never also be fed from statements or from certificates.
+    use, and can never also be fed from statements. A pension fund's account, fed by its
+    certificates, takes typed balances too (decided 2026-11-21): what the fund shows online
+    between two certificates, from its first certificate's day on. A day a certificate states
+    cannot be typed; and a certificate of a day typed is refused until that figure is removed
+    (`remove_typed`), so that discarding it never takes the figure with it.
     """
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
+        found = store.account_of(conn, owner_id, account)
+        source = found.source if found is not None and found.kind == _CARRIED_FLAT else None
         account_id = store.ensure_account(
-            conn, owner_id, name=account, kind="manual", currency=currency, source=None
+            conn, owner_id, name=account, kind=_CARRIED_FLAT, currency=currency, source=source
         )
+        if source is not None:
+            _refuse_certified_day(conn, account, account_id, day, currency)
         store.set_typed_balance(conn, account_id, day, amount)
+
+
+def _refuse_certified_day(
+    conn: sqlite3.Connection, name: str, account: int, day: date, currency: str
+) -> None:
+    """A pension fund's figure is typed only between its certificates' days, from the first."""
+    stated = store.balance_on(conn, account, day, stated=True)
+    if stated is not None:
+        msg = (
+            f"{name} has a certificate for {day}, which says {stated:,.2f} {currency}: type "
+            "the figures of other days"
+        )
+        raise store.AccountMismatchError(msg)
+    first = store.first_stated_day(conn, account)
+    if first is not None and day < first:
+        msg = f"{name} counts from its first certificate's day, {first}: type a later day"
+        raise store.AccountMismatchError(msg)
+
+
+def remove_typed(
+    conn: sqlite3.Connection, *, owner: str, account: str, day: date, symbol: str = ""
+) -> None:
+    """Remove the balance typed for `account` on `day`, or what was typed of `symbol` then.
+
+    An account only ever typed that is left with nothing is removed too, so that its name can
+    be fed by statements or certificates after all.
+    """
+    with db.transaction(conn):
+        owner_id = store.owner_id(conn, owner)
+        found = None if owner_id is None else store.account_of(conn, owner_id, account)
+        removed = found is not None and (
+            store.remove_typed_holding(conn, found.id, symbol, day)
+            if symbol
+            else store.remove_typed_balance(conn, found.id, day)
+        )
+        if not removed or found is None:
+            what = f"{symbol} " if symbol else ""
+            msg = f"nothing {what}was typed for {account} of {owner} on {day}"
+            raise NothingStagedError(msg)
+        if found.source is None:
+            store.drop_if_empty(conn, found.id)
 
 
 def type_holding(
