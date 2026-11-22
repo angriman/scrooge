@@ -13,7 +13,7 @@ from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PEOPLE, certificate, certified, txn
 from tests.web.builders import (
-    AUGUST,
+    AUGUST_DAYS,
     BUILT,
     LUKAS_AUGUST,
     SITE,
@@ -68,7 +68,7 @@ def committed_pair(path: Path, revolut: tuple[date, date]) -> TestClient:
     """Lukas, with his bank committed for August and his other account for `revolut`."""
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
     row = txn("-9", source_ref="9", account="Revolut CHF", date=revolut[0])
     close(conn, OWNER, revolut, ("revolut", [row]))
     conn.close()
@@ -101,7 +101,7 @@ def test_a_pension_fund_is_never_behind(tmp_path: Path) -> None:
     path = tmp_path / "f.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
     staging.stage(conn, certified(certificate(date(2026, 3, 1), "35000")), BUILT)
     staging.commit(conn, owner=OWNER, now=BUILT)
     conn.close()

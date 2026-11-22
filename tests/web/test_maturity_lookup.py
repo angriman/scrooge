@@ -5,9 +5,9 @@ from datetime import date
 from starlette.testclient import TestClient
 
 from scrooge.classification import load_instruments
-from tests.conftest import INSTRUMENTS_YAML
+from tests.conftest import INSTRUMENTS_YAML, MATURED
 from tests.fakes import FakeMaturities
-from tests.web.builders import CLICKED, MATURED, Site
+from tests.web.builders import CLICKED, Site
 from tests.web.test_app import text
 from tests.web.test_import_page import result
 

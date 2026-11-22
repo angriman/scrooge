@@ -15,7 +15,14 @@ from scrooge import categories, cli, dbcli, networth, prices
 from scrooge.extractors import ocr
 from scrooge.storage import db, holdings, store
 from scrooge.web import auth
-from tests.conftest import FILES, FIXTURES, INSTRUMENTS_YAML, write_rules
+from tests.conftest import (
+    AUGUST_PURCHASE,
+    FILES,
+    FIXTURES,
+    INSTRUMENTS_YAML,
+    MATURED,
+    write_rules,
+)
 from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -26,17 +33,6 @@ owners:
   Lukas: {{match: ['LUKAS MEIER']}}
   Anna: {{match: ['ANNA MEIER']}}
 """
-
-
-MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
-AUGUST_PURCHASE = (
-    "Date,Type,Sub Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,"
-    "Commissions,Fees,Multiplier,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,"
-    "Call or Put,Order #,Total,Currency\n"
-    "2026-08-20T15:58:53+0200,Trade,Buy to Open,BUY_TO_OPEN,912797YY2,Fixed Income Security,"
-    'Bought 10 912797YY2 @ 992.00,"-9,920.00",10,-992.00,0.00,0.00,,,,,,,900000001,'
-    '"-9,920.00",USD\n'
-)
 
 
 class Run:

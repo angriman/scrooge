@@ -38,7 +38,7 @@ from scrooge import importing, marketdata, networth, overview, prices, staging
 from scrooge.extractors import ocr
 from scrooge.staging import People
 from scrooge.storage import db
-from tests.conftest import FIXTURES, INSTRUMENTS_YAML, RULES
+from tests.conftest import AUGUST_PURCHASE, FIXTURES, INSTRUMENTS_YAML, MATURED, RULES
 from tests.fakes import FakeSource
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -74,16 +74,8 @@ SCANS: Mapping[str, Mapping[str, str]] = {
     "Lukas": {"AXA 2026-01.pdf": "axa_yearly", "AXA 2026-03.pdf": "axa"},
     "Anna": {"Servisa 2026-01.pdf": "servisa"},
 }
-# The bill Anna's September statement sees mature, bought in August.
-AUGUST = (
-    "Date,Type,Sub Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,"
-    "Commissions,Fees,Multiplier,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,"
-    "Call or Put,Order #,Total,Currency\n"
-    "2026-08-20T15:58:53+0200,Trade,Buy to Open,BUY_TO_OPEN,912797YY2,Fixed Income Security,"
-    'Bought 10 912797YY2 @ 992.00,"-9,920.00",10,-992.00,0.00,0.00,,,,,,,900000001,'
-    '"-9,920.00",USD\n'
-)
-INSTRUMENTS = INSTRUMENTS_YAML + "  912797YY2: {maturity: 2026-09-16}\n"
+# What is held: the bill Anna's September statement sees mature.
+INSTRUMENTS = INSTRUMENTS_YAML + MATURED
 # The rules naming the invented people and shops of the fixtures come first, then those of
 # the starter rules.yaml. What no rule matches is a present, so that
 # everything can be committed.
@@ -259,7 +251,7 @@ def _statements(folder: Path, owner: str, *, scans: bool) -> list[list[Path]]:
     imports: list[list[Path]] = []
     if owner == "Anna":
         august = place / "tastytrade August.csv"
-        august.write_text(AUGUST, encoding="utf-8")
+        august.write_text(AUGUST_PURCHASE, encoding="utf-8")
         imports.append([august])
     files = []
     for name, source in STATEMENTS[owner].items():

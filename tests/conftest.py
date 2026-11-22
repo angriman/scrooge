@@ -49,6 +49,17 @@ INSTRUMENTS = {
     "912797ZZ1": Instrument(maturity=date(2026, 12, 24)),
 }
 INSTRUMENTS_YAML = "instruments:\n  WIDG: {tab: ETFs}\n  912797ZZ1: {maturity: 2026-12-24}\n"
+# The maturity of the bill that Tastytrade's August purchase buys, added to the instruments file.
+MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
+# Tastytrade's export of that purchase.
+AUGUST_PURCHASE = (
+    "Date,Type,Sub Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,"
+    "Commissions,Fees,Multiplier,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,"
+    "Call or Put,Order #,Total,Currency\n"
+    "2026-08-20T15:58:53+0200,Trade,Buy to Open,BUY_TO_OPEN,912797YY2,Fixed Income Security,"
+    'Bought 10 912797YY2 @ 992.00,"-9,920.00",10,-992.00,0.00,0.00,,,,,,,900000001,'
+    '"-9,920.00",USD\n'
+)
 
 
 # The scanned certificates under names that say nothing, as they arrive, and their stored text.

@@ -13,11 +13,11 @@ from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, certificate, certified, txn
 from tests.web.builders import (
     ANNA_SEPTEMBER,
-    AUGUST,
+    AUGUST_DAYS,
     BUILT,
     LUKAS_AUGUST,
     LUKAS_SEPTEMBER,
-    SEPTEMBER,
+    SEPTEMBER_DAYS,
     close,
     stage_rows,
 )
@@ -33,12 +33,12 @@ def client(tmp_path: Path) -> TestClient:
     path = tmp_path / "f.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
     june = (date(2026, 6, 1), date(2026, 6, 30))
     row = txn("-9", source_ref="9", account="Revolut CHF", date=june[0])
     close(conn, OWNER, june, ("revolut", [row]))
-    stage_rows(conn, OWNER, SEPTEMBER, ("migros", LUKAS_SEPTEMBER), opening="4954.80")
-    stage_rows(conn, PARTNER, SEPTEMBER, ("migros", ANNA_SEPTEMBER))
+    stage_rows(conn, OWNER, SEPTEMBER_DAYS, ("migros", LUKAS_SEPTEMBER), opening="4954.80")
+    stage_rows(conn, PARTNER, SEPTEMBER_DAYS, ("migros", ANNA_SEPTEMBER))
     conn.close()
     return TestClient(webapp.create_app(path, lambda: TODAY), base_url=SITE)
 
@@ -107,7 +107,7 @@ def test_nothing_staged_says_so_and_a_copy_without_statements_has_no_timeline(
     path = tmp_path / "f.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
     conn.close()
     page = TestClient(webapp.create_app(path, lambda: TODAY), base_url=SITE).get("/months").text
     assert "nothing waits" in page
@@ -125,7 +125,7 @@ def test_a_certificate_after_the_statements_makes_no_account_behind(tmp_path: Pa
     path = tmp_path / "f.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
     staging.stage(conn, certified(certificate(date(2026, 10, 15), "36000")), BUILT)
     staging.commit(conn, owner=OWNER, now=BUILT)
     conn.close()
