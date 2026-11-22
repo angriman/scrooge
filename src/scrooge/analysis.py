@@ -9,6 +9,7 @@ only made where every person shown has rows from the month of that day on.
 
 from __future__ import annotations
 
+import calendar
 import sqlite3
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
@@ -124,8 +125,13 @@ def add_months(month: date, n: int) -> date:
 
 
 def year_before(day: date) -> date:
-    """The same day a year earlier; 28 February for 29 February."""
-    return day.replace(year=day.year - 1, day=min(day.day, 28 if day.month == 2 else day.day))
+    """The same day a year earlier; the last day of a February for the last day of a
+    February, whether or not either is a leap year's."""
+    last = calendar.monthrange(day.year, day.month)[1]
+    before = day.year - 1
+    if day.month == 2 and day.day == last:
+        return date(before, 2, calendar.monthrange(before, 2)[1])
+    return day.replace(year=before)
 
 
 def through(conn: sqlite3.Connection, owner: str | None) -> date | None:
