@@ -1765,6 +1765,34 @@ def test_a_transfer_given_an_expense_category_is_an_expense_again(
     assert rows(conn, "SELECT kind FROM overrides ORDER BY kind") == [("expense",), ("income",)]
 
 
+def test_a_transfer_changed_twice_stays_the_kind_the_first_change_gave_after_an_import(
+    conn: sqlite3.Connection,
+) -> None:
+    def month() -> Batch:
+        kept = {"kind": Kind.TRANSFER, "category": "Giroconto"}
+        found = [txn("-50", source_ref="1", description="SAVINGS", **kept)]
+        balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(50))
+        return batch(statement("migros", found, [balance]))
+
+    staging.stage(conn, month(), NOW)
+    ((txn_id,),) = rows(conn, "SELECT id FROM transactions")
+    assert category_of(conn, txn_id) == ("Giroconto", "transfer", "rule", "transfer")
+    change(conn, [txn_id], "Regali")
+    change(conn, [txn_id], "Spesa")
+    staging.stage(conn, month(), NOW)  # the rule makes it a transfer again
+    assert category_of(conn, txn_id) == ("Spesa", "uscite", "manual", "expense")
+
+
+def test_an_expense_changed_to_one_transfer_and_then_another_stays_a_transfer_after_an_import(
+    conn: sqlite3.Connection,
+) -> None:
+    ids = waiting_month(conn)
+    change(conn, [ids["DONE7"]], "Giroconto")
+    change(conn, [ids["DONE7"]], "Prelievi")
+    waiting_month(conn)  # imported again, with the kind the statement gave
+    assert category_of(conn, ids["DONE7"]) == ("Prelievi", "transfer", "manual", "transfer")
+
+
 def test_only_rows_that_have_a_category_and_are_money_in_or_out_can_be_changed(
     conn: sqlite3.Connection,
 ) -> None:
