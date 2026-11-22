@@ -132,6 +132,30 @@ def test_rows_without_cash_produce_no_transaction(result: Extraction) -> None:
     assert {"4:fees", "5:fees", "6:fees"} <= {t.source_ref for t in result.transactions}
 
 
+_SPLIT = (
+    "2026-09-03T23:00:00+0200,Receive Deliver,{sub},{action},WIDG,Equity,{text},0.00,{qty},"
+    "0.00,--,0.00,,,,,,,,0.00,USD\n"
+)
+
+
+@pytest.mark.parametrize("sub", ["Forward Split", "Reverse Split"])
+def test_a_split_moves_no_cash_and_is_left_out(sub: str) -> None:
+    row = _SPLIT.format(sub=sub, action="BUY_TO_OPEN", text="Split of WIDG", qty=23)
+    result = tastytrade.extract(CSV + row, source_file="transactions.csv")
+    assert len(result.transactions) == len(tastytrade.extract(CSV, "t.csv").transactions)
+    check_balances(result)
+
+
+@pytest.mark.parametrize(
+    ("sub", "action", "qty"),
+    [("ACAT", "BUY_TO_OPEN", 50), ("ACAT", "SELL_TO_CLOSE", 23), ("Symbol Change", "", 23)],
+)
+def test_shares_moved_in_kind_are_refused_not_dropped(sub: str, action: str, qty: int) -> None:
+    row = _SPLIT.format(sub=sub, action=action, text="Transfer of WIDG", qty=qty)
+    with pytest.raises(UnsupportedStatementError, match=rf"row 19: WIDG moved without cash.*{sub}"):
+        tastytrade.extract(CSV + row, source_file="transactions.csv")
+
+
 def test_fund_distribution_booked_as_deposit_is_a_dividend(result: Extraction) -> None:
     row = next(t for t in result.transactions if t.source_ref == "16")
     assert (row.kind, row.category, row.counterparty) == (Kind.DIVIDEND, "Dividendi", "WIDG")
