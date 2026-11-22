@@ -14,7 +14,7 @@ from scrooge.overview import Change, Holding, Overview, Part, Rest
 from scrooge.storage import db
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate, spent
-from tests.test_portfolio import family
+from tests.test_portfolio import family, type_shares
 
 D = Decimal
 HUNDRED = D("100.00")
@@ -73,6 +73,22 @@ def test_nothing_committed_is_nothing_to_show(conn: sqlite3.Connection) -> None:
         "CHF", None, D(0), (), (), (), (), (), None, Part("", D(0), None), shown.worth
     )
     assert shown.worth == networth.NetWorth("CHF", (), (), ())
+
+
+def test_a_person_with_only_typed_figures_has_an_overview(conn: sqlite3.Connection) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    type_shares(conn, PARTNER)
+    shown = overview.run(conn, owner=PARTNER, currency="CHF")
+    assert (shown.total, shown.through) == (D("27.00"), day(1))
+    assert overview.run(conn, currency="CHF").through == day(1)
+
+
+def test_when_nobody_has_statements_the_typed_figures_are_the_overview(
+    conn: sqlite3.Connection,
+) -> None:
+    type_shares(conn, OWNER)
+    shown = overview.run(conn, currency="CHF")
+    assert (shown.total, shown.through) == (D("27.00"), day(1))
 
 
 def test_an_unknown_person_is_refused(conn: sqlite3.Connection) -> None:

@@ -171,9 +171,14 @@ class Valued:
     series: tuple[Series, ...]
     notes: tuple[str, ...]
     security_notes: tuple[str, ...]  # those of `notes` that are about what is held
-    # owner -> the last day their committed statements cover: what they held then is
-    # carried to the last of `days`
+    # owner -> the last day their committed statements cover, or for one with typed figures
+    # only, the last day typed: what they held then is carried to the last of `days`
     through: dict[str, date] = field(default_factory=dict)
+
+    @property
+    def covered(self) -> date:
+        """The earliest of the owners' last days: up to it everyone in view is known."""
+        return min(self.through.values(), default=self.days[-1])
 
 
 def _days(first: date, last: date) -> tuple[date, ...]:
@@ -281,7 +286,16 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
     series = _cash(accounts, flows, anchors, days, notes)
     security_notes: list[str] = []
     series += _securities(conn, accounts, held, days, security_notes)
-    return Valued(days, tuple(series), (*notes, *security_notes), tuple(security_notes), last_days)
+    through_typed: dict[str, date] = {}
+    for name, typed_day in typed.values():
+        through_typed[name] = max(typed_day, through_typed.get(name, typed_day))
+    return Valued(
+        days,
+        tuple(series),
+        (*notes, *security_notes),
+        tuple(security_notes),
+        {**through_typed, **last_days},
+    )
 
 
 # ---------------------------------------------------------------------------------- cash

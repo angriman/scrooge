@@ -180,5 +180,5 @@ def run(
         rest=rest,
         securities=Part("Securities", held.total, _added(shares)),
         worth=worth,
-        through=min(valued.through.values()) if valued else None,
+        through=valued.covered if valued else None,
     )

@@ -16,6 +16,7 @@ from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, close
 from tests.test_overview import household
+from tests.test_portfolio import type_shares
 from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
 from tests.web.test_holdings_page import NONE, errors, headers
@@ -238,6 +239,19 @@ def test_the_notes_on_the_figures_are_folded_away_at_the_bottom(tmp_path: Path) 
     assert page.rfind("<h2>") < notes
     assert page.rfind("</details>") > page.find(typed)  # inside it, the page's last part
     assert typed not in page.partition("<h2>Holdings</h2>")[0]  # no longer under the ring
+
+
+@pytest.mark.parametrize("path", ["/", "/holdings"])
+def test_a_person_with_only_typed_figures_has_pages(tmp_path: Path, path: str) -> None:
+    db_path = tmp_path / "scrooge.db"
+    conn = db.connect(db_path)
+    db.migrate(conn, NOW)
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    type_shares(conn, PARTNER)
+    conn.close()
+    page = served(db_path).get(path, params={"owner": PARTNER, "currency": "CHF"})
+    assert page.status_code == 200
+    assert "Statements up to 2026-09-01" in text(page.text)
 
 
 def test_a_single_note_is_one_note(tmp_path: Path) -> None:
