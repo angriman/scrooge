@@ -250,6 +250,18 @@ def _kind(txn: Transaction, rule: Rule) -> Kind:
     return txn.kind
 
 
+def unmatched(transactions: Iterable[Transaction], category: str) -> tuple[Transaction, ...]:
+    """Give `category` to every expense and income that no rule matched.
+
+    Only those: a row an extractor leaves without a category on purpose (a deposit at a
+    broker, money between accounts) is of another kind, and still goes to review (D9).
+    """
+    return tuple(
+        replace(t, category=category) if not t.category and t.kind in _FLOWS else t
+        for t in transactions
+    )
+
+
 def uncategorized(transactions: Iterable[Transaction]) -> tuple[Transaction, ...]:
     """Rows still needing the user's decision; they block the write."""
     return tuple(t for t in transactions if not t.category and t.kind is not Kind.INTERNAL)

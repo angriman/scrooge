@@ -18,6 +18,9 @@ import yaml
 
 from finanze.errors import ConfigError
 
+# What `unmatched` in the config may give the expenses and income no rule matches, when
+# categories are not tracked: net worth needs none.
+UNSORTED = "Non classificato"
 USCITE: dict[str, tuple[str, ...]] = {
     "Casa": ("Affitto", "Utenze", "Arredamento e casa"),
     "Salute": ("Assicurazione sanitaria", "Dentista", "Medico/Farmacia"),
@@ -35,6 +38,7 @@ USCITE: dict[str, tuple[str, ...]] = {
     "Tasse e burocrazia": ("Tasse", "Documenti e burocrazia"),
     "Banca e broker": ("Commissioni", "Ritenute"),
     "Investimenti": ("Trading", "Investimenti"),
+    UNSORTED: (UNSORTED,),
 }
 ENTRATE: tuple[str, ...] = (
     "Stipendio",
@@ -46,6 +50,7 @@ ENTRATE: tuple[str, ...] = (
     "Trading",
     "Commissioni",
     "Investimenti",
+    UNSORTED,
 )
 TRANSFERS: tuple[str, ...] = (
     "Topup Revolut",

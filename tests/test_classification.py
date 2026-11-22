@@ -19,6 +19,7 @@ from finanze.classification import (
     personal_file,
     resolve_instruments,
     uncategorized,
+    unmatched,
 )
 from finanze.errors import ConfigError
 from finanze.models import Kind, SecurityTrade, Transaction
@@ -387,3 +388,28 @@ def test_a_rule_can_be_put_before_the_ones_already_there(
     append_rule(path, "KIOSK", "out", "Regali", first=True)
     assert path.read_text(encoding="utf-8") == expected
     assert load_rules([path])[0].category == "Regali"  # the first to match wins
+
+
+def test_unmatched_takes_only_expenses_and_income_no_rule_matched() -> None:
+    rows = (
+        _txn("A SHOP"),
+        _txn("A SALARY", "100", kind=Kind.INCOME),
+        _txn("DEPOSIT", "1000", kind=Kind.TRANSFER),  # left blank on purpose: review
+        _txn("A BAR", category="Ristoranti e bar"),
+        _txn("CARD BILL", kind=Kind.INTERNAL),
+    )
+    filled = unmatched(rows, categories.UNSORTED)
+    assert [t.category for t in filled] == [
+        categories.UNSORTED,
+        categories.UNSORTED,
+        "",
+        "Ristoranti e bar",
+        "",
+    ]
+    assert [t.kind for t in filled] == [t.kind for t in rows]
+    assert uncategorized(filled) == (rows[2],)
+
+
+def test_unsorted_is_a_built_in_category_for_expenses_and_income() -> None:
+    assert categories.UNSORTED in categories.USCITE[categories.UNSORTED]
+    assert categories.UNSORTED in categories.ENTRATE

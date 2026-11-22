@@ -22,7 +22,7 @@ from pathlib import Path
 
 from finanze import categories, classification, pipeline, router, staging
 from finanze.classification import Instrument
-from finanze.errors import ExtractionError
+from finanze.errors import ConfigError, ExtractionError
 from finanze.staging import Batch, People, Staged
 from finanze.storage import originals, store
 from finanze.validation import CardBillMismatchError, ReconciliationError, check_balances
@@ -45,6 +45,8 @@ class Setup:
     instruments: Path
     people: People  # what recognises each person as a counterparty
     labels: Mapping[str, str]  # a further account at a broker, named by its number
+    # The category of the expenses and income no rule matches; "": they go to review.
+    unmatched: str = ""
 
     @property
     def categories_file(self) -> Path:
@@ -173,7 +175,15 @@ def _classified(
     rules = classification.between_people(classification.load_rules(rule_files, known), others)
     extractions = [(s.source, s.extraction) for s in statements]
     instruments = classification.load_instruments(setup.instruments)
-    return pipeline.process(extractions, rules, instruments)
+    month = pipeline.process(extractions, rules, instruments)
+    if not setup.unmatched:
+        return month
+    if setup.unmatched not in known:
+        msg = f"unmatched: {setup.unmatched!r} is no category (see {setup.categories_file})"
+        raise ConfigError(msg)
+    return replace(
+        month, transactions=classification.unmatched(month.transactions, setup.unmatched)
+    )
 
 
 def stage(

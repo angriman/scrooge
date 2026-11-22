@@ -34,7 +34,7 @@ def here(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def test_one_person_gets_a_setup_that_imports_as_it_is(here: Path) -> None:
+def test_one_person_gets_a_setup_that_imports_and_commits_without_review(here: Path) -> None:
     code, output, asked = init("Lukas", "LUKAS MEIER, CH93 0076 2011 6238 5295 7", "", "")
     assert code == dbcli.OK
     home = here / "users" / "lukas"
@@ -60,6 +60,7 @@ def test_one_person_gets_a_setup_that_imports_as_it_is(here: Path) -> None:
     iban = r"C\s?H\s?9\s?3\s?0\s?0\s?7\s?6\s?2\s?0\s?1\s?1\s?6\s?2\s?3\s?8\s?5\s?2\s?9\s?5\s?7"
     assert config["owners"] == {"Lukas": {"match": ["LUKAS\\ MEIER", iban]}}
     assert config["currency"] == "CHF"  # the default
+    assert config["unmatched"] == "Non classificato"
     for name in onboarding.STARTERS:
         text = (STARTER / name).read_text(encoding="utf-8")
         assert (home / name).read_text(encoding="utf-8") == text
@@ -67,8 +68,11 @@ def test_one_person_gets_a_setup_that_imports_as_it_is(here: Path) -> None:
     shutil.copy(FIXTURES / FILES["Migros.csv"], home / "statements" / "Migros.csv")
     out = io.StringIO()
     code = dbcli.main(["import", "users/lukas/statements"], out, now=lambda: NOW)
-    assert code != dbcli.FAILED, out.getvalue()
+    assert code == dbcli.OK, out.getvalue()
     assert "  staged Migros.csv (Migros Bank account statement)\n" in out.getvalue()
+    assert "need a category" not in out.getvalue()
+    out = io.StringIO()
+    assert dbcli.main(["commit"], out, now=lambda: NOW) == dbcli.OK, out.getvalue()
     assert (home / "finanze.db").is_file()
     assert (home / "originals").is_dir()
 
@@ -160,7 +164,9 @@ def test_the_starter_config_holds_every_answer() -> None:
     assert loaded["owners"] == {"A": {"match": ["A\\.B"]}, 'C "D"': {"match": ["E"]}}
     # The rest is comments.
     assert loaded["currency"] == "JPY"
-    assert loaded.keys() == {"database", "rules", "instruments", "owner", "owners", "currency"}
+    assert loaded["unmatched"] == "Non classificato"
+    keys = {"database", "rules", "instruments", "owner", "owners", "currency", "unmatched"}
+    assert loaded.keys() == keys
 
 
 @pytest.mark.parametrize(

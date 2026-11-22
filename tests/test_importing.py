@@ -1,11 +1,13 @@
 import sqlite3
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from finanze import importing, staging
+from finanze import categories, importing, staging
+from finanze.errors import ConfigError
 from finanze.extractors import ocr, swisscard
 from finanze.router import LABELS
 from finanze.storage import db, originals
@@ -227,3 +229,20 @@ def test_a_stock_plan_statement_is_staged_and_committed(
         "ORDER BY tr.quantity"
     ).fetchall()
     assert [tuple(row) for row in moved] == [("-4.000", None), ("-6.000", None)]
+
+
+def test_unmatched_expenses_and_income_need_no_review(folder: Path, setup: importing.Setup) -> None:
+    (folder / "rules.yaml").write_text("rules: []\n", encoding="utf-8")
+    plain = importing.read(OWNER, files_of(folder), setup)
+    assert any(t.kind.value in {"expense", "income"} for t in plain.month.uncategorized)
+    filled = importing.read(OWNER, files_of(folder), replace(setup, unmatched=categories.UNSORTED))
+    left = filled.month.uncategorized
+    assert all(t.kind.value not in {"expense", "income"} for t in left)
+    assert len(left) < len(plain.month.uncategorized)
+
+
+def test_an_unmatched_category_that_does_not_exist_is_refused(
+    folder: Path, setup: importing.Setup
+) -> None:
+    with pytest.raises(ConfigError, match="'Nowhere' is no category"):
+        importing.read(OWNER, files_of(folder), replace(setup, unmatched="Nowhere"))

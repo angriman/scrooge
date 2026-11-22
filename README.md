@@ -63,6 +63,12 @@ folder. It can name other files: `rules: [path, ...]` (first wins; default `rule
 and `--instruments` win over both. The first rules file is the one both people share:
 `rules.<owner>.yaml` and `categories.yaml` are read from its folder and written there.
 
+`unmatched: Non classificato` gives that category to every expense and income no rule
+matches, so that every statement can be committed without choosing categories: net worth
+needs none. `finanze init` writes it. Rows an extractor leaves without a category on purpose,
+such as a deposit at a broker, still go to review. To track expenses, delete the line and run
+`finanze import --review`, which asks once per unknown merchant and saves the answers as rules.
+
 `currency: CHF` (EUR, CHF, USD, GBP or JPY; EUR without it) is what the pages show figures in
 until another is chosen in their header.
 

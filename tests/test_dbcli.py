@@ -1359,3 +1359,11 @@ def test_a_currency_the_pages_do_not_offer_is_refused(run: Run, currency: str) -
     assert run.output.endswith(
         f"error: {run.config}: 'currency' must be one of EUR, CHF, USD, GBP, JPY\n"
     )
+
+
+def test_unmatched_must_name_a_category(run: Run) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + "unmatched: [a]\n", encoding="utf-8"
+    )
+    assert run.load() == dbcli.FAILED
+    assert run.output.endswith(f"error: {run.config}: 'unmatched' must be the name of a category\n")

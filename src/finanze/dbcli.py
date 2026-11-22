@@ -44,6 +44,8 @@ config `finanze init` writes names `users/<name>/...`, so the commands run from 
 The database path, the person and the names that recognise each person as a counterparty
 come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`. `currency`
 there is what the pages show figures in until another is chosen on them.
+`unmatched` there is the category of the expenses and income no rule matches: they then need
+no review, for who tracks net worth alone. `finanze init` writes `unmatched: Non classificato`.
 `account_labels` there names a further account at a broker by its account number.
 `rules` there lists the rules files, first wins, and `instruments` names the instruments
 file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
@@ -438,6 +440,16 @@ def _currency(config: dict[str, object], path: Path) -> str:
     return named.upper()
 
 
+def _unmatched(config: dict[str, object], path: Path) -> str:
+    """`unmatched`: the category of the expenses and income no rule matches, for who tracks
+    net worth alone; without it they go to review."""
+    named = config.get("unmatched", "")
+    if not isinstance(named, str):
+        msg = f"{path}: 'unmatched' must be the name of a category"
+        raise ConfigError(msg)
+    return named.strip()
+
+
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
     value = getattr(args, flag) or config.get(key)
     if not value:
@@ -480,7 +492,9 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _open(path, now, out).close()
         # What the import page reads, as `finanze import` would here.
         rules, labels = _rules(args, config), _labels(config, args.config)
-        imports = importing.Setup(rules, _instruments(args, config), people, labels)
+        imports = importing.Setup(
+            rules, _instruments(args, config), people, labels, _unmatched(config, args.config)
+        )
         pages = _Pages(webapp.Rules(rules[0], people), imports, _currency(config, args.config))
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
@@ -802,7 +816,13 @@ def _print_sums(title: str, sums: Sequence[query.Sum], out: TextIO) -> None:
 def _import(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:
     out = session.console.out
     shared = _rules(args, config)
-    setup = importing.Setup(shared, _instruments(args, config), session.people, session.labels)
+    setup = importing.Setup(
+        shared,
+        _instruments(args, config),
+        session.people,
+        session.labels,
+        _unmatched(config, args.config),
+    )
     found = importing.read(session.owner, _files(args.paths), setup)
     if args.review and found.month.uncategorized:
         everyone = [pattern for patterns in session.people.values() for pattern in patterns]
