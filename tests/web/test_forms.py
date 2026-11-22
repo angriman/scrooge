@@ -61,12 +61,20 @@ def test_a_year_or_a_day_works_as_either_end_and_a_size_has_no_sign() -> None:
         ({"min": "a lot"}, "'a lot' is not an amount like 1234.56."),
         ({"max": "NaN"}, "'NaN' is not an amount like 1234.56."),
         ({"max": "Infinity"}, "'Infinity' is not an amount like 1234.56."),
+        ({"min": "1e30"}, "'1e30' is not an amount like 1234.56."),
+        ({"max": "1E+400000"}, "'1E+400000' is not an amount like 1234.56."),
+        ({"min": "-9223372036.9"}, "'-9223372036.9' is not an amount like 1234.56."),
     ],
 )
 def test_a_field_that_cannot_be_read_is_reported_and_left_unset(
     params: dict[str, str], error: str
 ) -> None:
     assert forms.transactions_filter(params) == forms.Parsed(Filter(), (error,))
+
+
+def test_the_largest_amount_the_database_holds_is_still_an_amount() -> None:
+    parsed = forms.transactions_filter({"min": "9223372036.854775807"})
+    assert parsed == forms.Parsed(Filter(at_least=Decimal("9223372036.854775807")), ())
 
 
 def test_a_cash_flow_range_is_by_month_unless_asked() -> None:

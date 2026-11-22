@@ -126,7 +126,7 @@ from scrooge.classification import UnknownInstrumentError
 from scrooge.errors import ConfigError, ExtractionError
 from scrooge.models import Kind, TypedHolding
 from scrooge.staging import People, StagingError
-from scrooge.storage import db, logos, originals, store
+from scrooge.storage import db, logos, money, originals, store
 from scrooge.storage.db import MigrationError
 from scrooge.storage.money import PrecisionError
 from scrooge.validation import ReconciliationError
@@ -157,6 +157,7 @@ OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 RULES = ["rules.yaml"]
 INSTRUMENTS = "instruments.yaml"
 USER = "SCROOGE_USER"  # the setup in users/ to use, when --user does not say
+_CODE = 3  # letters in a currency code
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
     ExtractionError,
@@ -375,10 +376,19 @@ def _amount(text: str) -> Decimal:
         amount = Decimal(text)
     except InvalidOperation:
         amount = Decimal("NaN")
-    if not amount.is_finite():
+    if not (amount.is_finite() and money.fits(amount)):
         msg = f"{text!r} is not an amount like 1234.56"
         raise argparse.ArgumentTypeError(msg)
     return amount
+
+
+def _currency_code(text: str) -> str:
+    """A currency as the database keeps it: three capital letters."""
+    code = text.upper()
+    if not (len(code) == _CODE and code.isascii() and code.isalpha()):
+        msg = f"{text!r} is not a currency code like CHF or USD"
+        raise StagingError(msg)
+    return code
 
 
 def _quantity(text: str) -> Decimal:
@@ -420,7 +430,14 @@ def _find_config(args: argparse.Namespace) -> Path:
 def _config(path: Path) -> dict[str, object]:
     if not path.exists():
         return {}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        where = f"line {mark.line + 1}" if mark is not None else "not valid YAML"
+        problem = getattr(exc, "problem", None) or "not valid YAML"
+        msg = f"{path}: {where}: {problem}"
+        raise ConfigError(msg) from None
     if not isinstance(data, dict):
         msg = f"{path}: expected a mapping"
         raise ConfigError(msg)
@@ -666,7 +683,7 @@ def _typed(session: _Session, args: argparse.Namespace, config: dict[str, object
         needed = "quantity" if args.command == "position" else "amount"
         msg = f"`{args.command}` needs the {needed} and the currency"
         raise StagingError(msg)
-    currency = args.currency.upper()
+    currency = _currency_code(args.currency)
     today = session.now.date()
     if args.day > today:
         msg = f"{args.day} is after today ({today}): type what was held on a day that has begun"

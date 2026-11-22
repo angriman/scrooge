@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from scrooge import networth, query
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
+from scrooge.storage import money
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,10 +113,10 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
             number = None if value is None else Decimal(value.replace(",", "").replace("'", ""))
         except InvalidOperation:
             number = Decimal("NaN")
-        if number is not None and not number.is_finite():
+        if number is not None and not (number.is_finite() and money.fits(number)):
             errors.append(f"'{value}' is not an amount like 1234.56.")
             return None
-        return None if number is None else abs(number)
+        return None if number is None else number.copy_abs()
 
     kind = text("kind")
     if kind is not None and kind not in set(Kind):

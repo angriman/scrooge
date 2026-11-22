@@ -274,7 +274,7 @@ def test_a_long_list_comes_in_pages(client: TestClient, monkeypatch: pytest.Monk
     assert "Page 1 of 2" in everyone.text
     assert 'href="http://127.0.0.1:8765/transactions?page=2" rel="next">Older</a>' in everyone.text
     assert "Newer" not in everyone.text
-    for page in ("2", "99"):
+    for page in ("2", "99", "9" * 5000):
         last = client.get("/transactions", params={"page": page})
         assert [row[0] for row in rows(last.text)] == ["2026-07-03"]
         assert "Page 2 of 2" in last.text
@@ -282,6 +282,21 @@ def test_a_long_list_comes_in_pages(client: TestClient, monkeypatch: pytest.Monk
         assert "Newer" in last.text
     for page in ("0", "-1", "two"):
         assert "Page 1 of 2" in client.get("/transactions", params={"page": page}).text
+
+
+@pytest.mark.parametrize("amount", ["1e30", "1E+400000", "-99999999999"])
+def test_an_amount_the_database_cannot_hold_is_reported(client: TestClient, amount: str) -> None:
+    response = client.get("/transactions", params={"min": amount})
+    assert response.status_code == 200
+    assert f"&#39;{amount}&#39; is not an amount like 1234.56." in response.text
+
+
+@pytest.mark.parametrize("number", ["9" * 5000, "9" * 30, "9" * 19])
+def test_a_statement_number_too_long_to_be_one_is_not_found(
+    client: TestClient, number: str
+) -> None:
+    for path in ("", "/original"):
+        assert client.get(f"/statements/{number}{path}").status_code == 404
 
 
 def test_the_result_can_be_saved_as_csv_with_exact_amounts(client: TestClient) -> None:

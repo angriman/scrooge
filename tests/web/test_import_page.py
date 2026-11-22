@@ -21,6 +21,12 @@ def test_the_page_asks_whose_statements_and_which_files(site: Site) -> None:
     assert site.client.get("/import", params={"owner": "Zoe"}).status_code == 404
 
 
+def test_a_count_too_long_to_be_one_is_left_out_of_the_page(site: Site) -> None:
+    response = site.client.get("/import", params={"owner": "Lukas", "committed": "9" * 5000})
+    assert response.status_code == 200
+    assert "statements committed" not in text(response.text)
+
+
 def result(page: str) -> list[list[str]]:
     """File, kind and what became of it, for each file of the upload."""
     return tables(page)[0]
