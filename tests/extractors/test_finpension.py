@@ -135,6 +135,29 @@ def test_a_numbered_download_is_a_portfolio_of_its_own() -> None:
     assert plain.balances[0].account == "Finpension 3a"
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "finpension 2026.csv",
+        "finpension-2026.csv",
+        "transactions_20261031.csv",
+        "transaction_report-10.tsv",
+        "transaction_report-02.tsv",
+        "export (1).csv",
+        "transaction_report (1).tsv",
+    ],
+)
+def test_a_year_a_date_or_a_copy_suffix_is_not_a_portfolio(name: str) -> None:
+    got = finpension.extract(TSV, source_file=f"downloads/{name}")
+    assert {t.account for t in got.transactions} == {"Finpension 3a"}
+    assert got.balances[0].account == "Finpension 3a"
+
+
+def test_a_copy_of_a_numbered_download_keeps_its_portfolio() -> None:
+    got = finpension.extract(TSV, source_file="transaction_report-3 (1).tsv")
+    assert got.balances[0].account == "Finpension 3a 3"
+
+
 def test_a_report_without_rows_is_refused() -> None:
     with pytest.raises(ExtractionError, match="no rows"):
         finpension.extract(TSV.splitlines()[0] + "\n", source_file="t.tsv")

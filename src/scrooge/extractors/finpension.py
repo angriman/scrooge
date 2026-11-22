@@ -2,10 +2,11 @@
 
 One report covers one portfolio from its first deposit on, so the statement usually spans many
 months. The report does not say which portfolio it is: finpension numbers the downloads
-(`transaction_report-2.tsv`), and that number, when the file name ends in one, names the
-account. `Balance` is the running cash: every row is checked against it. Buys and sells are
-trades in fund units, identified by ISIN, at the price the report gives; `Cash Flow` carries
-up to six decimals and is kept as it is.
+(`transaction_report-2.tsv`), and that number, when the file name ends in one single digit,
+names the account (a year, a date or a copy suffix in the name is not one). `Balance` is the
+running cash: every row is checked against it. Buys and sells are trades in fund units,
+identified by ISIN, at the price the report gives; `Cash Flow` carries up to six decimals and
+is kept as it is.
 """
 
 from __future__ import annotations
@@ -40,7 +41,10 @@ _COLUMNS = (
 )
 _DELIMITERS = ("\t", ";", ",")
 _ROUNDING = Decimal("0.000001")
-_NUMBERED = re.compile(r"[-_ ](\d+)$")
+# The portfolio number of finpension's own download (`transaction_report-2.tsv`): one digit
+# after a separator, so a year or a date in the name is not a portfolio. A browser's copy
+# suffix (` (1)`) after it is allowed; one without a number is no portfolio at all.
+_NUMBERED = re.compile(r"[-_ ]([1-9])(?: \(\d+\))?$")
 _TRADES = {"Buy": 1, "Sell": -1}  # the sign `Number of Shares` must have
 _CASH = {
     # Money in from the bank. A transfer, so it is not counted as invested twice: what counts
