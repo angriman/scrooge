@@ -417,6 +417,45 @@ def test_commission_refund_under_deposits_is_a_commission(result: Extraction) ->
     )
 
 
+SETTLED = CSV.replace(
+    # The Cash Report's Ending Cash moves by what the two sections add: -500 and -0.966.
+    "Cash Report,Data,Ending Cash,USD,10261.84,10211.84,50",
+    "Cash Report,Data,Ending Cash,USD,9760.874,9710.874,50",
+) + (
+    "Option Cash Settlements,Header,Currency,Date,Description,Amount\n"
+    'Option Cash Settlements,Data,USD,"2026-09-14, 16:20:00",Exercise ( SPXW 14SEP26 6960 C ),482\n'
+    'Option Cash Settlements,Data,USD,"2026-09-14, 16:20:00",'
+    "Assignment ( SPXW 14SEP26 6955 C ),-982\n"
+    "Option Cash Settlements,Data,Total,,,-500\n"
+    "Option Cash Settlements,Data,Total in CHF,,,-400\n"
+    "Commission Adjustments,Header,Currency,Date,Description,Amount,Code\n"
+    "Commission Adjustments,Data,USD,2026-09-04,Commission Computed After Trade Reported (BE),"
+    "-0.966,\n"
+    "Commission Adjustments,Data,Total,,,-0.966,\n"
+    "Commission Adjustments,Data,Total in CHF,,,-0.78,\n"
+)
+
+
+def test_cash_settled_options_are_trading_and_late_commissions_commissions() -> None:
+    settled = ibkr.extract(SETTLED, "settled.csv")
+    new = [t for t in settled.transactions if t.source_ref.startswith(("Option", "Commission"))]
+    assert [(t.date, t.amount, t.kind, t.category) for t in new] == [
+        (date(2026, 9, 4), Decimal("-0.966"), Kind.COMMISSION, "Commissioni"),
+        (date(2026, 9, 14), Decimal(482), Kind.TRADING, "Trading"),
+        (date(2026, 9, 14), Decimal(-982), Kind.TRADING, "Trading"),
+    ]
+    check_balances(settled)
+
+
+def test_late_commission_dated_before_the_period_is_booked_on_its_first_day() -> None:
+    late = SETTLED.replace(
+        "Commission Adjustments,Data,USD,2026-09-04,", "Commission Adjustments,Data,USD,2026-08-31,"
+    )
+    rows = ibkr.extract(late, "late.csv").transactions
+    [commission] = [t for t in rows if t.source_ref.startswith("Commission")]
+    assert (commission.date, commission.booking_date) == (date(2026, 8, 31), date(2026, 9, 1))
+
+
 def test_expired_options_produce_no_zero_amount_rows(result: Extraction) -> None:
     # only shares moved in kind are rows without cash
     assert all(txn.amount != 0 for txn in result.transactions if txn.kind is not Kind.TRANSFER)

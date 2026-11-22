@@ -90,6 +90,22 @@ def extract(content: str, source_file: str) -> Extraction:
         "Interest", sections.get("Interest", []), Kind.INTEREST, "Interessi"
     )
     transactions += parser.fees(sections.get("Fees", []))
+    # Commissions charged after the trade was reported (refunds come under Deposits instead).
+    transactions += parser.cash_items(
+        "Commission Adjustments",
+        sections.get("Commission Adjustments", []),
+        Kind.COMMISSION,
+        "Commissioni",
+        backdated=True,  # a trade of the last day of the previous period keeps its date
+    )
+    # Cash-settled index options (SPX) exercised or assigned: the cash is in no trade's proceeds.
+    transactions += parser.cash_items(
+        "Option Cash Settlements",
+        sections.get("Option Cash Settlements", []),
+        Kind.TRADING,
+        "Trading",
+        backdated=True,  # an expiry of the last day of the previous period keeps its date
+    )
     if "GST/VAT Details" in sections:
         transactions += parser.vat(sections["GST/VAT Details"])
     else:  # yearly exports itemise no VAT, only the Cash Report total
