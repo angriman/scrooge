@@ -79,6 +79,8 @@ def extract(content: str, source_file: str) -> Extraction:
             raise ExtractionError(msg)
         total += cash
         kind, category = _classify(row, n)
+        if kind is Kind.SECURITY_TRADE and gross == 0:
+            _refuse_in_kind_move(row, n)
         day = parse_iso_date(row["Date"], "Tastytrade Date")
         for ref, amount, leg_kind, leg_category in (
             (str(n), gross, kind, category),
@@ -163,6 +165,24 @@ def _security_trade(txn: Transaction, row: dict[str, str], n: int) -> SecurityTr
         asset_tab="Bonds" if bill else "",
         maturity=txn.date if _is_maturity(row) else None,
     )
+
+
+def _refuse_in_kind_move(row: dict[str, str], n: int) -> None:
+    """Refuse shares or bills that move without cash, so that no holding is lost in silence.
+
+    A split changes the quantity held but moves nothing from or to the account, and is left
+    out like the other rows without cash. Any other row of a share or bill with no value (an
+    ACAT transfer in or out, a symbol change) changes what the account holds, which this
+    export gives no price or cost for: it is refused, never dropped.
+    """
+    if "split" in row["Sub Type"].lower():
+        return
+    msg = (
+        f"Tastytrade row {n}: {row['Symbol']} moved without cash "
+        f"({row['Type']!r} / {row['Sub Type']!r}, quantity {row['Quantity']}): "
+        "shares moved in kind are not supported"
+    )
+    raise UnsupportedStatementError(msg)
 
 
 def _is_maturity(row: dict[str, str]) -> bool:
