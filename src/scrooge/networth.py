@@ -219,7 +219,9 @@ def _priced_through(conn: sqlite3.Connection) -> list[date]:
     """The newest day a close or a rate is stored for, if any is."""
     newest = conn.execute(
         "SELECT max(day) FROM (SELECT max(date) AS day FROM prices "
-        "UNION ALL SELECT max(date) FROM fx_rates)"
+        "UNION ALL SELECT max(date) FROM fx_rates "
+        "UNION ALL SELECT max(date) FROM committed_closes "
+        "UNION ALL SELECT max(date) FROM committed_rates)"
     ).fetchone()[0]
     return [date.fromisoformat(newest)] if newest else []
 
@@ -551,10 +553,13 @@ def _closes(conn: sqlite3.Connection) -> dict[int, list[tuple[date, int, Decimal
     """
     best: dict[int, dict[date, tuple[int, Decimal]]] = defaultdict(dict)
     rows = conn.execute(
-        "SELECT instrument_id, date, close, CASE source WHEN 'manual' THEN 0 "
-        "WHEN 'statement' THEN 1 ELSE 2 END FROM prices "
+        "SELECT instrument_id, date, close, CASE source WHEN 'manual' THEN 0 ELSE 2 END "
+        "FROM prices "
+        "UNION ALL SELECT instrument_id, date, close, 1 FROM committed_closes "
         "UNION ALL SELECT tr.instrument_id, t.booking_date, tr.price, 3 FROM trades tr "
-        "JOIN transactions t ON t.id = tr.transaction_id WHERE tr.price IS NOT NULL"
+        "JOIN transactions t ON t.id = tr.transaction_id "
+        "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
+        "WHERE tr.price IS NOT NULL AND (f.id IS NULL OR f.committed_at IS NOT NULL)"
     )
     for instrument, day_text, close, rank in rows:
         day = date.fromisoformat(day_text)
@@ -652,8 +657,8 @@ def rates_on(conn: sqlite3.Connection, days: Sequence[date]) -> dict[str, list[D
     """currency -> francs per unit on each day: the last rate on or before it."""
     best: dict[str, dict[date, tuple[int, Decimal]]] = defaultdict(dict)
     rows = conn.execute(
-        "SELECT currency, date, rate_to_chf, CASE source WHEN 'manual' THEN 0 "
-        "WHEN 'statement' THEN 1 ELSE 2 END FROM fx_rates"
+        "SELECT currency, date, rate_to_chf, CASE source WHEN 'manual' THEN 0 ELSE 2 END "
+        "FROM fx_rates UNION ALL SELECT currency, date, rate, 1 FROM committed_rates"
     )
     for currency, day_text, rate, rank in rows:
         day = date.fromisoformat(day_text)

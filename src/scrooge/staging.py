@@ -512,9 +512,9 @@ def _store_valuation(conn: sqlite3.Connection, part: _Part, file_id: int) -> Non
     """
     extraction, last = part.statement.extraction, part.period[1]
     store.set_statement_values(conn, file_id, extraction.values)
-    for rate in extraction.rates:
-        if rate.base == _RATES_IN:  # the only rates the database keeps
-            store.set_rate(conn, last, rate.currency, rate.rate, source="statement")
+    # the only rates the database keeps; they go with the statement, as its holdings do
+    kept = {rate.currency: rate.rate for rate in extraction.rates if rate.base == _RATES_IN}
+    store.set_statement_rates(conn, file_id, last, kept)
     for holding in extraction.holdings or ():
         if part.starts[holding.account] is not None:
             store.set_holding(conn, part.accounts[holding.account], last, holding, file_id)
