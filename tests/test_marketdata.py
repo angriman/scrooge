@@ -242,6 +242,18 @@ def test_a_statement_that_says_none_was_held_yet_is_not_the_first_day(
     assert source.asked[0] == ("WIDG", day(15) - timedelta(days=10), END)
 
 
+def test_a_range_the_source_has_nothing_for_is_not_asked_again(conn: sqlite3.Connection) -> None:
+    hold(conn, bought("WIDG", "10", day(15)))
+    late = [(day(28), "54"), (day(30), "55")]
+    rates = [(day(28), "0.8"), (day(30), "0.81")]
+    marketdata.refresh(conn, FakeSource({"WIDG": late, "USDCHF=X": rates}), through=END, now=NOW)
+    # Nothing new was imported: the days before the first close are not wanted again.
+    idle = FakeSource()
+    done = marketdata.refresh(conn, idle, through=END, now=LATER)
+    assert idle.asked == []
+    assert done == Refreshed(0, 0, 0, ())
+
+
 def test_days_before_the_first_stored_are_fetched_when_older_history_is_imported(
     conn: sqlite3.Connection,
 ) -> None:
@@ -270,9 +282,9 @@ def test_days_before_the_first_stored_are_fetched_when_older_history_is_imported
     done = marketdata.refresh(conn, source, through=date(2026, 10, 5), now=LATER)
     # Only the days not stored are asked for: those before, and those since.
     assert source.asked == [
-        ("WIDG", day(10, 7), day(13)),
+        ("WIDG", day(10, 7), day(4)),
         ("WIDG", date(2026, 10, 1), date(2026, 10, 5)),
-        ("USDCHF=X", date(2026, 6, 20), day(31, 8)),  # the July statement opens on 30 June
+        ("USDCHF=X", date(2026, 6, 20), day(20, 8)),  # the July statement opens on 30 June
         ("USDCHF=X", date(2026, 10, 1), date(2026, 10, 5)),
     ]
     assert done == Refreshed(closes=2, rates=2, splits=1, problems=())  # the split of both, once

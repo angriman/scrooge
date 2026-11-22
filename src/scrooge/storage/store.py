@@ -792,6 +792,23 @@ def rate_days(conn: sqlite3.Connection, currency: str, source: str) -> tuple[dat
     return None if row[0] is None else (date.fromisoformat(row[0]), date.fromisoformat(row[1]))
 
 
+def asked_from(conn: sqlite3.Connection, series: str, source: str) -> date | None:
+    """The earliest day a request to `source` for the series began on, if one was made."""
+    row = conn.execute(
+        "SELECT first_day FROM asked_from WHERE series = ? AND source = ?", (series, source)
+    ).fetchone()
+    return None if row is None else date.fromisoformat(row[0])
+
+
+def set_asked_from(conn: sqlite3.Connection, series: str, source: str, day: date) -> None:
+    """Remember that the series was asked for from `day`, unless it was from an earlier one."""
+    conn.execute(
+        "INSERT INTO asked_from (series, source, first_day) VALUES (?, ?, ?) "
+        "ON CONFLICT (series, source) DO UPDATE SET first_day = min(first_day, excluded.first_day)",
+        (series, source, day.isoformat()),
+    )
+
+
 def add_price(  # noqa: PLR0913  # one argument per column
     conn: sqlite3.Connection,
     instrument: int,

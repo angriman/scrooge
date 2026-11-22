@@ -362,10 +362,39 @@ def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.Mon
             VALUES ('t1', 1, '2026-09-07', '2026-09-07', -1000000000, 'EUR', 'x', 'expense', 2);
         """
     )
-    monkeypatch.undo()
+    monkeypatch.setattr(db, "migrations", lambda: every[:7])
     assert db.migrate(conn, NOW) == [7]
     row = conn.execute("SELECT counterparty_owner_id, counterparty_paired FROM transactions")
     assert tuple(row.fetchone()) == (2, 0)  # a mark made before is kept as the statement's own
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("UPDATE transactions SET counterparty_paired = 2")
+    conn.close()
+
+
+def test_migration_0008_takes_stored_closes_as_asked_for_as_the_old_rule_did(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:7])
+    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7]
+    monkeypatch.undo()
+    conn.executescript(
+        """
+        INSERT INTO currencies VALUES ('CHF', 2);
+        INSERT INTO currencies VALUES ('USD', 2);
+        INSERT INTO instruments (id, symbol, type, currency) VALUES (1, 'WIDG', 'etf', 'USD');
+        INSERT INTO prices VALUES (1, '2026-09-30', '55', 'fetched:fake', 'x');
+        INSERT INTO prices VALUES (1, '2026-09-28', '54', 'fetched:fake', 'x');
+        INSERT INTO prices VALUES (1, '2026-09-01', '50', 'manual', NULL);
+        INSERT INTO fx_rates VALUES ('2026-09-29', 'USD', '0.8', 'fetched:fake', 'x');
+        INSERT INTO fx_rates VALUES ('2026-09-05', 'USD', '0.8', 'manual', NULL);
+        """
+    )
+    assert db.migrate(conn, NOW) == [8]
+    stored = conn.execute("SELECT series, source, first_day FROM asked_from ORDER BY 1")
+    assert [tuple(row) for row in stored] == [
+        ("close:1", "fetched:fake", "2026-09-08"),  # 20 days before the first close
+        ("rate:USD", "fetched:fake", "2026-09-09"),
+    ]
     conn.close()
