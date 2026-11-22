@@ -48,6 +48,18 @@ jobs:
       - name: make check
         run: make check
 
+      # The total for the README's badge, after a push to main: coverage.yml publishes it.
+      - name: Coverage total
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: uv run coverage report --format=total > coverage-total.txt
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: coverage-total
+          path: coverage-total.txt
+          retention-days: 7
+
   # The frontend at /app (frontend/): its types checked and the build that the image makes.
   frontend:
     runs-on: ubuntu-latest
