@@ -189,18 +189,20 @@ def _days(first: date, last: date) -> tuple[date, ...]:
     return tuple(first + timedelta(days=n) for n in range((last - first).days + 1))
 
 
-def _last_days(conn: sqlite3.Connection, owner: str | None) -> dict[str, date]:
-    """owner -> the last day their committed statements cover. A pension certificate, the one
-    day it is dated, covers none around it: it counts only for a person who has nothing else."""
+def _last_days(conn: sqlite3.Connection, owner: str | None) -> tuple[dict[str, date], set[str]]:
+    """owner -> the last day their committed statements cover, and the owners whose only
+    statements are pension certificates. A certificate, the one day it is dated, covers none
+    around it: it counts only for a person who has nothing else."""
     rows = conn.execute(
         "SELECT o.name, max(f.period_end) FILTER (WHERE f.source NOT IN (?, ?)), "
         "max(f.period_end) FROM statement_files f JOIN owners o ON o.id = f.owner_id "
         "WHERE f.committed_at IS NOT NULL AND o.name = coalesce(?, o.name) GROUP BY o.name",
         (*CERTIFICATE_SOURCES, owner),
     ).fetchall()
-    return {
+    last = {
         str(name): date.fromisoformat(statements or latest) for name, statements, latest in rows
     }
+    return last, {str(name) for name, statements, _ in rows if statements is None}
 
 
 def _certified_days(conn: sqlite3.Connection, owner: str | None) -> dict[int, tuple[str, date]]:
@@ -281,7 +283,7 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
     None when nothing is committed, or nothing is known of what is.
     """
     query.check_names(conn, query.Filter(owner=owner))
-    last_days = _last_days(conn, owner)
+    last_days, certificates_only = _last_days(conn, owner)
     typed = _typed_days(conn, owner)
     if not last_days and not typed:
         return None
@@ -316,20 +318,23 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
         f"The statements of {name} end on {day}: from then on, what was held that day is "
         f"valued at the closes and rates stored up to {last}."
         for name, day in sorted(last_days.items())
-        if day < last
+        if day < last and name not in certificates_only
     ]
     series = _cash(accounts, flows, anchors, days, notes)
     security_notes: list[str] = []
     series += _securities(conn, accounts, held, days, security_notes)
-    through_typed: dict[str, date] = {}
+    # How far each person is known: their statements; with certificates alone, the later of
+    # those and the figures typed.
+    known = {name: last_days[name] for name in certificates_only}
     for name, typed_day in typed.values():
-        through_typed[name] = max(typed_day, through_typed.get(name, typed_day))
+        known[name] = max(typed_day, known.get(name, typed_day))
+    known.update({n: d for n, d in last_days.items() if n not in certificates_only})
     return Valued(
         days,
         tuple(series),
         (*notes, *security_notes),
         tuple(security_notes),
-        {**through_typed, **last_days},
+        known,
     )
 
 

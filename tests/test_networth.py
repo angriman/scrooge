@@ -394,6 +394,22 @@ def test_a_person_with_certificates_alone_counts_up_to_the_last_of_them(
     assert valued.through == {OWNER: day(9)}
 
 
+@pytest.mark.parametrize(("typed_on", "known"), [(day(20), day(20)), (day(3), day(9))])
+def test_with_certificates_alone_a_later_typed_figure_says_how_far_a_person_is_known(
+    conn: sqlite3.Connection, typed_on: date, known: date
+) -> None:
+    staging.stage(conn, certified(certificate(day(5), "100"), certificate(day(9), "200")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    staging.type_balance(
+        conn, owner=OWNER, account="Old bank", day=typed_on, amount=D(50), currency="CHF"
+    )
+    valued = networth.value(conn, OWNER)
+    assert valued is not None
+    assert valued.through == {OWNER: known}
+    # No statement of theirs ends early: the certificates and the typed figure say so themselves.
+    assert not [note for note in valued.notes if note.startswith("The statements of")]
+
+
 def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Connection) -> None:
     rate(conn, "EUR", day(1), "0.95")
     rate(conn, "EUR", day(15), "0.94")
