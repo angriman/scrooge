@@ -18,7 +18,6 @@ from __future__ import annotations
 import csv
 import io
 import secrets
-import sqlite3
 import tempfile
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -73,7 +72,7 @@ from finanze.storage import db, originals, store
 from finanze.storage import logos as store_logos
 from finanze.storage.money import PrecisionError
 from finanze.validation import ReconciliationError
-from finanze.web import auth, forms, shapes
+from finanze.web import api, auth, forms, shapes, wire
 
 HOST = "127.0.0.1"  # where the app is served unless `finanze.yaml` names another address
 _HOSTS = (HOST, "localhost")
@@ -102,12 +101,12 @@ _LOGO_HEADERS = {
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "private, max-age=86400",
 }
-_DIGEST = 12  # how much of a logo's digest its address carries, to change when the image does
 # The holdings page's map of positions and line of bills, in the units of their SVG.
 _MAP = (Decimal(1000), Decimal(420))
 _LINE = (Decimal(1000), Decimal(90))
 _APART = Decimal(64)  # the least room between two days written under the line
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
+_API = "/api/"  # the JSON of the pages (`web/api.py`): not signed in, it is told so, not sent on
 _HERE = Path(__file__).parent
 _HEADERS = {
     "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
@@ -263,7 +262,9 @@ class _SignedInOnly:
             await self.app(scope, receive, send)
             return
         response: Response
-        if request.method in ("GET", "HEAD"):
+        if path.startswith(_API):
+            response = JSONResponse({"errors": ["Sign in first."]}, 401)
+        elif request.method in ("GET", "HEAD"):
             asked = path + (f"?{request.url.query}" if request.url.query else "")
             response = RedirectResponse(f"/login?next={quote(asked, safe='')}", 303)
         else:
@@ -379,6 +380,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/login", _login, methods=["POST"]),
             Route("/logout", _logout, methods=["POST"], name="logout"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
+            Mount(_API.rstrip("/"), routes=api.routes),
         ],
         middleware=[
             # A page of another site cannot reach the app under a name of its own.
@@ -486,18 +488,18 @@ def _overview(request: Request) -> Response:
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
-        logos = _logos(request, conn)
+        logos = api.logos(request, conn)
         try:
             shown = overview.run(conn, owner=asked.owner, currency=asked.currency, top=overview.TOP)
         except networth.MissingRateError as exc:
-            errors.append(_sentence(exc))
+            errors.append(wire.sentence(exc))
             shown = None
         # A statement valued in a currency without a rate leaves out the brokers' figures,
         # not the page's own.
         try:
             checks = networth.checks(conn, owner=asked.owner)
         except networth.MissingRateError as exc:
-            errors.append(_sentence(exc))
+            errors.append(wire.sentence(exc))
             checks = ()
     context = {
         "people": people,
@@ -1086,7 +1088,7 @@ def _networth_json(request: Request) -> Response:
         try:
             result = networth.run(conn, owner=asked.owner, currency=asked.currency)
         except networth.MissingRateError as exc:
-            error = _sentence(exc)
+            error = wire.sentence(exc)
     if asked.errors or error:
         return JSONResponse({"errors": [*asked.errors, *([error] if error else [])]}, 400)
     lines = _parts(result, asked.by, people) if result.days else []
@@ -1137,12 +1139,12 @@ def _holdings(request: Request, notice: str = "", status: int = 200) -> Response
     errors.extend(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
-        logos = _logos(request, conn)
+        logos = api.logos(request, conn)
         try:
             today = request.app.state.clock().date()
             held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
         except networth.MissingRateError as exc:
-            errors.append(_sentence(exc))
+            errors.append(wire.sentence(exc))
             held = None
         # Bills wear their own icon; every other holding is asked for a logo it has not got.
         without = (
@@ -1334,7 +1336,7 @@ def _analysis(request: Request) -> Response:
                 currency=asked.currency,
             )
         except networth.MissingRateError as exc:
-            errors.append(_sentence(exc))
+            errors.append(wire.sentence(exc))
             shown = None
     context: dict[str, object] = {
         "people": people,
@@ -1437,14 +1439,6 @@ def _original(request: Request) -> Response:
     return FileResponse(original, filename=name, media_type="application/octet-stream")
 
 
-def _logos(request: Request, conn: sqlite3.Connection) -> dict[str, str]:
-    """Symbol -> the address of its logo, which changes with the image."""
-    return {
-        symbol: str(request.url_for("logo", symbol=symbol).include_query_params(v=digest[:_DIGEST]))
-        for symbol, digest in store.logo_digests(conn).items()
-    }
-
-
 def _logo(request: Request) -> Response:
     """The logo of a symbol, as it was kept: the image and nothing else."""
     with db.reading(request.app.state.database) as conn:
@@ -1497,7 +1491,7 @@ def _transactions(request: Request) -> Response:
         try:
             result = query.run(conn, wanted)
         except query.QueryError as exc:  # an account or category the form no longer offers
-            errors.append(_sentence(exc))
+            errors.append(wire.sentence(exc))
             result = query.Result((), (), (), ())
         people = query.people(conn)
         choices = query.choices(conn, wanted.owner)
@@ -1582,7 +1576,7 @@ async def _login(request: Request) -> Response:
         # Off the event loop: working a digest out takes a moment, on purpose.
         session = await run_in_threadpool(state.access.enter, password, state.clock())
     except auth.TooSoonError as exc:
-        return _login_form(request, then, _sentence(exc), 429)
+        return _login_form(request, then, wire.sentence(exc), 429)
     if session is None:
         return _login_form(request, then, "That is not the password.", 401)
     response = RedirectResponse(_next(then), 303)
@@ -1613,11 +1607,7 @@ def _owner(request: Request) -> str | None:
     return request.query_params.get("owner") or None
 
 
-def _sentence(exc: Exception) -> str:
-    """What went wrong, as the page says it."""
-    message = str(exc)
-    return f"{message[0].upper()}{message[1:]}."
-
-
-def _unknown_name(_: Request, exc: Exception) -> Response:
+def _unknown_name(request: Request, exc: Exception) -> Response:
+    if request.url.path.startswith(_API):
+        return JSONResponse({"errors": [wire.sentence(exc)]}, 404)
     return PlainTextResponse(f"{exc}\n", status_code=404)
