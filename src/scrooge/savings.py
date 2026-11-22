@@ -18,12 +18,10 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from scrooge import analysis, cashflow, income, spending
+from scrooge import analysis, income, spending
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY
-
-_SHARE = Decimal("0.001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,11 +37,11 @@ class Totals:
     @property
     def rate(self) -> Decimal | None:
         """What was saved, as a part of income; None without income."""
-        return (self.saved / self.income).quantize(_SHARE) if self.income > 0 else None
+        return analysis.share(self.saved, self.income)
 
     @property
     def from_work(self) -> Decimal | None:
-        return (self.work / self.income).quantize(_SHARE) if self.income > 0 else None
+        return analysis.share(self.work, self.income)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,19 +96,17 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     if span is None:
         return Savings(currency, None, None, None, None, (), found.through)
     periods = []
-    for name in analysis.periods(span.start, span.end, grouping):
-        days = cashflow.days(name)
-        inside = found.between(max(days[0], span.start), min(days[1], span.end))
+    for name, days, inside in found.by_period(span, grouping):
         window = analysis.window(span, days)
         rate = None if window is None else _totals(found.between(*window)).rate
         periods.append(Period(name, *days, _totals(inside), rate))
-    before = analysis.year_before(span.start), analysis.year_before(span.end)
+    before = span.year_before()
     return Savings(
         currency,
         span.start,
         span.end,
         _totals(found.between(span.start, span.end)),
-        _totals(found.between(*before)) if before[0] >= span.known else None,
+        None if before is None else _totals(found.between(*before)),
         tuple(periods),
         span.through,
     )
