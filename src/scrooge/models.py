@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+import dataclasses
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -84,6 +85,36 @@ class SecurityTrade(Transaction):
     asset_tab: str = ""
     maturity: date | None = None
     name: str = ""
+
+    @classmethod
+    def from_transaction(  # noqa: PLR0913  # the fields a trade adds to a transaction
+        cls,
+        txn: Transaction,
+        *,
+        ticker: str,
+        quantity: Decimal,
+        price: Decimal | None,
+        cost: Decimal,
+        asset_tab: str = "",
+        maturity: date | None = None,
+        name: str = "",
+        description: str | None = None,
+    ) -> SecurityTrade:
+        """The trade `txn` is: every field of it as it is (`description` may be given another),
+        with what makes it a trade of an instrument."""
+        fields = {f.name: getattr(txn, f.name) for f in dataclasses.fields(Transaction)}
+        if description is not None:
+            fields["description"] = description
+        return cls(
+            **fields,
+            ticker=ticker,
+            quantity=quantity,
+            price=price,
+            cost=cost,
+            asset_tab=asset_tab,
+            maturity=maturity,
+            name=name,
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from scrooge.models import Extraction, Kind, Transaction
+from scrooge.models import Extraction, Kind, SecurityTrade, Transaction
 
 
 def _make(amount: Any) -> Transaction:
@@ -43,3 +43,45 @@ def test_an_extraction_period_is_exact_or_the_whole_month() -> None:
     assert Extraction(month, ()).period == (date(2026, 9, 1), date(2026, 9, 30))
     part = Extraction(month, (), start=date(2026, 9, 5), end=date(2026, 10, 3))
     assert part.period == (date(2026, 9, 5), date(2026, 10, 3))
+
+
+def test_a_security_trade_made_from_a_transaction_keeps_every_field_of_it() -> None:
+    txn = replace(
+        _make(Decimal("-12.50")),
+        counterparty="Shop",
+        category="Investimenti",
+        booking_date=date(2026, 9, 3),
+    )
+    trade = SecurityTrade.from_transaction(
+        txn, ticker="ACME", quantity=Decimal(2), price=Decimal("6.25"), cost=Decimal("12.50")
+    )
+    assert trade == SecurityTrade(
+        **{name: getattr(txn, name) for name in txn.__slots__},
+        ticker="ACME",
+        quantity=Decimal(2),
+        price=Decimal("6.25"),
+        cost=Decimal("12.50"),
+    )
+    assert (trade.booking_date, trade.counterparty) == (date(2026, 9, 3), "Shop")
+    assert (trade.asset_tab, trade.maturity, trade.name) == ("", None, "")
+
+
+def test_a_security_trade_made_from_a_transaction_may_say_it_in_other_words() -> None:
+    trade = SecurityTrade.from_transaction(
+        _make(Decimal("-12.50")),
+        description="Test (2 @ 6.25)",
+        ticker="ACME",
+        quantity=Decimal(2),
+        price=None,
+        cost=Decimal("12.50"),
+        asset_tab="Stocks",
+        maturity=date(2027, 1, 1),
+        name="Acme",
+    )
+    assert trade.description == "Test (2 @ 6.25)"
+    assert (trade.price, trade.asset_tab, trade.maturity, trade.name) == (
+        None,
+        "Stocks",
+        date(2027, 1, 1),
+        "Acme",
+    )
