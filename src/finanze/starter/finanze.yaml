@@ -21,6 +21,9 @@ owner: $owner
 owners:
 $owners
 
+# What the pages show figures in until another is chosen there: EUR, CHF, USD, GBP or JPY.
+currency: $currency
+
 # A second account at one bank or broker gets a name of its own from its number (IBKR) or
 # its IBAN (Migros): "<label> <last word of the usual name>", e.g. "Risparmio Migros".
 # account_labels:

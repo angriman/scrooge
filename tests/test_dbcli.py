@@ -691,6 +691,7 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert app.state.rules.people == {}
     assert app.state.imports.rules == [Path("rules.yaml")]
     assert app.state.imports.instruments == Path("instruments.yaml")
+    assert app.state.currency == "EUR"  # without 'currency' in the config
     assert run.count("schema_version") == len(db.migrations())
 
     with pytest.raises(SystemExit):
@@ -1334,3 +1335,27 @@ def test_without_users_the_config_here_is_read_as_before(
     assert (tmp_path / "data" / "f.db").is_file()
     monkeypatch.setenv(dbcli.USER, "lukas")  # names a setup that is not there
     assert _main("statements")[1].startswith("error: no setup 'lukas' in users/ (there is none")
+
+
+@pytest.mark.parametrize(("currency", "shown"), [("chf", "CHF"), ("USD", "USD")])
+def test_the_pages_show_the_currency_of_the_config(
+    run: Run, monkeypatch: pytest.MonkeyPatch, currency: str, shown: str
+) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + f"currency: {currency}\n", encoding="utf-8"
+    )
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert run("serve") == dbcli.OK
+    assert served[-1].state.currency == shown
+
+
+@pytest.mark.parametrize("currency", ["XAU", "[EUR]", "1"])
+def test_a_currency_the_pages_do_not_offer_is_refused(run: Run, currency: str) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + f"currency: {currency}\n", encoding="utf-8"
+    )
+    assert run("serve") == dbcli.FAILED
+    assert run.output.endswith(
+        f"error: {run.config}: 'currency' must be one of EUR, CHF, USD, GBP, JPY\n"
+    )

@@ -18,8 +18,8 @@ make setup                                   # first run: install, then answer a
 ```
 
 `make setup` installs the app with `./uv` (see "Everything in this folder") and runs
-`finanze init`. That asks your name, how it is printed on your statements, and whether someone
-else shares the database, then makes your setup in `users/<name>/` (git-ignored): the config,
+`finanze init`. That asks your name, how it is printed on your statements, whether someone
+else shares the database, and the currency to show figures in, then makes your setup in `users/<name>/` (git-ignored): the config,
 the rules, the categories, the instruments and an empty `statements/` folder. Put your
 statement exports there, then, from this folder:
 
@@ -41,7 +41,7 @@ the starter files in `src/finanze/starter/`.
 
 | File in `users/<name>/` | Purpose |
 |---|---|
-| `finanze.yaml` | database, owners, account labels, web app, where the rules and instruments are |
+| `finanze.yaml` | database, owners, the currency the pages show, account labels, web app, where the rules and instruments are |
 | `rules.yaml` | description → category rules, generic words and your own (shops, chains, employer); `--review` and the import page append here |
 | `rules.<owner>.yaml` | one person's rules for rows naming either person (transfers between the two, own top-ups); read first; `--review` saves those answers here |
 | `categories.yaml` | categories added to the built-in taxonomy; `--review` appends here on `+Name` |
@@ -62,6 +62,9 @@ folder. It can name other files: `rules: [path, ...]` (first wins; default `rule
 `instruments: path` (default `instruments.yaml`), for `import`, `serve` and `prices`; `--rules`
 and `--instruments` win over both. The first rules file is the one both people share:
 `rules.<owner>.yaml` and `categories.yaml` are read from its folder and written there.
+
+`currency: CHF` (EUR, CHF, USD, GBP or JPY; EUR without it) is what the pages show figures in
+until another is chosen in their header.
 
 Keys of older configs that nothing reads any more (`locale`, `accounts`) are ignored.
 

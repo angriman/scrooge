@@ -42,7 +42,8 @@ setup `users/<name>/finanze.yaml` that `--user` or $FINANZE_USER names, or the o
 config `finanze init` writes names `users/<name>/...`, so the commands run from the folder
 `users/` is in.
 The database path, the person and the names that recognise each person as a counterparty
-come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`.
+come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`. `currency`
+there is what the pages show figures in until another is chosen on them.
 `account_labels` there names a further account at a broker by its account number.
 `rules` there lists the rules files, first wins, and `instruments` names the instruments
 file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
@@ -428,6 +429,15 @@ def _instruments(args: argparse.Namespace, config: dict[str, object]) -> Path:
     return Path(named).expanduser()
 
 
+def _currency(config: dict[str, object], path: Path) -> str:
+    """`currency`: what the pages show figures in until another is chosen there."""
+    named = config.get("currency", networth.DEFAULT_CURRENCY)
+    if not isinstance(named, str) or named.upper() not in networth.CURRENCIES:
+        msg = f"{path}: 'currency' must be one of {', '.join(networth.CURRENCIES)}"
+        raise ConfigError(msg)
+    return named.upper()
+
+
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
     value = getattr(args, flag) or config.get(key)
     if not value:
@@ -471,7 +481,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         # What the import page reads, as `finanze import` would here.
         rules, labels = _rules(args, config), _labels(config, args.config)
         imports = importing.Setup(rules, _instruments(args, config), people, labels)
-        pages = _Pages(webapp.Rules(rules[0], people), imports)
+        pages = _Pages(webapp.Rules(rules[0], people), imports, _currency(config, args.config))
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
         msg = f"{path}: no database to publish"
@@ -638,6 +648,7 @@ class _Pages:
 
     rules: webapp.Rules
     imports: importing.Setup
+    currency: str  # what the figures are shown in until another is chosen
 
 
 def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
@@ -657,6 +668,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         password=reach.password,
         read_only=reach.read_only,
         maturities=prices.TreasuryDirect(),
+        currency=pages.currency,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
     return OK

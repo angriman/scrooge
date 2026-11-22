@@ -35,7 +35,7 @@ def here(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_one_person_gets_a_setup_that_imports_as_it_is(here: Path) -> None:
-    code, output, asked = init("Lukas", "LUKAS MEIER, CH93 0076 2011 6238 5295 7", "")
+    code, output, asked = init("Lukas", "LUKAS MEIER, CH93 0076 2011 6238 5295 7", "", "")
     assert code == dbcli.OK
     home = here / "users" / "lukas"
     assert sorted(p.name for p in home.iterdir()) == [
@@ -45,7 +45,7 @@ def test_one_person_gets_a_setup_that_imports_as_it_is(here: Path) -> None:
         "rules.yaml",
         "statements",
     ]
-    assert len(asked) == 3
+    assert len(asked) == 4
     assert f"Your setup is in {Path('users/lukas')}/:\n  finanze.yaml: written\n" in output
     assert "  1. Put your statement exports in users/lukas/statements/\n" in output
     # No --user: it is the only one.
@@ -59,6 +59,7 @@ def test_one_person_gets_a_setup_that_imports_as_it_is(here: Path) -> None:
     assert config["owner"] == "Lukas"
     iban = r"C\s?H\s?9\s?3\s?0\s?0\s?7\s?6\s?2\s?0\s?1\s?1\s?6\s?2\s?3\s?8\s?5\s?2\s?9\s?5\s?7"
     assert config["owners"] == {"Lukas": {"match": ["LUKAS\\ MEIER", iban]}}
+    assert config["currency"] == "CHF"  # the default
     for name in onboarding.STARTERS:
         text = (STARTER / name).read_text(encoding="utf-8")
         assert (home / name).read_text(encoding="utf-8") == text
@@ -87,7 +88,7 @@ def test_an_iban_matches_with_and_without_its_spaces(printed: str, matches: list
 
 
 def test_a_second_person_and_a_name_that_is_no_folder_name(here: Path) -> None:
-    code, output, _ = init("Zoë Müller", "ZOE MULLER", "Ann", "ANN MEIER")
+    code, output, _ = init("Zoë Müller", "ZOE MULLER", "Ann", "ANN MEIER", "eur")
     assert code == dbcli.OK, output
     home = here / "users" / "zoe-muller"
     config = dbcli._config(home / "finanze.yaml")
@@ -97,19 +98,21 @@ def test_a_second_person_and_a_name_that_is_no_folder_name(here: Path) -> None:
         "Ann": {"match": ["ANN\\ MEIER"]},
     }
     assert config["database"] == "users/zoe-muller/finanze.db"
+    assert config["currency"] == "EUR"
 
 
 def test_what_cannot_be_used_is_asked_again(here: Path) -> None:
-    code, output, asked = init("  ", "Lukas", "", "LUKAS MEIER", "")
+    code, output, asked = init("  ", "Lukas", "", "LUKAS MEIER", "", "XAU", "usd")
     assert code == dbcli.OK
     assert "  a name with at least one letter or digit, please\n" in output
     assert asked[0] == asked[1]  # the name, again
     assert asked[2] == asked[3]  # how it is printed, again
-    assert (here / "users" / "lukas" / "finanze.yaml").is_file()
+    assert asked[5] == asked[6]  # the currency, again
+    assert dbcli._config(here / "users" / "lukas" / "finanze.yaml")["currency"] == "USD"
 
 
 def test_a_name_whose_setup_exists_is_refused_and_nothing_changes(here: Path) -> None:
-    assert init("Lukas", "LUKAS MEIER", "")[0] == dbcli.OK
+    assert init("Lukas", "LUKAS MEIER", "", "")[0] == dbcli.OK
     config = here / "users" / "lukas" / "finanze.yaml"
     before = config.read_text(encoding="utf-8")
     code, output, _ = init("LUKAS")
@@ -125,7 +128,7 @@ def test_files_already_there_are_kept(here: Path) -> None:
     home = here / "users" / "lukas"
     home.mkdir(parents=True)
     (home / "rules.yaml").write_text("rules: []\n", encoding="utf-8")
-    code, output, _ = init("Lukas", "LUKAS MEIER", "")
+    code, output, _ = init("Lukas", "LUKAS MEIER", "", "")
     assert code == dbcli.OK
     assert "  rules.yaml: kept, it was there already\n" in output
     assert (home / "rules.yaml").read_text(encoding="utf-8") == "rules: []\n"
@@ -134,8 +137,8 @@ def test_files_already_there_are_kept(here: Path) -> None:
 def test_a_config_from_before_users_is_pointed_out(here: Path) -> None:
     (here / "finanze.yaml").write_text("database: user/finanze.db\n", encoding="utf-8")
     (here / "uv").write_text("#!/bin/sh\n", encoding="utf-8")
-    assert init("Anna", "ANNA MEIER", "")[0] == dbcli.OK
-    code, output, _ = init("Lukas", "LUKAS MEIER", "")
+    assert init("Anna", "ANNA MEIER", "", "")[0] == dbcli.OK
+    code, output, _ = init("Lukas", "LUKAS MEIER", "", "")
     assert code == dbcli.OK
     assert output.startswith("Note: finanze.yaml is a setup made before users/ existed.")
     # Two setups now: each command names the one it is about, through the folder's uv.
@@ -144,19 +147,20 @@ def test_a_config_from_before_users_is_pointed_out(here: Path) -> None:
 
 def test_with_a_config_here_the_next_steps_name_the_new_setup(here: Path) -> None:
     (here / "finanze.yaml").write_text("database: user/finanze.db\n", encoding="utf-8")
-    code, output, _ = init("Anna", "ANNA MEIER", "")
+    code, output, _ = init("Anna", "ANNA MEIER", "", "")
     assert code == dbcli.OK
     assert "While it is there, it is the one `finanze` uses unless --user" in output
     assert "  3. finanze commit --user anna" in output
 
 
 def test_the_starter_config_holds_every_answer() -> None:
-    text = onboarding.config_text(Path("users/a"), "A", {"A": ["A.B"], 'C "D"': ["E"]})
+    text = onboarding.config_text(Path("users/a"), "A", {"A": ["A.B"], 'C "D"': ["E"]}, "JPY")
     assert "$" not in text.replace("scrypt$...", "")
     loaded = yaml.safe_load(text)
     assert loaded["owners"] == {"A": {"match": ["A\\.B"]}, 'C "D"': {"match": ["E"]}}
     # The rest is comments.
-    assert loaded.keys() == {"database", "rules", "instruments", "owner", "owners"}
+    assert loaded["currency"] == "JPY"
+    assert loaded.keys() == {"database", "rules", "instruments", "owner", "owners", "currency"}
 
 
 @pytest.mark.parametrize(

@@ -148,3 +148,14 @@ def test_a_page_that_converts_nothing_has_no_picker(site: Site, path: str) -> No
     page = site.client.get(path)
     assert page.status_code == 200
     assert "/currency" not in page.text
+
+
+def test_the_configured_currency_is_shown_until_another_is_chosen(database: Path) -> None:
+    client = TestClient(webapp.create_app(database, currency="CHF"), base_url=SITE)
+    for path in PAGES:
+        assert chosen(client.get(path, params={"owner": OWNER}).text) == "CHF"
+    assert chosen(client.get("/", params={"currency": "USD"}).text) == "USD"  # asked for
+    client.cookies.set("finanze_currency", "GBP")
+    assert chosen(client.get("/").text) == "GBP"  # chosen in the header
+    client.cookies.set("finanze_currency", "XAU")
+    assert chosen(client.get("/").text) == "CHF"  # a choice no longer offered is left aside

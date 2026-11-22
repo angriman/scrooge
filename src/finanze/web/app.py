@@ -169,11 +169,13 @@ def _everywhere(request: Request) -> dict[str, object]:
 
 
 def _viewed(request: Request) -> dict[str, str]:
-    """The query of the page, with the currency chosen in the header if it names none."""
+    """The query of the page, with the currency chosen in the header if it names none, and the
+    config's otherwise."""
     params = dict(request.query_params)
     remembered = request.cookies.get(_CURRENCY, "")
-    if "currency" not in params and remembered in networth.CURRENCIES:
-        params["currency"] = remembered
+    if "currency" not in params:
+        chosen = remembered in networth.CURRENCIES
+        params["currency"] = remembered if chosen else request.app.state.currency
     return params
 
 
@@ -297,6 +299,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     password: str = "",
     read_only: bool = False,
     maturities: MaturitySource | None = None,
+    currency: str = networth.DEFAULT_CURRENCY,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
 
@@ -311,6 +314,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     `maturities` is where the import page looks up the T-bills an import stopped on: the one
     thing a page asks the network for (decided 2026-11-03). Without it the page only says
     which bills to add to `instruments.yaml`.
+    `currency` is what the figures are shown in until another is chosen on a page.
     """
     if names and not password:
         msg = "the app is not served under other names without a password"
@@ -392,6 +396,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.rules = rules
     app.state.imports = None if read_only else imports
     app.state.maturities = maturities
+    app.state.currency = currency
     app.state.held = {}
     app.state.access = access
     app.state.read_only = read_only

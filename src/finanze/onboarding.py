@@ -22,11 +22,14 @@ from pathlib import Path
 from string import Template
 from typing import TextIO
 
+from finanze import networth
+
 USERS = "users"  # the folder of the setups, in the folder the commands run in
 CONFIG = "finanze.yaml"
 STARTERS = ("rules.yaml", "categories.yaml", "instruments.yaml")  # copied as they are
 STATEMENTS = "statements"
 OK, FAILED = 0, 1
+_DEFAULT_CURRENCY = "CHF"
 # An IBAN as typed: a country, two check digits, then letters and digits, maybe spaced.
 _IBAN = re.compile(r"[A-Z]{2}\d{2}(?: ?[A-Z0-9]){10,30}", re.IGNORECASE)
 
@@ -68,9 +71,10 @@ def run(users: Path, out: TextIO, ask: Callable[[str], str]) -> int:
     other = ask("Someone else in the same database, e.g. a partner (name, or Enter: no): ")
     if other.strip():
         people[other.strip()] = _printed(ask, f"How is {other.strip()}'s name printed")
+    currency = _currency(ask)
 
     (home / STATEMENTS).mkdir(parents=True, exist_ok=True)
-    written = [_write(home / CONFIG, config_text(home, owner, people))]
+    written = [_write(home / CONFIG, config_text(home, owner, people, currency))]
     starters = resources.files("finanze") / "starter"
     written += [
         _write(home / name, starters.joinpath(name).read_text("utf-8")) for name in STARTERS
@@ -81,7 +85,7 @@ def run(users: Path, out: TextIO, ask: Callable[[str], str]) -> int:
     return OK
 
 
-def config_text(home: Path, owner: str, people: Mapping[str, Sequence[str]]) -> str:
+def config_text(home: Path, owner: str, people: Mapping[str, Sequence[str]], currency: str) -> str:
     """The starter config of the setup in `home`, with the answers in it. JSON strings are
     valid YAML, and quote whatever a name may hold."""
     template = (resources.files("finanze") / "starter" / CONFIG).read_text("utf-8")
@@ -91,7 +95,10 @@ def config_text(home: Path, owner: str, people: Mapping[str, Sequence[str]]) -> 
         for name, matches in people.items()
     )
     return Template(template).substitute(
-        home=home.as_posix(), owner=json.dumps(owner, ensure_ascii=False), owners=owners
+        home=home.as_posix(),
+        owner=json.dumps(owner, ensure_ascii=False),
+        owners=owners,
+        currency=currency,
     )
 
 
@@ -118,6 +125,16 @@ def _printed(ask: Callable[[str], str], question: str) -> list[str]:
         found = [part.strip() for part in answer.split(",") if part.strip()]
         if found:
             return found
+
+
+def _currency(ask: Callable[[str], str]) -> str:
+    choices = ", ".join(networth.CURRENCIES)
+    while True:
+        answer = ask(f"Show figures in ({choices}) [{_DEFAULT_CURRENCY}]: ").strip().upper()
+        if not answer:
+            return _DEFAULT_CURRENCY
+        if answer in networth.CURRENCIES:
+            return answer
 
 
 def _write(path: Path, text: str) -> str:
