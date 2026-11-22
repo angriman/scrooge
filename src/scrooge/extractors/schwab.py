@@ -36,8 +36,9 @@ from scrooge.extractors.common import (
     parse_us_amount,
     parse_us_date,
     read_table,
+    share_vest,
 )
-from scrooge.models import Extraction, Kind, SecurityTrade, Transaction
+from scrooge.models import Extraction, Kind, Transaction
 
 ACCOUNT = "Schwab"
 CURRENCY = "USD"
@@ -116,38 +117,22 @@ def _vest(
     if quantity <= 0 or price <= 0:
         msg = f"Schwab row {n}: a Deposit of {quantity} shares at {price}"
         raise ExtractionError(msg)
-    symbol, worth = row["Symbol"], quantity * price
+    symbol = row["Symbol"]
     vested = _date(details["VestDate"], n + 1)
     what = f"{format(quantity, 'f')} {symbol} @ {format(price, 'f')}"
     award = f"award {details['AwardId']}, vested {vested}"
-    salary = Transaction(
-        date=day,
+    return share_vest(
+        day=day,
         account=ACCOUNT,
-        amount=worth,
         currency=CURRENCY,
-        description=f"Deposit of {what} ({award}): salary in shares",
-        kind=Kind.INCOME,
-        source_file=source_file,
-        source_ref=f"{n}:salary",
-        category="Stipendio",
-    )
-    purchase = SecurityTrade(
-        date=day,
-        account=ACCOUNT,
-        amount=-worth,
-        currency=CURRENCY,
-        description=f"Deposit of {what} ({award})",
-        kind=Kind.SECURITY_TRADE,
         source_file=source_file,
         source_ref=str(n),
-        category="Investimenti",
         ticker=symbol,
         quantity=quantity,
         price=price,
-        cost=worth,
+        description=f"Deposit of {what} ({award})",
         asset_tab=_ASSET_TAB,
     )
-    return [salary, purchase]
 
 
 def _cash(day: date, row: dict[str, str], n: int, source_file: str) -> Transaction:
