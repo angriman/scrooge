@@ -206,3 +206,18 @@ def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is
         asset_tab=asset_tab,
     )
     return [salary, purchase]
+
+
+_FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
+_HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own accounts
+
+
+def fx_category(bought: str) -> str:
+    """The category of a currency exchange, by the currency it buys.
+
+    Back into the home currency it is a move between one's own accounts (`Giroconto`); EUR and
+    USD have an `Acquisto` category of their own; any other currency has none.
+    """
+    if bought == _HOME_CURRENCY:
+        return "Giroconto"
+    return f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""

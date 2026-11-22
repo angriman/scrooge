@@ -17,6 +17,7 @@ from decimal import Decimal
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import (
     day_span,
+    fx_category,
     month_start,
     parse_decimal,
     parse_iso_date,
@@ -46,8 +47,6 @@ _OWN_SAVINGS = re.compile(
     r"((To|From) ([A-Z]{3} )?(Flexible Cash Funds|Fondi monetari flessibili)"
     r"|Savings Vault topup)\b"
 )
-_FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
-_HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own accounts
 
 
 def extract(content: str, source_file: str) -> Extraction:
@@ -144,8 +143,7 @@ def _classify(row: dict[str, str], amount: Decimal, n: int) -> tuple[Kind, str]:
     if kind == "EXCHANGE":
         match = _EXCHANGED_TO.search(description)
         bought = match[1] if match else ""
-        named = f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
-        return Kind.FX, "Giroconto" if bought == _HOME_CURRENCY else named
+        return Kind.FX, fx_category(bought)
     if kind == "ATM":
         return Kind.TRANSFER, "Prelievi"
     if kind in {"TRANSFER", "REV_PAYMENT"}:

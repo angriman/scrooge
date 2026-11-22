@@ -222,3 +222,19 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
         cost=Decimal("125.0"),
         asset_tab="Stocks",
     )
+
+
+@pytest.mark.parametrize(
+    ("bought", "category"),
+    [
+        ("CHF", "Giroconto"),  # back home: a move between one's own accounts
+        ("EUR", "Acquisto EUR"),
+        ("USD", "Acquisto USD"),
+        ("GBP", ""),  # no category of its own
+        ("", ""),
+    ],
+)
+def test_a_currency_exchange_is_categorised_by_the_currency_it_buys(
+    bought: str, category: str
+) -> None:
+    assert common.fx_category(bought) == category
