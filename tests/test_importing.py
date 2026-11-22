@@ -12,11 +12,10 @@ from scrooge.errors import ConfigError
 from scrooge.extractors import ocr, swisscard
 from scrooge.router import LABELS
 from scrooge.storage import db, originals
-from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
+from tests.conftest import FIXTURES, INSTRUMENTS_YAML, MATURED, write_rules
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE
 
 NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
-MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
 
 
 @pytest.fixture

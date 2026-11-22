@@ -7,25 +7,22 @@ import re
 import sqlite3
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
-from decimal import Decimal
 from pathlib import Path
 
 from httpx2 import Response
 from starlette.testclient import TestClient
 
 from scrooge import importing, staging
-from scrooge.models import CashBalance, Kind, Transaction
-from scrooge.pipeline import Month
-from scrooge.staging import Batch
+from scrooge.models import Kind, Transaction
 from scrooge.storage import db
 from scrooge.web import app as webapp
-from tests.conftest import FILES, INSTRUMENTS_YAML, write_rules
-from tests.storage.helpers import OWNER, PARTNER, PEOPLE, statement, txn
+from tests.conftest import FILES, INSTRUMENTS_YAML, MATURED, write_rules
+from tests.storage import helpers
+from tests.storage.helpers import OWNER, PARTNER, PEOPLE, txn
 
 SITE = "http://127.0.0.1:8765"
 CLICKED = datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
 BUILT = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)  # when the databases of these tests were made
-MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
 Upload = tuple[str, tuple[str, bytes]]
 
 Files = tuple[str, Sequence[Transaction]]
@@ -41,14 +38,7 @@ def stage_rows(  # whose statement, which days, what in it, where it begins, whe
 ) -> None:
     """Stage one statement per `(source, rows)` that covers `span`; its account opens with
     `opening` and closes with what the rows add up to."""
-    first, last = span
-    statements = []
-    for source, rows in files:
-        closing = Decimal(opening) + sum((row.amount for row in rows), Decimal(0))
-        balance = CashBalance(rows[0].account, rows[0].currency, Decimal(opening), closing)
-        statements.append(statement(source, rows, [balance], month=first, end=last))
-    every = tuple(row for _, rows in files for row in rows)
-    staging.stage(conn, Batch(owner, statements, Month(first, every, (), (), last), PEOPLE), now)
+    helpers.stage_rows(conn, owner, span, *files, opening=opening, now=now)
 
 
 def close(
@@ -66,8 +56,8 @@ def close(
 
 # Lukas: August committed; September staged with a categorized transfer, a categorized
 # purchase and one row waiting for a category. Anna: September staged.
-AUGUST = (date(2026, 8, 1), date(2026, 8, 31))
-SEPTEMBER = (date(2026, 9, 1), date(2026, 9, 30))
+AUGUST_DAYS = (date(2026, 8, 1), date(2026, 8, 31))
+SEPTEMBER_DAYS = (date(2026, 9, 1), date(2026, 9, 30))
 LUKAS_AUGUST = [
     txn("-45.20", date=date(2026, 8, 3), source_ref="1"),
     txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Stipendio"),
@@ -100,9 +90,9 @@ def household(path: Path) -> None:
     """The database described above, at `path`."""
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
-    stage_rows(conn, OWNER, SEPTEMBER, ("migros", LUKAS_SEPTEMBER), opening=AUGUST_CLOSING)
-    stage_rows(conn, PARTNER, SEPTEMBER, ("migros", ANNA_SEPTEMBER))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
+    stage_rows(conn, OWNER, SEPTEMBER_DAYS, ("migros", LUKAS_SEPTEMBER), opening=AUGUST_CLOSING)
+    stage_rows(conn, PARTNER, SEPTEMBER_DAYS, ("migros", ANNA_SEPTEMBER))
     conn.close()
 
 

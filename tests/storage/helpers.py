@@ -172,6 +172,26 @@ def rows(conn: sqlite3.Connection, sql: str, *args: Any) -> list[tuple[Any, ...]
     return [tuple(row) for row in conn.execute(sql, args).fetchall()]
 
 
+def stage_rows(  # whose statement, which days, what in it, where it begins, when
+    conn: sqlite3.Connection,
+    owner: str,
+    span: tuple[date, date],
+    *files: tuple[str, Sequence[Transaction]],
+    opening: str = "0",
+    now: datetime = CLOSED_AT,
+) -> None:
+    """Stage one statement per `(source, rows)` that covers `span`; its account opens with
+    `opening` and closes with what the rows add up to."""
+    first, last = span
+    statements = []
+    for source, rows in files:
+        closing = Decimal(opening) + sum((row.amount for row in rows), Decimal(0))
+        balance = CashBalance(rows[0].account, rows[0].currency, Decimal(opening), closing)
+        statements.append(statement(source, rows, [balance], month=first, end=last))
+    every = tuple(row for _, rows in files for row in rows)
+    staging.stage(conn, Batch(owner, statements, Month(first, every, (), (), last), PEOPLE), now)
+
+
 def close(
     conn: sqlite3.Connection,
     owner: str,
@@ -181,16 +201,8 @@ def close(
 ) -> None:
     """Stage statements that cover `span`, and commit them (`committed`: the last day, kept
     so that callers say what they expect to be committed)."""
-    first, last = span
-    assert committed == last
-    statements = []
-    for source, rows in files:
-        closing = sum((row.amount for row in rows), Decimal(0))
-        balance = CashBalance(rows[0].account, rows[0].currency, Decimal(0), closing)
-        statements.append(statement(source, rows, [balance], month=first, end=last))
-    every = tuple(row for _, rows in files for row in rows)
-    month = Month(first, every, (), (), last)
-    staging.stage(conn, Batch(owner, statements, month, PEOPLE), CLOSED_AT)
+    assert committed == span[1]
+    stage_rows(conn, owner, span, *files)
     staging.commit(conn, owner=owner, now=CLOSED_AT)
 
 

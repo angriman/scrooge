@@ -11,8 +11,7 @@ from scrooge.validation import (
     ReconciliationError,
     check_balances,
 )
-
-SEPTEMBER = date(2026, 9, 1)
+from tests.storage.helpers import SEPTEMBER
 
 
 def _txn(amount: str, account: str = "IBKR USD", currency: str = "USD") -> Transaction:
