@@ -155,15 +155,17 @@ def held(
         changes[account, instrument].append(
             Change(date.fromisoformat(day), _TRADE, Decimal(quantity))
         )
-    for account, instrument, day, quantity in conn.execute(
-        "SELECT p.account_id, p.instrument_id, p.date, p.quantity FROM positions p "
-        "JOIN accounts a ON a.id = p.account_id "
+    for account, instrument, day, quantity, fed in conn.execute(
+        "SELECT p.account_id, p.instrument_id, p.date, p.quantity, a.source IS NOT NULL "
+        "FROM positions p JOIN accounts a ON a.id = p.account_id "
         "WHERE p.source = 'manual' AND a.owner_id = coalesce(?, a.owner_id)",
         (owner_id,),
     ):
-        # Typed for one instrument: it says nothing of the account's others.
+        # Typed for one instrument: it says nothing of the account's others. In an account an
+        # export feeds, it is a known point the rows must agree with, as a printed one is.
+        kind = _PRINTED if fed else _TYPED
         changes[account, instrument].append(
-            Change(date.fromisoformat(day), _TYPED, Decimal(quantity))
+            Change(date.fromisoformat(day), kind, Decimal(quantity))
         )
     printed = _printed(conn, owner_id, committed=committed)
     for (account, day), quantities in printed.items():

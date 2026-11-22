@@ -542,6 +542,24 @@ def set_opening_balance(
     )
 
 
+def balances_of(conn: sqlite3.Connection, account: int) -> list[tuple[date, Decimal]]:
+    """Every balance known of the account, stated or typed, oldest first."""
+    rows = conn.execute(
+        "SELECT date, amount_nano FROM balances WHERE account_id = ? ORDER BY date", (account,)
+    )
+    return [(date.fromisoformat(day), from_nano(int(amount))) for day, amount in rows]
+
+
+def has_typed(conn: sqlite3.Connection, account: int) -> bool:
+    """Whether a balance or a position was typed for the account."""
+    found = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM balances WHERE account_id = ?1 AND source = 'manual') "
+        "OR EXISTS (SELECT 1 FROM positions WHERE account_id = ?1 AND source = 'manual')",
+        (account,),
+    ).fetchone()
+    return bool(found[0])
+
+
 def typed_on(conn: sqlite3.Connection, account: int, day: date) -> bool:
     """Whether a balance was typed for the account on `day`."""
     found = conn.execute(

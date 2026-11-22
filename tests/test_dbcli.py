@@ -819,6 +819,78 @@ def test_a_person_with_typed_accounts_alone_counts(closed: Run) -> None:
     assert valued.series[0].values[-1] == Decimal(500)
 
 
+def _schwab(run: Run) -> Path:
+    """A folder with the Schwab export alone: it says neither its cash nor what it holds."""
+    folder = run.folder / "schwab"
+    folder.mkdir()
+    shutil.copy(FIXTURES / "schwab" / "transactions.csv", folder / "Schwab.csv")
+    return folder
+
+
+def test_an_export_that_reaches_back_only_so_far_starts_from_a_quantity_typed(
+    closed: Run,
+) -> None:
+    """Schwab's export goes back a few years: the shares held then are typed once."""
+    assert closed.load(folder=_schwab(closed)) == dbcli.OK
+    assert "  note: Schwab includes rows with no balance to check against\n" in closed.output
+    assert closed("commit") == dbcli.OK
+    # What Schwab shows on 5 October (the import's day is the 6th: the vests of 28 October
+    # wait for the next one). The vest of 29 September counts in it already.
+    assert closed("position", "Schwab", "2026-10-05", "ACME", "500", "USD") == dbcli.OK
+    assert closed("balance", "Schwab", "2026-10-05", "2000", "USD") == dbcli.OK
+    conn = db.connect(closed.database)
+    try:
+        owner = store.owner_id(conn, "Lukas")
+        assert owner is not None
+        assert holdings.check(conn, owner) == []
+        account = conn.execute("SELECT id FROM accounts WHERE name = 'Schwab'").fetchone()[0]
+        [acme] = [h for h in holdings.held(conn, owner_id=owner) if h.account_id == account]
+        # Backward from the 500 typed, through the vest of 29 September.
+        assert acme.on(date(2026, 9, 20)) == Decimal("487.197")
+        assert acme.on(date(2026, 10, 5)) == Decimal(500)
+        valued = networth.value(conn, "Lukas")
+        assert valued is not None
+        cash = [s for s in valued.series if s.account_id == account and s.instrument_id is None]
+        assert cash[0].values[-1] == Decimal(2000)
+    finally:
+        conn.close()
+    # A later figure that does not follow from it is refused as it is typed, and kept out.
+    assert closed("position", "Schwab", "2026-10-06", "ACME", "490", "USD") == dbcli.FAILED
+    assert "Schwab: 490 on 2026-10-06 does not follow from what was typed before" in closed.output
+    assert closed("balance", "Schwab", "2026-10-06", "2001", "USD") == dbcli.FAILED
+    assert "Schwab: 2001 on 2026-10-06 does not follow from 2000 on 2026-10-05" in closed.output
+    # One that does is a known point too; and so the owner's commits are never blocked.
+    assert closed("position", "Schwab", "2026-10-06", "ACME", "500", "USD") == dbcli.OK
+    assert closed("balance", "Schwab", "2026-10-06", "2000", "USD") == dbcli.OK
+    assert closed.load() == dbcli.OK
+
+
+def test_what_a_statement_says_is_never_typed_over_it(closed: Run, pillar2: Path) -> None:
+    assert closed.load(folder=pillar2) == dbcli.OK
+    assert closed.load(folder=_schwab(closed)) == dbcli.OK
+    assert closed("commit") == dbcli.OK
+    both = "cannot have both statements and typed balances"
+    for account, currency in (("IBKR USD", "USD"), ("Migros", "CHF"), ("Tastytrade", "USD")):
+        assert closed("position", account, "2026-10-01", "ACME", "1", currency) == dbcli.FAILED
+        assert both in closed.output
+        assert closed("balance", account, "2026-10-01", "1", currency) == dbcli.FAILED
+        assert both in closed.output
+    assert closed("position", "Schwab", "2026-10-01", "ACME", "1", "CHF") == dbcli.FAILED
+    assert "account 'Schwab' is in USD, not CHF" in closed.output
+    assert closed("position", "Pillar 2 AXA", "2026-10-01", "ACME", "1", "CHF") == dbcli.FAILED
+    assert "Pillar 2 AXA is a pension fund's account: it holds no shares" in closed.output
+
+
+def test_shares_typed_before_the_export_is_imported_are_removed_first(run: Run) -> None:
+    assert run("position", "Schwab", "2026-10-01", "ACME", "500", "USD") == dbcli.OK
+    export = _schwab(run)
+    assert run.load(folder=export) == dbcli.FAILED
+    assert "account 'Schwab' cannot have both statements and typed balances" in run.output
+    assert "finanze position --remove" in run.output
+    assert run("position", "--remove", "Schwab", "2026-10-01", "ACME") == dbcli.OK
+    assert run.load(folder=export) == dbcli.OK
+
+
 def test_query_lists_the_matching_rows_and_their_total(closed: Run) -> None:
     assert closed("query", "--category", "Spesa") == dbcli.OK
     assert closed.output == (

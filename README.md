@@ -14,9 +14,13 @@ and Servisa (PDF, read with the local `tesseract`).
 
 The Schwab export prints no balance and no holdings: the shares and the cash add up from its
 first row, so export it from the first vest on (the widest range the page allows), or the
-shares that vested before are missing. Its period runs to the day in the file's name, the day
-it was exported, so keep the name Schwab gives it. Don't also type the same shares as a
-position of another account: they would count twice.
+shares that vested before are missing. It reaches back only a few years, so import it, then
+type once what Schwab shows you: `finanze position Schwab 2026-10-05 ACME 100 USD` and
+`finanze balance Schwab 2026-10-05 1234.56 USD`. The vests run backward and forward from that
+quantity, and a figure typed later that does not follow from it and the rows in between is
+refused. Its period runs to the day in the file's name, the day it was exported, so keep the
+name Schwab gives it. Don't also type the same shares as a position of another account: they
+would count twice.
 
 ## Use
 
@@ -156,6 +160,10 @@ More for the database:
     `NESN.SW`), not a second one.
 - What is typed counts from its day even when that is after the last day the statements
   cover, and a person with typed accounts alone counts too. A day after today is refused.
+- An account fed by an export that says neither its balance nor what it holds (Schwab's,
+  only) takes both typed, after it is imported: they are its known points, as a statement
+  that printed them would be. Every other account fed by statements refuses them, and a
+  statement that says what an account holds is refused for one figures were typed into.
 - A pension fund's account takes typed balances too, between its certificates:
   `finanze balance "Pillar 2 AXA" 2026-11-21 60000 CHF` is what the fund shows online that
   day. It stays Pillar 2, carried until the next figure. Typing starts on the fund's first

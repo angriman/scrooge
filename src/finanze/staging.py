@@ -55,6 +55,9 @@ _NOT_WAITING = "are no longer waiting for a category"
 # An account that only certificates feed: carried flat from each balance to the next, as a
 # typed account is, and outside the chain of balances (`store.anchors`).
 _CARRIED_FLAT = "manual"
+# Sources whose export states neither a balance nor what is held, and reaches back only so far:
+# what was held before its first row is typed, once, after the import (decided 2026-11-21).
+_TYPED_INTO = frozenset({"schwab"})
 _RATES_IN = "CHF"
 # How many days apart an older import may have booked a row it shares with a newer one.
 _MOVED = timedelta(days=7)
@@ -168,8 +171,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
         accounts = {
             s.filename: _accounts(conn, owner_id, s, by_file[s.filename]) for s in statements
         }
-        _refuse_duplicates(statements, accounts)
-        _refuse_shared_accounts(conn, statements, accounts)
+        _refuse_clashes(conn, statements, accounts)
         parts = {
             s.filename: _part(conn, s, accounts[s.filename], by_file[s.filename], over)
             for s in statements
@@ -812,7 +814,7 @@ def add_category(
 def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how much
     conn: sqlite3.Connection, *, owner: str, account: str, day: date, amount: Decimal, currency: str
 ) -> None:
-    """Record what an account without statements held at the end of `day`.
+    """Record what an account held at the end of `day`, where no statement says it.
 
     For accounts that are only ever typed (a closed bank): the account is created on first
     use, and can never also be fed from statements. A pension fund's account, fed by its
@@ -824,6 +826,18 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
         found = store.account_of(conn, owner_id, account)
+        if found is not None and found.source in _TYPED_INTO:
+            account_id = store.ensure_account(
+                conn,
+                owner_id,
+                name=account,
+                kind=found.kind,
+                currency=currency,
+                source=found.source,
+            )
+            store.set_typed_balance(conn, account_id, day, amount)
+            _refuse_unfollowed_balances(conn, account, account_id)
+            return
         source = found.source if found is not None and found.kind == _CARRIED_FLAT else None
         account_id = store.ensure_account(
             conn, owner_id, name=account, kind=_CARRIED_FLAT, currency=currency, source=source
@@ -831,6 +845,37 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
         if source is not None:
             _refuse_certified_day(conn, account, account_id, day, currency)
         store.set_typed_balance(conn, account_id, day, amount)
+
+
+def _refuse_unfollowed_balances(conn: sqlite3.Connection, name: str, account: int) -> None:
+    """Each balance typed into an account its export feeds must follow from the one before,
+    with what the export booked in between: a figure that does not is refused as it is typed,
+    not found later by a check that would block every commit of its owner."""
+    known = store.balances_of(conn, account)
+    for (before, held), (day, now) in pairwise(known):
+        reached = held + from_nano(store.own_flow(conn, account, before, day))
+        if reached != now:
+            msg = (
+                f"{name}: {now} on {day} does not follow from {held} on {before} and what its "
+                f"export booked in between ({reached}): type the figure the broker shows"
+            )
+            raise store.AccountMismatchError(msg)
+
+
+def _refuse_unfollowed_holdings(
+    conn: sqlite3.Connection, name: str, owner_id: int, account: int
+) -> None:
+    """A quantity typed into an account its export feeds must follow from the one typed before
+    and the export's rows in between, as a statement's printed holdings must."""
+    for holding in holdings.held(conn, owner_id=owner_id):
+        if holding.account_id == account and holding.mismatches:
+            first = holding.mismatches[0]
+            msg = (
+                f"{name}: {first.printed} on {first.day} does not follow from what was typed "
+                f"before and what its export booked ({first.derived}): type the figure the "
+                "broker shows"
+            )
+            raise store.AccountMismatchError(msg)
 
 
 def _refuse_certified_day(
@@ -882,13 +927,19 @@ def type_holding(
     day: date,
     holding: TypedHolding,
 ) -> None:
-    """Record how many of one instrument an account without statements held at the end of
-    `day`: shares held at a broker that has no statement this reads (decided 2026-11-21).
+    """Record how many of one instrument an account held at the end of `day`, where no
+    statement says it: shares at a broker with no statement this reads (decided 2026-11-21).
 
     The account is a typed one, as `type_balance` makes, and never has statements. Made by
     this, it is in the instrument's currency; it may hold instruments in other currencies
     too. What it holds of the instrument counts from the first day typed, at each day's close,
     and stays until another quantity is typed: the other instruments are not touched.
+
+    Or the account is fed by an export that says neither what it holds nor its balance, and
+    reaches back only so far (`_TYPED_INTO`: Schwab's): the quantity typed is a known point of
+    its instrument, as a statement that printed it would be. What the export books runs from
+    it, backward too, and a quantity typed later must follow from it: one that does not is
+    refused. Its cash is typed with `type_balance`, under the same rule.
     """
     if not holding.quantity.is_finite() or holding.quantity < 0:
         msg = f"{holding.quantity} is no number of shares held"
@@ -896,6 +947,16 @@ def type_holding(
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
         found = store.account_of(conn, owner_id, account)
+        if found is not None and found.kind == _CARRIED_FLAT and found.source is not None:
+            msg = f"{account} is a pension fund's account: it holds no shares"
+            raise store.AccountMismatchError(msg)
+        if found is not None and found.source in _TYPED_INTO:
+            if holding.currency != found.currency:
+                msg = f"account {account!r} is in {found.currency}, not {holding.currency}"
+                raise store.AccountMismatchError(msg)
+            store.set_typed_holding(conn, found.id, day, holding)
+            _refuse_unfollowed_holdings(conn, account, owner_id, found.id)
+            return
         if found is not None and found.source is None and found.kind == "manual":
             account_id = found.id
         else:
@@ -1019,6 +1080,39 @@ def _refuse_shared_accounts(
                 )
                 raise DuplicateStatementError(msg)
             known.add(number)
+
+
+def _refuse_clashes(
+    conn: sqlite3.Connection,
+    statements: Sequence[Statement],
+    accounts: Mapping[str, Mapping[str, int]],
+) -> None:
+    """Statements that would land on an account together with what they cannot share it with."""
+    _refuse_duplicates(statements, accounts)
+    _refuse_shared_accounts(conn, statements, accounts)
+    _refuse_stated_over_typed(conn, statements, accounts)
+
+
+def _refuse_stated_over_typed(
+    conn: sqlite3.Connection,
+    statements: Sequence[Statement],
+    accounts: Mapping[str, Mapping[str, int]],
+) -> None:
+    """A statement that says an account's balance or holdings, for an account figures were
+    typed into (its export said neither before): the two would stand side by side unchecked.
+    What was typed is removed first."""
+    for statement in statements:
+        extraction = statement.extraction
+        if not extraction.balances and extraction.holdings is None:
+            continue
+        for name, account in accounts[statement.filename].items():
+            if store.has_typed(conn, account):
+                msg = (
+                    f"{statement.filename} says what {name} has, and figures were typed for "
+                    "it: remove them with `finanze balance --remove` and `finanze position "
+                    "--remove`, then import it again"
+                )
+                raise StagingError(msg)
 
 
 def _counterparty_owner(txn: Transaction, others: Mapping[int, Patterns]) -> int | None:

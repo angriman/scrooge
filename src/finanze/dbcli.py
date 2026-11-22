@@ -241,7 +241,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("id", type=int, help="the statement, as `finanze statements` lists it")
     typed = commands.add_parser("balance", parents=[shared], help="type an account's balance")
     typed.add_argument(
-        "account", help="name of an account that has no statements, or of a pension fund"
+        "account",
+        help="an account without statements, a pension fund, or one an export that states no "
+        "balance feeds (Schwab)",
     )
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     typed.add_argument(
@@ -254,7 +256,11 @@ def _parser() -> argparse.ArgumentParser:
     held = commands.add_parser(
         "position", parents=[shared], help="type how many shares an account held"
     )
-    held.add_argument("account", help="name of an account that has no statements")
+    held.add_argument(
+        "account",
+        help="an account without statements, or one an export that states no holdings feeds "
+        "(Schwab)",
+    )
     held.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     held.add_argument("symbol", help="the ticker, as Yahoo knows it (e.g. AAPL, NESN.SW)")
     held.add_argument(
@@ -637,7 +643,7 @@ def _for_owner(session: _Session, args: argparse.Namespace, config: dict[str, ob
 
 
 def _typed(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:
-    """`balance` and `position`: what an account without statements held on a day.
+    """`balance` and `position`: what an account held on a day, where no statement says it.
 
     A day that is not over yet is refused: what was held at its end is not known.
     """

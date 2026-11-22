@@ -2374,3 +2374,28 @@ def test_a_typed_quantity_must_be_a_number_of_shares(
             conn, owner=OWNER, account="Broker", day=date(2026, 9, 1), holding=holding
         )
     assert rows(conn, "SELECT count(*) FROM positions") == [(0,)]
+
+
+def test_a_statement_that_says_what_typed_figures_said_is_refused(
+    conn: sqlite3.Connection,
+) -> None:
+    vest = txn("10", account="Schwab", currency="USD", source_file="schwab.csv")
+    staging.stage(conn, batch(statement("schwab", [vest], filename="schwab.csv")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    staging.type_balance(
+        conn,
+        owner=OWNER,
+        account="Schwab",
+        day=date(2026, 9, 30),
+        amount=Decimal(10),
+        currency="USD",
+    )
+    stating = statement(
+        "schwab",
+        [],
+        [CashBalance("Schwab", "USD", Decimal(10), Decimal(10))],
+        month=OCTOBER,
+        filename="later.csv",
+    )
+    with pytest.raises(staging.StagingError, match="figures were typed for it: remove them"):
+        staging.stage(conn, batch(stating, month=OCTOBER), NOW)
