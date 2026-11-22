@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from finanze.models import Extraction, PensionCertificate
+from scrooge.models import Extraction, PensionCertificate
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 

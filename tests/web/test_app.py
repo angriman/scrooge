@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.models import Kind
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.models import Kind
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close, stage_rows
 
@@ -37,7 +37,7 @@ ANNA = [txn("-60", date=date(2026, 7, 12), source_ref="1")]
 @pytest.fixture(scope="module")
 def database(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Lukas with July and August committed and September staged; Anna with July committed."""
-    path = tmp_path_factory.mktemp("web") / "finanze.db"
+    path = tmp_path_factory.mktemp("web") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     july = date(2026, 7, 1)

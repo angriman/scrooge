@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import staging
-from finanze.models import CashBalance
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge import staging
+from scrooge.models import CashBalance
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import PARTNER, PEOPLE, batch, statement, trade, txn
 from tests.web.builders import (
     BUILT,
@@ -35,7 +35,7 @@ WEB = Path(webapp.__file__).parent
 
 @pytest.fixture
 def database(tmp_path: Path) -> Path:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     household(path)
     return path
 
@@ -109,7 +109,7 @@ def test_each_person_has_a_draft_of_their_own(client: TestClient) -> None:
 
 
 def test_a_row_a_statement_categorizes_itself_has_no_menu(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     rows = [
@@ -284,7 +284,7 @@ def test_commit_gives_the_chosen_categories_then_commits_with_a_copy_from_before
     assert committed_files(database) == ["Lukas migros.csv", "Lukas migros.csv"]
     assert category_of(database, kiosk) == ("Regali", "manual")
     assert [copy.name for copy in (database.parent / "backups").iterdir()] == [
-        "finanze-20261012T093000.db"
+        "scrooge-20261012T093000.db"
     ]
     done = client.get(response.headers["location"])
     assert "1 statement committed: the other pages show them now." in text(done.text)
@@ -354,7 +354,7 @@ def test_a_commit_with_nothing_staged_says_so(client: TestClient, database: Path
     assert again.headers["location"] == f"{SITE}/import?owner=Anna&committed=0"
     assert "0 statements committed." in text(client.get(again.headers["location"]).text)
     assert [copy.name for copy in (database.parent / "backups").iterdir()] == [
-        "finanze-20261012T093000.db"
+        "scrooge-20261012T093000.db"
     ]
 
 

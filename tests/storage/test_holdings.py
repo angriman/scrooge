@@ -7,12 +7,12 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import staging
-from finanze.models import CashBalance, Holding, SecurityTrade
-from finanze.pipeline import Statement
-from finanze.storage import holdings, store
-from finanze.storage.holdings import Change, Mismatch, Step, timeline
-from finanze.validation import HoldingsMismatchError
+from scrooge import staging
+from scrooge.models import CashBalance, Holding, SecurityTrade
+from scrooge.pipeline import Statement
+from scrooge.storage import holdings, store
+from scrooge.storage.holdings import Change, Mismatch, Step, timeline
+from scrooge.validation import HoldingsMismatchError
 from tests.storage.helpers import (
     AUGUST,
     OCTOBER,

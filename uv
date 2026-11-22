@@ -1,5 +1,5 @@
 #!/bin/sh
-# uv kept in this folder, with everything it stores: `./uv sync`, `./uv run finanze ...`.
+# uv kept in this folder, with everything it stores: `./uv sync`, `./uv run scrooge ...`.
 #
 # The first run downloads uv itself into .local/bin, checked against the digests below. From
 # then on uv's cache, its Python, its tools and their caches are in .local/ as well: nothing
@@ -78,7 +78,7 @@ export XDG_CONFIG_HOME="$local/config"      # no ~/.config/uv; pyproject.toml's 
 export UV_PYTHON_PREFERENCE=only-managed    # a Python of its own, never the system's
 export PRE_COMMIT_HOME="$local/pre-commit"  # the git hooks' environments (make hooks runs them here)
 export XDG_CACHE_HOME="$local/xdg-cache"    # whatever else would cache in ~/.cache
-# The Tesseract of ./tesseract, once installed, before any other: what finanze reads scans with.
+# The Tesseract of ./tesseract, once installed, before any other: what scrooge reads scans with.
 # .local/ocr holds that one program, and nothing else of its conda environment.
 export PATH="$local/ocr:$PATH"
 

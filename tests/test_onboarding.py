@@ -1,4 +1,4 @@
-"""`finanze init`: the first run makes a setup in users/<name>/ that works as it is."""
+"""`scrooge init`: the first run makes a setup in users/<name>/ that works as it is."""
 
 import io
 import re
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from finanze import dbcli, onboarding
+from scrooge import dbcli, onboarding
 from tests.conftest import FILES, FIXTURES
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -40,20 +40,20 @@ def test_one_person_gets_a_setup_that_imports_and_commits_without_review(here: P
     home = here / "users" / "lukas"
     assert sorted(p.name for p in home.iterdir()) == [
         "categories.yaml",
-        "finanze.yaml",
         "instruments.yaml",
         "rules.yaml",
+        "scrooge.yaml",
         "statements",
     ]
     assert len(asked) == 4
-    assert f"Your setup is in {Path('users/lukas')}/:\n  finanze.yaml: written\n" in output
+    assert f"Your setup is in {Path('users/lukas')}/:\n  scrooge.yaml: written\n" in output
     assert "  1. Put your statement exports in users/lukas/statements/\n" in output
     # No --user: it is the only one.
-    assert "  2. finanze import users/lukas/statements\n" in output
+    assert "  2. scrooge import users/lukas/statements\n" in output
 
-    config = dbcli._config(home / "finanze.yaml")
+    config = dbcli._config(home / "scrooge.yaml")
     # Relative to the folder the commands run in, as every config's paths.
-    assert config["database"] == "users/lukas/finanze.db"
+    assert config["database"] == "users/lukas/scrooge.db"
     assert config["rules"] == ["users/lukas/rules.yaml"]
     assert config["instruments"] == "users/lukas/instruments.yaml"
     assert config["owner"] == "Lukas"
@@ -73,7 +73,7 @@ def test_one_person_gets_a_setup_that_imports_and_commits_without_review(here: P
     assert "need a category" not in out.getvalue()
     out = io.StringIO()
     assert dbcli.main(["commit"], out, now=lambda: NOW) == dbcli.OK, out.getvalue()
-    assert (home / "finanze.db").is_file()
+    assert (home / "scrooge.db").is_file()
     assert (home / "originals").is_dir()
 
 
@@ -95,13 +95,13 @@ def test_a_second_person_and_a_name_that_is_no_folder_name(here: Path) -> None:
     code, output, _ = init("Zoë Müller", "ZOE MULLER", "Ann", "ANN MEIER", "eur")
     assert code == dbcli.OK, output
     home = here / "users" / "zoe-muller"
-    config = dbcli._config(home / "finanze.yaml")
+    config = dbcli._config(home / "scrooge.yaml")
     assert config["owner"] == "Zoë Müller"
     assert config["owners"] == {
         "Zoë Müller": {"match": ["ZOE\\ MULLER"]},
         "Ann": {"match": ["ANN\\ MEIER"]},
     }
-    assert config["database"] == "users/zoe-muller/finanze.db"
+    assert config["database"] == "users/zoe-muller/scrooge.db"
     assert config["currency"] == "EUR"
 
 
@@ -112,12 +112,12 @@ def test_what_cannot_be_used_is_asked_again(here: Path) -> None:
     assert asked[0] == asked[1]  # the name, again
     assert asked[2] == asked[3]  # how it is printed, again
     assert asked[5] == asked[6]  # the currency, again
-    assert dbcli._config(here / "users" / "lukas" / "finanze.yaml")["currency"] == "USD"
+    assert dbcli._config(here / "users" / "lukas" / "scrooge.yaml")["currency"] == "USD"
 
 
 def test_a_name_whose_setup_exists_is_refused_and_nothing_changes(here: Path) -> None:
     assert init("Lukas", "LUKAS MEIER", "", "")[0] == dbcli.OK
-    config = here / "users" / "lukas" / "finanze.yaml"
+    config = here / "users" / "lukas" / "scrooge.yaml"
     before = config.read_text(encoding="utf-8")
     code, output, _ = init("LUKAS")
     assert code == dbcli.FAILED
@@ -139,22 +139,22 @@ def test_files_already_there_are_kept(here: Path) -> None:
 
 
 def test_a_config_from_before_users_is_pointed_out(here: Path) -> None:
-    (here / "finanze.yaml").write_text("database: user/finanze.db\n", encoding="utf-8")
+    (here / "scrooge.yaml").write_text("database: user/scrooge.db\n", encoding="utf-8")
     (here / "uv").write_text("#!/bin/sh\n", encoding="utf-8")
     assert init("Anna", "ANNA MEIER", "", "")[0] == dbcli.OK
     code, output, _ = init("Lukas", "LUKAS MEIER", "", "")
     assert code == dbcli.OK
-    assert output.startswith("Note: finanze.yaml is a setup made before users/ existed.")
+    assert output.startswith("Note: scrooge.yaml is a setup made before users/ existed.")
     # Two setups now: each command names the one it is about, through the folder's uv.
-    assert "  2. ./uv run --no-dev finanze import --user lukas users/lukas/statements\n" in output
+    assert "  2. ./uv run --no-dev scrooge import --user lukas users/lukas/statements\n" in output
 
 
 def test_with_a_config_here_the_next_steps_name_the_new_setup(here: Path) -> None:
-    (here / "finanze.yaml").write_text("database: user/finanze.db\n", encoding="utf-8")
+    (here / "scrooge.yaml").write_text("database: user/scrooge.db\n", encoding="utf-8")
     code, output, _ = init("Anna", "ANNA MEIER", "", "")
     assert code == dbcli.OK
-    assert "While it is there, it is the one `finanze` uses unless --user" in output
-    assert "  3. finanze commit --user anna" in output
+    assert "While it is there, it is the one `scrooge` uses unless --user" in output
+    assert "  3. scrooge commit --user anna" in output
 
 
 def test_the_starter_config_holds_every_answer() -> None:

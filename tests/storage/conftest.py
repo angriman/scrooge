@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from finanze.storage import db
+from scrooge.storage import db
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 

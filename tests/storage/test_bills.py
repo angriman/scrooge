@@ -3,7 +3,7 @@ from decimal import Decimal
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze.storage.bills import Event, fifo_costs
+from scrooge.storage.bills import Event, fifo_costs
 
 
 def test_the_oldest_lots_are_closed_first() -> None:

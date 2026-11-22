@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, txn
 from tests.web.builders import BUILT, close
 
@@ -25,7 +25,7 @@ ROWS = [
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
-    path = tmp_path_factory.mktemp("period") / "finanze.db"
+    path = tmp_path_factory.mktemp("period") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     close(conn, OWNER, (date(2026, 7, 1), date(2026, 8, 31)), ("migros", ROWS))

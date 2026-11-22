@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.cashflow import Grouping
-from finanze.models import Kind
-from finanze.query import Filter
-from finanze.web import forms
+from scrooge.cashflow import Grouping
+from scrooge.models import Kind
+from scrooge.query import Filter
+from scrooge.web import forms
 
 NOT_A_DAY = "is not a day, a month or a year like 2025-05-17 or 2025-05."
 

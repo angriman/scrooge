@@ -4,10 +4,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors import tastytrade
-from finanze.models import ControlTotal, Extraction, Kind, SecurityTrade
-from finanze.validation import check_balances
+from scrooge.errors import ExtractionError, UnsupportedStatementError
+from scrooge.extractors import tastytrade
+from scrooge.models import ControlTotal, Extraction, Kind, SecurityTrade
+from scrooge.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
 CSV = (FIXTURES / "tastytrade" / "transactions.csv").read_text(encoding="utf-8")

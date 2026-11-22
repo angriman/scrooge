@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import overview
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge import overview
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW
 from tests.test_overview import household
@@ -20,7 +20,7 @@ SITE = "http://127.0.0.1:8765"
 
 @pytest.fixture(scope="module")
 def database(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    path: Path = tmp_path_factory.mktemp("api") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("api") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     household(conn)
@@ -87,7 +87,7 @@ def test_net_worth_runs_day_by_day_with_its_parts(client: TestClient) -> None:
 
 
 def test_an_empty_database_has_nothing_to_show(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     conn.close()

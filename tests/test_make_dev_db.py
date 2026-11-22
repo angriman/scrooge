@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from finanze import dbcli, networth, overview
-from finanze.extractors import ocr, swisscard
-from finanze.storage import db
+from scrooge import dbcli, networth, overview
+from scrooge.extractors import ocr, swisscard
+from scrooge.storage import db
 from tests import make_dev_db
 from tests.conftest import FIXTURES
 
@@ -39,7 +39,7 @@ def build(folder: Path, tmp_path: Path) -> tuple[make_dev_db.Built, str]:
 @pytest.mark.usefixtures("scans")
 def test_both_people_every_kind_of_asset_and_a_chart(tmp_path: Path) -> None:
     built, said = build(tmp_path / "dev", tmp_path)
-    assert built.database == (tmp_path / "dev" / "finanze.db").resolve()
+    assert built.database == (tmp_path / "dev" / "scrooge.db").resolve()
     assert built.certificates
     assert "  Lukas: 6 statements committed\n" in said
     assert "  Anna: 6 statements committed\n" in said
@@ -67,7 +67,7 @@ def test_both_people_every_kind_of_asset_and_a_chart(tmp_path: Path) -> None:
 def test_the_config_next_to_it_serves_and_queries_it(tmp_path: Path) -> None:
     built, _ = build(tmp_path / "dev", tmp_path)
     assert built.serve() == (
-        f"uv run finanze serve --config {built.config} --rules {built.rules} "
+        f"uv run scrooge serve --config {built.config} --rules {built.rules} "
         f"--instruments {built.instruments}"
     )
     out = io.StringIO()
@@ -85,7 +85,7 @@ def test_its_rules_are_one_file_from_the_fixtures_and_the_starter(tmp_path: Path
     assert built.rules == tmp_path / "dev" / "rules.yaml"
     assert not (tmp_path / "dev" / "rules.local.yaml").exists()
     rules = built.rules.read_text(encoding="utf-8")
-    starter = Path(__file__).parents[1] / "src" / "finanze" / "starter"
+    starter = Path(__file__).parents[1] / "src" / "scrooge" / "starter"
     assert "VELOSHARE" in rules  # an invented shop of the fixtures
     generic = starter.joinpath("rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
     assert generic.rstrip("\n") in rules
@@ -121,14 +121,14 @@ def test_it_is_built_again_from_nothing(tmp_path: Path) -> None:
 def test_a_folder_it_did_not_make_is_never_emptied(tmp_path: Path) -> None:
     folder = tmp_path / "data"
     folder.mkdir()
-    database = folder / "finanze.db"
+    database = folder / "scrooge.db"
     database.write_bytes(b"a real database")
     with pytest.raises(make_dev_db.RefusedError, match="not made by make dev-db"):
         build(folder, tmp_path)
     assert database.read_bytes() == b"a real database"
-    assert sorted(p.name for p in folder.iterdir()) == ["finanze.db"]
+    assert sorted(p.name for p in folder.iterdir()) == ["scrooge.db"]
 
-    a_file = tmp_path / "finanze.db"
+    a_file = tmp_path / "scrooge.db"
     a_file.write_bytes(b"a file")
     with pytest.raises(make_dev_db.RefusedError, match="not made by make dev-db"):
         build(a_file, tmp_path)
@@ -140,16 +140,16 @@ def test_the_real_data_is_never_touched(tmp_path: Path, where: str) -> None:
     """Neither the real folder, nor one inside it, nor one it is inside of."""
     real = tmp_path / "real"
     real.mkdir()
-    (real / "finanze.db").write_bytes(b"the real one")
+    (real / "scrooge.db").write_bytes(b"the real one")
     with pytest.raises(make_dev_db.RefusedError, match="the real data is kept at"):
         build(tmp_path / where, tmp_path)
-    assert sorted(p.name for p in real.iterdir()) == ["finanze.db"]
-    assert (real / "finanze.db").read_bytes() == b"the real one"
+    assert sorted(p.name for p in real.iterdir()) == ["scrooge.db"]
+    assert (real / "scrooge.db").read_bytes() == b"the real one"
 
 
 def test_the_database_the_real_config_names_is_never_touched(tmp_path: Path) -> None:
-    config = tmp_path / "finanze.yaml"
-    config.write_text(f"database: {tmp_path / 'nas' / 'finanze.db'}\n", encoding="utf-8")
+    config = tmp_path / "scrooge.yaml"
+    config.write_text(f"database: {tmp_path / 'nas' / 'scrooge.db'}\n", encoding="utf-8")
     with pytest.raises(make_dev_db.RefusedError, match="the real data is kept at"):
         make_dev_db.build(tmp_path / "nas", io.StringIO(), now=NOW, real=(), config=config)
     assert not (tmp_path / "nas").exists()
@@ -160,8 +160,8 @@ def test_the_setups_in_users_and_the_databases_they_name_are_never_touched(
 ) -> None:
     setups = tmp_path / "users"
     (setups / "anna").mkdir(parents=True)
-    elsewhere = tmp_path / "elsewhere" / "finanze.db"
-    (setups / "anna" / "finanze.yaml").write_text(f"database: {elsewhere}\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere" / "scrooge.db"
+    (setups / "anna" / "scrooge.yaml").write_text(f"database: {elsewhere}\n", encoding="utf-8")
     monkeypatch.setattr(make_dev_db, "SETUPS", setups)
     none = tmp_path / "none.yaml"
     with pytest.raises(make_dev_db.RefusedError, match="the real data is kept at"):
@@ -171,10 +171,10 @@ def test_the_setups_in_users_and_the_databases_they_name_are_never_touched(
 
 def test_the_real_database_s_default_folder_is_refused(tmp_path: Path) -> None:
     out = io.StringIO()
-    target = Path("~/.local/share/finanze_db").expanduser()
+    target = Path("~/.local/share/scrooge_db").expanduser()
     assert make_dev_db.main([str(target)], out) == 1
     assert out.getvalue().startswith(f"error: {target.resolve()}: the real data is kept at")
-    assert make_dev_db.REAL[0] == Path("~/.local/share/finanze_db")
+    assert make_dev_db.REAL[0] == Path("~/.local/share/scrooge_db")
 
 
 def test_the_card_invoice_s_pdf_reads_back_as_its_text(tmp_path: Path) -> None:

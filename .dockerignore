@@ -16,11 +16,12 @@
 **/*.egg-info
 **/.DS_Store
 # Built in the image from frontend/, never taken from this folder.
-src/finanze/web/spa
+src/scrooge/web/spa
 frontend/node_modules
 frontend/.svelte-kit
 
 # Never, wherever they turn up.
+**/scrooge.yaml
 **/finanze.yaml
 **/rules.yaml
 **/rules.*.yaml
@@ -30,5 +31,5 @@ frontend/.svelte-kit
 **/*.db-*
 **/*.sqlite*
 
-# Except the starter files `finanze init` copies, which hold nothing personal.
-!src/finanze/starter/*.yaml
+# Except the starter files `scrooge init` copies, which hold nothing personal.
+!src/scrooge/starter/*.yaml

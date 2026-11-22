@@ -10,13 +10,13 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import networth, portfolio
-from finanze.models import Holding, Kind, SecurityTrade
-from finanze.networth import BILLS, ETFS, PENSION, STOCKS, LotTrade
-from finanze.portfolio import Portfolio, Position
-from finanze.storage import db, holdings, store
-from finanze.storage.bills import Event, fifo_costs, open_lots
-from finanze.storage.money import from_nano
+from scrooge import networth, portfolio
+from scrooge.models import Holding, Kind, SecurityTrade
+from scrooge.networth import BILLS, ETFS, PENSION, STOCKS, LotTrade
+from scrooge.portfolio import Portfolio, Position
+from scrooge.storage import db, holdings, store
+from scrooge.storage.bills import Event, fifo_costs, open_lots
+from scrooge.storage.money import from_nano
 from tests.storage.helpers import OCTOBER, OWNER, PARTNER, take_back
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate
 from tests.test_portfolio import agrees_with_net_worth, family

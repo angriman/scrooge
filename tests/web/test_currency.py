@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER
 from tests.test_networth import NOW
 from tests.test_overview import household
@@ -24,7 +24,7 @@ WEB = Path(webapp.__file__).parent
 
 @pytest.fixture(scope="module")
 def database(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    path: Path = tmp_path_factory.mktemp("currency") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("currency") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     household(conn)
@@ -86,7 +86,7 @@ def test_a_currency_chosen_is_remembered_and_the_page_shown_again_in_it(
     assert response.status_code == 303
     assert response.headers["location"] == f"/holdings?owner={OWNER}"
     cookie = response.headers["set-cookie"]
-    assert cookie.startswith("finanze_currency=CHF;")
+    assert cookie.startswith("scrooge_currency=CHF;")
     assert "HttpOnly" in cookie
     assert "Path=/" in cookie
     assert "SameSite=lax" in cookie
@@ -127,7 +127,7 @@ def test_a_currency_that_is_not_offered_is_refused_and_nothing_is_remembered(
 def test_a_remembered_currency_that_is_no_longer_offered_is_left_aside(
     client: TestClient,
 ) -> None:
-    client.cookies.set("finanze_currency", "XAU")
+    client.cookies.set("scrooge_currency", "XAU")
     page = client.get("/").text
     assert chosen(page) == "EUR"
     assert errors(page) == []
@@ -155,7 +155,7 @@ def test_the_configured_currency_is_shown_until_another_is_chosen(database: Path
     for path in PAGES:
         assert chosen(client.get(path, params={"owner": OWNER}).text) == "CHF"
     assert chosen(client.get("/", params={"currency": "USD"}).text) == "USD"  # asked for
-    client.cookies.set("finanze_currency", "GBP")
+    client.cookies.set("scrooge_currency", "GBP")
     assert chosen(client.get("/").text) == "GBP"  # chosen in the header
-    client.cookies.set("finanze_currency", "XAU")
+    client.cookies.set("scrooge_currency", "XAU")
     assert chosen(client.get("/").text) == "CHF"  # a choice no longer offered is left aside

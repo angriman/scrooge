@@ -5,10 +5,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze import months, staging
-from finanze.models import CashBalance, Kind
-from finanze.router import LABELS
-from finanze.storage import db
+from scrooge import months, staging
+from scrooge.models import CashBalance, Kind
+from scrooge.router import LABELS
+from scrooge.storage import db
 from tests.storage.helpers import (
     AUGUST,
     CLOSED_AT,

@@ -13,14 +13,16 @@ backups/
 # Generated: the NAS image folder, caches of runs
 output/
 # Personal: rules naming shops and people, what is held, own categories, account names.
-# Starters of the first three, holding nothing personal, are in src/finanze/starter/.
+# Starters of the first three, holding nothing personal, are in src/scrooge/starter/.
 /rules.yaml
 rules.*.yaml
 /instruments.yaml
 /categories.yaml
+scrooge.yaml
+# Its name before the project was scrooge, still in setups made then.
 finanze.yaml
-# The starter files `finanze init` copies hold nothing personal.
-!/src/finanze/starter/*.yaml
+# The starter files `scrooge init` copies hold nothing personal.
+!/src/scrooge/starter/*.yaml
 
 # Python
 __pycache__/
@@ -56,11 +58,11 @@ mutants/
 # Self-contained uv, its Python and caches (./uv)
 /.local/
 
-# Everything personal of each setup (finanze init): the config, rules, categories,
+# Everything personal of each setup (scrooge init): the config, rules, categories,
 # instruments, statements, the database, its originals and backups
 /users/
 
 # The frontend of its own, built by `make web` from frontend/
-/src/finanze/web/spa/
+/src/scrooge/web/spa/
 node_modules/
 /frontend/.svelte-kit/

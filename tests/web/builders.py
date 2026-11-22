@@ -13,12 +13,12 @@ from pathlib import Path
 from httpx2 import Response
 from starlette.testclient import TestClient
 
-from finanze import importing, staging
-from finanze.models import CashBalance, Kind, Transaction
-from finanze.pipeline import Month
-from finanze.staging import Batch
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge import importing, staging
+from scrooge.models import CashBalance, Kind, Transaction
+from scrooge.pipeline import Month
+from scrooge.staging import Batch
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.conftest import FILES, INSTRUMENTS_YAML, write_rules
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE, statement, txn
 
@@ -166,7 +166,7 @@ class Site:
 
     def __init__(self, folder: Path) -> None:
         self.folder = folder
-        self.database = folder / "data" / "finanze.db"
+        self.database = folder / "data" / "scrooge.db"
         self.database.parent.mkdir()
         conn = db.connect(self.database)
         db.migrate(conn, CLICKED)

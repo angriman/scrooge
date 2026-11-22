@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from finanze.storage import originals
+from scrooge.storage import originals
 
 INVOICE = b"%PDF-1.7 an invoice"
 EXPORT = b"Date;Amount\n2026-09-10;-12.00\n"
@@ -24,7 +24,7 @@ def inbox(tmp_path: Path) -> Path:
 
 
 def test_the_originals_are_kept_next_to_the_database(tmp_path: Path) -> None:
-    assert originals.folder_of(tmp_path / "data" / "finanze.db") == tmp_path / "data" / "originals"
+    assert originals.folder_of(tmp_path / "data" / "scrooge.db") == tmp_path / "data" / "originals"
 
 
 def test_a_file_the_database_knows_is_kept_under_its_digest(tmp_path: Path, inbox: Path) -> None:

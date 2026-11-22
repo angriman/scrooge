@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>finanze</title>
+	<title>scrooge</title>
 </svelte:head>
 
 {@render children()}

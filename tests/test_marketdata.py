@@ -8,11 +8,11 @@ from decimal import Decimal as D
 
 import pytest
 
-from finanze import marketdata, staging
-from finanze.marketdata import Refreshed
-from finanze.models import CashBalance, Holding, SecurityTrade
-from finanze.prices import Split
-from finanze.storage import db
+from scrooge import marketdata, staging
+from scrooge.marketdata import Refreshed
+from scrooge.models import CashBalance, Holding, SecurityTrade
+from scrooge.prices import Split
+from scrooge.storage import db
 from tests.fakes import FakeMaturities, FakeSource
 from tests.storage.helpers import AUGUST, SEPTEMBER, batch, rows, statement, trade
 

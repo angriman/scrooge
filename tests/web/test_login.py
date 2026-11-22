@@ -6,9 +6,9 @@ import pytest
 from httpx2 import Response
 from starlette.testclient import TestClient
 
-from finanze.storage import db
-from finanze.web import app as webapp
-from finanze.web import auth
+from scrooge.storage import db
+from scrooge.web import app as webapp
+from scrooge.web import auth
 from tests.web.builders import BUILT
 
 SITE = "http://127.0.0.1:8765"
@@ -29,7 +29,7 @@ class Clock:
 
 @pytest.fixture(scope="module")
 def database(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    path = tmp_path_factory.mktemp("login") / "finanze.db"
+    path = tmp_path_factory.mktemp("login") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     conn.close()
@@ -43,7 +43,7 @@ def clock() -> Clock:
 
 @pytest.fixture
 def client(database: Path, clock: Clock) -> TestClient:
-    app = webapp.create_app(database, clock, password=STORED, names=["finanze.home"])
+    app = webapp.create_app(database, clock, password=STORED, names=["scrooge.home"])
     return TestClient(app, base_url=SITE, follow_redirects=False)
 
 
@@ -117,8 +117,8 @@ def test_the_password_signs_in_and_leads_to_the_page_asked_for(client: TestClien
 
 
 def test_over_https_the_cookie_is_for_https_only(database: Path, clock: Clock) -> None:
-    app = webapp.create_app(database, clock, password=STORED, names=["finanze.home"])
-    client = TestClient(app, base_url="https://finanze.home", follow_redirects=False)
+    app = webapp.create_app(database, clock, password=STORED, names=["scrooge.home"])
+    client = TestClient(app, base_url="https://scrooge.home", follow_redirects=False)
     response = sign_in(client)
     assert "secure" in response.headers["set-cookie"].lower()
 
@@ -152,18 +152,18 @@ def test_a_session_ends_after_thirty_days(client: TestClient, clock: Clock) -> N
 
 
 def test_a_cookie_that_was_not_given_out_opens_nothing(client: TestClient) -> None:
-    client.cookies.set("finanze_session", "guessed")
+    client.cookies.set("scrooge_session", "guessed")
     assert client.get("/").status_code == 303
 
 
 def test_signing_out_ends_the_session_for_good(client: TestClient) -> None:
     sign_in(client)
-    session = client.cookies["finanze_session"]
+    session = client.cookies["scrooge_session"]
     out = client.post("/logout", data={"token": token(client.get("/months").text)})
     assert out.status_code == 303
     assert out.headers["location"] == "/login"
-    assert "finanze_session" not in client.cookies
-    client.cookies.set("finanze_session", session)  # a copy someone kept
+    assert "scrooge_session" not in client.cookies
+    client.cookies.set("scrooge_session", session)  # a copy someone kept
     assert client.get("/").status_code == 303
 
 
@@ -190,17 +190,17 @@ def test_signing_in_never_leads_to_another_site(client: TestClient, then: str) -
 
 
 def test_the_app_answers_under_the_names_it_was_given(client: TestClient) -> None:
-    named = {"host": "finanze.home:8765"}
+    named = {"host": "scrooge.home:8765"}
     assert client.get("/login", headers=named).status_code == 200
     assert client.get("/login", headers={"host": "other.home"}).status_code == 400
     form = {"token": token(client.get("/login").text), "password": WORDS}
-    sent = client.post("/login", data=form, headers=named | {"origin": "http://finanze.home:8765"})
+    sent = client.post("/login", data=form, headers=named | {"origin": "http://scrooge.home:8765"})
     assert sent.status_code == 303
 
 
 def test_other_names_without_a_password_are_refused(database: Path) -> None:
     with pytest.raises(ValueError, match="not served under other names without a password"):
-        webapp.create_app(database, names=["finanze.home"])
+        webapp.create_app(database, names=["scrooge.home"])
     with pytest.raises(auth.MalformedDigestError):
         webapp.create_app(database, password=WORDS)  # the words themselves, not their digest
 

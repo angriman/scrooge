@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from finanze.errors import ExtractionError, OcrUnavailableError
-from finanze.extractors import axa, ocr, servisa
+from scrooge.errors import ExtractionError, OcrUnavailableError
+from scrooge.extractors import axa, ocr, servisa
 from tests.extractors.golden import FIXTURES, assert_certificate_matches_golden
 
 AXA = FIXTURES / "axa" / "certificate.pdf"

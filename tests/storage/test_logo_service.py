@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from finanze.storage import logos, store
+from scrooge.storage import logos, store
 
 NOW = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg"/>'

@@ -1,39 +1,39 @@
 # The app on the NAS
 
-A container that runs `finanze serve` over the one database: statements are imported and
+A container that runs `scrooge serve` over the one database: statements are imported and
 committed from the pages (or with `docker exec`, below), prices are fetched there, and the
 other machines only look at it. The Mac is for development, with a test database
 (`make dev-db`).
 
 Meant for a Synology NAS with an x86-64 processor and Container Manager. Paths and names
-below are placeholders: `/volume1/docker/finanze` on the NAS, `nas.example.ts.net` for what
+below are placeholders: `/volume1/docker/scrooge` on the NAS, `nas.example.ts.net` for what
 the devices call it.
 
 ## What is where
 
-| On the NAS, in `/volume1/docker/finanze/` | What |
+| On the NAS, in `/volume1/docker/scrooge/` | What |
 |---|---|
 | `compose.yaml` | copied once from `deploy/compose.yaml` and adapted |
 | `data/` | everything personal, mounted read-write as `/data` (below) |
 
 | In `data/` | What |
 |---|---|
-| `finanze.yaml` | the config (below) |
-| `finanze.db` | the database |
+| `scrooge.yaml` | the config (below) |
+| `scrooge.db` | the database |
 | `backups/` | a copy of the database before every commit and before a new schema |
 | `originals/` | every statement imported, as it came |
 | `rules.yaml`, `rules.<owner>.yaml` | the category rules, both people's and each one's |
 | `categories.yaml` | the categories added to the built-in ones |
 | `instruments.yaml` | the asset tab of what is held, bill maturities, price symbols |
 
-The image holds only the code. `src/finanze/starter/` in the project has a starting point for
-the three YAML files that are not the config (`finanze init` makes a setup from them on the
+The image holds only the code. `src/scrooge/starter/` in the project has a starting point for
+the three YAML files that are not the config (`scrooge init` makes a setup from them on the
 Mac: its files can be copied here as they are).
 
-`finanze.yaml` on the NAS:
+`scrooge.yaml` on the NAS:
 
 ```yaml
-database: /data/finanze.db
+database: /data/scrooge.db
 owners:                        # as on the Mac
   ...
 account_labels:                # as on the Mac, if any
@@ -41,7 +41,7 @@ account_labels:                # as on the Mac, if any
 serve:
   host: 0.0.0.0                # inside the container; compose.yaml says what the NAS publishes
   names: [nas.example.ts.net]  # every name or address typed in a browser to reach it
-  password: scrypt$...         # the line `finanze password` prints
+  password: scrypt$...         # the line `scrooge password` prints
 ```
 
 Not `read_only` and not `publish`: this is the database itself, not a copy. The app refuses
@@ -50,13 +50,13 @@ to start beyond its own machine without the password, and answers only to the na
 named: the container runs in `/data`, where they are.
 
 The data folder must belong to the user `compose.yaml` names: the app writes there. In a
-terminal on the NAS: `sudo chown -R 1026:100 /volume1/docker/finanze/data` (the numbers of
+terminal on the NAS: `sudo chown -R 1026:100 /volume1/docker/scrooge/data` (the numbers of
 that user).
 
 ## The image is built by GitHub
 
 Every tag `v*` pushed to GitHub runs `make check` and, when it passes, builds the image and
-pushes it to GitHub's registry, private like the repository: `ghcr.io/<owner>/finanze:<tag>`
+pushes it to GitHub's registry, private like the repository: `ghcr.io/<owner>/scrooge:<tag>`
 and `:latest` (`.github/workflows/image.yml`; `<owner>` in lower case). The NAS only pulls
 it: nothing is built there, and no code or git is kept there. The image is built for x86-64,
 the NAS's processor.
@@ -86,7 +86,7 @@ Another name works too: `make nas-update NAS=<name>`. `make release` needs `gh`,
    sudo docker login ghcr.io -u <github-user>
    ```
 
-3. Copy `deploy/compose.yaml` to `/volume1/docker/finanze/` on the NAS (Finder or File
+3. Copy `deploy/compose.yaml` to `/volume1/docker/scrooge/` on the NAS (Finder or File
    Station) and adapt the three lines marked `PLACEHOLDER`: the image's owner, the data
    folder, and `user`, the numbers of the NAS user that owns it (`id <user>` in a terminal
    on the NAS prints them). Put the data in `data` next to it (the move itself:
@@ -95,11 +95,11 @@ Another name works too: `make nas-update NAS=<name>`. `make release` needs `gh`,
 4. On this machine, with `main` pushed, `make release VERSION=v1.0.0`: it tags `main`,
    pushes the tag and waits for the image.
 
-5. Container Manager > Project > Create: name `finanze`, path `/volume1/docker/finanze`,
+5. Container Manager > Project > Create: name `scrooge`, path `/volume1/docker/scrooge`,
    use the `compose.yaml` found there, and start. In a terminal on the NAS it is:
 
    ```sh
-   cd /volume1/docker/finanze
+   cd /volume1/docker/scrooge
    sudo docker compose up -d
    ```
 
@@ -114,25 +114,25 @@ A NAS that built the image from an `app/` folder before: steps 1 to 4 (in step 3
 What the pages do not do runs inside the container, in `/data`, as the container's user:
 
 ```sh
-sudo docker exec finanze finanze statements --owner Name
-sudo docker exec finanze finanze balance --owner Name "Account" 2026-10-31 1234.50 CHF
-sudo docker exec finanze finanze position --owner Name "Broker" 2026-10-31 ACME 120 USD
-sudo docker exec finanze finanze uncommit --owner Name 42
-sudo docker exec finanze finanze query --from 2026-09 --text rent
-sudo docker exec finanze finanze keep originals-to-add/
-sudo docker exec -it finanze finanze import --owner Name --review statements/
+sudo docker exec scrooge scrooge statements --owner Name
+sudo docker exec scrooge scrooge balance --owner Name "Account" 2026-10-31 1234.50 CHF
+sudo docker exec scrooge scrooge position --owner Name "Broker" 2026-10-31 ACME 120 USD
+sudo docker exec scrooge scrooge uncommit --owner Name 42
+sudo docker exec scrooge scrooge query --from 2026-09 --text rent
+sudo docker exec scrooge scrooge keep originals-to-add/
+sudo docker exec -it scrooge scrooge import --owner Name --review statements/
 ```
 
 A path given to a command is a path inside the container: under `/data`.
 
 ## Prices, every day
 
-`finanze prices` is the one command that goes online (D10). DSM > Control Panel > Task
+`scrooge prices` is the one command that goes online (D10). DSM > Control Panel > Task
 Scheduler > Create > Scheduled Task > User-defined script, user `root`, daily after the
 markets close (say 23:30), script:
 
 ```sh
-/usr/local/bin/docker exec finanze finanze prices
+/usr/local/bin/docker exec scrooge scrooge prices
 ```
 
 By its path: a scheduled task has no login shell, and DSM's `docker` is not on its `PATH`.
@@ -152,7 +152,7 @@ make nas-update                 # on the NAS: pull it, restart, drop the image i
 `nas-update` asks for the DSM password (`sudo`). It is, on the NAS:
 
 ```sh
-cd /volume1/docker/finanze
+cd /volume1/docker/scrooge
 sudo docker compose pull
 sudo docker compose up -d
 sudo docker image prune -f
@@ -169,14 +169,14 @@ memory.
 
 ## Looking at it
 
-Container Manager > Container > finanze shows the state (`healthy` once `/login`
+Container Manager > Container > scrooge shows the state (`healthy` once `/login`
 answers) and, under Log, what the app printed. In a terminal:
 
 ```sh
-cd /volume1/docker/finanze
+cd /volume1/docker/scrooge
 sudo docker compose ps            # running, healthy
 sudo docker compose logs -f       # what it printed; Ctrl-C to leave
-sudo docker compose restart       # after changing finanze.yaml
+sudo docker compose restart       # after changing scrooge.yaml
 sudo docker compose down          # stop and remove the container; the data stays
 ```
 
@@ -189,10 +189,10 @@ With a container engine here, the same `Dockerfile` builds the image for the NAS
 the project folder:
 
 ```sh
-docker build --platform linux/amd64 -t finanze:latest .
-docker save finanze:latest | gzip > output/finanze-image.tar.gz
+docker build --platform linux/amd64 -t scrooge:latest .
+docker save scrooge:latest | gzip > output/scrooge-image.tar.gz
 ```
 
 Then Container Manager > Image > Action > Import > Add From File, or
-`sudo docker load -i finanze-image.tar.gz` on the NAS, and `image: finanze:latest` in
+`sudo docker load -i scrooge-image.tar.gz` on the NAS, and `image: scrooge:latest` in
 `compose.yaml`.

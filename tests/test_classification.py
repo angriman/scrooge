@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from finanze import categories
-from finanze.classification import (
+from scrooge import categories
+from scrooge.classification import (
     Instrument,
     UnknownInstrumentError,
     UnknownMaturityError,
@@ -21,8 +21,8 @@ from finanze.classification import (
     uncategorized,
     unmatched,
 )
-from finanze.errors import ConfigError
-from finanze.models import Kind, SecurityTrade, Transaction
+from scrooge.errors import ConfigError
+from scrooge.models import Kind, SecurityTrade, Transaction
 
 
 def _txn(

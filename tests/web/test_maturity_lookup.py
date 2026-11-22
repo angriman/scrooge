@@ -4,7 +4,7 @@ from datetime import date
 
 from starlette.testclient import TestClient
 
-from finanze.classification import load_instruments
+from scrooge.classification import load_instruments
 from tests.conftest import INSTRUMENTS_YAML
 from tests.fakes import FakeMaturities
 from tests.web.builders import CLICKED, MATURED, Site

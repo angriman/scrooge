@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors import morganstanley
-from finanze.models import CashBalance, Extraction, Holding, Kind, PrintedValue, SecurityTrade
-from finanze.validation import check_balances
+from scrooge.errors import ExtractionError, UnsupportedStatementError
+from scrooge.extractors import morganstanley
+from scrooge.models import CashBalance, Extraction, Holding, Kind, PrintedValue, SecurityTrade
+from scrooge.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
 TEXT = (FIXTURES / "morganstanley" / "statement.txt").read_text(encoding="utf-8")

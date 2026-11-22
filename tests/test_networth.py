@@ -10,8 +10,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from finanze import networth, query, staging
-from finanze.models import (
+from scrooge import networth, query, staging
+from scrooge.models import (
     CashBalance,
     ControlTotal,
     Holding,
@@ -20,7 +20,7 @@ from finanze.models import (
     SecurityTrade,
     Transaction,
 )
-from finanze.networth import (
+from scrooge.networth import (
     BILLS,
     CARD,
     CASH,
@@ -30,8 +30,8 @@ from finanze.networth import (
     STOCKS,
     MissingRateError,
 )
-from finanze.pipeline import Statement
-from finanze.storage import db, store
+from scrooge.pipeline import Statement
+from scrooge.storage import db, store
 from tests.storage.helpers import (
     AUGUST,
     OCTOBER,
@@ -479,7 +479,7 @@ def test_without_any_close_the_last_trade_price_stands_in_and_a_note_says_so(
         D(330),
     ]
     assert result.notes == (
-        "No close is stored for WIDG: valued at the price of the last trade. Run `finanze prices`.",
+        "No close is stored for WIDG: valued at the price of the last trade. Run `scrooge prices`.",
     )
 
 

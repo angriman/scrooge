@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors import revolut
-from finanze.models import CashBalance, Extraction, Kind
-from finanze.validation import check_balances
+from scrooge.errors import ExtractionError, UnsupportedStatementError
+from scrooge.extractors import revolut
+from scrooge.models import CashBalance, Extraction, Kind
+from scrooge.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
 TSV = (FIXTURES / "revolut" / "chf.tsv").read_text(encoding="utf-8")

@@ -3,10 +3,10 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors import finpension
-from finanze.models import CashBalance, Extraction, Kind, SecurityTrade
-from finanze.validation import check_balances
+from scrooge.errors import ExtractionError, UnsupportedStatementError
+from scrooge.extractors import finpension
+from scrooge.models import CashBalance, Extraction, Kind, SecurityTrade
+from scrooge.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
 TSV = (FIXTURES / "finpension" / "transactions.tsv").read_text(encoding="utf-8")

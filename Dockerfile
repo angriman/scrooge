@@ -1,11 +1,11 @@
-# The app on the NAS: `finanze serve` over the one database, which the pages and
-# `docker exec finanze finanze <command>` both change. How it is built, started and updated:
+# The app on the NAS: `scrooge serve` over the one database, which the pages and
+# `docker exec scrooge scrooge <command>` both change. How it is built, started and updated:
 # deploy/README.md.
 #
 # Everything personal is in /data, the volume, read and written there (see deploy/README.md):
-# finanze.yaml, the database and its backups, originals/, rules.yaml, rules.<owner>.yaml,
+# scrooge.yaml, the database and its backups, originals/, rules.yaml, rules.<owner>.yaml,
 # instruments.yaml and categories.yaml. The image holds only the code.
-# No network once it is built, except `finanze prices` (D10).
+# No network once it is built, except `scrooge prices` (D10).
 
 # The frontend at /app (frontend/, `make web`): built here, so that the image needs no Node.
 # Node 22 is the oldest SvelteKit takes; its lock first, it changes less than the code.
@@ -15,7 +15,7 @@ WORKDIR /web/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci
 COPY frontend ./
-# Into ../src/finanze/web/spa, as `make web` does: /web/src/finanze/web/spa.
+# Into ../src/scrooge/web/spa, as `make web` does: /web/src/scrooge/web/spa.
 RUN npm run build
 
 
@@ -26,7 +26,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 
 # The environment is copied into the next stage: real files, compiled now (nothing is
 # written when the image runs), built with the Python of the image, at its final path.
-ENV UV_PROJECT_ENVIRONMENT=/opt/finanze \
+ENV UV_PROJECT_ENVIRONMENT=/opt/scrooge \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
@@ -39,7 +39,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY src ./src
-COPY --from=web /web/src/finanze/web/spa ./src/finanze/web/spa
+COPY --from=web /web/src/scrooge/web/spa ./src/scrooge/web/spa
 RUN uv sync --locked --no-dev --no-editable
 
 
@@ -51,9 +51,9 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /opt/finanze /opt/finanze
+COPY --from=build /opt/scrooge /opt/scrooge
 
-ENV PATH=/opt/finanze/bin:$PATH \
+ENV PATH=/opt/scrooge/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -61,7 +61,7 @@ ENV PATH=/opt/finanze/bin:$PATH \
 # nothing in the image belongs to this one, so any other works as well.
 USER 10001:10001
 
-# The folder `finanze` runs in, `docker exec` included: finanze.yaml is found here, and so is
+# The folder `scrooge` runs in, `docker exec` included: scrooge.yaml is found here, and so is
 # anything it names by a relative path.
 WORKDIR /data
 EXPOSE 8765
@@ -71,8 +71,8 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/login', timeout=3)"]
 
-# Everything else comes from /data/finanze.yaml: the database, the rules, the instruments,
+# Everything else comes from /data/scrooge.yaml: the database, the rules, the instruments,
 # who may see the pages. Before listening, a database at an older schema is copied to
 # /data/backups and brought up to date; when that fails, nothing listens and the container
 # stops with the reason in its log.
-CMD ["finanze", "serve", "--config", "/data/finanze.yaml", "--port", "8765"]
+CMD ["scrooge", "serve", "--config", "/data/scrooge.yaml", "--port", "8765"]

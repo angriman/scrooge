@@ -6,8 +6,8 @@ from decimal import Decimal
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze.web import shapes
-from finanze.web.shapes import Mark, Piece, Reach, Rect
+from scrooge.web import shapes
+from scrooge.web.shapes import Mark, Piece, Reach, Rect
 
 D = Decimal
 

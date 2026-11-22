@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from finanze import classification, pipeline, staging
-from finanze.classification import Instrument, UnknownInstrumentError
-from finanze.extractors import ibkr
-from finanze.models import CashBalance, Holding, Kind, PrintedValue, Rate
-from finanze.storage import store
+from scrooge import classification, pipeline, staging
+from scrooge.classification import Instrument, UnknownInstrumentError
+from scrooge.extractors import ibkr
+from scrooge.models import CashBalance, Holding, Kind, PrintedValue, Rate
+from scrooge.storage import store
 from tests.conftest import INSTRUMENTS
 from tests.storage.conftest import NOW
 from tests.storage.helpers import OWNER, batch, rows, statement, trade

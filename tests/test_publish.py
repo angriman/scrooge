@@ -9,10 +9,10 @@ from typing import BinaryIO
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import publish, staging
-from finanze.models import CashBalance
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge import publish, staging
+from scrooge.models import CashBalance
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import AUGUST, CLOSED_AT, OWNER, SEPTEMBER, batch, close, statement, txn
 
 AUGUST_ROWS = [
@@ -28,7 +28,7 @@ SEPTEMBER_ROWS = [
 @pytest.fixture
 def database(tmp_path: Path) -> Path:
     """Lukas: August committed with two rows, September staged with two more."""
-    path = tmp_path / "data" / "finanze.db"
+    path = tmp_path / "data" / "scrooge.db"
     path.parent.mkdir()
     conn = db.connect(path)
     db.migrate(conn, CLOSED_AT)
@@ -70,16 +70,16 @@ def test_the_whole_database_is_published_as_one_file_and_what_it_holds_is_said(
 ) -> None:
     done = publish.run(conn, database, share)
     assert done == publish.Published(
-        path=share / "finanze.db",
-        size=(share / "finanze.db").stat().st_size,
+        path=share / "scrooge.db",
+        size=(share / "scrooge.db").stat().st_size,
         version=db.latest(),
         committed=2,
         staged=2,
         staged_files=1,
     )
     assert done.size > 0
-    assert names(share) == ["finanze.db"]
-    assert names(database.parent) == ["finanze.db"]  # the snapshot made here is gone
+    assert names(share) == ["scrooge.db"]
+    assert names(database.parent) == ["scrooge.db"]  # the snapshot made here is gone
     with db.reading(done.path) as copy:
         assert copy.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
         assert copy.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -95,18 +95,18 @@ def test_what_is_being_written_here_is_published_as_it_was_last_saved(
     publish.run(conn, database, share)
     writer.execute("COMMIT")
     writer.close()
-    assert owners(share / "finanze.db") == ["Anna", "Lukas"]
+    assert owners(share / "scrooge.db") == ["Anna", "Lukas"]
     publish.run(conn, database, share)  # again, over the copy that is there
-    assert owners(share / "finanze.db") == ["Anna", "Lukas", "Zoe"]
-    assert names(share) == ["finanze.db"]
+    assert owners(share / "scrooge.db") == ["Anna", "Lukas", "Zoe"]
+    assert names(share) == ["scrooge.db"]
 
 
-def test_the_copy_is_called_finanze_db_whatever_the_database_is_called(
+def test_the_copy_is_called_scrooge_db_whatever_the_database_is_called(
     database: Path, share: Path
 ) -> None:
     renamed = database.rename(database.with_name("ours.sqlite"))
     conn = db.connect(renamed)
-    assert publish.run(conn, renamed, share).path == share / "finanze.db"
+    assert publish.run(conn, renamed, share).path == share / "scrooge.db"
     conn.close()
 
 
@@ -122,7 +122,7 @@ def test_the_published_copy_is_shown_from_a_folder_nothing_can_be_written_in(
         assert client.get("/transactions").status_code == 200
     finally:
         share.chmod(0o755)
-    assert names(share) == ["finanze.db"]
+    assert names(share) == ["scrooge.db"]
 
 
 def test_a_folder_that_is_not_there_is_not_created(
@@ -135,7 +135,7 @@ def test_a_folder_that_is_not_there_is_not_created(
     (share / "a file").write_text("x", encoding="utf-8")
     with pytest.raises(publish.PublishError, match="a file: no such folder"):
         publish.run(conn, database, share / "a file")
-    assert names(database.parent) == ["finanze.db"]
+    assert names(database.parent) == ["scrooge.db"]
 
 
 def test_the_folder_of_the_database_itself_is_refused(
@@ -149,14 +149,14 @@ def test_the_folder_of_the_database_itself_is_refused(
     with pytest.raises(publish.PublishError, match="the database itself is kept there"):
         publish.run(conn, database, link)
     assert database.read_bytes() == before
-    assert names(database.parent) == ["finanze.db"]
+    assert names(database.parent) == ["scrooge.db"]
 
 
 def test_a_copy_that_fails_midway_leaves_the_one_published_before(
     conn: sqlite3.Connection, database: Path, share: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     publish.run(conn, database, share)
-    before = (share / "finanze.db").read_bytes()
+    before = (share / "scrooge.db").read_bytes()
     conn.execute("INSERT INTO owners (name) VALUES ('Zoe')")
 
     def cut_off(source: BinaryIO, target: BinaryIO) -> None:
@@ -172,14 +172,14 @@ def test_a_copy_that_fails_midway_leaves_the_one_published_before(
         f"{share}: nothing was published, and what was there is as it was: "
         "[Errno 28] No space left on device"
     )
-    assert names(share) == ["finanze.db"]
-    assert (share / "finanze.db").read_bytes() == before
-    assert owners(share / "finanze.db") == ["Anna", "Lukas"]
-    assert names(database.parent) == ["finanze.db"]
+    assert names(share) == ["scrooge.db"]
+    assert (share / "scrooge.db").read_bytes() == before
+    assert owners(share / "scrooge.db") == ["Anna", "Lukas"]
+    assert names(database.parent) == ["scrooge.db"]
 
     monkeypatch.undo()
     publish.run(conn, database, share)
-    assert owners(share / "finanze.db") == ["Anna", "Lukas", "Zoe"]
+    assert owners(share / "scrooge.db") == ["Anna", "Lukas", "Zoe"]
 
 
 def test_a_folder_that_cannot_be_written_in_is_said(
@@ -192,4 +192,4 @@ def test_a_folder_that_cannot_be_written_in_is_said(
     finally:
         share.chmod(0o755)
     assert names(share) == []
-    assert names(database.parent) == ["finanze.db"]
+    assert names(database.parent) == ["scrooge.db"]

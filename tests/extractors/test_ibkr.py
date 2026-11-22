@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors import ibkr
-from finanze.models import (
+from scrooge.errors import ExtractionError, UnsupportedStatementError
+from scrooge.extractors import ibkr
+from scrooge.models import (
     CashBalance,
     Extraction,
     Holding,
@@ -16,7 +16,7 @@ from finanze.models import (
     Rate,
     SecurityTrade,
 )
-from finanze.validation import MissingBalanceError, check_balances
+from scrooge.validation import MissingBalanceError, check_balances
 from tests.extractors.golden import assert_matches_golden
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "ibkr"

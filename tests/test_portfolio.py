@@ -10,11 +10,11 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from finanze import networth, portfolio, query, staging
-from finanze.models import Holding, Kind
-from finanze.networth import BILLS, ETFS, PENSION, STOCKS, MissingRateError
-from finanze.portfolio import Portfolio, Position
-from finanze.storage import db, store
+from scrooge import networth, portfolio, query, staging
+from scrooge.models import Holding, Kind
+from scrooge.networth import BILLS, ETFS, PENSION, STOCKS, MissingRateError
+from scrooge.portfolio import Portfolio, Position
+from scrooge.storage import db, store
 from tests.storage.helpers import (
     OCTOBER,
     OWNER,
@@ -130,7 +130,7 @@ def test_without_any_close_the_price_of_the_last_trade_is_shown_as_such(
     assert position.price_is_trade
     assert position.value == D(330)
     assert held.notes == (
-        "No close is stored for WIDG: valued at the price of the last trade. Run `finanze prices`.",
+        "No close is stored for WIDG: valued at the price of the last trade. Run `scrooge prices`.",
     )
 
 

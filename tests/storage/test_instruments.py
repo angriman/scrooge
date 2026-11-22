@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from finanze.storage import store
+from scrooge.storage import store
 
 
 def name(conn: sqlite3.Connection, number: int) -> str:

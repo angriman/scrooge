@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from finanze.web import auth
+from scrooge.web import auth
 
 NOW = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 WORDS = "correct horse battery"
@@ -39,7 +39,7 @@ def test_two_digests_of_one_password_differ_by_their_salt() -> None:
         STORED[:-1] + "z",  # not hexadecimal
     ],
 )
-def test_what_finanze_password_did_not_write_is_no_digest(stored: str) -> None:
+def test_what_scrooge_password_did_not_write_is_no_digest(stored: str) -> None:
     with pytest.raises(auth.MalformedDigestError, match="not a digest written by"):
         auth.check(stored)
     with pytest.raises(auth.MalformedDigestError):

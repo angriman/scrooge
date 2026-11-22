@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import spending
-from finanze.models import Kind
-from finanze.storage import db, store
-from finanze.web import app as webapp
+from scrooge import spending
+from scrooge.models import Kind
+from scrooge.storage import db, store
+from scrooge.web import app as webapp
 from tests import test_spending as spent
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.test_income import salaries
@@ -47,7 +47,7 @@ def before_cash_flow(page: str) -> str:
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """Lukas, January 2025 to August 2026: a salary every month, trading, a dividend."""
-    path: Path = tmp_path_factory.mktemp("analysis") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("analysis") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     close(
@@ -154,7 +154,7 @@ def test_sources_link_to_their_transactions(client: TestClient) -> None:
 def test_what_cannot_be_shown_is_said(client: TestClient) -> None:
     gbp = client.get("/analysis", params={"currency": "GBP"})
     assert gbp.status_code == 200
-    assert "No exchange rate is stored for GBP: run `finanze prices`." in text(gbp.text)
+    assert "No exchange rate is stored for GBP: run `scrooge prices`." in text(gbp.text)
     assert "Where income comes from" not in gbp.text
     later = client.get("/analysis", params={"from": "2030", "by": "decade", "currency": "CHF"})
     assert "&#39;decade&#39; is not week, month, quarter or year." in later.text
@@ -165,7 +165,7 @@ def test_what_cannot_be_shown_is_said(client: TestClient) -> None:
 @pytest.fixture(scope="module")
 def spender(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """The rows of the spending tests, and a bill that gives Casa a second leaf."""
-    path: Path = tmp_path_factory.mktemp("spending") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("spending") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     bill = txn("-90", date=date(2026, 7, 3), source_ref="bill", category="Utenze")

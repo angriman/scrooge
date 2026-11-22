@@ -11,10 +11,10 @@ import pytest
 import uvicorn
 from starlette.applications import Starlette
 
-from finanze import categories, cli, dbcli, networth, prices
-from finanze.extractors import ocr
-from finanze.storage import db, holdings, store
-from finanze.web import auth
+from scrooge import categories, cli, dbcli, networth, prices
+from scrooge.extractors import ocr
+from scrooge.storage import db, holdings, store
+from scrooge.web import auth
 from tests.conftest import FILES, FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.fakes import FakeSource
 
@@ -44,8 +44,8 @@ class Run:
 
     def __init__(self, folder: Path) -> None:
         self.folder = folder
-        self.database = folder / "data" / "finanze.db"
-        self.config = folder / "finanze.yaml"
+        self.database = folder / "data" / "scrooge.db"
+        self.config = folder / "scrooge.yaml"
         self.config.write_text(CONFIG.format(database=self.database), encoding="utf-8")
         self.rules = write_rules(folder)
         self.instruments = folder / "instruments.yaml"
@@ -104,7 +104,7 @@ def test_import_says_what_became_of_each_file_and_what_is_next(run: Run) -> None
     assert run.output == (
         "  staged tastytrade.csv (Tastytrade transactions)\n"
         "1 transactions staged for Lukas.\n"
-        "Next: finanze commit\n"
+        "Next: scrooge commit\n"
     )
     assert run.load() == dbcli.OK
     assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
@@ -112,7 +112,7 @@ def test_import_says_what_became_of_each_file_and_what_is_next(run: Run) -> None
     assert "  skipped ibkr.pdf (not a statement)\n" in run.output
     assert "  note: Revolut EUR includes rows with no balance to check against\n" in run.output
     assert "109 transactions staged for Lukas.\n" in run.output
-    assert run.output.endswith("Next: finanze commit\n")
+    assert run.output.endswith("Next: scrooge commit\n")
     assert run.count("transactions") > 0
     assert run.count("committed_transactions") == 0
 
@@ -122,7 +122,7 @@ def test_commit_saves_a_copy_first_and_uncommit_undoes_it(run: Run) -> None:
     run.load()
     staged = run.count("transactions") - 1  # all but the August purchase
     assert run("commit") == dbcli.OK
-    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    copy = run.database.parent / "backups" / "scrooge-20261006T120000.db"
     assert "  committed tastytrade.csv (2026-08-20 to 2026-08-20)\n" in run.output
     assert f"7 statements committed for Lukas. Copy from before: {copy}\n" in run.output
     assert copy.exists()
@@ -311,7 +311,7 @@ def load_pension(run: Run) -> int:
 def test_a_statement_of_several_months_is_one_statement(run: Run) -> None:
     assert load_pension(run) == dbcli.OK
     assert "  staged pillar 3a.tsv (finpension pillar 3a transactions)\n" in run.output
-    assert run.output.endswith("9 transactions staged for Lukas.\nNext: finanze commit\n")
+    assert run.output.endswith("9 transactions staged for Lukas.\nNext: scrooge commit\n")
 
     assert run("commit") == dbcli.OK
     assert "  committed pillar 3a.tsv (2026-07-06 to 2026-09-16)\n" in run.output
@@ -386,7 +386,7 @@ def test_pension_certificates_are_imported_and_what_was_read_is_shown(
         "  skipped cover letter.txt (not a statement)\n"
         + SERVISA_READ
         + AXA_READ
-        + "0 transactions staged for Lukas.\nNext: finanze commit\n"
+        + "0 transactions staged for Lukas.\nNext: scrooge commit\n"
     )
     assert (run.count("statement_files"), run.count("balances")) == (2, 2)
     assert run.count("transactions") == 0
@@ -414,7 +414,7 @@ def test_the_balance_a_yearly_certificate_opens_with_is_shown_too(
         "Scan 0001.pdf (mandatory part 12,345.65).\n"
         "  and 30,000.75 CHF on 2025-01-01, where its year began\n"
         "0 transactions staged for Lukas.\n"
-        "Next: finanze commit\n"
+        "Next: scrooge commit\n"
     )
     assert (run.count("statement_files"), run.count("balances")) == (1, 2)
 
@@ -509,7 +509,7 @@ def test_certificates_come_in_with_the_statements_of_other_months(
     assert "  staged Scan 0001.pdf (AXA pension certificate)\n" in run.output
     assert "  staged Dokument.pdf (Servisa pension certificate)\n" in run.output
     assert SERVISA_READ + AXA_READ in run.output
-    assert run.output.endswith("Next: finanze commit\n")
+    assert run.output.endswith("Next: scrooge commit\n")
     assert run("commit") == dbcli.OK
 
     # A certificate dated inside the days the statements cover is a statement like the others.
@@ -886,7 +886,7 @@ def test_shares_typed_before_the_export_is_imported_are_removed_first(run: Run) 
     export = _schwab(run)
     assert run.load(folder=export) == dbcli.FAILED
     assert "account 'Schwab' cannot have both statements and typed balances" in run.output
-    assert "finanze position --remove" in run.output
+    assert "scrooge position --remove" in run.output
     assert run("position", "--remove", "Schwab", "2026-10-01", "ACME") == dbcli.OK
     assert run.load(folder=export) == dbcli.OK
 
@@ -1061,10 +1061,10 @@ def serve_with(run: Run, monkeypatch: pytest.MonkeyPatch, serve: str) -> list[di
 @pytest.mark.parametrize(
     ("host", "names", "allowed"),
     [
-        ("192.168.1.20", "[finanze.home]", ("192.168.1.20", "finanze.home")),
-        ("0.0.0.0", "[finanze.home]", ("finanze.home",)),  # noqa: S104  # asked for in the config
-        ("'::'", "[finanze.home]", ("finanze.home",)),
-        ("127.0.0.1", "[finanze.home]", ("finanze.home",)),  # behind a proxy
+        ("192.168.1.20", "[scrooge.home]", ("192.168.1.20", "scrooge.home")),
+        ("0.0.0.0", "[scrooge.home]", ("scrooge.home",)),  # noqa: S104  # asked for in the config
+        ("'::'", "[scrooge.home]", ("scrooge.home",)),
+        ("127.0.0.1", "[scrooge.home]", ("scrooge.home",)),  # behind a proxy
         ("192.168.1.20", "", ("192.168.1.20",)),
     ],
 )
@@ -1109,7 +1109,7 @@ def test_a_password_alone_keeps_the_pages_on_this_machine_behind_it(
         ("{names: [a.home]}", "not served beyond this machine without a password"),
         ("{host: 192.168.1.20, password: hunter2}", "password: not a digest written by"),
         (f"{{host: 0.0.0.0, password: {STORED}}}", "names: say what the devices call"),
-        (f"{{host: finanze.home, password: {STORED}}}", "'finanze.home' is not an address"),
+        (f"{{host: scrooge.home, password: {STORED}}}", "'scrooge.home' is not an address"),
         (f"{{host: 192.168.1.20, names: a.home, password: {STORED}}}", "names: expected a list"),
         (f"{{port: 80, password: {STORED}}}", "'serve' takes 'host', 'names', 'password' and"),
         ("[192.168.1.20]", "'serve' takes 'host', 'names', 'password' and 'read_only'"),
@@ -1135,7 +1135,7 @@ def test_serve_shows_a_copy_as_it_is_without_writing_anywhere(
     assert serve_with(run, monkeypatch, "{read_only: true}") == []
     assert run.output == (
         f"error: {run.database}: schema version 1, where this code reads version "
-        f"{db.latest()}: publish it again, with the same version of finanze on both machines\n"
+        f"{db.latest()}: publish it again, with the same version of scrooge on both machines\n"
     )
     assert run.count("schema_version") == 1  # not brought up to date either
 
@@ -1155,10 +1155,10 @@ def test_serve_shows_a_copy_as_it_is_without_writing_anywhere(
     assert (app.state.read_only, app.state.database) == (True, run.database)
     assert run.output == (
         f"{run.database} is at http://127.0.0.1:8765 (Ctrl-C to stop)\n"
-        "  a copy, shown as 'finanze publish' left it: nothing here changes it\n"
+        "  a copy, shown as 'scrooge publish' left it: nothing here changes it\n"
     )
     assert run.database.read_bytes() == before
-    assert [file.name for file in run.database.parent.iterdir()] == ["finanze.db"]
+    assert [file.name for file in run.database.parent.iterdir()] == ["scrooge.db"]
 
     (how,) = serve_with(run, monkeypatch, "{read_only: false}")
     assert isinstance(how["app"], Starlette)
@@ -1206,7 +1206,7 @@ def test_serve_copies_a_database_at_an_older_schema_before_bringing_it_up_to_dat
     was = older(run, monkeypatch)
     (how,) = serve_with(run, monkeypatch, "{}")
     assert isinstance(how["app"], Starlette)
-    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    copy = run.database.parent / "backups" / "scrooge-20261006T120000.db"
     assert run.output == (
         f"{run.database}: schema version {was} brought up to {db.latest()}. "
         f"Copy from before: {copy}\n"
@@ -1228,7 +1228,7 @@ def test_serve_does_not_start_on_a_database_a_migration_fails_on(
     broken = (every[-1][0] + 1, "CREATE TABLE owners (x INTEGER) STRICT;")
     monkeypatch.setattr(db, "migrations", lambda: [*every, broken])
     assert serve_with(run, monkeypatch, "{}") == []  # never listens
-    copy = run.database.parent / "backups" / "finanze-20261006T120000.db"
+    copy = run.database.parent / "backups" / "scrooge-20261006T120000.db"
     assert run.output == (
         f"error: {run.database}: schema version {broken[0]} could not be reached (table "
         f"owners already exists): the database is at version {every[-1][0]}; copy from "
@@ -1248,7 +1248,7 @@ def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
 ) -> None:
     assert serve_with(run, monkeypatch, "{read_only: true}") == []
     assert run.output == (
-        f"error: {run.database}: no copy of the database to show: run 'finanze publish' "
+        f"error: {run.database}: no copy of the database to show: run 'scrooge publish' "
         "where the data is\n"
     )
     assert not run.database.parent.exists()  # an unmounted share is not filled in
@@ -1258,7 +1258,7 @@ def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
     assert serve_with(run, monkeypatch, "{read_only: true}") == []
     assert run.output.startswith(f"error: {run.database}: not a database (file is not a database)")
     assert run.output.endswith(
-        ": publish it again, with the same version of finanze on both machines\n"
+        ": publish it again, with the same version of scrooge on both machines\n"
     )
 
     run.database.write_bytes(b"")  # what SQLite takes for a database with nothing in it
@@ -1269,7 +1269,7 @@ def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
 
 @pytest.fixture
 def typed(monkeypatch: pytest.MonkeyPatch) -> Typed:
-    """Runs `finanze password` with those answers: its code, what it printed, what it asked."""
+    """Runs `scrooge password` with those answers: its code, what it printed, what it asked."""
 
     def run(*answers: str) -> tuple[int, str, list[str]]:
         out, left, asked = io.StringIO(), list(answers), []
@@ -1289,7 +1289,7 @@ def test_password_prints_the_line_for_the_config_and_never_the_password(typed: T
     assert code == dbcli.OK
     assert asked == ["Password: ", "Once more: "]
     first, line = printed.splitlines()
-    assert first == "Put this under 'serve' in finanze.yaml:"
+    assert first == "Put this under 'serve' in scrooge.yaml:"
     assert line.startswith("  password: scrypt$")
     assert auth.matches(WORDS, line.removeprefix("  password: "))
     assert WORDS not in printed
@@ -1319,13 +1319,13 @@ def test_publish_copies_the_database_to_the_folder_and_says_what_went(
 ) -> None:
     closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")  # no owner
     assert closed("publish", str(share)) == dbcli.OK
-    copy = share / "finanze.db"
+    copy = share / "scrooge.db"
     assert closed.output == (
         f"Published {copy}: {copy.stat().st_size:,} bytes, 111 committed transactions, "
         f"schema version {db.latest()}.\n"
     )
     # Only the database: not the config, the rules, the statements or the copies kept here.
-    assert [file.name for file in share.iterdir()] == ["finanze.db"]
+    assert [file.name for file in share.iterdir()] == ["scrooge.db"]
     assert (closed.database.parent / "backups").is_dir()
     with db.reading(copy) as conn:
         assert conn.execute("SELECT count(*) FROM committed_transactions").fetchone()[0] == 111
@@ -1355,11 +1355,11 @@ def test_publish_takes_the_folder_from_the_config_unless_one_is_named(
     with closed.config.open("a", encoding="utf-8") as config:
         config.write("publish: ~/share\n")
     assert closed("publish") == dbcli.OK
-    assert closed.output.startswith(f"Published {share / 'finanze.db'}: ")
+    assert closed.output.startswith(f"Published {share / 'scrooge.db'}: ")
     other = tmp_path / "other"
     other.mkdir()
     assert closed("publish", str(other)) == dbcli.OK
-    assert (other / "finanze.db").exists()
+    assert (other / "scrooge.db").exists()
 
     closed.config.write_text(f"database: {closed.database}\npublish: [a, b]\n", encoding="utf-8")
     assert closed("publish") == dbcli.FAILED
@@ -1393,11 +1393,11 @@ def test_what_publish_leaves_is_what_a_read_only_serve_shows(
 ) -> None:
     assert closed("publish", str(share)) == dbcli.OK
     shown = Run(share)  # the other machine: its own config, the copy and nothing else
-    shown.database = share / "finanze.db"
+    shown.database = share / "scrooge.db"
     (how,) = serve_with(shown, monkeypatch, "{read_only: true}")
     app = how["app"]
     assert isinstance(app, Starlette)
-    assert app.state.database == share / "finanze.db"
+    assert app.state.database == share / "scrooge.db"
     assert shown.output.endswith("nothing here changes it\n")
 
 
@@ -1554,11 +1554,11 @@ def test_keys_of_an_older_config_are_ignored(run: Run) -> None:
 
 
 def _setup(root: Path, name: str) -> Path:
-    """users/<name>/ with a config naming its database in it, as `finanze init` writes it."""
+    """users/<name>/ with a config naming its database in it, as `scrooge init` writes it."""
     home = root / "users" / name
     (home / "statements").mkdir(parents=True)
-    database = f"users/{name}/finanze.db"
-    (home / "finanze.yaml").write_text(CONFIG.format(database=database), encoding="utf-8")
+    database = f"users/{name}/scrooge.db"
+    (home / "scrooge.yaml").write_text(CONFIG.format(database=database), encoding="utf-8")
     return home
 
 
@@ -1573,7 +1573,7 @@ def test_the_only_setup_in_users_is_found(tmp_path: Path, monkeypatch: pytest.Mo
     write_rules(home)
     (home / "instruments.yaml").write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
     shutil.copy(FIXTURES / FILES["Migros.csv"], home / "statements" / "Migros.csv")
-    config = home / "finanze.yaml"
+    config = home / "scrooge.yaml"
     config.write_text(
         config.read_text(encoding="utf-8")
         + "rules: [users/lukas/rules.yaml]\ninstruments: users/lukas/instruments.yaml\n",
@@ -1583,7 +1583,7 @@ def test_the_only_setup_in_users_is_found(tmp_path: Path, monkeypatch: pytest.Mo
     code, output = _main("import", "users/lukas/statements")  # no --config
     assert code == dbcli.OK, output
     assert "  staged Migros.csv (Migros Bank account statement)\n" in output
-    assert (home / "finanze.db").is_file()
+    assert (home / "scrooge.db").is_file()
     assert (home / "originals").is_dir()
 
 
@@ -1597,36 +1597,36 @@ def test_with_several_setups_one_is_chosen_by_name(
         dbcli.FAILED,
         "error: users/ holds several setups (Lukas, anna): choose one with --user\n",
     )
-    # A folder's own name, whatever its case, and what `finanze init` makes of a name.
+    # A folder's own name, whatever its case, and what `scrooge init` makes of a name.
     for named in ("Lukas", "lukas", "LUKAS"):
         assert _main("statements", "--user", named) == (dbcli.OK, "No statements for Lukas.\n")
-    assert (tmp_path / "users" / "Lukas" / "finanze.db").is_file()
+    assert (tmp_path / "users" / "Lukas" / "scrooge.db").is_file()
     monkeypatch.setenv(dbcli.USER, "anna")
     assert _main("statements")[0] == dbcli.OK
-    assert (tmp_path / "users" / "anna" / "finanze.db").is_file()
+    assert (tmp_path / "users" / "anna" / "scrooge.db").is_file()
     assert _main("statements", "--user", "zoe") == (
         dbcli.FAILED,
-        "error: no setup 'zoe' in users/ (there are Lukas, anna): make one with 'finanze init'\n",
+        "error: no setup 'zoe' in users/ (there are Lukas, anna): make one with 'scrooge init'\n",
     )
 
 
 def test_the_config_here_comes_before_a_setup_in_users(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "finanze.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
+    (tmp_path / "scrooge.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
     _setup(tmp_path, "anna")
     monkeypatch.chdir(tmp_path)
     assert _main("statements") == (dbcli.OK, "No statements for Lukas.\n")
     assert (tmp_path / "data" / "f.db").is_file()
-    assert not (tmp_path / "users" / "anna" / "finanze.db").exists()
+    assert not (tmp_path / "users" / "anna" / "scrooge.db").exists()
     assert _main("statements", "--user", "anna")[0] == dbcli.OK  # unless --user says otherwise
-    assert (tmp_path / "users" / "anna" / "finanze.db").is_file()
+    assert (tmp_path / "users" / "anna" / "scrooge.db").is_file()
 
 
 def test_without_users_the_config_here_is_read_as_before(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "finanze.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
+    (tmp_path / "scrooge.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     assert _main("statements") == (dbcli.OK, "No statements for Lukas.\n")
     assert (tmp_path / "data" / "f.db").is_file()

@@ -5,7 +5,7 @@
 	const figures = $derived(data.shown.overview);
 </script>
 
-<h1>finanze</h1>
+<h1>scrooge</h1>
 
 <p>People: {data.session.people.map((person) => person.name).join(', ') || 'none yet'}</p>
 

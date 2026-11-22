@@ -8,9 +8,9 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from finanze import staging
-from finanze.extractors.common import month_start
-from finanze.models import (
+from scrooge import staging
+from scrooge.extractors.common import month_start
+from scrooge.models import (
     CashBalance,
     Extraction,
     Kind,
@@ -18,9 +18,9 @@ from finanze.models import (
     SecurityTrade,
     Transaction,
 )
-from finanze.pipeline import Certificate, Month, Statement
-from finanze.staging import Batch
-from finanze.storage import store
+from scrooge.pipeline import Certificate, Month, Statement
+from scrooge.staging import Batch
+from scrooge.storage import store
 
 AUGUST = date(2026, 8, 1)
 SEPTEMBER = date(2026, 9, 1)

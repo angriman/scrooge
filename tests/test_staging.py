@@ -11,14 +11,14 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import categories, classification, months, pipeline, staging
-from finanze.categories import Extra
-from finanze.extractors.migros import extract as extract_migros
-from finanze.models import CashBalance, Holding, Kind, TypedHolding
-from finanze.staging import Batch
-from finanze.storage import db, store
-from finanze.storage.money import PrecisionError, from_nano
-from finanze.validation import (
+from scrooge import categories, classification, months, pipeline, staging
+from scrooge.categories import Extra
+from scrooge.extractors.migros import extract as extract_migros
+from scrooge.models import CashBalance, Holding, Kind, TypedHolding
+from scrooge.staging import Batch
+from scrooge.storage import db, store
+from scrooge.storage.money import PrecisionError, from_nano
+from scrooge.validation import (
     CertificatesDisagreeError,
     ChainMismatchError,
     MissingLotsError,
@@ -1074,7 +1074,7 @@ def test_a_fund_typed_before_its_first_certificate_takes_it_once_what_was_typed_
     conn: sqlite3.Connection,
 ) -> None:
     _type_pension(conn, MARCH, "86000")  # a typed account, since no certificate is known
-    with pytest.raises(store.AccountMismatchError, match="finanze balance --remove"):
+    with pytest.raises(store.AccountMismatchError, match="scrooge balance --remove"):
         staging.stage(conn, certified(certificate(JANUARY, "84000.00")), NOW)
     staging.remove_typed(conn, owner=OWNER, account="Pillar 2 AXA", day=MARCH)
     assert rows(conn, "SELECT count(*) FROM accounts") == [(0,)]  # nothing was left of it
@@ -1414,7 +1414,7 @@ def test_taking_a_statement_back_and_importing_it_again_yields_the_same_database
 
 
 def test_a_commit_with_a_copy_keeps_the_copy_only_when_something_changed(tmp_path: Path) -> None:
-    database = tmp_path / "finanze.db"
+    database = tmp_path / "scrooge.db"
     conn = db.connect(database)
     db.migrate(conn, NOW)
     staging.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
@@ -1430,7 +1430,7 @@ def test_a_commit_with_a_copy_keeps_the_copy_only_when_something_changed(tmp_pat
 
     staging.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
     copy = commit()
-    assert copy == copies / "finanze-20261221T093000.db"
+    assert copy == copies / "scrooge-20261221T093000.db"
     before = db.connect(copy)
     assert rows(before, "SELECT committed_at FROM statement_files") == [(None,)]
     before.close()
@@ -1446,7 +1446,7 @@ def test_a_commit_with_a_copy_keeps_the_copy_only_when_something_changed(tmp_pat
 
 
 def test_two_commits_in_one_second_do_not_share_a_copy(tmp_path: Path) -> None:
-    database = tmp_path / "finanze.db"
+    database = tmp_path / "scrooge.db"
     conn = db.connect(database)
     db.migrate(conn, NOW)
     staging.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
@@ -1470,8 +1470,8 @@ def test_two_commits_in_one_second_do_not_share_a_copy(tmp_path: Path) -> None:
     second = staging.copy_before(conn, database, LATER)
     third = staging.copy_before(conn, database, LATER)
     assert [second.name, third.name] == [
-        "finanze-20261221T093000-2.db",
-        "finanze-20261221T093000-3.db",
+        "scrooge-20261221T093000-2.db",
+        "scrooge-20261221T093000-3.db",
     ]
     conn.close()
 
