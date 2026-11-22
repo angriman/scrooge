@@ -157,6 +157,8 @@ _CSV = (
     "counterparty_owner",
     "id",
 )
+_CSV_TEXT = ("counterparty", "description")  # words of the statement, not the app's own
+_FORMULA = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _everywhere(request: Request) -> dict[str, object]:
@@ -1585,6 +1587,14 @@ def _transactions(request: Request) -> Response:
     return _templates.TemplateResponse(request, "transactions.html", context)
 
 
+def _csv_cell(column: str, value: object) -> object:
+    """A spreadsheet runs a cell of statement text that begins like a formula (the payer
+    types the reference), so one quote before it keeps it text; amounts stay numbers."""
+    if column in _CSV_TEXT and isinstance(value, str) and value.startswith(_FORMULA):
+        return "'" + value
+    return value
+
+
 def _transactions_csv(request: Request) -> Response:
     """Every row the same address shows as a page, with its exact amount."""
     parsed = forms.transactions_filter(request.query_params)
@@ -1595,7 +1605,7 @@ def _transactions_csv(request: Request) -> Response:
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(_CSV)
-    writer.writerows([getattr(row, column) for column in _CSV] for row in rows)
+    writer.writerows([_csv_cell(column, getattr(row, column)) for column in _CSV] for row in rows)
     headers = {"content-disposition": 'attachment; filename="transactions.csv"'}
     return Response(out.getvalue(), media_type="text/csv; charset=utf-8", headers=headers)
 

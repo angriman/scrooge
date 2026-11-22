@@ -304,6 +304,30 @@ def test_the_result_can_be_saved_as_csv_with_exact_amounts(client: TestClient) -
     )
 
 
+def test_the_csv_does_not_let_statement_text_run_as_a_formula(tmp_path: Path) -> None:
+    hostile = [
+        txn("-12.50", counterparty='=HYPERLINK("http://x","y")', description="+SUM(A1)"),
+        txn("-3", counterparty="@cmd", description="-2+3", source_ref="2"),
+        txn("-4", counterparty="\tx", description="\rx", source_ref="3"),
+        txn("-5", counterparty="Konsum", description="a=b", source_ref="4"),
+    ]
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, BUILT)
+    close(conn, OWNER, (date(2026, 9, 1), date(2026, 9, 30)), ("migros", hostile))
+    conn.close()
+    client = TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
+    header, *lines = csv.reader(io.StringIO(client.get("/transactions.csv").text, newline=""))
+    named = [dict(zip(header, line, strict=True)) for line in lines]
+    cells = {line["amount"]: (line["counterparty"], line["description"]) for line in named}
+    assert cells == {
+        "-12.5": ('\'=HYPERLINK("http://x","y")', "'+SUM(A1)"),
+        "-3": ("'@cmd", "'-2+3"),
+        "-4": ("'\tx", "'\rx"),
+        "-5": ("Konsum", "a=b"),
+    }
+
+
 def test_the_csv_refuses_a_filter_it_cannot_read(client: TestClient) -> None:
     response = client.get("/transactions.csv", params={"from": "May"})
     assert response.status_code == 400
