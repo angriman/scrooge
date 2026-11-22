@@ -150,9 +150,83 @@ def test_an_account_opened_in_the_period_prints_only_its_closing_figures() -> No
     )
 
 
-def test_a_split_is_left_to_the_prices() -> None:
-    split = read(edited(LAST_ROW, f"{LAST_ROW}9/26/26 Stock Split GOOG, 20 for 1 Stock Split\n"))
-    assert split.transactions == read(TEXT).transactions
+SPLIT_ROW = "{} Stock Split GOOG, 20 for 1 Stock Split\n"
+RELEASE_BEFORE = "8/25/26 Release 4.200 160.5000\n"
+
+
+def with_closing_shares(text: str, shares: str) -> str:
+    return text.replace("Number of Shares 0.520 4.135", f"Number of Shares 0.520 {shares}")
+
+
+def test_a_split_multiplies_the_shares_held_and_is_no_transaction_of_its_own() -> None:
+    # After every other row: the 4.135 held are 82.700 at the end.
+    late = read(
+        with_closing_shares(edited(LAST_ROW, LAST_ROW + SPLIT_ROW.format("9/26/26")), "82.700")
+    )
+    assert late.transactions == read(TEXT).transactions
+    assert late.holdings is not None
+    assert late.holdings[0].quantity == Decimal("82.700")
+    assert late.values == read(TEXT).values
+    check_balances(late)
+
+
+def test_shares_booked_before_a_split_count_at_the_old_ratio_and_after_it_at_the_new() -> None:
+    # 0.520 + 4.210 + 2.105 - 6 = 0.835 before the split, 16.7 after it, then +4.2 - 4 + 3.1.
+    middle = read(
+        with_closing_shares(
+            edited(RELEASE_BEFORE, SPLIT_ROW.format("8/1/26") + RELEASE_BEFORE), "20.000"
+        )
+    )
+    assert middle.holdings is not None
+    assert middle.holdings[0].quantity == Decimal("20.000")
+    assert [(t.date, t.amount, t.description) for t in middle.transactions] == [
+        (t.date, t.amount, t.description) for t in read(TEXT).transactions
+    ]
+    # The same closing figure with the split after the release is another arithmetic.
+    with pytest.raises(ExtractionError, match=r"closes with 20\.000, but its rows leave 99\.8"):
+        read(
+            with_closing_shares(
+                edited(RELEASE_BEFORE, RELEASE_BEFORE + SPLIT_ROW.format("8/26/26")), "20.000"
+            )
+        )
+
+
+def test_a_split_of_shares_held_from_the_opening() -> None:
+    bare = "\n".join(
+        line
+        for line in TEXT.splitlines()
+        if not line[:1].isdigit() or not ("Release" in line or "Share Withdrawal" in line)
+    )
+    bare = bare.replace("Number of Shares 0.520 4.135", "Number of Shares 3.000 60.000")
+    bare = bare.replace("9/14/26 Dividend", SPLIT_ROW.format("9/2/26") + "9/14/26 Dividend")
+    split = read(bare)
+    assert split.holdings is not None
+    assert split.holdings[0].quantity == Decimal("60.000")
+    assert not any(isinstance(t, SecurityTrade) for t in split.transactions)
+
+
+def test_a_reverse_split_divides_the_shares_held() -> None:
+    reverse = edited(LAST_ROW, LAST_ROW + "9/26/26 Stock Split GOOG, 1 for 4 Stock Split\n")
+    assert read(with_closing_shares(reverse, "1.03375")).holdings is not None
+
+
+def test_a_split_that_does_not_lead_to_the_closing_shares_is_refused() -> None:
+    row = SPLIT_ROW.format("9/26/26")
+    with pytest.raises(ExtractionError, match=r"closes with 4\.135, but its rows leave 82\.7"):
+        read(edited(LAST_ROW, LAST_ROW + row))
+
+
+@pytest.mark.parametrize("row", ["Stock Split GOOG", "Stock Split GOOG, 0 for 1 Stock Split"])
+def test_a_split_without_a_ratio_is_refused(row: str) -> None:
+    with pytest.raises(ExtractionError, match="Stock Split"):
+        read(edited(LAST_ROW, f"{LAST_ROW}9/26/26 {row}\n"))
+
+
+def test_shares_withdrawn_on_the_last_day_after_a_split_are_in_the_new_count() -> None:
+    row = SPLIT_ROW.format("9/26/26") + "9/30/26 Share Withdrawal (60.000)\n"
+    late = read(with_closing_shares(edited(LAST_ROW, LAST_ROW + row), "82.700"))
+    assert late.holdings is not None
+    assert late.holdings[0].quantity == Decimal("22.700")
 
 
 def test_recognises_only_a_stock_plan_statement() -> None:
