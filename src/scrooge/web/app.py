@@ -637,7 +637,9 @@ async def _import(request: Request) -> Response:
         token = str(form.get("token", ""))
         owner = str(form.get("owner", ""))
         sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
-        uploads = [(Path(part.filename).name, await part.read()) for part in sent if part.filename]
+        uploads = [
+            (_upload_name(part.filename), await part.read()) for part in sent if part.filename
+        ]
     try:
         _own_token(request, token)
     except HTTPException:
@@ -757,6 +759,13 @@ async def _look_up(request: Request) -> Response:
     days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
     notice = f"{days} (TreasuryDirect), written in instruments.yaml."
     return await _staged(request, held.owner, held.uploads, notice)
+
+
+def _upload_name(sent: str) -> str:
+    """The name an upload is kept under: the last part of the one the browser sent, or
+    `unnamed` when nothing usable is left (`..` would be the folder itself)."""
+    name = Path(sent).name
+    return name if name not in {"", ".", ".."} else "unnamed"
 
 
 def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:

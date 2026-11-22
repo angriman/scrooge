@@ -115,9 +115,14 @@ def load_certificate(path: Path) -> Scanned | None:
 
 def _pdf_statement(path: Path, name: str) -> tuple[str, Extraction] | None:
     """A card invoice or a stock plan statement; None for any other PDF, and for one that is
-    no PDF."""
+    no PDF, unless its name says it is a card invoice: then it is refused."""
     if "swisscard" in path.name.lower():
-        return "swisscard", swisscard.extract_account(swisscard.read_text(path), name)
+        try:
+            text = swisscard.read_text(path)
+        except PdfminerException as exc:
+            problem = f"{name} is named as a card invoice but is not a readable PDF"
+            raise ExtractionError(problem) from exc
+        return "swisscard", swisscard.extract_account(text, name)
     if ocr.is_scan(path):  # images of paper, and a file that is no PDF after all, have no text
         return None
     try:
