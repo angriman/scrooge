@@ -45,6 +45,7 @@ from scrooge.models import CERTIFICATE_SOURCES
 from scrooge.storage import holdings
 from scrooge.storage.bills import Event, open_lots
 from scrooge.storage.money import from_nano
+from scrooge.storage.store import committed_or_typed
 
 BASE = "CHF"  # every stored rate is francs per unit of the currency
 CURRENCIES = ("EUR", "CHF", "USD", "GBP", "JPY")  # what net worth can be shown in
@@ -350,11 +351,11 @@ def _flows(conn: sqlite3.Connection, through: Mapping[int, date]) -> dict[int, d
     move the account's own statement calls internal.
     """
     rows = conn.execute(
-        "SELECT t.account_id, t.booking_date, t.amount_nano, t.kind, "
+        "SELECT t.account_id, t.booking_date, t.amount_nano, t.kind, "  # noqa: S608  # only the fixed condition of `store.committed_or_typed` is interpolated
         "f.source IS NULL OR f.source IS a.source AS own "
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
-        "WHERE (f.id IS NULL OR f.committed_at IS NOT NULL) ORDER BY t.booking_date"
+        f"WHERE {committed_or_typed('t.statement_file_id')} ORDER BY t.booking_date"
     ).fetchall()
     fed_by_another = {int(r[0]) for r in rows if not r[4]}
     flows: dict[int, dict[date, _Flow]] = defaultdict(dict)
@@ -381,9 +382,8 @@ def _anchors(conn: sqlite3.Connection, through: Mapping[int, date]) -> dict[int,
     day it is dated.
     """
     rows = conn.execute(
-        "SELECT b.account_id, b.date, b.amount_nano FROM balances b "
-        "LEFT JOIN statement_files f ON f.id = b.statement_file_id "
-        "WHERE f.id IS NULL OR f.committed_at IS NOT NULL ORDER BY b.date"
+        "SELECT b.account_id, b.date, b.amount_nano FROM balances b "  # noqa: S608  # only the fixed condition of `store.committed_or_typed` is interpolated
+        f"WHERE {committed_or_typed('b.statement_file_id')} ORDER BY b.date"
     ).fetchall()
     anchors: dict[int, dict[date, int]] = defaultdict(dict)
     for account, day_text, nano in rows:
@@ -553,13 +553,12 @@ def _closes(conn: sqlite3.Connection) -> dict[int, list[tuple[date, int, Decimal
     """
     best: dict[int, dict[date, tuple[int, Decimal]]] = defaultdict(dict)
     rows = conn.execute(
-        "SELECT instrument_id, date, close, CASE source WHEN 'manual' THEN 0 ELSE 2 END "
+        "SELECT instrument_id, date, close, CASE source WHEN 'manual' THEN 0 ELSE 2 END "  # noqa: S608  # only the fixed condition of `store.committed_or_typed` is interpolated
         "FROM prices "
         "UNION ALL SELECT instrument_id, date, close, 1 FROM committed_closes "
         "UNION ALL SELECT tr.instrument_id, t.booking_date, tr.price, 3 FROM trades tr "
         "JOIN transactions t ON t.id = tr.transaction_id "
-        "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
-        "WHERE tr.price IS NOT NULL AND (f.id IS NULL OR f.committed_at IS NOT NULL)"
+        f"WHERE tr.price IS NOT NULL AND {committed_or_typed('t.statement_file_id')}"
     )
     for instrument, day_text, close, rank in rows:
         day = date.fromisoformat(day_text)
@@ -609,11 +608,10 @@ class LotTrade:
 def lot_trades(conn: sqlite3.Connection) -> dict[tuple[int, int], list[LotTrade]]:
     """(account, instrument) -> its committed purchases and disposals, in the order lots close."""
     rows = conn.execute(
-        "SELECT t.account_id, tr.instrument_id, t.booking_date, t.id, tr.quantity, tr.cost_nano, "
+        "SELECT t.account_id, tr.instrument_id, t.booking_date, t.id, tr.quantity, tr.cost_nano, "  # noqa: S608  # only the fixed condition of `store.committed_or_typed` is interpolated
         "tr.price IS NOT NULL "
         "FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
-        "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
-        "WHERE f.id IS NULL OR f.committed_at IS NOT NULL "
+        f"WHERE {committed_or_typed('t.statement_file_id')} "
         # on one day, purchases come before disposals
         "ORDER BY t.booking_date, tr.quantity LIKE '-%', t.id"
     )

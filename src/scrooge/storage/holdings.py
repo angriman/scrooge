@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from scrooge.storage.store import committed_or_typed
 from scrooge.validation import HoldingsMismatchError
 
 
@@ -30,10 +31,7 @@ def _committed(file: str, wanted: bool) -> str:
     hand), as the dashboards read them. `file` is the column naming the row's statement."""
     if not wanted:
         return ""
-    return (
-        f"AND ({file} IS NULL OR EXISTS (SELECT 1 FROM statement_files cf "  # noqa: S608  # `file` is a column name given by the callers below
-        f"WHERE cf.id = {file} AND cf.committed_at IS NOT NULL)) "
-    )
+    return f"AND {committed_or_typed(file)} "
 
 
 # On one day: a split comes first (it applies to what was held overnight), then what was
