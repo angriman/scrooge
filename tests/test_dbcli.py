@@ -1267,6 +1267,94 @@ def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
     assert run.database.read_bytes() == b""
 
 
+def read_only(run: Run) -> None:
+    """This machine only shows the copy of the database it has."""
+    run.config.write_text(f"{run.config.read_text()}serve: {{read_only: true}}\n", encoding="utf-8")
+
+
+def everything_under(folder: Path) -> dict[Path, bytes]:
+    return {path: path.read_bytes() for path in sorted(folder.rglob("*")) if path.is_file()}
+
+
+WRITERS = [
+    ("import", "."),
+    ("commit",),
+    ("uncommit", "1"),
+    ("discard", "1"),
+    ("balance", "Savings", "2026-09-01", "10", "CHF"),
+    ("position", "Broker", "2026-09-01", "VTI", "1", "USD"),
+    ("keep", "statements"),
+    ("logo", "VTI", "vti.svg"),
+    ("prices",),
+    ("publish", "share"),
+]
+
+
+@pytest.mark.parametrize("command", WRITERS, ids=[words[0] for words in WRITERS])
+def test_a_machine_that_only_shows_a_copy_refuses_every_command_that_would_write(
+    closed: Run, command: tuple[str, ...]
+) -> None:
+    (closed.folder / "share").mkdir()
+    read_only(closed)
+    before = everything_under(closed.folder)
+    assert closed(*command) == dbcli.FAILED
+    assert closed.output == (
+        f"error: {closed.config}: serve: read_only: this machine only shows a copy of the "
+        f"database, so '{command[0]}' is refused here: run it where the data is\n"
+    )
+    assert everything_under(closed.folder) == before  # not migrated, backed up or written
+
+
+@pytest.mark.parametrize("command", WRITERS, ids=[words[0] for words in WRITERS])
+def test_a_missing_copy_is_not_made_by_a_command_that_would_write(
+    run: Run, command: tuple[str, ...]
+) -> None:
+    read_only(run)
+    assert run(*command) == dbcli.FAILED
+    assert "this machine only shows a copy" in run.output
+    assert not run.database.parent.exists()
+
+
+def test_a_machine_that_only_shows_a_copy_can_still_list_and_query_it(closed: Run) -> None:
+    assert closed("query") == dbcli.OK
+    wanted = closed.output
+    assert closed("statements") == dbcli.OK
+    listed = closed.output
+    read_only(closed)
+    closed.database.chmod(0o444)
+    closed.database.parent.chmod(0o555)  # where nothing can be written, like a share mounted so
+    before = everything_under(closed.folder)
+    try:
+        assert closed("query") == dbcli.OK
+        assert closed.output == wanted
+        assert closed("statements") == dbcli.OK
+        assert closed.output == listed
+    finally:
+        closed.database.parent.chmod(0o755)
+        closed.database.chmod(0o644)
+    assert everything_under(closed.folder) == before
+
+
+def test_a_copy_that_is_missing_or_at_another_schema_is_refused_by_what_only_reads(
+    run: Run,
+) -> None:
+    read_only(run)
+    for command in ("query", "statements"):
+        assert run(command) == dbcli.FAILED
+        assert "no copy of the database to show" in run.output
+        assert not run.database.parent.exists()
+    run.database.parent.mkdir()
+    conn = db.connect(run.database)
+    db.migrate(conn, NOW)
+    conn.execute("DELETE FROM schema_version WHERE version > 1")
+    conn.close()
+    before = everything_under(run.folder)
+    for command in ("query", "statements"):
+        assert run(command) == dbcli.FAILED
+        assert f"{run.database}: schema version 1, where this code reads" in run.output
+    assert everything_under(run.folder) == before
+
+
 @pytest.fixture
 def typed(monkeypatch: pytest.MonkeyPatch) -> Typed:
     """Runs `scrooge password` with those answers: its code, what it printed, what it asked."""

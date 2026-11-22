@@ -80,7 +80,9 @@ any of it: where the pages can be seen from is written down once, not typed.
 
 On a machine that only shows a copy of the database, `serve` also has `read_only: true`:
 the copy is never created, brought up to date or changed, wherever it lies, and the pages
-have no forms. A copy this code's schema does not fit is refused.
+have no forms. A copy this code's schema does not fit is refused. Of the commands only
+`serve`, `query` and `statements` run there, reading the copy as it is; every other one is
+refused before it opens anything.
 
 `publish` is how the copy gets there: into the folder named, or `publish` in the config, which
 is that machine's share as it is mounted on this one. The database is never used over the
@@ -152,6 +154,8 @@ COMMANDS = (
 )
 # Commands that are not about one person's statements.
 _READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish")
+# What a machine that only shows a copy of the database may run: the rest would write to it.
+_SHOWING = ("serve", "query", "statements")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 # Where the rules and the instruments are read from when neither a flag nor the config says.
 RULES = ["rules.yaml"]
@@ -529,11 +533,20 @@ class _Session:
 def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     out = console.out
     config = _config(args.config)
+    reach = _reach(config, args.config)
+    if reach.read_only and args.command not in _SHOWING:
+        msg = (
+            f"{args.config}: serve: read_only: this machine only shows a copy of the database, "
+            f"so '{args.command}' is refused here: run it where the data is"
+        )
+        raise ConfigError(msg)
     owner = "" if args.command in _READ_BOTH else _setting(args, config, "owner", "owner")
     path = Path(_setting(args, config, "db", "database")).expanduser()
     people = _people(config, args.config)
+    if reach.read_only and args.command != "serve":
+        _check_copy(path)  # a copy is read where it is, never opened to write
+        return _show(args, config, (path, owner, people), console, now)
     if args.command == "serve":  # the pages open the database themselves, read-only
-        reach = _reach(config, args.config)
         if reach.read_only:
             _check_copy(path)
         else:
@@ -566,6 +579,22 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         return _for_owner(session, args, config)
     finally:
         conn.close()
+
+
+def _show(
+    args: argparse.Namespace,
+    config: dict[str, object],
+    whose: tuple[Path, str, People],
+    console: _Console,
+    now: datetime,
+) -> int:
+    """`query` or `statements` on a copy, through a connection that cannot change it."""
+    path, owner, people = whose
+    with db.reading(path) as conn:
+        if args.command == "query":
+            return _query(conn, args, console.out)
+        labels = _labels(config, args.config)
+        return _statements(_Session(conn, path, owner, people, labels, console, now))
 
 
 def _open(path: Path, now: datetime, out: TextIO) -> sqlite3.Connection:
