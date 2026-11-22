@@ -241,7 +241,17 @@ def test_card_payments_are_matched_to_the_bank_debits_a_few_days_apart() -> None
 def test_a_payment_from_before_the_bank_statements_is_left_alone() -> None:
     bank = _bank(months=AUTUMN)
     august = _invoice(date(2026, 8, 1), (date(2026, 7, 26), "50"))
-    pipeline.process([("migros", bank), ("swisscard", august)], (), {})
+    month = pipeline.process([("migros", bank), ("swisscard", august)], (), {})
+    # No debit on the bank to match, and none is needed: July is before its statement starts.
+    # The payment is neither refused nor dropped nor changed.
+    [payment] = [t for t in month.transactions if t.account == "Swisscard"]
+    assert (payment.date, payment.amount) == (date(2026, 7, 26), Decimal(50))
+    assert payment.kind is Kind.INTERNAL
+    assert month.period == AUTUMN
+    # It is the date that spares it: the same payment inside the bank statement's days blocks.
+    inside = _invoice(date(2026, 8, 1), (date(2026, 8, 12), "50"))
+    with pytest.raises(CardBillMismatchError, match="lists a payment of 50 on 2026-08-12"):
+        pipeline.process([("migros", bank), ("swisscard", inside)], (), {})
 
 
 def test_a_card_payment_the_bank_never_made_blocks() -> None:

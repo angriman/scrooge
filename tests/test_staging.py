@@ -2134,8 +2134,10 @@ def test_rows_booked_on_another_day_are_matched_one_to_one(conn: sqlite3.Connect
     balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(80))
     export = statement("migros", found, [balance], month=JULY, end=date(2026, 8, 31), content="n")
     staged = staging.stage(conn, batch(export, month=JULY, end=date(2026, 8, 31)), LATER)
-    # four of the five match stored rows (a third "-5" has none left), "OTHER" is not stored
+    # three of the five match the three stored rows, one for one; the third "-5" and "OTHER"
+    # have none left to match: they are said as differences (July is committed), not staged
     assert staged.already == 3
+    assert staged.transactions == 0
     assert staged.differences == (
         "Migros 2026-07-10: KONSUM (-5 CHF) is in migros.csv and is not among the committed rows",
         "Migros 2026-07-11: OTHER (-3 CHF) is in migros.csv and is not among the committed rows",

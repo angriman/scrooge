@@ -2,7 +2,6 @@
 
 import sqlite3
 from collections.abc import Iterator
-from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -214,6 +213,45 @@ def test_a_net_worth_that_is_not_above_zero_has_no_shares_and_no_percent(
     assert shown.changes[0] == Change(30, D("-275.00"), D("-150.00"), None)
 
 
+def assert_share(share: Decimal | None, value: Decimal, whole: Decimal) -> None:
+    """`share` is `value` in percent of `whole`, to the cent: shared out so that the parts add
+    up to 100, so a part may be a cent off its own rounding but never more."""
+    assert share is not None
+    assert abs(share - value * 100 / whole) <= D("0.01")
+
+
+def test_the_shares_are_worked_out_by_hand_and_add_up_to_a_hundred(
+    conn: sqlite3.Connection,
+) -> None:
+    """Figures from the fixture's own prices: ETFs 18 WIDG at 50 and 20 BOLT at 25, stocks 3
+    GADG at 301.3 and 20 SPRK at 20.07, the bill 9,872.50, and what is left in cash."""
+    family(conn)
+    shown = overview.run(conn, currency="USD", top=1)
+    etfs, stocks, bills = D(18 * 50 + 20 * 25), D("3") * D("301.3") + 20 * D("20.07"), D("9872.50")
+    cash = D("1000") / D("0.8317") + D(8150) + D(9700)  # Migros in francs, then both IBKRs
+    total = (cash + bills + etfs + stocks).quantize(D("0.01"))
+    assert (etfs, stocks) == (D(1400), D("1305.30"))
+    assert total == shown.total == D("31630.16")
+    # Each over 31,630.16, to two places, adding up to exactly 100.
+    assert [(p.name, p.share) for p in shown.assets] == [
+        (CASH, D("60.23")),  # 19052.36 / 31630.16 = 0.60233
+        (BILLS, D("31.21")),  # 9872.50 / 31630.16 = 0.31213
+        (ETFS, D("4.43")),  # 1400 / 31630.16 = 0.04426
+        (STOCKS, D("4.13")),  # 1305.30 / 31630.16 = 0.04127
+    ]
+    assert sum(p.share or 0 for p in shown.assets) == HUNDRED
+    # Nothing is owed: what is held is all of it, with the same shares.
+    assert [(p.name, p.share) for p in shown.held] == [(p.name, p.share) for p in shown.assets]
+    assert [(p.name, p.value, p.share) for p in shown.people] == [
+        (PARTNER, D("10100.00"), D("31.93")),  # 10100 / 31630.16 = 0.31931
+        (OWNER, D("21530.16"), D("68.07")),  # 21530.16 / 31630.16 = 0.68069
+    ]
+    assert shown.securities.share == D("39.77")  # (9872.50 + 1400 + 1305.30) / 31630.16
+    # The same shares in francs: every line moves by the one rate.
+    in_francs = overview.run(conn, currency="CHF")
+    assert [p.share for p in in_francs.assets] == [p.share for p in shown.assets]
+
+
 @pytest.mark.parametrize("owner", [None, OWNER, PARTNER])
 @pytest.mark.parametrize("currency", ["EUR", "CHF", "USD"])
 def test_the_figures_are_those_of_net_worth_and_of_the_holdings_page(
@@ -229,23 +267,30 @@ def test_the_figures_are_those_of_net_worth_and_of_the_holdings_page(
     assert [part.name for part in shown.assets] == [
         asset for asset in networth.STACK if asset in worth.by("asset")
     ]
-    assert shown.held == tuple(
-        replace(part, share=held_share, then=())
-        for part, held_share in zip(
-            [part for part in shown.assets if part.value > 0],
-            [part.share for part in shown.held],
-            strict=True,
-        )
-    )
+    positive = [part for part in shown.assets if part.value > 0]
+    assert [(part.name, part.value) for part in shown.held] == [
+        (part.name, part.value) for part in positive
+    ]
+    held_total = sum((part.value for part in positive), D(0))
+    for part in shown.held:
+        assert part.then == ()
+        assert_share(part.share, part.value, held_total)
     assert sum(part.share or 0 for part in shown.held) == HUNDRED
+    for part in shown.assets:
+        assert_share(part.share, part.value, shown.total)
     assert shown.worth == worth
     if owner is None:
         assert sum(part.value for part in shown.people) == shown.total
         assert sum(part.share or 0 for part in shown.people) == HUNDRED
+        for person in shown.people:
+            assert_share(person.share, person.value, shown.total)
     rest = shown.rest or Rest(0, D(0), D(0))
     assert (shown.rest is None) == (owner == PARTNER)  # she holds one instrument only
     listed = sum(holding.value for holding in shown.top) + rest.value
     assert listed == shown.securities.value == held.total
     shares = sum(holding.share or 0 for holding in shown.top) + (rest.share or 0)
     assert shares == shown.securities.share
+    assert_share(shown.securities.share, held.total, shown.total)
+    for holding in shown.top:
+        assert_share(holding.share, holding.value, shown.total)
     assert len(shown.top) + rest.count == len({p.symbol for p in held.positions})
