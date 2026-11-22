@@ -153,6 +153,16 @@ def test_a_garbled_byte_order_mark_does_not_hide_the_format(tmp_path: Path) -> N
     assert loaded[0] == "finpension"
 
 
+def test_a_finpension_export_with_quoted_header_names_is_recognised(tmp_path: Path) -> None:
+    header, *rest = PENSION.read_text(encoding="utf-8").splitlines()
+    quoted = ";".join(f'"{name}"' if " " in name else name for name in header.split("\t"))
+    body = [line.replace("\t", ";") for line in rest]
+    (tmp_path / "transaction_report.csv").write_text("\n".join([quoted, *body]) + "\n")
+    loaded = router.load(tmp_path / "transaction_report.csv")
+    assert loaded is not None
+    assert loaded[0] == "finpension"
+
+
 def test_files_from_several_folders_get_names_that_tell_them_apart(folder: Path) -> None:
     other = folder / "old"
     (other / "Migros.csv").write_bytes((folder / "Migros.csv").read_bytes())

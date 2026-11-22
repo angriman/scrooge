@@ -34,7 +34,13 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
     ("migros", ('"Estratto conto da:"', "Estratto conto da:;"), migros.extract),
     (
         "finpension",
-        ("Date\tCategory\tAsset Name\t", "Date;Category;Asset Name;", "Date,Category,Asset Name,"),
+        (
+            "Date\tCategory\tAsset Name\t",
+            "Date;Category;Asset Name;",
+            "Date,Category,Asset Name,",
+            'Date;Category;"Asset Name";',  # newer exports quote the names that hold a space
+            'Date,Category,"Asset Name",',
+        ),
         finpension.extract,
     ),
 )

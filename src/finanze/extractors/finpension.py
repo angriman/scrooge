@@ -46,6 +46,8 @@ _CASH = {
     # Money in from the bank. A transfer, so it is not counted as invested twice: what counts
     # is the purchase of fund units that follows.
     "Deposit": (Kind.TRANSFER, "Investimenti"),
+    # Money moved in from another pillar 3a provider: a transfer like a deposit.
+    "Transfer": (Kind.TRANSFER, "Investimenti"),
     "Dividend": (Kind.DIVIDEND, "Dividendi"),
     "Interests": (Kind.INTEREST, "Interessi"),
     "Flat-rate administrative fee": (Kind.COMMISSION, "Commissioni"),
@@ -84,6 +86,10 @@ def extract(content: str, source_file: str) -> Extraction:
         what, fund = row["Category"], row["Asset Name"]
         if what not in _TRADES and what not in _CASH:
             msg = f"finpension row {n}: unsupported category {what!r}"
+            raise UnsupportedStatementError(msg)
+        if what == "Transfer" and (row["ISIN"] or row["Number of Shares"] or amount <= 0):
+            # Fund units moved, or money moved out, would leave holdings or net worth silently.
+            msg = f"finpension row {n}: only a transfer of cash in is supported"
             raise UnsupportedStatementError(msg)
         kind, category = _CASH.get(what, (Kind.SECURITY_TRADE, "Investimenti"))
         cash = Transaction(

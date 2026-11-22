@@ -58,6 +58,29 @@ def test_cash_rows_are_classified(result: Extraction) -> None:
     assert by_ref["7"].description == "Interests"
 
 
+def test_a_transfer_from_another_provider_is_a_transfer_like_a_deposit() -> None:
+    moved = finpension.extract(TSV.replace("\tDeposit\t", "\tTransfer\t", 1), source_file="t.tsv")
+    first = moved.transactions[0]
+    assert (first.kind, first.category, first.amount) == (
+        Kind.TRANSFER,
+        "Investimenti",
+        Decimal(1500),
+    )
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "2026-07-06\tTransfer\tALPHA\tCH0000000011\t1\tCHF\t1\t1500\t0\t0",  # fund units
+        "2026-07-06\tTransfer\t\t\t\tCHF\t1\t\t-1500\t-1500",  # money out
+    ],
+)
+def test_a_transfer_of_units_or_out_is_refused(row: str) -> None:
+    header = TSV.splitlines()[0]
+    with pytest.raises(UnsupportedStatementError, match="only a transfer of cash in"):
+        finpension.extract(f"{header}\n{row}\n", source_file="t.tsv")
+
+
 def test_a_report_of_one_month_and_other_delimiters_are_read() -> None:
     header, first = TSV.splitlines()[:2]
     for delimiter in (";", ","):
