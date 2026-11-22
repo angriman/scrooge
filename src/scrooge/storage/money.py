@@ -11,6 +11,15 @@ from decimal import Decimal
 _NANO = Decimal(1_000_000_000)  # brokers print commissions with up to nine decimals
 
 
+# The largest amount an 8-byte integer of billionths holds: 9223372036.854775807.
+LARGEST = Decimal(2**63 - 1).scaleb(-9)
+
+
+def fits(amount: Decimal) -> bool:
+    """Whether an amount, either sign, is one the database can store. `amount` is finite."""
+    return amount.copy_abs() <= LARGEST
+
+
 class PrecisionError(ValueError):
     """An amount has more than nine decimals: storing it would silently change it."""
 

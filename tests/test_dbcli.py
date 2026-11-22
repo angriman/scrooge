@@ -783,6 +783,25 @@ def test_a_balance_that_is_no_amount_is_refused(closed: Run, amount: str) -> Non
         closed("balance", "Kasse", "2026-09-10", amount, "EUR")
 
 
+@pytest.mark.parametrize("currency", ["EURO", "E", "12$", "E R", "€€€"])
+def test_a_balance_or_position_in_no_currency_is_refused(closed: Run, currency: str) -> None:
+    before = closed.count("currencies"), closed.count("accounts")
+    for command in (
+        ("balance", "Kasse", "2026-09-10", "500", currency),
+        ("position", "Broker", "2026-09-10", "ABCD", "1", currency),
+    ):
+        assert closed(*command) == dbcli.FAILED
+        assert closed.output == f"error: {currency!r} is not a currency code like CHF or USD\n"
+    assert (closed.count("currencies"), closed.count("accounts")) == before
+
+
+def test_an_amount_the_database_cannot_hold_is_refused(closed: Run) -> None:
+    with pytest.raises(SystemExit):
+        closed("balance", "Kasse", "2026-09-10", "1e30", "EUR")
+    with pytest.raises(SystemExit):
+        closed("query", "--min", "1E+400000")
+
+
 def test_a_day_after_today_cannot_be_typed(closed: Run) -> None:
     # Today is 6 October 2026 (NOW): 2062 was meant to be 2026.
     for command in (
@@ -1744,6 +1763,14 @@ def test_a_currency_the_pages_do_not_offer_is_refused(run: Run, currency: str) -
     assert run.output.endswith(
         f"error: {run.config}: 'currency' must be one of EUR, CHF, USD, GBP, JPY\n"
     )
+
+
+@pytest.mark.parametrize("broken", ["owners: [\n", "owners: {a: b\ncurrency: CHF\n"])
+def test_a_config_that_is_no_yaml_is_refused_with_its_file_and_line(run: Run, broken: str) -> None:
+    run.config.write_text(broken, encoding="utf-8")
+    assert run.load() == dbcli.FAILED
+    assert run.output.startswith(f"error: {run.config}: line ")
+    assert "Traceback" not in run.output
 
 
 def test_unmatched_must_name_a_category(run: Run) -> None:

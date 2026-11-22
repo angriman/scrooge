@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
+from starlette.convertors import Convertor, register_url_convertor
 from starlette.datastructures import URL, State, UploadFile
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
@@ -373,18 +374,18 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
                 methods=["POST"],
                 name="category",
             ),
-            Route("/statements/{number:int}", _statement, name="statement"),
-            Route("/statements/{number:int}/original", _original, name="original"),
+            Route("/statements/{number:id}", _statement, name="statement"),
+            Route("/statements/{number:id}/original", _original, name="original"),
             Route("/logos/{symbol}", _logo, name="logo"),
             Route("/holdings/logo", writing(_set_logo), methods=["POST"], name="set_logo"),
             Route(
-                "/statements/{number:int}/discard",
+                "/statements/{number:id}/discard",
                 writing(_discard),
                 methods=["POST"],
                 name="discard",
             ),
             Route(
-                "/statements/{number:int}/uncommit",
+                "/statements/{number:id}/uncommit",
                 writing(_uncommit),
                 methods=["POST"],
                 name="uncommit",
@@ -619,9 +620,33 @@ def _import_form(  # noqa: PLR0913  # what the page shows after each of the form
             "draft": months.draft(conn, owner),
             "choices": query.choices(conn, owner),
             "can_remember": state.rules is not None,
-            "committed": int(committed) if committed.isdecimal() else None,
+            "committed": _whole(committed),
         }
     return _templates.TemplateResponse(request, "import.html", context, status_code=status)
+
+
+_DIGITS = 18  # an id or a count has no more: SQLite's integers hold 19, Python reads far more
+
+
+class _IdConvertor(Convertor[int]):
+    """`{number:id}`: a stored id. Longer than any the database holds is no route, so a
+    page is not found, and the number is never read as an integer."""
+
+    regex = rf"[0-9]{{1,{_DIGITS}}}"
+
+    def convert(self, value: str) -> int:
+        return int(value)
+
+    def to_string(self, value: int) -> str:
+        return str(value)
+
+
+register_url_convertor("id", _IdConvertor())
+
+
+def _whole(text: str) -> int | None:
+    """A whole number from a query string; None when it is not one or too long to be asked."""
+    return int(text) if text.isdecimal() and len(text) <= _DIGITS else None
 
 
 def _import_page(request: Request) -> Response:
@@ -1570,7 +1595,8 @@ def _transactions(request: Request) -> Response:
     newest_first = result.rows[::-1]
     pages = max(1, -(-len(newest_first) // _PAGE))
     asked = request.query_params.get("page", "")
-    page = min(int(asked), pages) if asked.isdecimal() and int(asked) else 1
+    # a number too long to read is past the last page, as any number past it is
+    page = pages if len(asked) > _DIGITS and asked.isdecimal() else min(_whole(asked) or 1, pages)
     context = {
         "people": people,
         "owner": wanted.owner,
