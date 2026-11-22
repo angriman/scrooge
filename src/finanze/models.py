@@ -122,6 +122,19 @@ class Holding:
 
 
 @dataclass(frozen=True, slots=True)
+class TypedHolding:
+    """What `finanze position` types: how many of an instrument, by its ticker, in its
+    currency, on which asset tab. No statement says it: it is valued at the closes fetched."""
+
+    symbol: str
+    quantity: Decimal
+    currency: str
+    # Stocks or ETFs, for an instrument not known yet (Stocks without it); a known one keeps
+    # the type it has.
+    tab: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PrintedValue:
     """One line of the statement's own valuation at the end of its period (IBKR: Stock, Bonds)."""
 

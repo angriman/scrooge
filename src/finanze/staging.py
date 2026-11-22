@@ -31,7 +31,7 @@ from pathlib import Path
 from finanze import categories, classification
 from finanze.categories import Extra
 from finanze.classification import Patterns, names
-from finanze.models import CashBalance, Kind, Transaction
+from finanze.models import CashBalance, Kind, Transaction, TypedHolding
 from finanze.pipeline import Certificate, Month, Statement
 from finanze.storage import bills, db, holdings, pairs, store
 from finanze.storage.ids import transaction_ids
@@ -815,6 +815,37 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
             conn, owner_id, name=account, kind="manual", currency=currency, source=None
         )
         store.set_typed_balance(conn, account_id, day, amount)
+
+
+def type_holding(
+    conn: sqlite3.Connection,
+    *,
+    owner: str,
+    account: str,
+    day: date,
+    holding: TypedHolding,
+) -> None:
+    """Record how many of one instrument an account without statements held at the end of
+    `day`: shares held at a broker that has no statement this reads (decided 2026-11-21).
+
+    The account is a typed one, as `type_balance` makes, and never has statements. Made by
+    this, it is in the instrument's currency; it may hold instruments in other currencies
+    too. What it holds of the instrument counts from the first day typed, at each day's close,
+    and stays until another quantity is typed: the other instruments are not touched.
+    """
+    if not holding.quantity.is_finite() or holding.quantity < 0:
+        msg = f"{holding.quantity} is no number of shares held"
+        raise StagingError(msg)
+    with db.transaction(conn):
+        owner_id = store.ensure_owner(conn, owner)
+        found = store.account_of(conn, owner_id, account)
+        if found is not None and found.source is None and found.kind == "manual":
+            account_id = found.id
+        else:
+            account_id = store.ensure_account(
+                conn, owner_id, name=account, kind="manual", currency=holding.currency, source=None
+            )
+        store.set_typed_holding(conn, account_id, day, holding)
 
 
 def would_refuse(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:

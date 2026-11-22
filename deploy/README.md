@@ -116,6 +116,7 @@ What the pages do not do runs inside the container, in `/data`, as the container
 ```sh
 sudo docker exec finanze finanze statements --owner Name
 sudo docker exec finanze finanze balance --owner Name "Account" 2026-10-31 1234.50 CHF
+sudo docker exec finanze finanze position --owner Name "Broker" 2026-10-31 ACME 120 USD
 sudo docker exec finanze finanze uncommit --owner Name 42
 sudo docker exec finanze finanze query --from 2026-09 --text rent
 sudo docker exec finanze finanze keep originals-to-add/

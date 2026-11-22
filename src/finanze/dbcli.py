@@ -9,6 +9,8 @@ prices | query | serve | password | publish`: the database from the terminal.
     finanze discard <id>      remove a staged statement and everything it staged
     finanze balance <account> <YYYY-MM-DD> <amount> <currency>
                               type what an account without statements held on a day
+    finanze position <account> <YYYY-MM-DD> <symbol> <quantity> <currency>
+                              type how many shares of one stock or ETF it held on a day
     finanze keep <path>...    keep the files of statements imported before originals were kept
     finanze logo <symbol> <file>
                               keep an SVG or PNG as the logo of an instrument (--remove to drop it)
@@ -120,7 +122,7 @@ from finanze import (
 )
 from finanze.classification import UnknownInstrumentError
 from finanze.errors import ConfigError, ExtractionError
-from finanze.models import Kind
+from finanze.models import Kind, TypedHolding
 from finanze.staging import People, StagingError
 from finanze.storage import db, logos, originals, store
 from finanze.storage.db import MigrationError
@@ -136,6 +138,7 @@ COMMANDS = (
     "uncommit",
     "discard",
     "balance",
+    "position",
     "keep",
     "logo",
     "prices",
@@ -239,6 +242,22 @@ def _parser() -> argparse.ArgumentParser:
     typed.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
     typed.add_argument("amount", type=_amount, help="what it held at the end of that day")
     typed.add_argument("currency", help="CHF, EUR, ...")
+    held = commands.add_parser(
+        "position", parents=[shared], help="type how many shares an account held"
+    )
+    held.add_argument("account", help="name of an account that has no statements")
+    held.add_argument("day", type=date.fromisoformat, help="the day, as YYYY-MM-DD")
+    held.add_argument("symbol", help="the ticker, as Yahoo knows it (e.g. AAPL, NESN.SW)")
+    held.add_argument(
+        "quantity", type=_quantity, help="shares held at the end of that day; 0: none"
+    )
+    held.add_argument("currency", help="the currency it trades in: USD, CHF, ...")
+    held.add_argument(
+        "--tab",
+        choices=("Stocks", "ETFs"),
+        help="for an instrument not known yet (default: Stocks); a known one keeps its own",
+    )
+    _rules_flags(held)
     keep = commands.add_parser("keep", parents=[files], help="keep the files of stored statements")
     keep.add_argument(
         "paths",
@@ -335,10 +354,21 @@ def _last_day(text: str) -> date:
 
 def _amount(text: str) -> Decimal:
     try:
-        return Decimal(text)
+        amount = Decimal(text)
     except InvalidOperation:
+        amount = Decimal("NaN")
+    if not amount.is_finite():
         msg = f"{text!r} is not an amount like 1234.56"
-        raise argparse.ArgumentTypeError(msg) from None
+        raise argparse.ArgumentTypeError(msg)
+    return amount
+
+
+def _quantity(text: str) -> Decimal:
+    quantity = _amount(text)
+    if quantity < 0:
+        msg = f"{text!r} is no number of shares held: 0 or more"
+        raise argparse.ArgumentTypeError(msg)
+    return quantity
 
 
 def _find_config(args: argparse.Namespace) -> Path:
@@ -591,8 +621,26 @@ def _for_owner(session: _Session, args: argparse.Namespace, config: dict[str, ob
         gone = staging.discard(conn, owner=owner, file_id=args.id)
         out.write(f"{gone.filename} and what it staged are removed; its original is kept.\n")
         return OK
-    # what is left: `balance`
+    return _typed(session, args, config)
+
+
+def _typed(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:
+    """`balance` and `position`: what an account without statements held on a day.
+
+    A day that is not over yet is refused: what was held at its end is not known.
+    """
+    conn, owner, out = session.conn, session.owner, session.console.out
     currency = args.currency.upper()
+    today = session.now.date()
+    if args.day > today:
+        msg = f"{args.day} is after today ({today}): type what was held on a day that has begun"
+        raise StagingError(msg)
+    if args.command == "position":
+        symbol = _known_as(args.symbol.upper(), _instruments(args, config))
+        typed = TypedHolding(symbol, args.quantity, currency, args.tab)
+        staging.type_holding(conn, owner=owner, account=args.account, day=args.day, holding=typed)
+        out.write(f"{args.account} of {owner}: {args.quantity} {symbol} on {args.day}.\n")
+        return OK
     staging.type_balance(
         conn,
         owner=owner,
@@ -945,6 +993,18 @@ def _print_certificates(
                 "  note: nothing on this certificate adds up to that figure: compare it with "
                 "the paper\n"
             )
+
+
+def _known_as(symbol: str, instruments_file: Path) -> str:
+    """The symbol `instruments.yaml` knows an instrument by, for a symbol typed: the one whose
+    `price_symbol` it is (NESN for NESN.SW), or the new name of a ticker renamed. So a
+    position typed is the same instrument a statement books, not a second one."""
+    instruments = classification.load_instruments(instruments_file)
+    for name, entry in instruments.items():
+        if entry.price_symbol.upper() == symbol:
+            return name
+    renamed = instruments.get(symbol)
+    return renamed.ticker if renamed is not None and renamed.ticker else symbol
 
 
 def _files(paths: Sequence[Path]) -> list[Path]:

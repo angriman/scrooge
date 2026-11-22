@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 from finanze import categories, classification, months, pipeline, staging
 from finanze.categories import Extra
 from finanze.extractors.migros import extract as extract_migros
-from finanze.models import CashBalance, Holding, Kind
+from finanze.models import CashBalance, Holding, Kind, TypedHolding
 from finanze.staging import Batch
 from finanze.storage import db, store
 from finanze.storage.money import PrecisionError, from_nano
@@ -2257,3 +2257,15 @@ def test_holdings_of_an_account_with_no_days_left_are_not_stored_again(
         "SELECT a.name FROM positions p JOIN accounts a ON a.id = p.account_id ORDER BY 1",
     )
     assert held == [("IBKR EUR",)]
+
+
+@pytest.mark.parametrize("quantity", ["NaN", "Infinity", "-1"])
+def test_a_typed_quantity_must_be_a_number_of_shares(
+    conn: sqlite3.Connection, quantity: str
+) -> None:
+    holding = TypedHolding("ABCD", Decimal(quantity), "USD")
+    with pytest.raises(staging.StagingError, match="no number of shares held"):
+        staging.type_holding(
+            conn, owner=OWNER, account="Broker", day=date(2026, 9, 1), holding=holding
+        )
+    assert rows(conn, "SELECT count(*) FROM positions") == [(0,)]

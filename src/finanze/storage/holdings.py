@@ -34,15 +34,18 @@ def _committed(file: str, wanted: bool) -> str:
 
 
 # On one day: a split comes first (it applies to what was held overnight), then what was
-# booked that day, then what a statement says was held at its end.
-_SPLIT, _TRADE, _PRINTED = 0, 1, 2
+# booked that day, then what a statement says was held at its end, then what was typed.
+_SPLIT, _TRADE, _PRINTED, _TYPED = 0, 1, 2, 3
+_KNOWN = (_PRINTED, _TYPED)  # what says the quantity held, rather than moving it
 
 
 @dataclass(frozen=True, slots=True)
 class Change:
     """Something that moves the quantity held on `day`. `kind` is one of the three above:
     a split multiplies by `amount` and divides by `per` (kept apart: one for three is no
-    exact decimal), a trade adds `amount`, a statement says it is the quantity."""
+    exact decimal), a trade adds `amount`, a statement says it is the quantity, and so does a
+    quantity typed by hand (`finanze position`), which is never a mismatch: it is what was
+    held from then on."""
 
     day: date
     kind: int
@@ -103,6 +106,8 @@ def timeline(changes: Iterable[Change]) -> tuple[Decimal, list[Step], list[Misma
             quantity = quantity * change.amount / change.per
         elif change.kind == _TRADE:
             quantity += change.amount
+        elif change.kind == _TYPED:
+            quantity = change.amount
         else:
             if quantity != change.amount:
                 mismatches.append(Mismatch(change.day, change.amount, quantity))
@@ -119,7 +124,7 @@ def _opening(ordered: Sequence[Change]) -> Decimal:
 
     Zero when no statement prints the holdings: the trades are then all there is.
     """
-    first = next((n for n, change in enumerate(ordered) if change.kind == _PRINTED), None)
+    first = next((n for n, change in enumerate(ordered) if change.kind in _KNOWN), None)
     if first is None:
         return Decimal(0)
     quantity = ordered[first].amount
@@ -149,6 +154,16 @@ def held(
     ):
         changes[account, instrument].append(
             Change(date.fromisoformat(day), _TRADE, Decimal(quantity))
+        )
+    for account, instrument, day, quantity in conn.execute(
+        "SELECT p.account_id, p.instrument_id, p.date, p.quantity FROM positions p "
+        "JOIN accounts a ON a.id = p.account_id "
+        "WHERE p.source = 'manual' AND a.owner_id = coalesce(?, a.owner_id)",
+        (owner_id,),
+    ):
+        # Typed for one instrument: it says nothing of the account's others.
+        changes[account, instrument].append(
+            Change(date.fromisoformat(day), _TYPED, Decimal(quantity))
         )
     printed = _printed(conn, owner_id, committed=committed)
     for (account, day), quantities in printed.items():
@@ -194,7 +209,7 @@ def _printed(
     for account, day, instrument, quantity, unvested in conn.execute(
         "SELECT p.account_id, p.date, p.instrument_id, p.quantity, p.unvested FROM positions p "  # noqa: S608  # only fixed text is joined
         "JOIN accounts a ON a.id = p.account_id "
-        "WHERE a.owner_id = coalesce(?, a.owner_id) "
+        "WHERE p.source = 'statement' AND a.owner_id = coalesce(?, a.owner_id) "
         + _committed("p.statement_file_id", committed),
         (owner_id,),
     ):

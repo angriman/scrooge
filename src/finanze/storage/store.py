@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 
 from finanze import categories
-from finanze.models import Holding, PrintedValue, SecurityTrade, Transaction
+from finanze.models import Holding, PrintedValue, SecurityTrade, Transaction, TypedHolding
 from finanze.storage.money import from_nano, to_nano, to_text
 
 _CURRENCY_DECIMALS = 2
@@ -87,6 +87,25 @@ def ensure_account(  # noqa: PLR0913  # one argument per column
         msg = f"account {name!r} cannot have both statements and typed balances"
         raise AccountMismatchError(msg)
     return int(row["id"])
+
+
+@dataclass(frozen=True, slots=True)
+class Account:
+    """An account as it is stored: `source` None for one only ever typed."""
+
+    id: int
+    kind: str
+    currency: str
+    source: str | None
+
+
+def account_of(conn: sqlite3.Connection, owner: int, name: str) -> Account | None:
+    """The owner's account `name`, if there is one."""
+    row = conn.execute(
+        "SELECT id, kind, currency, source FROM accounts WHERE owner_id = ? AND name = ?",
+        (owner, name),
+    ).fetchone()
+    return None if row is None else Account(int(row[0]), row[1], row[2], row[3])
 
 
 def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra] = ()) -> None:
@@ -522,6 +541,31 @@ def set_typed_balance(conn: sqlite3.Connection, account: int, day: date, amount:
         "INSERT OR REPLACE INTO balances (account_id, date, amount_nano, source) "
         "VALUES (?, ?, ?, 'manual')",
         (account, day.isoformat(), to_nano(amount)),
+    )
+
+
+def set_typed_holding(
+    conn: sqlite3.Connection, account: int, day: date, holding: TypedHolding
+) -> None:
+    """What a typed account held of one instrument at the end of `day`, replacing an earlier
+    figure for that day. Valued at the closes `finanze prices` fetches for its symbol.
+
+    An instrument already known (from a statement, or typed before) is kept as it is: typing
+    never changes its type.
+    """
+    known = conn.execute(
+        "SELECT id FROM instruments WHERE symbol = ? AND currency = ?",
+        (holding.symbol, holding.currency),
+    ).fetchone()
+    instrument = (
+        int(known[0])
+        if known is not None
+        else instrument_id(conn, holding.symbol, holding.tab or "Stocks", holding.currency)
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO positions (account_id, instrument_id, date, quantity, source) "
+        "VALUES (?, ?, ?, ?, 'manual')",
+        (account, instrument, day.isoformat(), to_text(holding.quantity)),
     )
 
 

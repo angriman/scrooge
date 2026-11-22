@@ -13,7 +13,7 @@ from starlette.applications import Starlette
 
 from finanze import categories, cli, dbcli, networth, prices
 from finanze.extractors import ocr
-from finanze.storage import db
+from finanze.storage import db, holdings, store
 from finanze.web import auth
 from tests.conftest import FILES, FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.fakes import FakeSource
@@ -592,6 +592,182 @@ def closed(run: Run) -> Run:
     run.load()
     assert run("commit") == dbcli.OK
     return run
+
+
+def test_a_position_typed_for_an_account_without_statements_is_valued_at_its_closes(
+    closed: Run,
+) -> None:
+    """Shares at a broker no statement is read of: typed now and then, valued every day."""
+    assert closed("position", "Schwab", "2026-09-10", "abcd", "10", "usd") == dbcli.OK
+    assert closed.output == "Schwab of Lukas: 10 ABCD on 2026-09-10.\n"
+    # Bought more, with no trade to show it: the new quantity stands, it is no mismatch.
+    assert closed("position", "Schwab", "2026-09-20", "ABCD", "12", "USD") == dbcli.OK
+    assert closed("position", "Schwab", "2026-09-20", "WIDG", "3", "USD", "--tab", "ETFs") == 0
+    closes = [(date(2026, 9, 10), "100"), (date(2026, 9, 25), "110")]
+    closed.source = FakeSource({"ABCD": closes, "WIDG": closes})
+    closed("prices", "--through", "2026-09-30", "--instruments", str(closed.instruments))
+    assert "ABCD" not in closed.output  # fetched: it is held
+
+    conn = db.connect(closed.database)
+    try:
+        valued = networth.value(conn, "Lukas")
+        assert valued is not None
+        symbols = dict(conn.execute("SELECT id, symbol FROM instruments").fetchall())
+        owner = store.owner_id(conn, "Lukas")
+        assert owner is not None
+        assert holdings.check(conn, owner) == []
+    finally:
+        conn.close()
+    typed = {symbols[s.instrument_id]: s for s in valued.series if s.instrument_id in symbols}
+    shares, fund = typed["ABCD"], typed["WIDG"]
+    assert (shares.asset, shares.currency, shares.quantity) == (networth.STOCKS, "USD", Decimal(12))
+    assert fund.asset == networth.ETFS
+    on = dict(zip(valued.days, shares.values, strict=True))
+    assert not on[date(2026, 9, 9)]  # nothing before the first day typed
+    assert on[date(2026, 9, 15)] == Decimal(1000)
+    assert on[date(2026, 9, 25)] == Decimal(1320)
+
+
+def test_what_is_typed_after_the_last_statement_counts_from_its_day(closed: Run) -> None:
+    """The statements end on 30 September; a position and a balance typed later still count."""
+    assert closed("position", "Schwab", "2026-10-02", "ABCD", "10", "USD") == dbcli.OK
+    assert closed("balance", "Kasse", "2026-10-02", "500", "EUR") == dbcli.OK
+    closed.source = FakeSource({"ABCD": [(date(2026, 10, 1), "100"), (date(2026, 10, 3), "110")]})
+    closed("prices", "--through", "2026-10-04", "--instruments", str(closed.instruments))
+    conn = db.connect(closed.database)
+    try:
+        valued = networth.value(conn, "Lukas")
+        accounts = dict(conn.execute("SELECT name, id FROM accounts").fetchall())
+    finally:
+        conn.close()
+    assert valued is not None
+    assert valued.days[-1] == date(2026, 10, 3)
+    last = {s.account_id: s.values[-1] for s in valued.series}
+    assert last[accounts["Schwab"]] == Decimal(1100)
+    assert last[accounts["Kasse"]] == Decimal(500)
+
+
+def test_a_position_is_refused_for_an_account_with_statements(closed: Run) -> None:
+    assert closed("position", "Migros", "2026-09-10", "ABCD", "1", "CHF") == dbcli.FAILED
+    assert "account 'Migros' cannot have both statements and typed balances" in closed.output
+
+
+def test_a_typed_account_holds_instruments_in_several_currencies(closed: Run) -> None:
+    assert closed("position", "Broker", "2026-09-10", "ABCD", "1", "USD") == dbcli.OK
+    assert closed("position", "Broker", "2026-09-11", "NESN.SW", "2", "CHF") == dbcli.OK
+    conn = db.connect(closed.database)
+    try:
+        held = conn.execute(
+            "SELECT i.symbol, i.currency FROM positions p "
+            "JOIN instruments i ON i.id = p.instrument_id WHERE p.source = 'manual' ORDER BY 1"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [tuple(row) for row in held] == [("ABCD", "USD"), ("NESN.SW", "CHF")]
+
+
+def _steps(run: Run) -> dict[str, list[tuple[date, Decimal]]]:
+    conn = db.connect(run.database)
+    try:
+        symbols = dict(conn.execute("SELECT id, symbol FROM instruments").fetchall())
+        return {
+            symbols[h.instrument_id]: [(s.day, s.quantity) for s in h.steps]
+            for h in holdings.held(conn)
+        }
+    finally:
+        conn.close()
+
+
+def test_a_position_typed_leaves_the_account_s_other_instruments_as_they_were(
+    closed: Run,
+) -> None:
+    assert closed("position", "Broker", "2026-09-10", "ABCD", "10", "USD") == dbcli.OK
+    assert closed("position", "Broker", "2026-09-20", "EFGH", "3", "USD") == dbcli.OK
+    steps = _steps(closed)
+    assert steps["ABCD"] == [(date(2026, 9, 10), Decimal(10))]  # not 0 on 20 September
+    assert steps["EFGH"] == [(date(2026, 9, 20), Decimal(3))]
+
+
+def test_a_position_typed_never_changes_what_an_instrument_is(closed: Run) -> None:
+    conn = db.connect(closed.database)
+    try:
+        before = conn.execute("SELECT symbol, type, currency FROM instruments").fetchall()
+    finally:
+        conn.close()
+    known = {row[0]: (row[1], row[2]) for row in before}
+    assert known["WIDG"] == ("etf", "USD")  # bought at Tastytrade
+    assert closed("position", "Broker", "2026-09-10", "WIDG", "1", "USD") == dbcli.OK
+    assert closed("position", "Broker", "2026-09-11", "NEW", "1", "USD") == dbcli.OK
+    assert closed("position", "Broker", "2026-09-11", "FUND", "1", "USD", "--tab", "ETFs") == 0
+    conn = db.connect(closed.database)
+    try:
+        after = {row[0]: row[1] for row in conn.execute("SELECT symbol, type FROM instruments")}
+    finally:
+        conn.close()
+    assert (after["WIDG"], after["NEW"], after["FUND"]) == ("etf", "stock", "etf")
+
+
+def test_a_position_typed_under_its_price_symbol_is_the_instrument_a_statement_books(
+    closed: Run,
+) -> None:
+    closed.instruments.write_text(
+        INSTRUMENTS_YAML + MATURED + "  NESN: {tab: Stocks, price_symbol: NESN.SW}\n"
+        "  OLDW: {ticker: WIDG}\n",
+        encoding="utf-8",
+    )
+    instruments = ("--instruments", str(closed.instruments))
+    assert closed("position", "Broker", "2026-09-10", "nesn.sw", "2", "CHF", *instruments) == 0
+    assert closed.output == "Broker of Lukas: 2 NESN on 2026-09-10.\n"
+    assert closed("position", "Broker", "2026-09-10", "OLDW", "1", "USD", *instruments) == 0
+    assert closed.output == "Broker of Lukas: 1 WIDG on 2026-09-10.\n"
+
+
+@pytest.mark.parametrize("quantity", ["nan", "Infinity", "-1", "-0.5", "ten"])
+def test_a_quantity_that_is_no_number_of_shares_is_refused(closed: Run, quantity: str) -> None:
+    with pytest.raises(SystemExit):
+        closed("position", "Broker", "2026-09-10", "ABCD", quantity, "USD")
+
+
+@pytest.mark.parametrize("amount", ["nan", "Infinity", "-inf"])
+def test_a_balance_that_is_no_amount_is_refused(closed: Run, amount: str) -> None:
+    with pytest.raises(SystemExit):
+        closed("balance", "Kasse", "2026-09-10", amount, "EUR")
+
+
+def test_a_day_after_today_cannot_be_typed(closed: Run) -> None:
+    # Today is 6 October 2026 (NOW): 2062 was meant to be 2026.
+    for command in (
+        ("balance", "Kasse", "2062-10-02", "500", "EUR"),
+        ("position", "Broker", "2026-10-07", "ABCD", "1", "USD"),
+    ):
+        assert closed(*command) == dbcli.FAILED
+        assert "is after today (2026-10-06)" in closed.output
+    assert closed("balance", "Kasse", "2026-10-06", "500", "EUR") == dbcli.OK
+
+
+def test_a_figure_typed_today_counts_today_before_any_close_of_today(closed: Run) -> None:
+    closed.source = FakeSource({"ABCD": [(date(2026, 10, 1), "100")]})
+    assert closed("position", "Broker", "2026-10-01", "ABCD", "10", "USD") == dbcli.OK
+    closed("prices", "--through", "2026-10-02", "--instruments", str(closed.instruments))
+    assert closed("balance", "Kasse", "2026-10-05", "500", "EUR") == dbcli.OK
+    conn = db.connect(closed.database)
+    try:
+        valued = networth.value(conn, "Lukas")
+    finally:
+        conn.close()
+    assert valued is not None
+    assert valued.days[-1] == date(2026, 10, 5)
+
+
+def test_a_person_with_typed_accounts_alone_counts(closed: Run) -> None:
+    assert closed("balance", "Kasse", "2026-09-10", "500", "EUR", "--owner", "Anna") == 0
+    conn = db.connect(closed.database)
+    try:
+        valued = networth.value(conn, "Anna")
+    finally:
+        conn.close()
+    assert valued is not None
+    assert valued.series[0].values[-1] == Decimal(500)
 
 
 def test_query_lists_the_matching_rows_and_their_total(closed: Run) -> None:

@@ -135,7 +135,20 @@ More for the database:
 - `account_labels: {U7654321: "IBKR 2"}` in `finanze.yaml` names a second account at a broker
   by its account number (`IBKR 2 USD`).
 - `finanze balance Sparkasse 2023-01-31 1234.56 EUR` types what an account without statements
-  held on a day.
+  held on a day. It stays at that figure until another is typed.
+- `finanze position Broker 2026-11-20 ACME 120 USD` types how many shares of one stock an
+  account without statements held on a day. Unlike a balance it follows the market: it is
+  valued at the closes `finanze prices` fetches for the ticker, from the day typed until
+  another quantity is (`0` once sold). It changes nothing else the account holds. The same
+  account can have a typed balance too, for its cash, and hold instruments in several
+  currencies.
+  - `--tab ETFs` makes an instrument seen for the first time an ETF (Stocks otherwise). One
+    already known, from a statement or typed before, keeps the type it has.
+  - The ticker is as Yahoo knows it (`NESN.SW`, `VWRL.L`). Where `instruments.yaml` gives an
+    instrument a `price_symbol`, typing that symbol is the same instrument (`NESN` for
+    `NESN.SW`), not a second one.
+- What is typed counts from its day even when that is after the last day the statements
+  cover, and a person with typed accounts alone counts too. A day after today is refused.
 
 ### Querying it
 
