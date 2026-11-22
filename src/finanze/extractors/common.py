@@ -21,6 +21,8 @@ _TWICE_ENCODED = re.compile(
     "|[\u00e0-\u00ef][\u0080-\u00bf]{2}"
     "|[\u00f0-\u00f4][\u0080-\u00bf]{3}"
 )
+_CENTURY = 2000  # of a year printed with two digits
+_US_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})")
 
 
 def parse_decimal(text: str, what: str) -> Decimal:
@@ -34,6 +36,33 @@ def parse_decimal(text: str, what: str) -> Decimal:
         msg = f"cannot read amount {text!r} ({what})"
         raise ExtractionError(msg)
     return Decimal(cleaned.replace(",", "").replace("'", ""))
+
+
+def parse_us_amount(text: str, what: str) -> Decimal:
+    """Read money as US statements print it: `$1,234.50`, `-$88.75`, `(0.13)` or `$(0.13)`.
+
+    A minus before the dollar sign and parentheses around the number are a negative amount.
+    """
+    sign, _, bare = text.strip().rpartition("$")
+    if sign not in {"", "-"}:
+        msg = f"cannot read amount {text!r} ({what})"
+        raise ExtractionError(msg)
+    negative = bare.startswith("(") and bare.endswith(")")
+    value = parse_decimal(bare[1:-1] if negative else bare, what)
+    return -value if negative != (sign == "-") else value
+
+
+def parse_us_date(text: str, what: str) -> date:
+    """Read a date as US statements print it: month, day, year (`10/28/2026`, `9/30/26`)."""
+    found = _US_DATE.fullmatch(text.strip())
+    if found is not None:
+        year = int(found[3]) + (_CENTURY if len(found[3]) == len("26") else 0)
+        try:
+            return date(year, int(found[1]), int(found[2]))
+        except ValueError:
+            pass  # 02/30/2026
+    msg = f"cannot read date {text!r} ({what})"
+    raise ExtractionError(msg)
 
 
 def parse_swiss_amount(text: str, what: str) -> Decimal:

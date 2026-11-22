@@ -133,6 +133,16 @@ def test_both_dates_are_stored(conn: sqlite3.Connection, folder: Path) -> None:
     assert outside == [(0,)]
 
 
+def test_a_schwab_award_account_is_a_broker_account(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    (tmp_path / "Schwab.csv").write_bytes(
+        (Path(__file__).parent / "fixtures" / "schwab" / "transactions.csv").read_bytes()
+    )
+    staging.stage(conn, fixture_batch(tmp_path), NOW)
+    assert rows(conn, "SELECT kind FROM accounts WHERE name = 'Schwab'") == [("broker_cash",)]
+
+
 def test_accounts_trades_and_statement_files_are_stored(
     conn: sqlite3.Connection, folder: Path
 ) -> None:

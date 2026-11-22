@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import NamedTuple
 
 from finanze.errors import ExtractionError, UnsupportedStatementError
-from finanze.extractors.common import month_start, parse_decimal
+from finanze.extractors.common import month_start, parse_us_amount, parse_us_date
 from finanze.models import (
     CashBalance,
     Extraction,
@@ -309,17 +309,9 @@ def _account_number(content: str) -> str:
 
 def _amount(text: str, what: str) -> Decimal:
     """Read `$1,234.50`, `(0.13)` or `$(0.13)`: parentheses are a negative amount."""
-    bare = text.removeprefix("$")
-    negative = bare.startswith("(") and bare.endswith(")")
-    value = parse_decimal(bare[1:-1] if negative else bare, f"Morgan Stanley {what}")
-    return -value if negative else value
+    return parse_us_amount(text, f"Morgan Stanley {what}")
 
 
 def _us_date(text: str, what: str) -> date:
     """Read `9/30/26`: month, day, two-digit year."""
-    month, day, year = text.split("/")
-    try:
-        return date(2000 + int(year), int(month), int(day))
-    except ValueError:
-        msg = f"cannot read date {text!r} ({what})"
-        raise ExtractionError(msg) from None
+    return parse_us_date(text, what)

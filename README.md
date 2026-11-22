@@ -8,8 +8,15 @@ worth").
 
 Sources: Migros Bank (CSV), Revolut accounts and Revolut Savings (TSV/CSV), IBKR activity
 statement (CSV), Tastytrade transactions (CSV), Swisscard invoice (PDF), Morgan Stanley stock
-plan quarterly statement (PDF), finpension pillar 3a transactions (CSV), and the scanned second-pillar certificates of AXA and Servisa (PDF, read
-with the local `tesseract`).
+plan quarterly statement (PDF), Charles Schwab Equity Award Center transactions (CSV),
+finpension pillar 3a transactions (CSV), and the scanned second-pillar certificates of AXA
+and Servisa (PDF, read with the local `tesseract`).
+
+The Schwab export prints no balance and no holdings: the shares and the cash add up from its
+first row, so export it from the first vest on (the widest range the page allows), or the
+shares that vested before are missing. Its period runs to the day in the file's name, the day
+it was exported, so keep the name Schwab gives it. Don't also type the same shares as a
+position of another account: they would count twice.
 
 ## Use
 

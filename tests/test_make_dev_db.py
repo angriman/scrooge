@@ -42,7 +42,7 @@ def test_both_people_every_kind_of_asset_and_a_chart(tmp_path: Path) -> None:
     assert built.database == (tmp_path / "dev" / "finanze.db").resolve()
     assert built.certificates
     assert "  Lukas: 6 statements committed\n" in said
-    assert "  Anna: 5 statements committed\n" in said
+    assert "  Anna: 6 statements committed\n" in said
     with db.reading(built.database) as conn:
         shown = overview.run(conn, currency="CHF")
         staged = "SELECT 1 FROM statement_files WHERE committed_at IS NULL"

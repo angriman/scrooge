@@ -18,6 +18,7 @@ from finanze.extractors import (
     ocr,
     revolut,
     revolut_savings,
+    schwab,
     servisa,
     swisscard,
     tastytrade,
@@ -32,6 +33,11 @@ _TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
     ("revolut", ("Type\tProduct\t", "Type,Product,"), revolut.extract),
     ("revolut_savings", ("Date\tDescription\tValue, ",), revolut_savings.extract),
     ("migros", ('"Estratto conto da:"', "Estratto conto da:;"), migros.extract),
+    (
+        "schwab",
+        ('"Date","Action","Symbol","Description","Quantity","FeesAndCommissions",',),
+        schwab.extract,
+    ),
     (
         "finpension",
         (
@@ -51,6 +57,7 @@ LABELS = {
     "revolut": "Revolut account statement",
     "revolut_savings": "Revolut Savings statement",
     "migros": "Migros Bank account statement",
+    "schwab": "Schwab Equity Awards transactions",
     "finpension": "finpension pillar 3a transactions",
     "swisscard": "Swisscard invoice",
     "axa": "AXA pension certificate",

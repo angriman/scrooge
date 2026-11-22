@@ -141,3 +141,41 @@ def test_only_match_wants_exactly_one() -> None:
 )
 def test_undo_double_encoding(text: str, expected: str) -> None:
     assert common.undo_double_encoding(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("$1,234.50", "1234.50"),
+        ("-$88.75", "-88.75"),
+        ("(0.13)", "-0.13"),
+        ("$(0.13)", "-0.13"),
+        ("12", "12"),
+    ],
+)
+def test_us_amounts_read_a_minus_or_parentheses_as_negative(text: str, expected: str) -> None:
+    assert common.parse_us_amount(text, "t") == Decimal(expected)
+
+
+@pytest.mark.parametrize("text", ["1$", "$1,09", "+$1", "$"])
+def test_a_us_amount_that_cannot_be_read_is_refused(text: str) -> None:
+    with pytest.raises(ExtractionError, match="cannot read amount"):
+        common.parse_us_amount(text, "t")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("10/28/2026", date(2026, 10, 28)),
+        ("9/30/26", date(2026, 9, 30)),
+        (" 1/2/2025", date(2025, 1, 2)),
+    ],
+)
+def test_us_dates_are_month_day_year(text: str, expected: date) -> None:
+    assert common.parse_us_date(text, "t") == expected
+
+
+@pytest.mark.parametrize("text", ["2026-09-14", "02/30/2026", "13/01/2026", "1/2/026", ""])
+def test_a_us_date_that_cannot_be_read_is_refused(text: str) -> None:
+    with pytest.raises(ExtractionError, match=r"cannot read date .* \(t\)"):
+        common.parse_us_date(text, "t")

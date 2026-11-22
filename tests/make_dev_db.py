@@ -66,6 +66,7 @@ STATEMENTS: Mapping[str, Mapping[str, str]] = {
         "tastytrade.csv": "tastytrade/transactions.csv",
         "Revolut Savings.tsv": "revolut_savings/savings.tsv",
         "finpension.tsv": "finpension/transactions.tsv",
+        "Schwab.csv": "schwab/transactions.csv",
     },
 }
 CARD = ("Lukas", "swisscard.pdf", "swisscard/statement.txt")
