@@ -131,6 +131,14 @@ def test_two_files_of_one_name_are_told_apart(site: Site) -> None:
     assert result(response.text)[1][:2] == ["2/Migros.csv", "Revolut Savings statement"]
 
 
+def test_a_name_that_cannot_be_a_file_is_kept_under_another_and_stops_nothing(site: Site) -> None:
+    (savings,) = site.uploads("Revolut Savings.tsv")
+    for sent in ("..", ".", "../..", "a/.."):
+        response = site.send([("file", (sent, savings[1][1])), *site.uploads("Migros.csv")])
+        assert response.status_code == 200
+        assert sorted(row[0] for row in result(response.text)) == ["Migros.csv", "unnamed"]
+
+
 def test_a_form_from_elsewhere_or_without_the_token_is_refused(site: Site) -> None:
     files = site.uploads("Migros.csv")
     stale = site.send(files, token="of-an-earlier-start")  # noqa: S106  # not a password

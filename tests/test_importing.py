@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pdfplumber.utils.exceptions import PdfminerException
 
 from scrooge import categories, importing, staging
 from scrooge.errors import ConfigError
@@ -98,6 +99,26 @@ def test_a_card_invoice_the_bank_contradicts_is_refused_and_the_rest_is_read(
     assert "swisscard.pdf" not in {s.filename for s in found.statements}
     assert {row.account for row in found.month.transactions} >= {"Migros"}
     assert "Swisscard" not in {row.account for row in found.month.transactions}
+
+
+def test_a_file_named_as_a_card_invoice_that_is_no_pdf_is_refused_and_the_rest_is_read(
+    folder: Path, setup: importing.Setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    broken = folder / "swisscard-copy.pdf"
+    broken.write_bytes(b"not a pdf")
+
+    def read_text(path: Path) -> str:
+        if path == broken:
+            raise PdfminerException("no /Root object")
+        return path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(swisscard, "read_text", read_text)
+    found = importing.read(OWNER, files_of(folder), setup)
+    (refused,) = found.refused
+    assert refused.name == "swisscard-copy.pdf"
+    assert "not a readable PDF" in refused.problem
+    assert refused.label == "not read"
+    assert len(found.statements) == 6  # the others are read as ever
 
 
 def test_nothing_that_is_a_statement_stages_nothing(
