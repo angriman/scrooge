@@ -73,6 +73,8 @@ class SecurityTrade(Transaction):
     `price` is None for shares moved in kind where the statement prints no price.
     `asset_tab` is what the statement says the instrument is, when it says so; `instruments.yaml`
     overrides it and must supply it otherwise (D12).
+    `name` is what the statement calls the instrument, when it does: kept for one that has none
+    yet, so that the pages show it instead of its symbol.
     """
 
     ticker: str
@@ -81,6 +83,7 @@ class SecurityTrade(Transaction):
     cost: Decimal
     asset_tab: str = ""
     maturity: date | None = None
+    name: str = ""
 
 
 @dataclass(frozen=True, slots=True)

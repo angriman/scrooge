@@ -31,7 +31,8 @@
     "price": "117.28",
     "cost": "596.36880",
     "asset_tab": "Stocks",
-    "maturity": null
+    "maturity": null,
+    "name": ""
   },
   {
     "date": "2026-10-28",
@@ -65,7 +66,8 @@
     "price": "117.28",
     "cost": "293.200",
     "asset_tab": "Stocks",
-    "maturity": null
+    "maturity": null,
+    "name": ""
   },
   {
     "date": "2026-10-14",
@@ -127,6 +129,7 @@
     "price": "139.01",
     "cost": "1779.74503",
     "asset_tab": "Stocks",
-    "maturity": null
+    "maturity": null,
+    "name": ""
   }
 ]

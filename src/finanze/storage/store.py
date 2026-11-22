@@ -466,21 +466,33 @@ def insert_transaction(  # noqa: PLR0913  # the row plus what only the caller kn
         _insert_trade(conn, txn_id, txn)
 
 
-def instrument_id(
-    conn: sqlite3.Connection, symbol: str, tab: str, currency: str, maturity: date | None = None
+def instrument_id(  # noqa: PLR0913  # which instrument, and what a statement says of it
+    conn: sqlite3.Connection,
+    symbol: str,
+    tab: str,
+    currency: str,
+    maturity: date | None = None,
+    *,
+    name: str = "",
 ) -> int:
-    """The instrument's id, creating it on first sight; what is said now replaces its type."""
+    """The instrument's id, creating it on first sight; what is said now replaces its type.
+
+    `name` is kept only while the instrument has none: the first statement to name it wins.
+    """
     row = conn.execute(
-        "INSERT INTO instruments (symbol, type, currency, maturity) VALUES (?, ?, ?, ?) "
+        "INSERT INTO instruments (symbol, name, type, currency, maturity) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT (symbol, currency) DO UPDATE SET type = excluded.type, "
-        "maturity = coalesce(excluded.maturity, maturity) RETURNING id",
-        (symbol, _INSTRUMENT_TYPES[tab], currency, maturity and maturity.isoformat()),
+        "maturity = coalesce(excluded.maturity, maturity), "
+        "name = CASE name WHEN '' THEN excluded.name ELSE name END RETURNING id",
+        (symbol, name, _INSTRUMENT_TYPES[tab], currency, maturity and maturity.isoformat()),
     ).fetchone()
     return int(row[0])
 
 
 def _insert_trade(conn: sqlite3.Connection, txn_id: str, trade: SecurityTrade) -> None:
-    instrument = instrument_id(conn, trade.ticker, trade.asset_tab, trade.currency, trade.maturity)
+    instrument = instrument_id(
+        conn, trade.ticker, trade.asset_tab, trade.currency, trade.maturity, name=trade.name
+    )
     conn.execute(
         "INSERT INTO trades (transaction_id, instrument_id, quantity, price, cost_nano) "
         "VALUES (?, ?, ?, ?, ?)",

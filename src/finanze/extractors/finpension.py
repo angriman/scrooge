@@ -147,4 +147,5 @@ def _trade(cash: Transaction, row: dict[str, str], n: int) -> SecurityTrade:
         price=price,
         cost=-cash.amount,
         asset_tab=ASSET_TAB,
+        name=row["Asset Name"],
     )

@@ -46,6 +46,8 @@ def test_buys_and_sells_are_fund_trades_by_isin(result: Extraction) -> None:
     assert {(t.kind, t.category) for t in trades} == {(Kind.SECURITY_TRADE, "Investimenti")}
     assert all(t.cost == -t.amount for t in trades)
     assert trades[0].description == f"Buy: {SWISS} (0.1 @ 1500.5)"
+    world = "ALPHA (CH) Index Fund - Equities World ex CH I-acc"
+    assert {t.ticker: t.name for t in trades} == {"CH0000000011": SWISS, "CH0000000029": world}
 
 
 def test_cash_rows_are_classified(result: Extraction) -> None:

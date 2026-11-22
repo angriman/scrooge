@@ -31,7 +31,8 @@
     "price": "1500.5",
     "cost": "150.05",
     "asset_tab": "Funds",
-    "maturity": null
+    "maturity": null,
+    "name": "ALPHA (CH) Index Fund - Equities Switzerland I-acc"
   },
   {
     "date": "2026-07-07",
@@ -51,7 +52,8 @@
     "price": "1300.25",
     "cost": "1300.25",
     "asset_tab": "Funds",
-    "maturity": null
+    "maturity": null,
+    "name": "ALPHA (CH) Index Fund - Equities World ex CH I-acc"
   },
   {
     "date": "2026-07-08",
@@ -127,7 +129,8 @@
     "price": "1310",
     "cost": "-26.2",
     "asset_tab": "Funds",
-    "maturity": null
+    "maturity": null,
+    "name": "ALPHA (CH) Index Fund - Equities World ex CH I-acc"
   },
   {
     "date": "2026-09-16",
@@ -147,6 +150,7 @@
     "price": "1510",
     "cost": "75.5",
     "asset_tab": "Funds",
-    "maturity": null
+    "maturity": null,
+    "name": "ALPHA (CH) Index Fund - Equities Switzerland I-acc"
   }
 ]
