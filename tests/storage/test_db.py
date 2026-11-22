@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from finanze import staging
-from finanze.models import CashBalance, Transaction
-from finanze.storage import db
-from finanze.storage.ids import transaction_ids
+from scrooge import staging
+from scrooge.models import CashBalance, Transaction
+from scrooge.storage import db
+from scrooge.storage.ids import transaction_ids
 from tests.storage.conftest import NOW
 from tests.storage.helpers import CLOSED_AT, OWNER, batch, dump, migros, statement, txn
 
@@ -164,18 +164,18 @@ def test_a_snapshot_is_the_whole_database_in_one_file_that_stays_one(tmp_path: P
     live.execute("INSERT INTO owners (name) VALUES ('A')")
     folder = tmp_path / "copy"
     folder.mkdir()
-    db.snapshot(live, folder / "finanze.db")
+    db.snapshot(live, folder / "scrooge.db")
     live.close()
-    assert [file.name for file in folder.iterdir()] == ["finanze.db"]
-    with db.reading(folder / "finanze.db") as copy:
+    assert [file.name for file in folder.iterdir()] == ["scrooge.db"]
+    with db.reading(folder / "scrooge.db") as copy:
         assert copy.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
         assert copy.execute("SELECT name FROM owners").fetchone()[0] == "A"
         assert db.version(copy) == db.latest()
-    assert [file.name for file in folder.iterdir()] == ["finanze.db"]
+    assert [file.name for file in folder.iterdir()] == ["scrooge.db"]
 
 
 def test_a_reading_connection_cannot_change_the_database(tmp_path: Path) -> None:
-    path = tmp_path / "with space" / "finanze.db"
+    path = tmp_path / "with space" / "scrooge.db"
     path.parent.mkdir()
     writer = db.connect(path)
     db.migrate(writer, NOW)

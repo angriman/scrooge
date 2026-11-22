@@ -7,11 +7,11 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import savings
-from finanze.cashflow import Grouping
-from finanze.models import Kind
-from finanze.savings import Totals
-from finanze.storage import db
+from scrooge import savings
+from scrooge.cashflow import Grouping
+from scrooge.models import Kind
+from scrooge.savings import Totals
+from scrooge.storage import db
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 from tests.test_income import salaries
 from tests.test_spending import monthly

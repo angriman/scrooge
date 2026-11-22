@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from finanze import categories, importing, staging
-from finanze.errors import ConfigError
-from finanze.extractors import ocr, swisscard
-from finanze.router import LABELS
-from finanze.storage import db, originals
+from scrooge import categories, importing, staging
+from scrooge.errors import ConfigError
+from scrooge.extractors import ocr, swisscard
+from scrooge.router import LABELS
+from scrooge.storage import db, originals
 from tests.conftest import FIXTURES, INSTRUMENTS_YAML, write_rules
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE
 
@@ -106,7 +106,7 @@ def test_nothing_that_is_a_statement_stages_nothing(
     notes = [folder / "notes.txt"]
     found = importing.read(OWNER, notes, setup)
     assert found.statements == ()
-    done = importing.stage(conn, tmp_path / "data" / "finanze.db", found, setup, NOW)
+    done = importing.stage(conn, tmp_path / "data" / "scrooge.db", found, setup, NOW)
     assert done.staged == staging.Staged((), 0, 0)
     assert not (tmp_path / "data" / "originals").exists()
 
@@ -114,7 +114,7 @@ def test_nothing_that_is_a_statement_stages_nothing(
 def test_what_is_staged_is_kept_and_read_again_it_is_nothing_new(
     conn: sqlite3.Connection, folder: Path, setup: importing.Setup, tmp_path: Path
 ) -> None:
-    database = tmp_path / "data" / "finanze.db"
+    database = tmp_path / "data" / "scrooge.db"
     # without the Tastytrade export, which wants the August purchase of its bill before a commit
     files = [path for path in files_of(folder) if path.name != "tastytrade.csv"]
     found = importing.read(OWNER, files, setup)
@@ -137,7 +137,7 @@ def test_what_is_staged_is_kept_and_read_again_it_is_nothing_new(
 def test_a_statement_of_the_other_persons_account_is_refused_and_the_others_staged(
     conn: sqlite3.Connection, folder: Path, setup: importing.Setup, tmp_path: Path
 ) -> None:
-    database = tmp_path / "data" / "finanze.db"
+    database = tmp_path / "data" / "scrooge.db"
     mine = importing.read(OWNER, files_of(folder), setup)
     importing.stage(conn, database, mine, setup, NOW)
 
@@ -167,7 +167,7 @@ def test_a_certificate_that_cannot_replace_a_committed_one_is_refused_alone(
     pillar2: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database = folder / "data" / "finanze.db"
+    database = folder / "data" / "scrooge.db"
     scans = [pillar2 / "Scan 0001.pdf", pillar2 / "Dokument.pdf"]
     importing.stage(conn, database, importing.read(OWNER, scans, setup), setup, NOW)
     staging.commit(conn, owner=OWNER, now=NOW)
@@ -211,7 +211,7 @@ def test_a_stock_plan_statement_is_staged_and_committed(
     statement.write_bytes(b"%PDF-1.7 ...")
     found = importing.read(OWNER, [statement], setup)
     assert by_name(found)[statement.name].label == LABELS["morganstanley"]
-    done = importing.stage(conn, tmp_path / "data" / "finanze.db", found, setup, NOW)
+    done = importing.stage(conn, tmp_path / "data" / "scrooge.db", found, setup, NOW)
     assert by_name(done)[statement.name].staged
     assert len(staging.commit(conn, owner=OWNER, now=NOW)) == 1
 

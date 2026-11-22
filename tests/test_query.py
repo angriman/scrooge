@@ -8,10 +8,10 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import query, staging
-from finanze.models import CashBalance, Kind
-from finanze.query import Filter
-from finanze.storage import db, store
+from scrooge import query, staging
+from scrooge.models import CashBalance, Kind
+from scrooge.query import Filter
+from scrooge.storage import db, store
 from tests.storage.helpers import OWNER, PARTNER, batch, close, statement, txn
 
 NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)

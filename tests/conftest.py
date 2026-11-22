@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from finanze.classification import Instrument
-from finanze.extractors import ocr, swisscard
+from scrooge.classification import Instrument
+from scrooge.extractors import ocr, swisscard
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FILES = {

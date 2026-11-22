@@ -80,7 +80,7 @@ installed() {
         && [ -x "$shown/tesseract" ]
 }
 
-# What finanze runs: this Tesseract, with its own data whatever TESSDATA_PREFIX says (one left
+# What scrooge runs: this Tesseract, with its own data whatever TESSDATA_PREFIX says (one left
 # by Homebrew would load other English data).
 expose() {
     mkdir -p "$shown"
@@ -112,7 +112,7 @@ if ! installed; then
         --prefix "$prefix" --override-channels --channel conda-forge "tesseract=$TESSERACT"
     # The downloads, once installed: of .local/mamba alone (--no-rc: no other cache is known).
     HOME="$MAMBA_ROOT_PREFIX" "$micromamba" clean --all --yes --quiet --no-rc --no-env >/dev/null
-    # finanze reads English only (extractors/ocr.py); osd is what Tesseract looks for itself.
+    # scrooge reads English only (extractors/ocr.py); osd is what Tesseract looks for itself.
     find "$prefix/share/tessdata" -name '*.traineddata' \
         ! -name eng.traineddata ! -name osd.traineddata -delete
     expose

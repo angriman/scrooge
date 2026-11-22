@@ -7,12 +7,12 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import income, query
-from finanze.cashflow import Grouping
-from finanze.income import Source
-from finanze.models import Kind, Transaction
-from finanze.networth import MissingRateError
-from finanze.storage import db, store
+from scrooge import income, query
+from scrooge.cashflow import Grouping
+from scrooge.income import Source
+from scrooge.models import Kind, Transaction
+from scrooge.networth import MissingRateError
+from scrooge.storage import db, store
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 
 START, END = date(2025, 1, 1), date(2026, 8, 31)

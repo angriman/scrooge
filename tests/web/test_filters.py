@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze.web import app as webapp
+from scrooge.web import app as webapp
 
 SCALE = {"": Decimal(1), "k": Decimal(1_000), "M": Decimal(1_000_000)}
 

@@ -3,8 +3,8 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
-from finanze.validation import (
+from scrooge.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
+from scrooge.validation import (
     BalanceMismatchError,
     ControlTotalMismatchError,
     MissingBalanceError,

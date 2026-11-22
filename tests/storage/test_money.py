@@ -5,7 +5,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze.storage import money
+from scrooge.storage import money
 
 AMOUNTS = st.decimals(min_value=-10_000_000, max_value=10_000_000, places=9)
 

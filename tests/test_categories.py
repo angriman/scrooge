@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from finanze import categories, review
-from finanze.categories import Extra
-from finanze.classification import load_rules
-from finanze.errors import ConfigError
-from finanze.models import Kind, Transaction
+from scrooge import categories, review
+from scrooge.categories import Extra
+from scrooge.classification import load_rules
+from scrooge.errors import ConfigError
+from scrooge.models import Kind, Transaction
 
 HEADER = "# Categories added to the taxonomy.\n# Second line.\n"
 LENT = Transaction(

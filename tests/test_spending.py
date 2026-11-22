@@ -7,12 +7,12 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import query, spending
-from finanze.cashflow import Counted, Grouping
-from finanze.models import Kind, Transaction
-from finanze.networth import MissingRateError
-from finanze.spending import Category, Leaf, Merchant
-from finanze.storage import db, store
+from scrooge import query, spending
+from scrooge.cashflow import Counted, Grouping
+from scrooge.models import Kind, Transaction
+from scrooge.networth import MissingRateError
+from scrooge.spending import Category, Leaf, Merchant
+from scrooge.storage import db, store
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 from tests.test_income import salaries
 

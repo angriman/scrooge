@@ -1,6 +1,6 @@
 # The web app's image for the NAS (Synology DS725+, x86-64), built from the Dockerfile and
 # pushed to GitHub's registry, private like the repository:
-#   ghcr.io/<owner>/finanze:<tag> and :latest, on a tag `v*` once `make check` passes.
+#   ghcr.io/<owner>/scrooge:<tag> and :latest, on a tag `v*` once `make check` passes.
 # Run by hand (Actions > image > Run workflow) on a tag, it does the same; on a branch, it
 # pushes only `sha-<commit>` and leaves `latest` where it is. deploy/README.md: pulling it.
 #
@@ -40,7 +40,7 @@ jobs:
       # The registry takes lower-case names only; the owner's may not be.
       - name: Image name
         id: name
-        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/finanze" >> "$GITHUB_OUTPUT"
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/scrooge" >> "$GITHUB_OUTPUT"
 
       - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         id: meta
@@ -53,8 +53,8 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short,enable=${{ !startsWith(github.ref, 'refs/tags/') }}
           labels: |
-            org.opencontainers.image.title=finanze
-            org.opencontainers.image.description=The finanze web app (finanze serve)
+            org.opencontainers.image.title=scrooge
+            org.opencontainers.image.description=The scrooge web app (scrooge serve)
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 

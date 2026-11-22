@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from finanze import staging
-from finanze.storage import db
+from scrooge import staging
+from scrooge.storage import db
 from tests.conftest import FILES
 from tests.web.builders import CLICKED, SITE, Site
 from tests.web.test_analysis_cashflow import tables

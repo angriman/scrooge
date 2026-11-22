@@ -5,10 +5,10 @@ from types import TracebackType
 
 import pytest
 
-from finanze.errors import ExtractionError
-from finanze.extractors import swisscard
-from finanze.models import CashBalance, ControlTotal, Extraction, Kind
-from finanze.validation import check_balances
+from scrooge.errors import ExtractionError
+from scrooge.extractors import swisscard
+from scrooge.models import CashBalance, ControlTotal, Extraction, Kind
+from scrooge.validation import check_balances
 from tests.extractors.golden import FIXTURES, assert_matches_golden
 
 TEXT = (FIXTURES / "swisscard" / "statement.txt").read_text(encoding="utf-8")

@@ -4,8 +4,8 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.errors import ExtractionError
-from finanze.extractors import common
+from scrooge.errors import ExtractionError
+from scrooge.extractors import common
 
 
 @pytest.mark.parametrize(

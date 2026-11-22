@@ -4,9 +4,9 @@ from datetime import date
 
 import pytest
 
-from finanze import query, report
-from finanze.report import Shortcut
-from finanze.storage import db
+from scrooge import query, report
+from scrooge.report import Shortcut
+from scrooge.storage import db
 from tests import test_savings as rows
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close
 

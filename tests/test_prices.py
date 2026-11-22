@@ -12,8 +12,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from finanze import prices
-from finanze.prices import History, PriceError, Split, TreasuryDirect, Yahoo, significant
+from scrooge import prices
+from scrooge.prices import History, PriceError, Split, TreasuryDirect, Yahoo, significant
 
 FIXTURES = Path(__file__).parent / "fixtures" / "yahoo"
 CHART = (FIXTURES / "chart.json").read_bytes()

@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.web.builders import BUILT, SITE, committed_files, file_id, household
 from tests.web.test_app import text
 from tests.web.test_login import STORED, sign_in
@@ -42,7 +42,7 @@ def fill(path: Path) -> None:
 
 @pytest.fixture
 def database(tmp_path: Path) -> Path:
-    path = tmp_path / "copy" / "finanze.db"
+    path = tmp_path / "copy" / "scrooge.db"
     path.parent.mkdir()
     fill(path)
     return path
@@ -122,11 +122,11 @@ def test_a_copy_refuses_every_form_that_would_change_it(
     elsewhere = client.post(path, data=form, headers={"origin": "https://evil.example"})
     assert elsewhere.text == "Forbidden"
     assert (committed_files(database), database.read_bytes()) == before
-    assert [file.name for file in database.parent.iterdir()] == ["finanze.db"]  # no backup
+    assert [file.name for file in database.parent.iterdir()] == ["scrooge.db"]  # no backup
 
 
 def test_a_copy_behind_a_password_asks_for_it_before_it_refuses(database: Path) -> None:
-    app = webapp.create_app(database, password=STORED, names=["finanze.home"], read_only=True)
+    app = webapp.create_app(database, password=STORED, names=["scrooge.home"], read_only=True)
     client = TestClient(app, base_url=SITE, follow_redirects=False)
     form = {"token": app.state.token}
     for path in FORMS:
@@ -153,14 +153,14 @@ def test_a_copy_is_read_where_nothing_can_be_written(locked: Path, path: str) ->
         sqlite3.connect(locked).execute("CREATE TABLE written (x INTEGER)")
     client = TestClient(webapp.create_app(locked, read_only=True), base_url=SITE)
     assert client.get(path).status_code == 200
-    assert [file.name for file in locked.parent.iterdir()] == ["finanze.db"]
+    assert [file.name for file in locked.parent.iterdir()] == ["scrooge.db"]
 
 
 def test_a_copy_replaced_while_the_app_runs_is_what_the_next_page_shows(
     client: TestClient, database: Path, tmp_path: Path
 ) -> None:
     assert "Lukas" in client.get("/months").text
-    newer = tmp_path / "newer.db"  # as `finanze publish` brings it: whole, then renamed over
+    newer = tmp_path / "newer.db"  # as `scrooge publish` brings it: whole, then renamed over
     conn = db.connect(newer)
     db.migrate(conn, BUILT)
     conn.close()

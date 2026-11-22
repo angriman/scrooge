@@ -1,5 +1,5 @@
 [project]
-name = "finanze-parser"
+name = "scrooge"
 version = "0.1.0"
 description = "Parse bank and brokerage statements into a local database and web app"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-finanze = "finanze.cli:main"
+scrooge = "scrooge.cli:main"
 
 [dependency-groups]
 dev = [
@@ -36,7 +36,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-finanze = [
+scrooge = [
     "storage/migrations/*.sql",
     "web/templates/*.html",
     "web/static/*",
@@ -99,7 +99,7 @@ testpaths = ["tests"]
 
 # ------------------------------------------------------------ coverage
 [tool.coverage.run]
-source = ["finanze"]
+source = ["scrooge"]
 branch = true
 
 [tool.coverage.report]
@@ -113,5 +113,5 @@ exclude_also = [
 
 # ------------------------------------------------------------- mutmut
 [tool.mutmut]
-paths_to_mutate = ["src/finanze/validation.py"]
+paths_to_mutate = ["src/scrooge/validation.py"]
 tests_dir = ["tests/"]

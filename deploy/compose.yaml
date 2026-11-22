@@ -3,15 +3,15 @@
 #
 # Lives on the NAS next to the data folder. The image is built by GitHub
 # (.github/workflows/image.yml) and pulled from its registry. Three things to adapt, all
-# marked PLACEHOLDER. No password here or in the image: its digest is in finanze.yaml, in
+# marked PLACEHOLDER. No password here or in the image: its digest is in scrooge.yaml, in
 # the data folder.
 
 services:
-  finanze:
+  scrooge:
     # PLACEHOLDER: the owner of the repository, in lower case. `latest` is the newest tag v*;
     # a tag (`:v1.2.3`) keeps that version until this line changes.
-    image: ghcr.io/<owner>/finanze:latest
-    container_name: finanze
+    image: ghcr.io/<owner>/scrooge:latest
+    container_name: scrooge
 
     # PLACEHOLDER: the user and group of the NAS that own the data folder, as numbers
     # (`id <user>` on the NAS). Not root. The app writes there as this user: the database,
@@ -21,7 +21,7 @@ services:
     volumes:
       # PLACEHOLDER (left of the colon): the data folder, read and written. The folder, not
       # its files, so that SQLite can keep its journal next to the database.
-      - /volume1/docker/finanze/data:/data
+      - /volume1/docker/scrooge/data:/data
 
     ports:
       # Every address of the NAS, the tailnet's among them. Put an address in front

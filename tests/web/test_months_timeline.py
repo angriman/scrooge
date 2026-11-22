@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import (
     ANNA_SEPTEMBER,

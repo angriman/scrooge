@@ -1,4 +1,4 @@
-"""The starter files `finanze init` copies must load, and the rules sort by generic words only.
+"""The starter files `scrooge init` copies must load, and the rules sort by generic words only.
 
 The real rules.yaml, instruments.yaml and categories.yaml are personal and git-ignored.
 """
@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from finanze import categories
-from finanze.classification import classify, load_instruments, load_rules
-from finanze.models import Kind, Transaction
+from scrooge import categories
+from scrooge.classification import classify, load_instruments, load_rules
+from scrooge.models import Kind, Transaction
 
 ROOT = Path(__file__).parents[1]
-STARTER = ROOT / "src" / "finanze" / "starter"
+STARTER = ROOT / "src" / "scrooge" / "starter"
 RULES = load_rules([STARTER / "rules.yaml"])
 
 

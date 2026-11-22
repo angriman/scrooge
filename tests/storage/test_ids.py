@@ -1,7 +1,7 @@
 from dataclasses import replace
 from datetime import date
 
-from finanze.storage.ids import transaction_ids
+from scrooge.storage.ids import transaction_ids
 from tests.storage.helpers import txn
 
 

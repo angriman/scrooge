@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from finanze.storage import store
+from scrooge.storage import store
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
 AT = "2026-11-07T12:00:00+00:00"

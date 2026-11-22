@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import portfolio
-from finanze.models import Holding, SecurityTrade
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge import portfolio
+from scrooge.models import Holding, SecurityTrade
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate
 from tests.web.test_analysis_cashflow import tables
@@ -32,7 +32,7 @@ def at(path: Path, now: datetime = LAST) -> TestClient:
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
-    path: Path = tmp_path_factory.mktemp("holdings") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("holdings") / "scrooge.db"
     household(path)
     return at(path)
 
@@ -78,7 +78,7 @@ def household(path: Path) -> None:
 def odd(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """Lukas alone: a pension account with fund units and cash, and shares of which six were
     held before the history starts. A dollar is 0.80 francs; no rate is stored for the euro."""
-    path: Path = tmp_path_factory.mktemp("odd") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("odd") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     unit = bought(
@@ -99,7 +99,7 @@ def odd(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
 
 @pytest.fixture
 def empty(tmp_path: Path) -> TestClient:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     conn.close()
@@ -228,7 +228,7 @@ def test_a_price_that_is_only_that_of_a_trade_is_marked(client: TestClient) -> N
     assert "<small>last trade, 2026-09-16</small>" in page
     assert (
         "No close is stored for GADG: valued at the price of the last trade. "
-        "Run `finanze prices`." in text(page)
+        "Run `scrooge prices`." in text(page)
     )
 
 
@@ -327,7 +327,7 @@ def test_the_bills_are_listed_by_maturity_and_one_that_is_due_says_so(client: Te
 
 
 def test_the_bills_are_valued_today_at_the_last_rate_stored(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     household(path)
     conn = db.connect(path)
     rate(conn, "USD", day(20, 10), "0.9")
@@ -349,7 +349,7 @@ def test_the_bills_are_valued_today_at_the_last_rate_stored(tmp_path: Path) -> N
 
 
 def test_a_bill_without_a_day_or_due_on_the_day_shown_is_worded_too(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
 
@@ -443,7 +443,7 @@ def test_nothing_committed_is_said(empty: TestClient) -> None:
 
 
 def test_cash_alone_is_no_securities_and_no_empty_table(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     close(conn, account("migros", "Migros", "CHF", "1000"))
@@ -557,7 +557,7 @@ def test_the_bills_stand_on_a_line_of_days_one_bar_a_day(client: TestClient) -> 
 
 
 def test_bills_due_the_same_day_are_one_bar(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
 

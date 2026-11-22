@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from finanze.errors import ExtractionError
-from finanze.extractors import axa, servisa
-from finanze.models import PensionCertificate
+from scrooge.errors import ExtractionError
+from scrooge.extractors import axa, servisa
+from scrooge.models import PensionCertificate
 from tests.extractors.golden import FIXTURES, assert_certificate_matches_golden
 
 # What Tesseract reads off `certificate.pdf`: see tests/make_certificates.py.

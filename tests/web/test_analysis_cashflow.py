@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.models import Kind
-from finanze.storage import db, store
-from finanze.web import app as webapp
+from scrooge.models import Kind
+from scrooge.storage import db, store
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close
 from tests.web.test_app import text
@@ -43,7 +43,7 @@ ANNA = [
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """July and August 2026, committed for both."""
-    path: Path = tmp_path_factory.mktemp("analysis-cashflow") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("analysis-cashflow") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     span = (date(2026, 7, 1), date(2026, 8, 31))

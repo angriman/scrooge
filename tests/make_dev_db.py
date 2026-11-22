@@ -4,10 +4,10 @@
 
 Once the real data lives on the NAS, the Mac only ever sees this one: two invented people,
 Lukas and Anna Meier, whose statements are the fixtures under `tests/fixtures/`, imported and
-committed through the services `finanze import` and `finanze commit` use (`importing`,
+committed through the services `scrooge import` and `scrooge commit` use (`importing`,
 `staging`). The closes and exchange rates are invented, handed over by the source the tests
 use (`tests/fakes.py`): nothing connects (D9). Next to the database go the config, the rules
-and the instruments it was built with, so that `finanze serve` shows it as it would the real
+and the instruments it was built with, so that `scrooge serve` shows it as it would the real
 one.
 
 The folder is made again from nothing on every run, and only a folder this script made is
@@ -34,23 +34,23 @@ from typing import TextIO
 
 import yaml
 
-from finanze import importing, marketdata, networth, overview, prices, staging
-from finanze.extractors import ocr
-from finanze.staging import People
-from finanze.storage import db
+from scrooge import importing, marketdata, networth, overview, prices, staging
+from scrooge.extractors import ocr
+from scrooge.staging import People
+from scrooge.storage import db
 from tests.conftest import FIXTURES, INSTRUMENTS_YAML, RULES
 from tests.fakes import FakeSource
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT = ROOT / "output" / "dev"
-DATABASE = "finanze.db"
+DATABASE = "scrooge.db"
 MARK = ".made-by-make-dev-db"  # what tells a folder this script may empty
 # Where the real data is kept: never touched, whatever folder is asked for. The folder of the
 # database each real config names (the one in the root, and every setup's in users/) is added
 # to these.
-REAL = (Path("~/.local/share/finanze_db"), ROOT / "statements", ROOT / "users")
-REAL_CONFIG = ROOT / "finanze.yaml"
-SETUPS = ROOT / "users"  # finanze init's setups, one folder each
+REAL = (Path("~/.local/share/scrooge_db"), ROOT / "statements", ROOT / "users")
+REAL_CONFIG = ROOT / "scrooge.yaml"
+SETUPS = ROOT / "users"  # scrooge init's setups, one folder each
 OWNERS = ("Lukas", "Anna")
 PEOPLE_YAML = {"Lukas": {"match": ["LUKAS MEIER"]}, "Anna": {"match": ["ANNA MEIER"]}}
 # Whose statement each fixture is, under the name it is imported as. A statement that prints
@@ -120,7 +120,7 @@ class Built:
     def serve(self) -> str:
         """The command that shows it."""
         return (
-            f"uv run finanze serve --config {_shown(self.config)} --rules {_shown(self.rules)} "
+            f"uv run scrooge serve --config {_shown(self.config)} --rules {_shown(self.rules)} "
             f"--instruments {_shown(self.instruments)}"
         )
 
@@ -146,7 +146,7 @@ def build(
     folder, and that of every setup in users/, are among them. None of them is ever touched.
     """
     folder = folder.expanduser().resolve()
-    setups = sorted(SETUPS.glob("*/finanze.yaml"))
+    setups = sorted(SETUPS.glob("*/scrooge.yaml"))
     _check(folder, [*real, *(place for c in (config, *setups) for place in _configured(c))])
     if folder.exists():
         shutil.rmtree(folder)
@@ -222,7 +222,7 @@ def _foreign(folder: Path) -> bool:
 def _files(folder: Path) -> Built:
     """The config, the rules, the categories and the instruments the database is built with."""
     database = folder / DATABASE
-    config = folder / "finanze.yaml"
+    config = folder / "scrooge.yaml"
     config.write_text(
         "# The development database: invented people, built by make dev-db from the fixtures.\n"
         + yaml.safe_dump(
@@ -233,7 +233,7 @@ def _files(folder: Path) -> Built:
         encoding="utf-8",
     )
     # Never the repository's own rules.yaml or categories.yaml: those are the user's, real.
-    starter = ROOT / "src" / "finanze" / "starter"
+    starter = ROOT / "src" / "scrooge" / "starter"
     generic = (starter / "rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
     own = RULES.replace("  - {match: '.', category: Regali}\n", SHOPS).rstrip("\n") + "\n"
     rules = folder / "rules.yaml"
@@ -286,7 +286,7 @@ def _load(
     setup: importing.Setup,
     now: datetime,
 ) -> None:
-    """Import and commit each batch for `owner`, as `finanze import` and `commit` would."""
+    """Import and commit each batch for `owner`, as `scrooge import` and `commit` would."""
     for files in imports:
         found = importing.stage(conn, database, importing.read(owner, files, setup), setup, now)
         if found.refused or not found.staged or found.staged.uncategorized:
@@ -297,7 +297,7 @@ def _load(
 
 
 def _prices(conn: sqlite3.Connection, now: datetime) -> marketdata.Refreshed:
-    """Invented closes and rates up to yesterday, stored as `finanze prices` stores them."""
+    """Invented closes and rates up to yesterday, stored as `scrooge prices` stores them."""
     last = now.date() - timedelta(days=1)
     days = [last - timedelta(days=n) for n in range((last - FIRST).days, -1, -1)]
     bases = {**CLOSES, **dict(FUNDS.values())}

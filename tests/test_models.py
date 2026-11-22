@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from finanze.models import Extraction, Kind, Transaction
+from scrooge.models import Extraction, Kind, Transaction
 
 
 def _make(amount: Any) -> Transaction:

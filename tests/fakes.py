@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
-from finanze.prices import History, PriceError, Split
+from scrooge.prices import History, PriceError, Split
 
 
 class FakeSource:

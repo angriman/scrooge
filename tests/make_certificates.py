@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from finanze.extractors import ocr
+from scrooge.extractors import ocr
 
 FIXTURES = Path(__file__).parent / "fixtures"
 _FONTS = Path("/System/Library/Fonts/Supplemental")

@@ -8,8 +8,8 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from finanze.storage import db, logos
-from finanze.web import app as webapp
+from scrooge.storage import db, logos
+from scrooge.web import app as webapp
 from tests.test_networth import NOW
 from tests.test_overview import household
 
@@ -23,12 +23,12 @@ SHOWN = '<img class="mark" src="/logos/WIDG?v='
 @pytest.fixture
 def database(tmp_path: Path) -> Path:
     """The household of the overview's tests, a logo for its fund and none for its share."""
-    conn = db.connect(tmp_path / "finanze.db")
+    conn = db.connect(tmp_path / "scrooge.db")
     db.migrate(conn, NOW)
     household(conn)
     logos.add(conn, "WIDG", LOGO, "widg.svg", NOW)
     conn.close()
-    return tmp_path / "finanze.db"
+    return tmp_path / "scrooge.db"
 
 
 def logos_digest() -> str:
@@ -48,7 +48,7 @@ def test_a_logo_is_served_from_the_database_and_runs_nothing(database: Path) -> 
     assert response.content == LOGO
     policies = response.headers.get_list("content-security-policy")
     assert "default-src 'none'; style-src 'unsafe-inline'; sandbox" in policies
-    for symbol in ("GADG", "..%2Ffinanze.db"):
+    for symbol in ("GADG", "..%2Fscrooge.db"):
         assert client.get(f"/logos/{symbol}").status_code == 404
 
 
@@ -153,7 +153,7 @@ def test_a_copy_of_the_database_has_no_form_and_changes_nothing(database: Path) 
     client = _client(app)
     page = client.get("/holdings").text
     assert "1 holding without a logo" in page
-    assert "finanze logo GADG &lt;file&gt;" in page
+    assert "scrooge logo GADG &lt;file&gt;" in page
     assert 'name="symbol"' not in page
     files = {"file": ("x.svg", LOGO, "image/svg+xml")}
     data = {"token": app.state.token, "symbol": "GADG"}

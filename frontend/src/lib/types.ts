@@ -1,4 +1,4 @@
-// What /api sends (src/finanze/web/wire.py): amounts and shares are text, so as not to lose
+// What /api sends (src/scrooge/web/wire.py): amounts and shares are text, so as not to lose
 // a cent; days are ISO text; what is not known is null.
 
 export type Amount = string;

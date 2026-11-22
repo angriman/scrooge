@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.storage import db, originals
-from finanze.web import app as webapp
+from scrooge.storage import db, originals
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, txn
 from tests.web.builders import (
     AUGUST,
@@ -27,7 +27,7 @@ CONTENT = b"Data;Importo\n03.08.2026;-45.20\n"
 @pytest.fixture
 def database(tmp_path: Path) -> Path:
     """Lukas: August committed, September staged. Anna: September staged. One statement each."""
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     household(path)
     return path
 

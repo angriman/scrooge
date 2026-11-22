@@ -7,10 +7,10 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from finanze import cashflow, query
-from finanze.cashflow import Balance, Grouping, Line
-from finanze.models import Kind
-from finanze.storage import db
+from scrooge import cashflow, query
+from scrooge.cashflow import Balance, Grouping, Line
+from scrooge.models import Kind
+from scrooge.storage import db
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 
 START, END = date(2025, 1, 1), date(2026, 8, 31)

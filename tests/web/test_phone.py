@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.models import Kind
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.models import Kind
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, txn
 from tests.web.builders import BUILT, close, household
 
@@ -24,7 +24,7 @@ PAGES = ["/", "/holdings", "/analysis", "/transactions", "/months"]
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
-    path = tmp_path_factory.mktemp("phone") / "finanze.db"
+    path = tmp_path_factory.mktemp("phone") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
     august = date(2026, 8, 1)
@@ -35,7 +35,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
 
 @pytest.fixture
 def draft(tmp_path: Path) -> TestClient:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     household(path)
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
 

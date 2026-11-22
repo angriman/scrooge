@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from finanze import pipeline, router
-from finanze.classification import Rule, UnknownInstrumentError, load_rules
-from finanze.errors import ExtractionError
-from finanze.extractors import ocr, swisscard
-from finanze.models import (
+from scrooge import pipeline, router
+from scrooge.classification import Rule, UnknownInstrumentError, load_rules
+from scrooge.errors import ExtractionError
+from scrooge.extractors import ocr, swisscard
+from scrooge.models import (
     CashBalance,
     Extraction,
     Kind,
@@ -16,7 +16,7 @@ from finanze.models import (
     SecurityTrade,
     Transaction,
 )
-from finanze.validation import (
+from scrooge.validation import (
     BalanceMismatchError,
     CardBillMismatchError,
     check_balances,

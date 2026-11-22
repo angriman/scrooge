@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze import overview, staging
-from finanze.models import PrintedValue
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge import overview, staging
+from scrooge.models import PrintedValue
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, close
 from tests.test_overview import household
@@ -30,7 +30,7 @@ def served(path: Path) -> TestClient:
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     """The household of the service's tests: both people, a card, the same ETF three times."""
-    path: Path = tmp_path_factory.mktemp("overview") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("overview") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     household(conn)
@@ -41,7 +41,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
 
 @pytest.fixture
 def empty(tmp_path: Path) -> TestClient:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     conn.close()
@@ -201,7 +201,7 @@ def test_the_figures_come_first_then_the_chart_the_panels_and_the_details(
 
 
 def test_the_brokers_own_figures_are_last(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     cash = account("migros", "Migros", "CHF", "1000")
@@ -217,7 +217,7 @@ def test_the_brokers_own_figures_are_last(tmp_path: Path) -> None:
 def test_the_notes_on_the_figures_are_folded_away_at_the_bottom(tmp_path: Path) -> None:
     """What the reader must know about how a figure came about is not under the ring: it is
     the page's last part, closed until clicked, and says how many notes it holds."""
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     cash = account("migros", "Migros", "CHF", "1000")
@@ -241,7 +241,7 @@ def test_the_notes_on_the_figures_are_folded_away_at_the_bottom(tmp_path: Path) 
 
 
 def test_a_single_note_is_one_note(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     close(conn, account("migros", "Migros", "CHF", "1000"))
@@ -369,7 +369,7 @@ def test_nothing_committed_is_said(empty: TestClient) -> None:
 
 
 def test_cash_alone_is_no_holdings_and_no_empty_table(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     close(conn, account("migros", "Migros", "CHF", "1000"))
@@ -384,7 +384,7 @@ def test_cash_alone_is_no_holdings_and_no_empty_table(tmp_path: Path) -> None:
 
 
 def test_a_net_worth_below_zero_has_dashes_for_shares(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     close(conn, account("swisscard", "Swisscard", "CHF", "-300"))

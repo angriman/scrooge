@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from finanze.models import PrintedValue
-from finanze.storage import db
-from finanze.web import app as webapp
+from scrooge.models import PrintedValue
+from scrooge.storage import db
+from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, bill, bought, close, ibkr, rate, spent
 from tests.web.test_analysis_cashflow import tables
@@ -28,7 +28,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
 
     Lukas has 1000 francs and spends 200 on the 10th; Anna has 500 throughout.
     """
-    path: Path = tmp_path_factory.mktemp("networth") / "finanze.db"
+    path: Path = tmp_path_factory.mktemp("networth") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     his = account("migros", "Migros", "CHF", "1000", spent("-200", date(2026, 9, 10)))
@@ -45,7 +45,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
 
 @pytest.fixture
 def empty(tmp_path: Path) -> TestClient:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     conn.close()
@@ -55,7 +55,7 @@ def empty(tmp_path: Path) -> TestClient:
 @pytest.fixture
 def mixed(tmp_path: Path) -> TestClient:
     """One broker account in dollars holding cash, an ETF and a bill."""
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     fifteenth = date(2026, 9, 15)
@@ -215,7 +215,7 @@ def test_a_currency_without_a_rate_is_said_and_nothing_is_drawn(client: TestClie
 
 
 def test_a_statement_valued_in_a_currency_without_a_rate_is_said_too(tmp_path: Path) -> None:
-    path = tmp_path / "finanze.db"
+    path = tmp_path / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, NOW)
     his = account("migros", "Migros", "CHF", "1000")

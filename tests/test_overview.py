@@ -7,11 +7,11 @@ from decimal import Decimal
 
 import pytest
 
-from finanze import networth, overview, portfolio, query
-from finanze.models import Kind
-from finanze.networth import BILLS, CARD, CASH, ETFS, STOCKS, MissingRateError
-from finanze.overview import Change, Holding, Overview, Part, Rest
-from finanze.storage import db
+from scrooge import networth, overview, portfolio, query
+from scrooge.models import Kind
+from scrooge.networth import BILLS, CARD, CASH, ETFS, STOCKS, MissingRateError
+from scrooge.overview import Change, Holding, Overview, Part, Rest
+from scrooge.storage import db
 from tests.storage.helpers import OWNER, PARTNER
 from tests.test_networth import NOW, account, bill, bought, close, day, ibkr, price, rate, spent
 from tests.test_portfolio import family
