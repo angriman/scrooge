@@ -941,11 +941,14 @@ def set_override(
     """Remember a choice made for this row alone: `apply_overrides` restores it after an import.
 
     `kind` is None unless the choice changed it: the row then keeps whatever kind a later
-    import gives it.
+    import gives it. A kind an earlier choice stored stays until a choice gives another: the
+    kind the import gives is still the one that choice changed.
     """
     conn.execute(
-        "INSERT OR REPLACE INTO overrides (transaction_id, category_id, kind, created_at) "
-        "VALUES (?, ?, ?, ?)",
+        "INSERT INTO overrides (transaction_id, category_id, kind, created_at) "
+        "VALUES (?, ?, ?, ?) ON CONFLICT (transaction_id) DO UPDATE SET "
+        "category_id = excluded.category_id, kind = COALESCE(excluded.kind, kind), "
+        "created_at = excluded.created_at",
         (txn_id, category, kind, created_at),
     )
 
