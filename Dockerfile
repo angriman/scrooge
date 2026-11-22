@@ -7,6 +7,18 @@
 # instruments.yaml and categories.yaml. The image holds only the code.
 # No network once it is built, except `finanze prices` (D10).
 
+# The frontend at /app (frontend/, `make web`): built here, so that the image needs no Node.
+# Node 22 is the oldest SvelteKit takes; its lock first, it changes less than the code.
+FROM node:22-slim AS web
+
+WORKDIR /web/frontend
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN npm ci
+COPY frontend ./
+# Into ../src/finanze/web/spa, as `make web` does: /web/src/finanze/web/spa.
+RUN npm run build
+
+
 FROM python:3.11-slim AS build
 
 # The uv of ./uv and of check.yml too: change the three together.
@@ -27,6 +39,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY src ./src
+COPY --from=web /web/src/finanze/web/spa ./src/finanze/web/spa
 RUN uv sync --locked --no-dev --no-editable
 
 

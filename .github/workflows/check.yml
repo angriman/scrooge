@@ -47,3 +47,22 @@ jobs:
 
       - name: make check
         run: make check
+
+  # The frontend at /app (frontend/): its types checked and the build that the image makes.
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Node 22, as in the Dockerfile: the oldest SvelteKit takes.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: make web-check web
+        run: make web-check web

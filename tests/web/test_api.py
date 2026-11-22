@@ -1,5 +1,7 @@
 """The JSON of `/api`, and the frontend of its own at /app."""
 
+import base64
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -109,3 +111,59 @@ def test_without_signing_in_the_api_says_so(database: Path) -> None:
     response = TestClient(app, base_url=SITE).get("/api/overview", follow_redirects=False)
     assert response.status_code == 401
     assert response.json() == {"errors": ["Sign in first."]}
+
+
+SHELL = '<html><body><script>start("/app")</script></body></html>'
+
+
+@pytest.fixture
+def spa(tmp_path: Path) -> Path:
+    folder = tmp_path / "spa"
+    (folder / "_app").mkdir(parents=True)
+    (folder / "index.html").write_text(SHELL)
+    (folder / "_app" / "start.js").write_text("export {}")
+    (tmp_path / "secret.txt").write_text("not served")
+    return folder
+
+
+def test_every_address_under_app_is_its_page_or_one_of_its_files(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    for address in ("/app", "/app/", "/app/holdings"):
+        assert client.get(address).text == SHELL
+    assert client.get("/app/_app/start.js").text == "export {}"
+    assert client.get("/app/..%2Fsecret.txt").text == SHELL  # never a file outside it
+    assert client.get("/apple").status_code == 404
+
+
+def test_the_page_may_run_its_own_script_and_no_other(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    digest = base64.b64encode(hashlib.sha256(b'start("/app")').digest()).decode()
+    policy = f"default-src 'self'; script-src 'self' 'sha256-{digest}'; frame-ancestors 'none'"
+    assert client.get("/app").headers["content-security-policy"] == policy
+    assert client.get("/").headers["content-security-policy"] == policy
+
+
+def test_before_it_is_built_app_says_how_to_build_it(database: Path, tmp_path: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=tmp_path / "none"), base_url=SITE)
+    response = client.get("/app/")
+    assert response.status_code == 404
+    assert "make web" in response.text
+    assert client.get("/").headers["content-security-policy"] == (
+        "default-src 'self'; frame-ancestors 'none'"
+    )
+
+
+def test_without_a_frontend_there_is_no_app(client: TestClient) -> None:
+    assert client.get("/app/").status_code == 404
+
+
+def test_a_page_without_a_script_of_its_own_changes_no_policy(
+    database: Path, tmp_path: Path
+) -> None:
+    folder = tmp_path / "plain"
+    folder.mkdir()
+    (folder / "index.html").write_text('<script src="start.js"></script>')
+    client = TestClient(webapp.create_app(database, spa=folder), base_url=SITE)
+    assert client.get("/app").headers["content-security-policy"] == (
+        "default-src 'self'; frame-ancestors 'none'"
+    )

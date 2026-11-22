@@ -14,7 +14,7 @@ NAS_DOCKER ?= /usr/local/bin/docker
 DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
-.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons
+.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons web web-dev web-check
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -61,6 +61,16 @@ hooks: ## Install the git pre-commit hooks (through ./uv once it is there: hooks
 
 hooks-run: ## Run every pre-commit hook over all files
 	$(UV) run pre-commit run --all-files
+
+# The frontend of its own (frontend/, SvelteKit), served by `finanze serve` at /app once built.
+web: ## Build the frontend into src/finanze/web/spa, where `finanze serve` finds it (needs npm)
+	cd frontend && npm ci && npm run build
+
+web-dev: ## The frontend with reloading at http://localhost:5173/app, over `finanze serve` on 8765
+	cd frontend && npm run dev
+
+web-check: ## Type-check the frontend
+	cd frontend && npm ci && npm run check
 
 ICONS := src/finanze/web/static/icons
 

@@ -15,8 +15,11 @@ but the ones that sign in and out, and what the forms would send is refused.
 
 from __future__ import annotations
 
+import base64
 import csv
+import hashlib
 import io
+import re
 import secrets
 import tempfile
 from collections import defaultdict
@@ -37,6 +40,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
+    HTMLResponse,
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
@@ -107,6 +111,10 @@ _LINE = (Decimal(1000), Decimal(90))
 _APART = Decimal(64)  # the least room between two days written under the line
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
 _API = "/api/"  # the JSON of the pages (`web/api.py`): not signed in, it is told so, not sent on
+# The frontend of its own, built by `make web` from frontend/ (git-ignored): `serve` gives it to
+# `create_app`, at /app.
+SPA = Path(__file__).parent / "spa"
+_INLINE = re.compile(r"<script>(.*?)</script>", re.DOTALL)  # a script written in a page
 _HERE = Path(__file__).parent
 _HEADERS = {
     "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
@@ -228,13 +236,14 @@ _templates.env.globals["days"] = cashflow.days
 class _OwnAssetsOnly:
     """Adds the headers that keep a page from loading or sending anything elsewhere."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, headers: Mapping[str, str]) -> None:
         self.app = app
+        self.headers = [(k.encode(), v.encode()) for k, v in headers.items()]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         async def add_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
-                message["headers"] += [(k.encode(), v.encode()) for k, v in _HEADERS.items()]
+                message["headers"] += self.headers
             await send(message)
 
         await self.app(scope, receive, add_headers)
@@ -301,6 +310,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     read_only: bool = False,
     maturities: MaturitySource | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
+    spa: Path | None = None,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
 
@@ -316,12 +326,15 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     thing a page asks the network for (decided 2026-11-03). Without it the page only says
     which bills to add to `instruments.yaml`.
     `currency` is what the figures are shown in until another is chosen on a page.
+    `spa` is the folder of the frontend built from frontend/, served at /app: every address
+    there that is not one of its files is its page. Without it there is no /app.
     """
     if names and not password:
         msg = "the app is not served under other names without a password"
         raise ValueError(msg)
     access = auth.Access(password) if password else None
     hosts = (*_HOSTS, *names)
+    shell = _shell(spa) if spa is not None else None
 
     def writing(
         handler: Callable[[Request], Awaitable[Response]],
@@ -381,11 +394,16 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/logout", _logout, methods=["POST"], name="logout"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
             Mount(_API.rstrip("/"), routes=api.routes),
+            *(
+                []
+                if spa is None
+                else [Route("/app", _spa), Route("/app/{path:path}", _spa, name="spa")]
+            ),
         ],
         middleware=[
             # A page of another site cannot reach the app under a name of its own.
             Middleware(TrustedHostMiddleware, allowed_hosts=list(hosts)),
-            Middleware(_OwnAssetsOnly),
+            Middleware(_OwnAssetsOnly, headers=_headers(shell)),
             Middleware(_SignedInOnly, access=access, clock=clock),
         ],
         exception_handlers={
@@ -403,10 +421,48 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.access = access
     app.state.read_only = read_only
     app.state.hosts = hosts
+    app.state.spa = spa
+    app.state.shell = shell
     # Sent back by every form of these pages: a page of another site cannot read it, so it
     # cannot make the browser change anything here.
     app.state.token = secrets.token_urlsafe(32)
     return app
+
+
+def _shell(spa: Path) -> bytes | None:
+    """The page of the frontend at /app, None until it is built."""
+    page = spa / "index.html"
+    return page.read_bytes() if page.is_file() else None
+
+
+def _headers(shell: bytes | None) -> dict[str, str]:
+    """`_HEADERS`, letting the scripts of `shell` run: the frontend's page starts itself with
+    one written in it, which the policy allows by its digest and nothing else written in a
+    page."""
+    if shell is None:
+        return _HEADERS
+    digests = [
+        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
+        for script in _INLINE.findall(shell.decode())
+    ]
+    if not digests:
+        return _HEADERS
+    policy = f"default-src 'self'; script-src 'self' {' '.join(digests)}; frame-ancestors 'none'"
+    return {**_HEADERS, "content-security-policy": policy}
+
+
+def _spa(request: Request) -> Response:
+    """A file of the frontend, or its page for any other address under /app."""
+    state = request.app.state
+    if state.shell is None:
+        msg = "The frontend at /app is not built: run 'make web'.\n"
+        return PlainTextResponse(msg, status_code=404)
+    asked = request.path_params.get("path", "")
+    root = state.spa.resolve()
+    found = (root / asked).resolve()
+    if asked and found.is_relative_to(root) and found.is_file():
+        return FileResponse(found)
+    return HTMLResponse(state.shell)
 
 
 @dataclass(frozen=True, slots=True)

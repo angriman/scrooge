@@ -767,6 +767,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         read_only=reach.read_only,
         maturities=prices.TreasuryDirect(),
         currency=pages.currency,
+        spa=webapp.SPA,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
     return OK

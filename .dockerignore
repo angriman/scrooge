@@ -7,12 +7,18 @@
 !uv.lock
 !src
 !src/**
+!frontend
+!frontend/**
 
 # Inside src: what is not source.
 **/__pycache__
 **/*.py[cod]
 **/*.egg-info
 **/.DS_Store
+# Built in the image from frontend/, never taken from this folder.
+src/finanze/web/spa
+frontend/node_modules
+frontend/.svelte-kit
 
 # Never, wherever they turn up.
 **/finanze.yaml

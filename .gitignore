@@ -59,3 +59,8 @@ mutants/
 # Everything personal of each setup (finanze init): the config, rules, categories,
 # instruments, statements, the database, its originals and backups
 /users/
+
+# The frontend of its own, built by `make web` from frontend/
+/src/finanze/web/spa/
+node_modules/
+/frontend/.svelte-kit/
