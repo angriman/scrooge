@@ -210,7 +210,12 @@ def stage(
     try:
         results.append(staging.stage(conn, batch(found.statements, found.certificates), now))
     except _REFUSED:
+        # Two files of one account and the same days: staged one by one the second would
+        # replace the first, and which it is would depend on their names. Both are refused.
+        problems.update(staging.twins(found.statements, found.month.transactions))
         for statement in found.statements:
+            if statement.filename in problems:
+                continue
             try:
                 results.append(staging.stage(conn, batch([statement], ()), now))
             except _REFUSED as exc:

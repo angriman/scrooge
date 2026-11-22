@@ -160,6 +160,38 @@ def test_a_statement_of_the_other_persons_account_is_refused_and_the_others_stag
     assert anna == 0
 
 
+def test_two_exports_of_one_account_in_one_import_are_both_refused_and_the_rest_staged(
+    conn: sqlite3.Connection, folder: Path, setup: importing.Setup, tmp_path: Path
+) -> None:
+    original = (folder / "Migros.csv").read_bytes()
+    (folder / "Migros copy.csv").write_bytes(original + b"\n")  # another file, the same days
+    found = importing.read(OWNER, files_of(folder), setup)
+    done = importing.stage(conn, tmp_path / "data" / "scrooge.db", found, setup, NOW)
+    files = by_name(done)
+    assert "Migros copy.csv" in files["Migros.csv"].problem
+    assert "Migros.csv" in files["Migros copy.csv"].problem
+    assert not files["Migros.csv"].staged
+    assert not files["Migros copy.csv"].staged
+    assert files["swisscard.pdf"].staged
+    assert files["swisscard.pdf"].problem == ""
+    stored = {row[0] for row in conn.execute("SELECT filename FROM statement_files")}
+    assert stored >= {"swisscard.pdf", "IBKR.csv"}
+    assert not stored & {"Migros.csv", "Migros copy.csv"}
+
+
+def test_a_file_imported_again_over_one_staged_replaces_it(
+    conn: sqlite3.Connection, folder: Path, setup: importing.Setup, tmp_path: Path
+) -> None:
+    database = tmp_path / "data" / "scrooge.db"
+    importing.stage(conn, database, importing.read(OWNER, files_of(folder), setup), setup, NOW)
+    migros = folder / "Migros.csv"
+    migros.write_bytes(migros.read_bytes() + b"\n")
+    found = importing.read(OWNER, files_of(folder), setup)
+    done = importing.stage(conn, database, found, setup, NOW)
+    assert by_name(done)["Migros.csv"].problem == ""
+    assert by_name(done)["Migros.csv"].staged
+
+
 def test_a_certificate_that_cannot_replace_a_committed_one_is_refused_alone(
     conn: sqlite3.Connection,
     folder: Path,
