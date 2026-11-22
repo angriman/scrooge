@@ -6,8 +6,10 @@ The router reads the PDF's text layer; `extract` parses that text and is pure. O
 A Release is a vest: the shares that arrive, booked as salary (`Stipendio`) at the price
 printed with them and, the same day, as their purchase at that price. No cash moves, and what
 they cost is what they were worth. A Share Withdrawal moves shares out in kind (to IBKR): no
-cash, no price. The cash rows are the dividends on what is left, the tax withheld on them and
-their payment out.
+cash, no price. A Stock Split prints its ratio (`20 for 1`) and is no transaction: the shares
+are multiplied once, by the split stored with the prices (`splits`), so here it only makes the
+rows lead to the closing shares: what is booked on its day or after is counted in the new ones.
+The cash rows are the dividends on what is left, the tax withheld on them and their payment out.
 
 The statement prints the shares and the cash it opened and closed with, and both must follow
 from the rows. A withdrawal on the last day can still be counted in the closing shares (the
@@ -49,7 +51,16 @@ _ACTIVITY = "SHARE PURCHASE AND HOLDINGS"
 _ROW = re.compile(rf"({_US_DATE}) (.+)")
 _RELEASE = re.compile(r"Release (\S+) (\S+)")
 _WITHDRAWAL = re.compile(r"Share Withdrawal (\S+)")
-_SPLIT = re.compile(r"Stock Split .*")
+_SPLIT = re.compile(r"Stock Split\b.*")
+_RATIO = re.compile(r"Stock Split\b.*?\b(\d+) for (\d+)\b.*")
+
+
+class _Split(NamedTuple):
+    """So many new shares (`new`) for so many old ones (`old`), from `day`."""
+
+    day: date
+    new: int
+    old: int
 
 
 class _CashRow(NamedTuple):
@@ -103,12 +114,16 @@ def extract(content: str, source_file: str) -> Extraction:
     ticker = _ticker(content)
     summary = _summary(content)
     transactions: list[Transaction] = []
+    splits: list[_Split] = []
     for n, (day, activity) in enumerate(_rows(content), start=1):
         if not first <= day <= last:
             msg = f"Morgan Stanley row {n}: {day} is outside the period {first} to {last}"
             raise ExtractionError(msg)
+        if _SPLIT.fullmatch(activity):
+            splits.append(_split(day, activity))
+            continue
         transactions += _transactions(day, activity, ticker, f"{n}", source_file)
-    held = _held(summary, transactions, last)
+    held = _held(summary, transactions, splits, last)
     # The statement's own value, unless shares in transit are taken out of it.
     worth = summary.share_value if held == summary.shares[1] else held * summary.price
     return Extraction(
@@ -165,8 +180,6 @@ def _transactions(
     for row in _CASH_ROWS:
         if match := row.pattern.fullmatch(activity):
             return [_cash(day, match[1], row, ref, source_file)]
-    if _SPLIT.fullmatch(activity):
-        return []  # the split itself comes with the prices (`splits`)
     msg = f"Morgan Stanley: unsupported activity {activity!r} on {day}"
     raise UnsupportedStatementError(msg)
 
@@ -222,10 +235,32 @@ def _cash(day: date, text: str, row: _CashRow, ref: str, source_file: str) -> Tr
     )
 
 
-def _held(summary: _Summary, transactions: list[Transaction], last: date) -> Decimal:
-    """The shares held at the end of the period, checked against the printed ones."""
+def _split(day: date, activity: str) -> _Split:
+    match = _RATIO.fullmatch(activity)
+    if match is None or not int(match[1]) or not int(match[2]):
+        msg = f"Morgan Stanley: cannot read the ratio of {activity!r} on {day}"
+        raise ExtractionError(msg)
+    return _Split(day, int(match[1]), int(match[2]))
+
+
+def _held(
+    summary: _Summary, transactions: list[Transaction], splits: list[_Split], last: date
+) -> Decimal:
+    """The shares held at the end of the period, checked against the printed ones.
+
+    A split multiplies what was held overnight, so what is booked on its day is already in
+    the new shares (as `storage.holdings` has it).
+    """
     trades = [t for t in transactions if isinstance(t, SecurityTrade)]
-    held = summary.shares[0] + sum((t.quantity for t in trades), Decimal(0))
+    held = summary.shares[0]
+    for _day, _, item in sorted(
+        [(s.day, 0, s) for s in splits] + [(t.date, 1, t) for t in trades],
+        key=lambda event: event[:2],
+    ):
+        if isinstance(item, _Split):
+            held = held * item.new / item.old
+        else:
+            held += item.quantity
     if held == summary.shares[1]:
         return held
     # Shares withdrawn on the last day can still be in the closing figure: in transit.
