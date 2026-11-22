@@ -8,7 +8,7 @@ import pytest
 
 from scrooge import staging
 from scrooge.models import CashBalance, Transaction
-from scrooge.storage import db
+from scrooge.storage import db, pairs
 from scrooge.storage.ids import transaction_ids
 from tests.storage.conftest import NOW
 from tests.storage.helpers import CLOSED_AT, OWNER, batch, dump, migros, statement, txn
@@ -289,11 +289,14 @@ def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     monkeypatch.setattr(db, "migrations", lambda: every[:4])
     assert db.migrate(conn, NOW) == [1, 2, 3, 4]
     monkeypatch.undo()
+    # pairing is of the schema of today (migration 0007) and nothing here is paired
+    monkeypatch.setattr(pairs, "mark", lambda conn: 0)
     rows = _revolut_rows()
     revolut = statement(
         "revolut", rows, [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(8))]
     )
     staging.stage(conn, batch(revolut, migros("100", "-1", description=TWICE)), CLOSED_AT)
+    monkeypatch.undo()
     return conn
 
 
@@ -340,4 +343,29 @@ def test_migration_0005_stops_at_a_row_whose_id_does_not_follow_from_it(
         db.migrate(conn, NOW)
     assert dump(conn) == was
     assert db.version(conn) == 4
+    conn.close()
+
+
+def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:6])
+    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6]
+    conn.executescript(
+        """
+        INSERT INTO owners (id, name) VALUES (1, 'Lukas'), (2, 'Anna');
+        INSERT INTO currencies (code, decimals) VALUES ('EUR', 2);
+        INSERT INTO accounts (id, owner_id, name, kind, currency, source)
+            VALUES (1, 1, 'Revolut EUR', 'bank', 'EUR', 'revolut');
+        INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency,
+                                  description, kind, counterparty_owner_id)
+            VALUES ('t1', 1, '2026-09-07', '2026-09-07', -1000000000, 'EUR', 'x', 'expense', 2);
+        """
+    )
+    monkeypatch.undo()
+    assert db.migrate(conn, NOW) == [7]
+    row = conn.execute("SELECT counterparty_owner_id, counterparty_paired FROM transactions")
+    assert tuple(row.fetchone()) == (2, 0)  # a mark made before is kept as the statement's own
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE transactions SET counterparty_paired = 2")
     conn.close()

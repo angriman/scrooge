@@ -401,6 +401,61 @@ def test_the_half_that_does_not_name_the_other_person_is_marked_too(
     assert dump(conn)["transactions"] == before["transactions"]
 
 
+def test_a_mark_made_by_pairing_goes_when_the_other_half_is_discarded(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, revolut(("-200", "Revolut Bank", 7)), NOW)
+    staging.stage(conn, revolut(("200", "Transfer from LUKAS MEIER", 8), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [OWNER, PARTNER]  # hers, then his
+    owner = store.owner_id(conn, PARTNER)
+    assert owner is not None
+    staging.discard(conn, owner=PARTNER, file_id=store.statement_files(conn, owner)[0].id)
+    assert [who for _, _, who in marked(conn)] == [None]  # an expense of the family again
+    staging.stage(conn, revolut(("200", "Transfer from LUKAS MEIER", 8), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [OWNER, PARTNER]  # and paired again
+
+
+def test_a_mark_made_by_pairing_goes_when_the_other_import_lacks_the_row(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, revolut(("-200", "Revolut Bank", 7)), NOW)
+    staging.stage(conn, revolut(("200", "Transfer from LUKAS MEIER", 8), owner=PARTNER), NOW)
+    staging.stage(conn, revolut(("5", "Interest", 8), owner=PARTNER), NOW)  # the row is gone
+    assert [who for _, _, who in marked(conn)] == [None, None]
+
+
+def test_a_mark_made_by_pairing_is_given_to_another_half_when_one_goes(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, revolut(("-200", "Revolut Bank", 7), ("-200", "Revolut Bank", 8)), NOW)
+    staging.stage(conn, revolut(("200", "Transfer from LUKAS MEIER", 7), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [OWNER, PARTNER, None]
+    staging.stage(conn, revolut(("200", "Transfer from LUKAS MEIER", 8), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [OWNER, None, PARTNER]  # the first one is free
+
+
+def test_a_row_the_statement_names_keeps_its_owner_without_a_partner(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, revolut(("-50", "Transfer to ANNA MEIER", 9)), NOW)
+    staging.stage(conn, revolut(("5", "Interest", 9), owner=PARTNER), NOW)
+    assert [who for _, _, who in marked(conn)] == [None, PARTNER]
+
+
+def test_a_committed_mark_stays_when_the_other_half_is_taken_back(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, revolut(("-200", "Revolut Bank", 7)), NOW)
+    staging.stage(conn, revolut(("200", "Transfer from LUKAS MEIER", 8), owner=PARTNER), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    staging.commit(conn, owner=PARTNER, now=NOW)
+    owner = store.owner_id(conn, PARTNER)
+    assert owner is not None
+    staging.uncommit(conn, owner=PARTNER, file_id=store.statement_files(conn, owner)[0].id)
+    staging.discard(conn, owner=PARTNER, file_id=store.statement_files(conn, owner)[0].id)
+    assert [who for _, _, who in marked(conn)] == [PARTNER]  # his, committed
+
+
 def test_a_committed_month_is_not_marked_afterwards(conn: sqlite3.Connection) -> None:
     staging.stage(conn, revolut(("-200", "Revolut Bank", 7)), NOW)
     staging.commit(conn, owner=OWNER, now=NOW)
