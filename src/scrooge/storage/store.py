@@ -958,6 +958,19 @@ class Waiting:
     counterparty: str
 
 
+def committed_or_typed(file_column: str) -> str:
+    """The SQL condition that keeps a row whose statement is committed, or that no statement
+    gave (typed by hand). `file_column` is the row's `statement_file_id`, with its table's alias.
+
+    One rule for every reader of transactions, balances and positions that shows committed
+    data only; a staged or discarded statement's rows fail it.
+    """
+    return (
+        f"({file_column} IS NULL OR EXISTS (SELECT 1 FROM statement_files cf "  # noqa: S608  # `file_column` is a column name given by the callers
+        f"WHERE cf.id = {file_column} AND cf.committed_at IS NOT NULL))"
+    )
+
+
 # What can be given another category: money in or out as the statement books it, whose
 # category a rule or a choice gave. The rest (trades, dividends, the interest split off a
 # bill) is categorized by what it is.
