@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Collection, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -1017,15 +1017,21 @@ def _has_figures(statement: Statement) -> bool:
     return bool(extraction.balances or extraction.controls) and not extraction.balances_on_export
 
 
-def _accounts(
-    conn: sqlite3.Connection, owner_id: int, statement: Statement, rows: Sequence[Transaction]
-) -> dict[str, int]:
-    """name -> id of every account the statement touches, created on first sight."""
+def _named(statement: Statement, rows: Sequence[Transaction]) -> set[tuple[str, str]]:
+    """(account, currency) of every account the statement touches."""
     extraction = statement.extraction
     named = {(txn.account, txn.currency) for txn in rows}
     named |= {(b.account, b.currency) for b in extraction.balances}
     named |= {(c.account, c.currency) for c in extraction.controls}
     named |= {(h.account, h.currency) for h in extraction.holdings or ()}
+    return named
+
+
+def _accounts(
+    conn: sqlite3.Connection, owner_id: int, statement: Statement, rows: Sequence[Transaction]
+) -> dict[str, int]:
+    """name -> id of every account the statement touches, created on first sight."""
+    named = _named(statement, rows)
     source = _BOOKED_ON.get(statement.source, statement.source)
     kind = _KINDS.get(source, "bank")
     return {
@@ -1036,9 +1042,11 @@ def _accounts(
     }
 
 
-def _refuse_duplicates(
-    statements: Sequence[Statement], accounts: Mapping[str, Mapping[str, int]]
-) -> None:
+def _overlaps(
+    statements: Sequence[Statement], accounts: Mapping[str, Iterable[str]]
+) -> Iterator[tuple[Statement, Statement, str]]:
+    """Each pair of statements of one source that cover the same days of an account, with the
+    account's name. `accounts` names the accounts of each statement by its file."""
     seen: dict[tuple[str, str], list[Statement]] = {}
     for statement in statements:
         first, last = statement.extraction.period
@@ -1047,10 +1055,36 @@ def _refuse_duplicates(
             for other in others:
                 start, end = other.extraction.period
                 if first <= end and start <= last:
-                    both = f"{other.filename} and {statement.filename}"
-                    msg = f"{both} are both {statement.source} statements of {account}"
-                    raise DuplicateStatementError(msg)
+                    yield other, statement, account
             others.append(statement)
+
+
+def _both(other: Statement, statement: Statement, account: str) -> str:
+    both = f"{other.filename} and {statement.filename}"
+    return f"{both} are both {statement.source} statements of {account}"
+
+
+def _refuse_duplicates(
+    statements: Sequence[Statement], accounts: Mapping[str, Mapping[str, int]]
+) -> None:
+    for other, statement, account in _overlaps(statements, accounts):
+        raise DuplicateStatementError(_both(other, statement, account))
+
+
+def twins(statements: Sequence[Statement], rows: Sequence[Transaction]) -> dict[str, str]:
+    """Why each statement is refused that shares days of an account with another of the same
+    import, by file: neither can be told from the other, so none is taken. What the
+    database holds is not looked at: a file imported again replaces the one it is."""
+    named: dict[str, set[str]] = {}
+    for statement in statements:
+        mine = [txn for txn in rows if txn.source_file == statement.filename]
+        named[statement.filename] = {name for name, _ in _named(statement, mine)}
+    problems: dict[str, str] = {}
+    for other, statement, account in _overlaps(statements, named):
+        msg = _both(other, statement, account)
+        problems.setdefault(other.filename, msg)
+        problems.setdefault(statement.filename, msg)
+    return problems
 
 
 def _refuse_shared_accounts(
