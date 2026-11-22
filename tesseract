@@ -1,0 +1,125 @@
+#!/bin/sh
+# Tesseract kept in this folder, for the scanned pension certificates: `./tesseract --version`.
+#
+# The first run downloads micromamba (one program, checked against the digests below) into
+# .local/bin, and with it installs Tesseract and its English data from conda-forge into
+# .local/tesseract, keeping the English data alone (the package has 128 languages). Its
+# downloads and settings are in .local/mamba, which it is given as its home too: nothing in
+# ~/.mamba, ~/.conda or ~/.condarc, and no Homebrew. Deleting the folder deletes all of it.
+#
+# Once installed, .local/ocr holds one program, `tesseract`, which runs this Tesseract with its
+# own English data. ./uv and the Makefile put .local/ocr first on the PATH: nothing else of
+# conda's (its openssl, xz, ...) comes with it. TESSERACT is conda-forge's version;
+# MICROMAMBA's digests are the `micromamba-<platform>.sha256` files of its GitHub release:
+# change them together.
+set -eu
+
+MICROMAMBA=2.10.0-0
+TESSERACT=5.5.3
+here=$(cd "$(dirname "$0")" && pwd)
+local="$here/.local"
+micromamba="$local/bin/micromamba"
+prefix="$local/tesseract"
+shown="$local/ocr"  # what goes on the PATH: this Tesseract alone
+tessdata="$prefix/share/tessdata"
+
+digest() {
+    case "$1" in
+        osx-arm64) echo c547639f5caf742236641c362746abb4a3505774753ecd08fe341643670c4c01 ;;
+        osx-64) echo 8421462a1ef1df9f7acd114f9e2a24c1332ce4f4e29f44465b4acb44e2755172 ;;
+        linux-64) echo 701f39c06f8e6a670a0e186c8479b9e5c0502a2f0cda6cef65d83bdd2875e8bd ;;
+        linux-aarch64) echo 3bb56786e21b9b24024f599fe9185b4a59dc3f9f59937a42311ee583adbbb23c ;;
+        *) return 1 ;;
+    esac
+}
+
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 "$1" | cut -d' ' -f1
+    fi
+}
+
+fetch_micromamba() {
+    case "$(uname -s)" in Darwin) os=osx ;; Linux) os=linux ;; *) os=? ;; esac
+    case "$os-$(uname -m)" in
+        osx-arm64) arch=arm64 ;;
+        linux-arm64 | linux-aarch64) arch=aarch64 ;;  # micromamba's name for both on Linux
+        *-x86_64 | *-amd64) arch=64 ;;
+        *) arch=? ;;
+    esac
+    platform="$os-$arch"
+    expected=$(digest "$platform") || {
+        echo "./tesseract: no micromamba download known for $(uname -s) $(uname -m)" >&2
+        exit 1
+    }
+    echo "./tesseract: downloading micromamba $MICROMAMBA ($platform) into .local/bin" >&2
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    curl -fsSL -o "$work/micromamba" \
+        "https://github.com/mamba-org/micromamba-releases/releases/download/$MICROMAMBA/micromamba-$platform"
+    actual=$(sha256 "$work/micromamba")
+    if [ "$actual" != "$expected" ]; then
+        echo "./tesseract: the download is not micromamba $MICROMAMBA: its SHA-256 is $actual" >&2
+        exit 1
+    fi
+    chmod +x "$work/micromamba"
+    mkdir -p "$local/bin"
+    mv "$work/micromamba" "$micromamba"
+    rm -rf "$work"
+    trap - EXIT
+}
+
+installed() {
+    # A warning on stderr is no other version: only the line naming it is compared.
+    [ -x "$prefix/bin/tesseract" ] \
+        && TESSDATA_PREFIX="$tessdata" "$prefix/bin/tesseract" --version 2>/dev/null \
+            | grep -qx "tesseract $TESSERACT" \
+        && [ -f "$tessdata/eng.traineddata" ] \
+        && [ -x "$shown/tesseract" ]
+}
+
+# What finanze runs: this Tesseract, with its own data whatever TESSDATA_PREFIX says (one left
+# by Homebrew would load other English data).
+expose() {
+    mkdir -p "$shown"
+    cat >"$shown/tesseract" <<SCRIPT
+#!/bin/sh
+TESSDATA_PREFIX="$tessdata" exec "$prefix/bin/tesseract" "\$@"
+SCRIPT
+    chmod +x "$shown/tesseract"
+}
+
+# No conda or mamba setting of this machine applies (a Miniforge's package cache, channels,
+# .condarc): micromamba sees only its own folder in .local/mamba.
+for name in $(env | sed -n -E 's/^((CONDA|MAMBA)[A-Za-z0-9_]*)=.*/\1/p'); do
+    unset "$name"
+done
+unset CONDARC
+export MAMBA_ROOT_PREFIX="$local/mamba"  # micromamba's package cache: not ~/.mamba
+export CONDA_PKGS_DIRS="$local/mamba/pkgs"
+
+if ! installed; then
+    if [ ! -x "$micromamba" ] || [ "$("$micromamba" --version)" != "${MICROMAMBA%-*}" ]; then
+        fetch_micromamba
+    fi
+    echo "./tesseract: installing Tesseract $TESSERACT from conda-forge into .local/tesseract" >&2
+    rm -rf "$prefix" "$shown"
+    mkdir -p "$MAMBA_ROOT_PREFIX"
+    # Its home is .local/mamba: it lists the environments it makes in ~/.conda otherwise.
+    HOME="$MAMBA_ROOT_PREFIX" "$micromamba" create --yes --quiet --no-rc --no-env \
+        --prefix "$prefix" --override-channels --channel conda-forge "tesseract=$TESSERACT"
+    # The downloads, once installed: of .local/mamba alone (--no-rc: no other cache is known).
+    HOME="$MAMBA_ROOT_PREFIX" "$micromamba" clean --all --yes --quiet --no-rc --no-env >/dev/null
+    # finanze reads English only (extractors/ocr.py); osd is what Tesseract looks for itself.
+    find "$prefix/share/tessdata" -name '*.traineddata' \
+        ! -name eng.traineddata ! -name osd.traineddata -delete
+    expose
+    if ! installed; then
+        echo "./tesseract: Tesseract $TESSERACT or its English data did not install" >&2
+        exit 1
+    fi
+fi
+
+exec "$shown/tesseract" "$@"

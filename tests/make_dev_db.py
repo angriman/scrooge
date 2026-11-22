@@ -158,7 +158,7 @@ def build(
     if not scans:
         out.write(
             f"No `{ocr.PROGRAM}` on PATH: the pension certificates are left out "
-            "(brew install tesseract to have them).\n"
+            "(make ocr to have them).\n"
         )
     conn = db.connect(built.database)
     try:

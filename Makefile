@@ -3,6 +3,9 @@
 
 # The uv of this folder (./uv, README "Everything in this folder") once it is there, else uv.
 UV ?= $(if $(wildcard .local/bin/uv),./uv,uv)
+# The Tesseract of ./tesseract (make ocr), once installed, whichever uv runs: the OCR tests and
+# make dev-db read scans with it. .local/ocr holds that one program.
+export PATH := $(CURDIR)/.local/ocr:$(PATH)
 # A Host of ~/.ssh/config: the NAS's name, port and user (deploy/README.md).
 NAS ?= nas
 NAS_DIR ?= /volume1/docker/finanze
@@ -11,7 +14,7 @@ NAS_DOCKER ?= /usr/local/bin/docker
 DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
-.PHONY: all help setup check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons
+.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -20,6 +23,9 @@ help: ## Show available targets
 setup: ## First run: install with ./uv, then make your setup in users/<name>/ (finanze init)
 	./uv sync --no-dev
 	./uv run --no-dev finanze init
+
+ocr: ## Install Tesseract into .local/ for the scanned pension certificates (./tesseract)
+	./tesseract --version
 
 sync: ## Install/refresh the project environment
 	$(UV) sync

@@ -46,7 +46,9 @@ def read_text(path: Path) -> str:
     if program is None:
         msg = (
             f"{path.name} is a scan and reading it needs Tesseract, which is not installed "
-            f"(no `{PROGRAM}` on PATH): install it, e.g. `brew install tesseract`"
+            f"(no `{PROGRAM}` on PATH): install it, e.g. `make ocr` in the project folder "
+            "(then run finanze through ./uv or make), `brew install tesseract` or "
+            "`apt install tesseract-ocr`"
         )
         raise OcrUnavailableError(msg)
     with pdfplumber.open(path) as pdf:

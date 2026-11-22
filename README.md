@@ -274,8 +274,21 @@ SHA-256 digests in the script); from then on uv's cache, its Python and its tool
 ```
 
 `make` uses `./uv` once `.local/bin/uv` is there, and `make hooks` then installs a git hook that
-runs through it, so pre-commit's environments are in `.local/` as well. Tesseract is the one thing outside it: it
-comes from Homebrew (`brew install tesseract`), for the scanned pension certificates only.
+runs through it, so pre-commit's environments are in `.local/` as well.
+
+`./tesseract` does the same for Tesseract, which reads the scanned pension certificates and
+nothing else. `make ocr` (or any first run of `./tesseract`) downloads micromamba into
+`.local/bin`, checked against the SHA-256 digests in the script, and with it installs
+Tesseract and its English data from conda-forge into `.local/tesseract`, with micromamba's
+downloads and settings in `.local/mamba`: nothing in `~/.mamba`, `~/.conda` or Homebrew, and
+no conda setting of the machine (`CONDA_*`, `MAMBA_*`, `.condarc`) applies. It then writes
+`.local/ocr/tesseract`, which runs that Tesseract with its own English data whatever
+`TESSDATA_PREFIX` says. `./uv` and the Makefile put `.local/ocr` (that one program, nothing
+else of the conda environment) first on the PATH, so `./uv run finanze import`, `make check`
+and `make dev-db` read scans with it. A Tesseract installed elsewhere on the PATH works too.
+
+CI and the NAS image install Debian's `tesseract-ocr` (5.3) instead, while `./tesseract`
+installs conda-forge's 5.5.3.
 
 ## Development
 
