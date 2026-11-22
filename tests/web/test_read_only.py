@@ -25,9 +25,11 @@ PAGES = [  # in francs, the one currency of these rows: no exchange rate is need
 ]
 MONTHS = ["/months/Lukas/2026-08", "/months/Lukas/2026-09", "/months/Anna/2026-09"]
 FORMS = [
+    "/import/maturities",
     "/import/save",
     "/import/commit",
     "/import/category",
+    "/holdings/logo",
     "/months/Lukas/2026-08/categorize",
     "/months/Lukas/2026-08/category",
     "/statements/1/discard",
