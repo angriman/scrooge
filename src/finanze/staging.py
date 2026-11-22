@@ -169,6 +169,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
             s.filename: _accounts(conn, owner_id, s, by_file[s.filename]) for s in statements
         }
         _refuse_duplicates(statements, accounts)
+        _refuse_shared_accounts(conn, statements, accounts)
         parts = {
             s.filename: _part(conn, s, accounts[s.filename], by_file[s.filename], over)
             for s in statements
@@ -278,6 +279,12 @@ def _part(
     extraction = statement.extraction
     first, last = extraction.period
     balances = extraction.balances
+    if extraction.balances_on_export and last <= over:
+        msg = (
+            f"{statement.filename} has no bookings and runs to {last}: its balance is the one when "
+            f"it was exported, which may have changed after {last}. Export it up to today"
+        )
+        raise StagingError(msg)
     if last > over:
         if extraction.holdings is not None or extraction.values:
             msg = (
@@ -850,8 +857,15 @@ def check_chain(conn: sqlite3.Connection, owner_id: int) -> list[MissingStatemen
     return gaps
 
 
+# Sources whose account number names one account for good (not a card's, renewed).
+_NUMBERED = frozenset({"ibkr", "migros"})
+
+
 def _has_figures(statement: Statement) -> bool:
-    return bool(statement.extraction.balances or statement.extraction.controls)
+    """Whether the statement prints figures its rows were checked against. The balance of an
+    export without bookings is stored, but nothing in it was checked."""
+    extraction = statement.extraction
+    return bool(extraction.balances or extraction.controls) and not extraction.balances_on_export
 
 
 def _accounts(
@@ -888,6 +902,35 @@ def _refuse_duplicates(
                     msg = f"{both} are both {statement.source} statements of {account}"
                     raise DuplicateStatementError(msg)
             others.append(statement)
+
+
+def _refuse_shared_accounts(
+    conn: sqlite3.Connection,
+    statements: Sequence[Statement],
+    accounts: Mapping[str, Mapping[str, int]],
+) -> None:
+    """Statements of two account numbers of one bank that land on the same account (a savings
+    account named like the private one) would mix their bookings and balances: refused, among
+    the statements of the import and against the committed ones. Only sources
+    whose number names one account for good are checked: a card's number changes when it is
+    renewed."""
+    printed: dict[int, set[str]] = {}
+    for statement in statements:
+        number = statement.extraction.account_id
+        if statement.source not in _NUMBERED or not number:
+            continue
+        for name, account in accounts[statement.filename].items():
+            if account not in printed:
+                printed[account] = store.numbers_of(conn, account)
+            known = printed[account]
+            if known - {number}:
+                msg = (
+                    f"{statement.filename} is of account number {number}, and {name} already "
+                    f"holds the statements of another: give the number a name of its own in "
+                    f"account_labels of finanze.yaml"
+                )
+                raise DuplicateStatementError(msg)
+            known.add(number)
 
 
 def _counterparty_owner(txn: Transaction, others: Mapping[int, Patterns]) -> int | None:

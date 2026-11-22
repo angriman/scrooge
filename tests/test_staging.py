@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 
 from finanze import categories, classification, months, pipeline, staging
 from finanze.categories import Extra
+from finanze.extractors.migros import extract as extract_migros
 from finanze.models import CashBalance, Holding, Kind
 from finanze.staging import Batch
 from finanze.storage import db, store
@@ -24,6 +25,7 @@ from finanze.validation import (
     MissingStatementError,
 )
 from tests.conftest import INSTRUMENTS, write_rules
+from tests.extractors.golden import FIXTURES
 from tests.storage.helpers import (
     AUGUST,
     OCTOBER,
@@ -589,6 +591,75 @@ def test_a_quiet_month_without_a_statement_is_no_gap(conn: sqlite3.Connection) -
     staged = staging.stage(conn, month_of(november, "800", "-50"), NOW)
     assert staged.gaps == ()
     assert staging.commit(conn, owner=OWNER, now=NOW)
+
+
+MIGROS_CSV = (FIXTURES / "migros" / "migros.csv").read_text(encoding="utf-8")
+EXPORTED = datetime(2026, 9, 30, 8, 0, tzinfo=UTC)  # the fixture's last day
+
+
+def quiet_export(saldo: str = "9000.00", iban: str = "CH00 0000 0000 0000 0000 0") -> Batch:
+    """A Migros export of September with no bookings, its `Saldo:` of the export day."""
+    text = MIGROS_CSV[: MIGROS_CSV.index('"01.09.2026"')].replace("CHF 9000.00", f"CHF {saldo}")
+    text = text.replace("CH00 0000 0000 0000 0000 0", iban)
+    extraction = extract_migros(text, source_file="quiet.csv")
+    return batch(pipeline.Statement("migros", "quiet.csv", f"quiet {saldo} {iban}", extraction))
+
+
+def test_an_export_without_bookings_up_to_its_import_keeps_its_balance(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, quiet_export(), EXPORTED)
+    assert rows(conn, "SELECT date, amount_nano FROM balances ORDER BY 1") == [
+        ("2026-08-31", 9_000_000_000_000),
+        ("2026-09-29", 9_000_000_000_000),
+    ]
+    # Its balance is stored, but nothing in it was checked.
+    assert rows(conn, "SELECT reconciled FROM statement_files") == [("nothing_to_check",)]
+    assert staging.commit(conn, owner=OWNER, now=EXPORTED)
+
+
+def test_an_export_without_bookings_that_ends_before_its_import_is_refused(
+    conn: sqlite3.Connection,
+) -> None:
+    # Imported on 1 October: something may have been booked that morning, before the export,
+    # and its balance would then not be the one of 30 September.
+    later = datetime(2026, 10, 1, 8, 0, tzinfo=UTC)
+    with pytest.raises(staging.StagingError, match="no bookings and runs to 2026-09-30"):
+        staging.stage(conn, quiet_export(), later)
+    assert rows(conn, "SELECT count(*) FROM statement_files") == [(0,)]
+
+
+def test_an_export_without_bookings_must_follow_on_from_the_one_before(
+    conn: sqlite3.Connection,
+) -> None:
+    staging.stage(conn, batch(migros("8000", "-200", month=AUGUST)), EXPORTED)
+    with pytest.raises(ChainMismatchError, match="2026-08-31") as caught:
+        staging.stage(conn, quiet_export("9000.00"), EXPORTED)
+    assert (caught.value.expected, caught.value.actual) == (Decimal(9000), Decimal(7800))
+    staging.stage(conn, quiet_export("7800.00"), EXPORTED)
+    assert staging.commit(conn, owner=OWNER, now=EXPORTED)
+
+
+def test_two_account_numbers_on_one_account_are_refused(conn: sqlite3.Connection) -> None:
+    staging.stage(conn, quiet_export(), EXPORTED)
+    staging.commit(conn, owner=OWNER, now=EXPORTED)
+    savings = quiet_export(iban="CH11 1111 1111 1111 1111 1")
+    with pytest.raises(staging.DuplicateStatementError, match="account_labels"):
+        staging.stage(conn, savings, EXPORTED)
+    # The same number again is no other account.
+    assert staging.stage(conn, quiet_export(), EXPORTED).nothing_new == ("quiet.csv",)
+
+
+def test_two_account_numbers_on_one_account_in_one_import_are_refused(
+    conn: sqlite3.Connection,
+) -> None:
+    private = migros("8000", "-200", month=AUGUST)
+    private = replace(
+        private, extraction=replace(private.extraction, account_id="CH0000000000000000000")
+    )
+    savings = quiet_export(iban="CH11 1111 1111 1111 1111 1").statements[0]
+    with pytest.raises(staging.DuplicateStatementError, match="is of account number"):
+        staging.stage(conn, batch(private, savings), EXPORTED)
 
 
 def test_a_commit_checks_the_chain_again(conn: sqlite3.Connection) -> None:

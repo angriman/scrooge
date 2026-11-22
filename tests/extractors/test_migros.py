@@ -124,7 +124,7 @@ def test_bom_is_ignored(result: Extraction) -> None:
         (CSV.replace('"Saldo:";"CHF 9000.00"\n', ""), "currency"),
         (CSV.replace('"-150.00";"5974.60"', '"-150.00";"9769.25"'), "does not follow"),
         (CSV.replace('"-4.40"', '"-4,40"'), "amount"),
-        (CSV[: CSV.index('"01.09.2026"')], "no rows"),
+        (CSV[: CSV.index('"01.09.2026"')].replace("CHF 9000.00", "CHF n/a"), "amount"),
         (CSV.replace('"01.09.2026";"Acquisto KONSUM', '"31.08.2026";"Acquisto KONSUM'), "outside"),
         (CSV.replace('"25.09.2026"\n', '"25.9.2026"\n'), "date"),
     ],
@@ -133,6 +133,18 @@ def test_malformed_statements_raise(content: str, message: str) -> None:
     assert content != CSV
     with pytest.raises(ExtractionError, match=message):
         migros.extract(content, source_file="migros.csv")
+
+
+def test_a_period_with_no_bookings_has_the_balance_of_the_export(result: Extraction) -> None:
+    empty = migros.extract(CSV[: CSV.index('"01.09.2026"')], source_file="m.csv")
+    assert empty.period == (date(2026, 9, 1), date(2026, 9, 30))
+    assert empty.transactions == ()
+    assert empty.balances == (CashBalance("Migros", "CHF", Decimal("9000.00"), Decimal("9000.00")),)
+    assert empty.account_id == "CH0000000000000000000"
+    # It holds only if the period runs up to the export: staging checks that.
+    assert empty.balances_on_export
+    assert not result.balances_on_export
+    check_balances(empty)
 
 
 def test_a_statement_ends_on_the_day_it_prints() -> None:

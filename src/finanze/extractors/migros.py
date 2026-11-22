@@ -4,6 +4,12 @@ A block of metadata lines precedes the table. The `Saldo:` metadata line is the 
 day of the export, not at the end of the period, so the opening and closing balances come from
 the running `Saldo` column, which is checked row by row.
 
+A period with no bookings (a savings account between two interest credits) has no column to
+read. The `Saldo:` of the export is then its opening and closing balance alike, which holds
+only when nothing was booked between the period's end and the export: the statement is
+marked `balances_on_export`, and staging accepts it only when its period runs up to the day
+it is imported (a booking of the day before the import could follow the period's last row).
+
 Older exports have the same table without quotes and without the
 `Comunicazione` column, and list some rows of one day out of balance order: the rows are then
 put back in the one order in which every balance follows from the row before.
@@ -57,18 +63,18 @@ def extract(content: str, source_file: str) -> Extraction:
     start = header.start()
     metadata = _metadata(text[:start])
     first, last = _period(metadata)
-    currency = metadata.get("Saldo:", "").partition(" ")[0]
+    currency, _, exported = metadata.get("Saldo:", "").partition(" ")
     if not currency.isalpha():
         msg = f"Migros: cannot read the currency from Saldo {metadata.get('Saldo:')!r}"
         raise ExtractionError(msg)
     account = "Migros" if currency == "CHF" else f"Migros {currency}"
 
     rows = read_table(text[start:], ";", _COLUMNS, "Migros")
-    if not rows:
-        msg = "Migros statement has no rows, so no balance to reconcile"
-        raise ExtractionError(msg)
     transactions: list[Transaction] = []
-    opening, ordered = _in_balance_order(rows)
+    if rows:
+        opening, ordered = _in_balance_order(rows)
+    else:  # nothing booked: the period held the balance of the export, if it runs up to it
+        opening, ordered = parse_decimal(exported, "Migros Saldo:"), []
     balance = opening
     for n, row in ordered:
         amount = parse_decimal(row["Importo"], "Migros Importo")
@@ -98,6 +104,7 @@ def extract(content: str, source_file: str) -> Extraction:
         end=last,
         transactions=tuple(transactions),
         balances=(CashBalance(account, currency, opening, balance),),
+        balances_on_export=not rows,
     )
 
 

@@ -183,6 +183,9 @@ class Extraction:
     rates: tuple[Rate, ...] = ()
     # First day covered, any day; None: the first of `month`.
     start: _Date | None = None
+    # The balances are the ones on the day of the export, not on the period's last day: they
+    # hold for the period only when it runs up to the export, which staging checks.
+    balances_on_export: bool = False
 
     @property
     def period(self) -> tuple[_Date, _Date]:

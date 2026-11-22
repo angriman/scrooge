@@ -238,6 +238,17 @@ def owner_of_number(conn: sqlite3.Connection, account_number: str) -> str | None
     return None if row is None else str(row[0])
 
 
+def numbers_of(conn: sqlite3.Connection, account_id: int) -> set[str]:
+    """The account numbers printed by the committed statements of an account."""
+    found = conn.execute(
+        "SELECT DISTINCT f.account_number FROM statement_files f "
+        "JOIN statement_accounts s ON s.statement_file_id = f.id "
+        "WHERE s.account_id = ? AND f.account_number != '' AND f.committed_at IS NOT NULL",
+        (account_id,),
+    )
+    return {str(number) for (number,) in found}
+
+
 @dataclass(frozen=True, slots=True)
 class StatementFile:
     """A statement file as stored."""
