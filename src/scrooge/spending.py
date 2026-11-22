@@ -139,14 +139,15 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
         return Spending(currency, 0, nothing, nothing, (), (), (), (), 0, nothing, found.through)
     inside = found.between(span.start, span.end)
     spent = [each for each in inside if not paid_back(each.row)]
-    returned = sum((each.amount for each in inside if paid_back(each.row)), Decimal(0))
+    came_back = [each.amount for each in inside if paid_back(each.row)]
+    returned = sum(came_back, Decimal(0))
     months = _months(span.start, span.end)
     categories = _categories(found, span, spent, months)
     largest = [category.name for category in categories[:SHOWN] if category.spent > 0]
     parts = (
         *largest,
         *([OTHERS] if len(categories) > len(largest) else []),
-        *([PAID_BACK] if returned else []),
+        *([PAID_BACK] if came_back else []),  # even when they net to nothing
     )
     periods = []
     for name in analysis.periods(span.start, span.end, grouping):

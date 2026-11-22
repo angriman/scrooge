@@ -230,6 +230,37 @@ def test_each_period_stacks_the_largest_categories_and_hangs_what_came_back(
     assert by_name["2026-02"] == {"Casa": D(1800), "Others": D("104.50"), "Paid back": D(0)}
 
 
+def test_a_payment_and_its_reversal_still_show_what_came_back() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    first, last = date(2026, 1, 1), date(2026, 1, 31)
+    rows = [
+        txn("-10", date=date(2026, 1, 5), source_ref="1"),
+        txn(
+            "50",
+            date=date(2026, 1, 6),
+            source_ref="2",
+            kind=Kind.INCOME,
+            category="Rimborsi",
+            counterparty="Anna Meier",
+        ),
+        txn(
+            "-50",
+            date=date(2026, 1, 7),
+            source_ref="3",
+            kind=Kind.INCOME,
+            category="Rimborsi",
+            counterparty="Anna Meier",
+        ),
+    ]
+    close(connection, OWNER, (first, last), last, ("migros", rows))
+    result = spent(connection, first=first, last=last)
+    assert (result.spent, result.paid_back) == (D(10), D(0))
+    assert result.parts == ("Alimentari", "Paid back")
+    assert result.periods[0].parts == {"Alimentari": D(10), "Paid back": D(0)}
+    connection.close()
+
+
 def test_both_people_without_what_they_pay_each_other(conn: sqlite3.Connection) -> None:
     both = spent(conn, owner=None, first=date(2026, 7, 1), last=date(2026, 7, 31))
     assert both.parts == ("Casa", "Alimentari")
