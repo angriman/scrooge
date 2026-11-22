@@ -68,17 +68,16 @@ def _overview(request: Request) -> Response:
         return _refused(asked.errors)
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
-        shown: overview.Overview | None
-        try:
-            shown = overview.run(conn, owner=asked.owner, currency=asked.currency, top=overview.TOP)
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            shown = None
-        try:
-            checks = networth.checks(conn, owner=asked.owner)
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            checks = ()
+        shown = wire.unless_rate_missing(
+            errors,
+            lambda: overview.run(
+                conn, owner=asked.owner, currency=asked.currency, top=overview.TOP
+            ),
+            None,
+        )
+        checks = wire.unless_rate_missing(
+            errors, lambda: networth.checks(conn, owner=asked.owner), ()
+        )
         found = logos(request, conn)
     return JSONResponse(
         {
@@ -95,12 +94,13 @@ def _networth(request: Request) -> Response:
     asked = forms.networth_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
+    errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
-        try:
-            worth = networth.run(conn, owner=asked.owner, currency=asked.currency)
-        except networth.MissingRateError as exc:
-            return JSONResponse({"series": None, "errors": [wire.sentence(exc)]})
-    return JSONResponse({"series": wire.series(worth, asked.by), "errors": []})
+        worth = wire.unless_rate_missing(
+            errors, lambda: networth.run(conn, owner=asked.owner, currency=asked.currency), None
+        )
+    series = None if worth is None else wire.series(worth, asked.by)
+    return JSONResponse({"series": series, "errors": errors})
 
 
 routes = [
