@@ -4,9 +4,11 @@ A bank may name the other person on one side only: Revolut shows "Transfer from 
 whoever receives, and just its own name to whoever sent. The named side carries
 `counterparty_owner` from the import. Here each such row looks for its other half among the
 rows of the person it names: same bank, same currency, the opposite amount, at most a day
-apart. A half that is named too needs nothing; one that is not gets `counterparty_owner`.
+apart. A half that is named too needs nothing; one that is not gets `counterparty_owner`,
+and `counterparty_paired` to say the mark is not the statement's own.
 
-Derived data, redone on every import. A row of a committed statement is never changed.
+Derived data, redone on every import: each mark made here is taken off first, so one whose
+other half is gone does not stay. A row of a committed statement is never changed.
 """
 
 from __future__ import annotations
@@ -32,6 +34,11 @@ class _Row:
 
 def mark(conn: sqlite3.Connection) -> int:
     """Set `counterparty_owner` on the unnamed halves; returns how many were found."""
+    conn.execute(
+        "UPDATE transactions SET counterparty_owner_id = NULL, counterparty_paired = 0 "
+        "WHERE counterparty_paired = 1 AND NOT coalesce((SELECT f.committed_at IS NOT NULL "
+        "FROM statement_files f WHERE f.id = transactions.statement_file_id), 0)"
+    )
     rows = [
         _Row(row[0], row[1], row[2], (row[3], row[4]), row[5], date.fromisoformat(row[6]), row[7])
         for row in conn.execute(
@@ -51,7 +58,8 @@ def mark(conn: sqlite3.Connection) -> int:
         half = _pair(row, [other for other in rows if other.named is None and not other.fixed])
         if half is not None:
             conn.execute(
-                "UPDATE transactions SET counterparty_owner_id = ? WHERE id = ?",
+                "UPDATE transactions SET counterparty_owner_id = ?, counterparty_paired = 1 "
+                "WHERE id = ?",
                 (row.owner, half.id),
             )
             found += 1
