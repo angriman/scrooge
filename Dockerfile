@@ -9,6 +9,7 @@
 
 FROM python:3.11-slim AS build
 
+# The uv of ./uv and of check.yml too: change the three together.
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 
 # The environment is copied into the next stage: real files, compiled now (nothing is

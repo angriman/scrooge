@@ -50,3 +50,9 @@ mutants/
 # Lock files
 *.lock
 !uv.lock
+
+# Self-contained uv, its Python and caches (./uv)
+/.local/
+
+# Personal data folder: the database, its originals and backups
+/user/

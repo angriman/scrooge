@@ -38,6 +38,7 @@ jobs:
       # The Python of .python-version (the image's), installed by uv.
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
+          version: "0.12.23" # the uv of ./uv and the Dockerfile
           enable-cache: true
           cache-dependency-glob: uv.lock
 

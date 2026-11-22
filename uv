@@ -1,0 +1,82 @@
+#!/bin/sh
+# uv kept in this folder, with everything it stores: `./uv sync`, `./uv run finanze ...`.
+#
+# The first run downloads uv itself into .local/bin, checked against the digests below. From
+# then on uv's cache, its Python, its tools and their caches are in .local/ as well: nothing
+# in ~/.cache, ~/.local or ~/.config. Deleting the folder deletes all of it. A uv installed
+# elsewhere is neither needed nor used.
+#
+# VERSION is the uv of the Dockerfile and of .github/workflows/check.yml: change the three
+# together, with the digests of the new release (each `uv-<target>.tar.gz.sha256` on its GitHub
+# release page).
+set -eu
+
+VERSION=0.12.23
+here=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd -P)
+local="$here/.local"
+uv="$local/bin/uv"
+
+digest() {
+    case "$1" in
+        aarch64-apple-darwin) echo 50487ae565ccd96e499056b4674d438f4c53170202617b4c759defe0c6a1b544 ;;
+        x86_64-apple-darwin) echo 960da44cb4b73685206ddd250b19e0a117fa41095710c1038f081f5cb613efb4 ;;
+        aarch64-unknown-linux-gnu) echo 6524bd338177ed50d035d39354e12545e993bbeba2ecbddf0480c5b3a81d313f ;;
+        x86_64-unknown-linux-gnu) echo 9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6 ;;
+        aarch64-unknown-linux-musl) echo b536543cc4d50661986b165c76ee8aa9056e4fa332edcd153ff2e98760f9359b ;;
+        x86_64-unknown-linux-musl) echo 1cff8783850e794470aadb73f54b749542a511fc57b0ce6468b64bd3852e0ade ;;
+        *) return 1 ;;
+    esac
+}
+
+bootstrap() {
+    case "$(uname -s)" in Darwin) os=apple-darwin ;; Linux) os=unknown-linux-gnu ;; *) os=? ;; esac
+    # Alpine and other musl systems cannot run the glibc build.
+    if [ "$os" = unknown-linux-gnu ] && ls /lib/ld-musl-* >/dev/null 2>&1; then
+        os=unknown-linux-musl
+    fi
+    case "$(uname -m)" in arm64 | aarch64) arch=aarch64 ;; x86_64 | amd64) arch=x86_64 ;; *) arch=? ;; esac
+    target="$arch-$os"
+    expected=$(digest "$target") || {
+        echo "./uv: no uv download known for $(uname -s) $(uname -m)" >&2
+        exit 1
+    }
+    echo "./uv: downloading uv $VERSION ($target) into .local/bin" >&2
+    # Beside .local/bin, so the move below is a rename: a ./uv started meanwhile runs the old
+    # binary or the new one, never half of one (`make -j check` bootstraps several at once).
+    mkdir -p "$local/bin"
+    work=$(mktemp -d "$local/download.XXXXXX")
+    trap 'rm -rf "$work"' EXIT
+    trap 'exit 130' INT TERM HUP
+    curl -fsSL -o "$work/uv.tar.gz" \
+        "https://github.com/astral-sh/uv/releases/download/$VERSION/uv-$target.tar.gz"
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual=$(sha256sum "$work/uv.tar.gz" | cut -d' ' -f1)
+    else
+        actual=$(shasum -a 256 "$work/uv.tar.gz" | cut -d' ' -f1)
+    fi
+    if [ "$actual" != "$expected" ]; then
+        echo "./uv: the download is not uv $VERSION: its SHA-256 is $actual" >&2
+        exit 1
+    fi
+    tar -xzf "$work/uv.tar.gz" -C "$work"
+    mv -f "$work/uv-$target/uvx" "$local/bin/uvx"
+    mv -f "$work/uv-$target/uv" "$local/bin/uv"
+    rm -rf "$work"
+    trap - EXIT INT TERM HUP
+}
+
+if [ ! -x "$uv" ] || [ "$("$uv" --version 2>/dev/null | cut -d' ' -f2)" != "$VERSION" ]; then
+    bootstrap
+fi
+
+export UV_CACHE_DIR="$local/cache"
+export UV_PYTHON_INSTALL_DIR="$local/python"
+export UV_PYTHON_BIN_DIR="$local/bin"
+export UV_TOOL_DIR="$local/tools"
+export UV_TOOL_BIN_DIR="$local/bin"
+export XDG_CONFIG_HOME="$local/config"      # no ~/.config/uv; pyproject.toml's [tool.uv] still counts
+export UV_PYTHON_PREFERENCE=only-managed    # a Python of its own, never the system's
+export PRE_COMMIT_HOME="$local/pre-commit"  # the git hooks' environments (make hooks runs them here)
+export XDG_CACHE_HOME="$local/xdg-cache"    # whatever else would cache in ~/.cache
+
+exec "$uv" "$@"

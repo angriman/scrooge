@@ -1,7 +1,8 @@
 # Gate for this project: `make check` must pass before a task is done.
 # See CLAUDE.md (Definition of done) and docs/parser-spec.md.
 
-UV ?= uv
+# The uv of this folder (./uv, README "Everything in this folder") once it is there, else uv.
+UV ?= $(if $(wildcard .local/bin/uv),./uv,uv)
 # A Host of ~/.ssh/config: the NAS's name, port and user (deploy/README.md).
 NAS ?= nas
 NAS_DIR ?= /volume1/docker/finanze
@@ -45,8 +46,8 @@ fix: ## Auto-fix lint and formatting
 	$(UV) run ruff check --fix src tests
 	$(UV) run ruff format src tests
 
-hooks: ## Install the git pre-commit hooks
-	$(UV) run pre-commit install
+hooks: ## Install the git pre-commit hooks (through ./uv once it is there: hooks/install)
+	sh hooks/install $(UV)
 
 hooks-run: ## Run every pre-commit hook over all files
 	$(UV) run pre-commit run --all-files

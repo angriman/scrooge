@@ -214,6 +214,24 @@ make nas-update               # on the NAS: pull the image, restart, drop the ol
 - Going back: in `compose.yaml` on the NAS, `image: ghcr.io/<owner>/finanze:<older tag>` in
   place of `:latest`, then `make nas-update`.
 
+## Everything in this folder
+
+`./uv` is uv kept in the project, for a machine that should hold nothing of it elsewhere. Its
+first run downloads uv into `.local/bin` (the version of the Dockerfile, checked against the
+SHA-256 digests in the script); from then on uv's cache, its Python and its tools are in
+`.local/` too, and the environment in `.venv/`. Nothing goes to `~/.cache`, `~/.local` or
+`~/.config`, and no uv installed elsewhere is needed. Deleting the folder deletes all of it.
+
+```sh
+./uv sync --no-dev                  # the app only; plain `./uv sync` adds the development tools
+./uv run --no-dev finanze serve     # `uv run` alone would install them again
+./uv cache clean                    # the downloads, once installed
+```
+
+`make` uses `./uv` once `.local/bin/uv` is there, and `make hooks` then installs a git hook that
+runs through it, so pre-commit's environments are in `.local/` as well. Tesseract is the one thing outside it: it
+comes from Homebrew (`brew install tesseract`), for the scanned pension certificates only.
+
 ## Development
 
 `make check` runs ruff, `mypy --strict` and pytest with branch coverage. Real statements stay in

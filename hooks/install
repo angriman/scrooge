@@ -1,0 +1,27 @@
+#!/bin/sh
+# `make hooks`: install the git pre-commit hook, run with the Makefile's uv as $1.
+#
+# With ./uv the hook goes through it as well, or pre-commit would keep its environments in
+# ~/.cache: git starts the hook without the variables ./uv sets. A hook of another tool is
+# left alone (pre-commit install would chain it, and chaining this one calls itself).
+set -eu
+
+hook="$(git rev-parse --git-path hooks)/pre-commit"
+if [ "$1" != ./uv ]; then
+    if grep -q 'Written by make hooks' "$hook" 2>/dev/null; then rm "$hook"; fi
+    exec "$1" run pre-commit install
+fi
+if [ -e "$hook" ] && ! grep -q pre-commit "$hook"; then
+    echo "hooks: $hook is not pre-commit's: move it away first" >&2
+    exit 1
+fi
+cat >"$hook" <<'HOOK'
+#!/bin/sh
+# Written by make hooks: through ./uv, so its caches stay in .local/ (uv in a worktree without it).
+uv=$(git rev-parse --show-toplevel)/uv
+[ -x "$uv" ] || uv=uv
+exec "$uv" run pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit \
+    --hook-dir "$(dirname "$0")" -- "$@"
+HOOK
+chmod +x "$hook"
+echo "pre-commit installed at $hook, through ./uv"

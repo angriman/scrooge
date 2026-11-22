@@ -15,7 +15,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy --strict
-        entry: uv run mypy
+        entry: make type # the Makefile's uv: ./uv once it is there
         language: system
         types: [python]
         pass_filenames: false
