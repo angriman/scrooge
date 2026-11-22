@@ -20,6 +20,7 @@ ROWS = [
     txn("-45.20", date=date(2026, 8, 3), source_ref="2", category="Spesa", counterparty="Bakery"),
 ]
 PAGES = ["/", "/holdings", "/analysis", "/transactions", "/months"]
+VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'
 
 
 @pytest.fixture(scope="module")
@@ -51,7 +52,7 @@ def cells(html: str, table: str) -> list[str]:
 def test_every_page_is_as_wide_as_the_screen_it_is_on(client: TestClient, path: str) -> None:
     page = client.get(path)
     assert page.status_code == 200
-    assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in page.text
+    assert page.text.count(VIEWPORT) == 1
 
 
 def test_a_transaction_names_its_cells_for_the_card_it_becomes(client: TestClient) -> None:
@@ -83,7 +84,7 @@ def test_a_period_of_the_cash_flow_says_what_each_figure_is(client: TestClient) 
 def test_the_import_page_is_as_wide_as_the_screen_it_is_on(draft: TestClient) -> None:
     page = draft.get("/import", params={"owner": "Lukas"})
     assert page.status_code == 200
-    assert '<meta name="viewport" content="width=device-wi' in page.text
+    assert page.text.count(VIEWPORT) == 1
 
 
 def test_an_account_and_a_month_of_the_list_say_what_each_figure_is(client: TestClient) -> None:
@@ -142,12 +143,18 @@ def test_the_draft_names_its_cells_for_the_cards_they_become(draft: TestClient) 
 def test_every_cell_of_a_card_has_a_place_or_a_name() -> None:
     """A cell without either would sit in the card with nothing to say what it is."""
     placed = re.compile(r'class="[^"]*\b(lead|total|wide|share|bars)\b|data-label="[^"]+"')
+    tables = cards = 0
     for template in sorted((WEB / "templates").glob("*.html")):
         text = template.read_text(encoding="utf-8")
         for table in re.findall(r'<table class="cards">.*?</table>', text, re.DOTALL):
+            tables += 1
             body = table.partition("<tbody>")[2]
             for cell in re.findall(r"<td[^>]*>", body):
+                cards += 1
                 assert placed.search(cell) or cell == "<td>", f"{template.name}: {cell}"
+    # Not vacuous: the templates do hold card tables, so the search above finds them.
+    assert tables >= 15
+    assert cards >= 90
 
 
 def test_the_stylesheet_and_the_chart_agree_on_what_a_phone_is() -> None:
