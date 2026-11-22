@@ -1,5 +1,9 @@
 # finanze-parser
 
+[![check](https://github.com/angriman/scrooge/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/angriman/scrooge/actions/workflows/check.yml)
+[![image](https://github.com/angriman/scrooge/actions/workflows/image.yml/badge.svg)](https://github.com/angriman/scrooge/actions/workflows/image.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+
 Parses bank and broker statements, reconciles every account against the statement's own
 balances, and stores the transactions in a local SQLite database for two people, shown by a
 small web app: net worth day by day, holdings, cash flow, transactions, and an import page.
