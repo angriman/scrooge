@@ -79,20 +79,18 @@ def test_the_config_next_to_it_serves_and_queries_it(tmp_path: Path) -> None:
     assert "transactions\n" in out.getvalue()
 
 
-def test_its_rules_are_one_file_from_the_fixtures_and_the_examples(tmp_path: Path) -> None:
+def test_its_rules_are_one_file_from_the_fixtures_and_the_starter(tmp_path: Path) -> None:
     # The repository's own rules.yaml and categories.yaml are the user's: never read here.
     built, _ = build(tmp_path / "dev", tmp_path)
     assert built.rules == tmp_path / "dev" / "rules.yaml"
     assert not (tmp_path / "dev" / "rules.local.yaml").exists()
     rules = built.rules.read_text(encoding="utf-8")
-    examples = Path(__file__).parents[1] / "examples"
+    starter = Path(__file__).parents[1] / "src" / "finanze" / "starter"
     assert "VELOSHARE" in rules  # an invented shop of the fixtures
-    assert (
-        examples.joinpath("rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
-        in rules
-    )
+    generic = starter.joinpath("rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
+    assert generic.rstrip("\n") in rules
     categories = (tmp_path / "dev" / "categories.yaml").read_text(encoding="utf-8")
-    assert categories == examples.joinpath("categories.yaml").read_text(encoding="utf-8")
+    assert categories == starter.joinpath("categories.yaml").read_text(encoding="utf-8")
 
 
 def test_without_tesseract_the_certificates_are_left_out(
@@ -155,6 +153,20 @@ def test_the_database_the_real_config_names_is_never_touched(tmp_path: Path) -> 
     with pytest.raises(make_dev_db.RefusedError, match="the real data is kept at"):
         make_dev_db.build(tmp_path / "nas", io.StringIO(), now=NOW, real=(), config=config)
     assert not (tmp_path / "nas").exists()
+
+
+def test_the_setups_in_users_and_the_databases_they_name_are_never_touched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setups = tmp_path / "users"
+    (setups / "anna").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere" / "finanze.db"
+    (setups / "anna" / "finanze.yaml").write_text(f"database: {elsewhere}\n", encoding="utf-8")
+    monkeypatch.setattr(make_dev_db, "SETUPS", setups)
+    none = tmp_path / "none.yaml"
+    with pytest.raises(make_dev_db.RefusedError, match="the real data is kept at"):
+        make_dev_db.build(elsewhere.parent, io.StringIO(), now=NOW, real=(), config=none)
+    assert make_dev_db.ROOT / "users" in make_dev_db.REAL
 
 
 def test_the_real_database_s_default_folder_is_refused(tmp_path: Path) -> None:

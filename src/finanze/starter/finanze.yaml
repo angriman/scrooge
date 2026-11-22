@@ -1,0 +1,34 @@
+# Your setup. `finanze` finds it by itself while it is the only one in users/ and there is no
+# finanze.yaml in the folder the commands run in; with `--user <name>` (or FINANZE_USER)
+# otherwise. Relative paths are relative to the folder the commands run in, the one users/
+# is in. `finanze init` wrote it from src/finanze/starter/; it is yours now.
+
+# The database, made on the first import. Its backups/ and originals/ (a copy of every
+# statement imported) are kept next to it.
+database: $home/finanze.db
+
+# The rules (the first is the one both people share; categories.yaml is kept next to it) and
+# the instruments.
+rules: [$home/rules.yaml]
+instruments: $home/instruments.yaml
+
+# Whose statements `finanze import` reads, unless --owner names the other person.
+owner: $owner
+
+# How each person appears as a counterparty on statements: the name as printed, and IBANs,
+# each a regular expression matched ignoring case. Money between the two is marked, so that
+# the view of both together leaves it out.
+owners:
+$owners
+
+# A second account at one bank or broker gets a name of its own from its number (IBKR) or
+# its IBAN (Migros): "<label> <last word of the usual name>", e.g. "Risparmio Migros".
+# account_labels:
+#   U7654321: IBKR 2
+#   CH0000000000000000000: Risparmio
+
+# To reach the pages from other devices, with a password (`finanze password` prints it):
+# serve:
+#   host: 0.0.0.0
+#   names: [nas.example.ts.net]
+#   password: scrypt$$...

@@ -1,6 +1,7 @@
-"""`finanze import | commit | statements | uncommit | discard | balance | keep | logo | prices |
-query | serve | password | publish`: the database from the terminal.
+"""`finanze init | import | commit | statements | uncommit | discard | balance | keep | logo |
+prices | query | serve | password | publish`: the database from the terminal.
 
+    finanze init              first run: ask who you are and make your setup in users/<name>/
     finanze import <path>...  reconcile and classify the statements, then stage them
     finanze commit            make what is staged visible to the dashboards
     finanze statements        list the statements stored, staged ones first, with their ids
@@ -35,8 +36,13 @@ SHA-256: the rows of the database say which file they came from, and that file i
 `keep` does the same for statements imported earlier: of the files named it keeps those the
 database was filled from, and says which statements still have no original.
 
+The config is `--config`; else `finanze.yaml` in the folder the command runs in; else the
+setup `users/<name>/finanze.yaml` that `--user` or $FINANZE_USER names, or the only one in
+`users/`. Its relative paths are relative to the folder the command runs in, as before: the
+config `finanze init` writes names `users/<name>/...`, so the commands run from the folder
+`users/` is in.
 The database path, the person and the names that recognise each person as a counterparty
-come from `finanze.yaml` (`database`, `owner`, `owners`), or from `--db` and `--owner`.
+come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`.
 `account_labels` there names a further account at a broker by its account number.
 `rules` there lists the rules files, first wins, and `instruments` names the instruments
 file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
@@ -82,6 +88,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import ipaddress
+import os
 import re
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
@@ -99,6 +106,7 @@ from finanze import (
     importing,
     marketdata,
     networth,
+    onboarding,
     pipeline,
     prices,
     publish,
@@ -132,6 +140,7 @@ COMMANDS = (
     "serve",
     "password",
     "publish",
+    "init",
 )
 # Commands that are not about one person's statements.
 _READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish")
@@ -139,6 +148,7 @@ OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 # Where the rules and the instruments are read from when neither a flag nor the config says.
 RULES = ["rules.yaml"]
 INSTRUMENTS = "instruments.yaml"
+USER = "FINANZE_USER"  # the setup in users/ to use, when --user does not say
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
     ExtractionError,
@@ -172,6 +182,9 @@ def main(
     try:
         if args.command == "password":  # about no database and no config
             return _password(out)
+        if args.command == "init":
+            return onboarding.run(Path(onboarding.USERS), out, ask)
+        args.config = _find_config(args)
         return _run(args, _Console(out, ask, source), now())
     except _ERRORS as exc:
         out.write(f"error: {exc}\n")
@@ -181,7 +194,15 @@ def main(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="finanze", description=__doc__)
     files = argparse.ArgumentParser(add_help=False)
-    files.add_argument("--config", type=Path, default=Path("finanze.yaml"))
+    files.add_argument(
+        "--config",
+        type=Path,
+        help="the config (default: finanze.yaml here, else the setup in users/ --user names, "
+        "or the only one there)",
+    )
+    files.add_argument(
+        "--user", help=f"the setup users/<name>/ to use (default: ${USER}, or the only one)"
+    )
     files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
     shared = argparse.ArgumentParser(add_help=False, parents=[files])
     shared.add_argument("--owner", help="whose statements (default: 'owner' in the config)")
@@ -245,6 +266,7 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765, help="default: 8765")
     _rules_flags(serve)
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
+    commands.add_parser("init", help="first run: make a setup of your own in users/<name>/")
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
         "folder",
@@ -314,6 +336,34 @@ def _amount(text: str) -> Decimal:
     except InvalidOperation:
         msg = f"{text!r} is not an amount like 1234.56"
         raise argparse.ArgumentTypeError(msg) from None
+
+
+def _find_config(args: argparse.Namespace) -> Path:
+    """`--config`; else finanze.yaml in the folder the command runs in, as before users/;
+    else the setup `--user` (or $FINANZE_USER) names in users/; else the only one there.
+
+    A config here comes first, so that a setup in users/ never takes over one that was
+    already in use. A name is the folder's own name, or what `finanze init` made of it.
+    """
+    if args.config is not None:
+        return Path(args.config)
+    here = Path(onboarding.CONFIG)
+    named = args.user or os.environ.get(USER, "")
+    if here.is_file() and not named:
+        return here
+    users = Path(onboarding.USERS)
+    found = sorted(config.parent.name for config in users.glob(f"*/{onboarding.CONFIG}"))
+    if named:
+        chosen = onboarding.find_setup(named, found)
+        if chosen is None:
+            there = f"there are {', '.join(found)}" if found else "there is none yet"
+            msg = f"no setup {named!r} in {users}/ ({there}): make one with 'finanze init'"
+            raise ConfigError(msg)
+        return users / chosen / onboarding.CONFIG
+    if len(found) > 1:
+        msg = f"{users}/ holds several setups ({', '.join(found)}): choose one with --user"
+        raise ConfigError(msg)
+    return users / found[0] / onboarding.CONFIG if found else here
 
 
 def _config(path: Path) -> dict[str, object]:

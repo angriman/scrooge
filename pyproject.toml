@@ -42,6 +42,7 @@ finanze = [
     "web/static/*",
     "web/static/vendor/*",
     "web/static/icons/*",
+    "starter/*.yaml",
 ]
 
 # ---------------------------------------------------------------- ruff

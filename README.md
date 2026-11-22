@@ -14,12 +14,21 @@ with the local `tesseract`).
 ## Use
 
 ```sh
-uv sync
-uv run finanze import statements/            # recognise, reconcile, classify and stage
-uv run finanze import statements/ --review   # answer once per unknown merchant; saved as rules
-uv run finanze commit                        # commit everything staged for the person
-uv run finanze prices                        # fetch the closes and rates not stored yet
-uv run finanze serve                         # the web app
+make setup                                   # first run: install, then answer a few questions
+```
+
+`make setup` installs the app with `./uv` (see "Everything in this folder") and runs
+`finanze init`. That asks your name, how it is printed on your statements, and whether someone
+else shares the database, then makes your setup in `users/<name>/` (git-ignored): the config,
+the rules, the categories, the instruments and an empty `statements/` folder. Put your
+statement exports there, then, from this folder:
+
+```sh
+./uv run --no-dev finanze import users/<name>/statements/            # recognise, reconcile, classify and stage
+./uv run --no-dev finanze import users/<name>/statements/ --review   # answer once per unknown merchant; saved as rules
+./uv run --no-dev finanze commit             # commit everything staged for the person
+./uv run --no-dev finanze prices             # fetch the closes and rates not stored yet
+./uv run --no-dev finanze serve              # the web app
 ```
 
 Files are recognised by their content, never by their name. A file that does not reconcile
@@ -27,19 +36,32 @@ is refused on its own, and the others are staged. See "The database" below.
 
 ## Configuration
 
-| File | Committed | Purpose |
-|---|---|---|
-| `rules.yaml` | no | description → category rules, generic words and your own (shops, chains, employer); `--review` and the import page append here; start from `examples/rules.yaml` |
-| `rules.<owner>.yaml` | no | one person's rules for rows naming either person (transfers between the two, own top-ups); read first; `--review` saves those answers here |
-| `categories.yaml` | no | categories added to the built-in taxonomy; `--review` appends here on `+Name`; read from the folder of the first rules file; see `examples/categories.yaml` |
-| `instruments.yaml` | no | asset tab for Tastytrade tickers, maturity of T-bills bought there, overrides; start from `examples/instruments.yaml` |
-| `finanze.yaml` | no | database, owners, account labels, web app, where the rules and instruments are |
+Everything personal is in one folder, a setup: `users/<name>/`, which `finanze init` makes from
+the starter files in `src/finanze/starter/`.
 
-The files above are read in the folder the command runs in. `finanze.yaml` can name others:
-`rules: [path, ...]` (first wins; default `rules.yaml`) and `instruments: path` (default
-`instruments.yaml`), for `import`, `serve` and `prices`; `--rules` and `--instruments` win over
-both. The first rules file is the one both people share: `rules.<owner>.yaml` and
-`categories.yaml` are read from its folder and written there.
+| File in `users/<name>/` | Purpose |
+|---|---|
+| `finanze.yaml` | database, owners, account labels, web app, where the rules and instruments are |
+| `rules.yaml` | description → category rules, generic words and your own (shops, chains, employer); `--review` and the import page append here |
+| `rules.<owner>.yaml` | one person's rules for rows naming either person (transfers between the two, own top-ups); read first; `--review` saves those answers here |
+| `categories.yaml` | categories added to the built-in taxonomy; `--review` appends here on `+Name` |
+| `instruments.yaml` | asset tab for Tastytrade tickers, maturity of T-bills bought there, price symbols |
+| `statements/` | where to put the statement exports to import |
+| `finanze.db`, `originals/`, `backups/` | the database, a copy of every statement imported, the copies made before each commit |
+
+Which config a command reads: `--config <path>`; else `finanze.yaml` in the folder the
+command runs in, as before `users/` existed; else the setup `--user <name>` (or
+`FINANZE_USER`) names, or the only one in `users/` (several are an error that names them).
+`--user` also picks a setup when there is a `finanze.yaml` here. A name is the folder's, in
+any case, or the name given to `finanze init`.
+
+Relative paths in `finanze.yaml` are relative to the folder the command runs in, as they
+always were: the config `finanze init` writes names `users/<name>/finanze.db`,
+`users/<name>/rules.yaml` and `users/<name>/instruments.yaml`, so the commands run from this
+folder. It can name other files: `rules: [path, ...]` (first wins; default `rules.yaml`) and
+`instruments: path` (default `instruments.yaml`), for `import`, `serve` and `prices`; `--rules`
+and `--instruments` win over both. The first rules file is the one both people share:
+`rules.<owner>.yaml` and `categories.yaml` are read from its folder and written there.
 
 Keys of older configs that nothing reads any more (`locale`, `accounts`) are ignored.
 
@@ -82,10 +104,10 @@ Each transaction has two dates: `date`, the day it happened, and `booking_date`,
 counts on for its statement (a card purchase made in August and billed in September has
 both). Amounts are whole billionths of the currency unit (`amount_nano`).
 
-`finanze.yaml` gains:
+`finanze.yaml` has:
 
 ```yaml
-database: ~/Documents/Finanza/finanze.db
+database: users/lukas/finanze.db   # relative to the folder the commands run in, or absolute
 owner: Lukas                       # whose statements these are; or pass --owner
 owners:                            # how each person appears as a counterparty
   Lukas: {match: ["LUKAS MEIER"]}
@@ -220,7 +242,8 @@ make nas-update               # on the NAS: pull the image, restart, drop the ol
 first run downloads uv into `.local/bin` (the version of the Dockerfile, checked against the
 SHA-256 digests in the script); from then on uv's cache, its Python and its tools are in
 `.local/` too, and the environment in `.venv/`. Nothing goes to `~/.cache`, `~/.local` or
-`~/.config`, and no uv installed elsewhere is needed. Deleting the folder deletes all of it.
+`~/.config`, and no uv installed elsewhere is needed. Your data is in the folder too, in
+`users/` (see "Configuration"). Deleting the folder deletes all of it.
 
 ```sh
 ./uv sync --no-dev                  # the app only; plain `./uv sync` adds the development tools
@@ -235,7 +258,7 @@ comes from Homebrew (`brew install tesseract`), for the scanned pension certific
 ## Development
 
 `make check` runs ruff, `mypy --strict` and pytest with branch coverage. Real statements stay in
-`statements/` (git-ignored); only redacted fixtures live in `tests/fixtures/`.
+`users/<name>/statements/` (git-ignored); only redacted fixtures live in `tests/fixtures/`.
 
 `make dev-db` builds a database to develop against from those fixtures alone: two invented
 people, every source, the pension certificates when Tesseract is installed, and invented
@@ -246,6 +269,9 @@ in `output/dev/` with the config and rules it was built with, and it prints how 
 uv run finanze serve --config output/dev/finanze.yaml --rules output/dev/rules.yaml \
     --instruments output/dev/instruments.yaml
 ```
+
+It is not in `users/`, so that it never becomes a second setup that your own commands would
+have to tell apart with `--user`.
 
 It never empties a folder it did not make, nor the real database's.
 

@@ -1,6 +1,5 @@
-# An example of `instruments.yaml`: the asset tab of instruments (D12). Copy it next to
-# `finanze.yaml` (on the NAS, into /data) and make it yours: the real file is git-ignored,
-# since it lists what you hold.
+# What is known about the instruments you hold (D12), beyond what the statements say. It is
+# in your git-ignored users/<name>/ folder, since it lists what you hold.
 #
 # IBKR's statement gives each instrument's type and each bill's maturity, so IBKR trades need
 # no entry: ETFs go to `ETFs`, common stock to `Stocks`, T-bills to `Bonds`.
@@ -12,10 +11,14 @@
 #   ticker: name written when it differs from the broker's symbol
 #   maturity: 2026-12-24        # T-bills only, keyed by CUSIP
 #   price_symbol: WIDG.DE       # Yahoo symbol, when it is not the ticker itself
-instruments:
-  ACME: {tab: Stocks}
-  912797ZZ1: {maturity: 2026-12-24}
-  # A ticker the broker renamed: trades and holdings under the old one count as the new.
-  OLDW: {ticker: WIDG}
-  # Where prices are fetched when that is not under the instrument's own symbol (finanze prices).
-  WIDG: {tab: ETFs, price_symbol: WIDG.DE}
+#
+# For example:
+#
+#   instruments:
+#     ACME: {tab: Stocks}
+#     912797ZZ1: {maturity: 2026-12-24}
+#     # A ticker the broker renamed: trades and holdings under the old one count as the new.
+#     OLDW: {ticker: WIDG}
+#     # Where prices are fetched when that is not under the instrument's own symbol (finanze prices).
+#     WIDG: {tab: ETFs, price_symbol: WIDG.DE}
+instruments: {}

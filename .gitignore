@@ -1,6 +1,6 @@
-# Sensitive: real statements and derived data. Never commit.
-statements/*
-!statements/.gitkeep
+# Sensitive: real statements and derived data. Never commit. (Statements of a setup made
+# before users/ existed were kept here.)
+statements/
 transactions_*.csv
 # The database, its snapshots and backups, the statements kept beside it, the NAS data folder
 *.db
@@ -13,12 +13,14 @@ backups/
 # Generated: the NAS image folder, caches of runs
 output/
 # Personal: rules naming shops and people, what is held, own categories, account names.
-# Invented examples of the first three are in examples/.
+# Starters of the first three, holding nothing personal, are in src/finanze/starter/.
 /rules.yaml
 rules.*.yaml
 /instruments.yaml
 /categories.yaml
 finanze.yaml
+# The starter files `finanze init` copies hold nothing personal.
+!/src/finanze/starter/*.yaml
 
 # Python
 __pycache__/
@@ -54,5 +56,6 @@ mutants/
 # Self-contained uv, its Python and caches (./uv)
 /.local/
 
-# Personal data folder: the database, its originals and backups
-/user/
+# Everything personal of each setup (finanze init): the config, rules, categories,
+# instruments, statements, the database, its originals and backups
+/users/

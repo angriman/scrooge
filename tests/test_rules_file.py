@@ -1,4 +1,4 @@
-"""The example rules shipped with the project must load and sort by generic words only.
+"""The starter files `finanze init` copies must load, and the rules sort by generic words only.
 
 The real rules.yaml, instruments.yaml and categories.yaml are personal and git-ignored.
 """
@@ -14,8 +14,8 @@ from finanze.classification import classify, load_instruments, load_rules
 from finanze.models import Kind, Transaction
 
 ROOT = Path(__file__).parents[1]
-EXAMPLES = ROOT / "examples"
-RULES = load_rules([EXAMPLES / "rules.yaml"])
+STARTER = ROOT / "src" / "finanze" / "starter"
+RULES = load_rules([STARTER / "rules.yaml"])
 
 
 def _category(description: str) -> str:
@@ -62,7 +62,7 @@ def test_shipped_rules(description: str, category: str) -> None:
 
 def test_shipped_rules_name_no_people() -> None:
     # Rules for people and named businesses belong in the user's own, git-ignored rules.yaml.
-    text = (EXAMPLES / "rules.yaml").read_text(encoding="utf-8")
+    text = (STARTER / "rules.yaml").read_text(encoding="utf-8")
     assert "TWINT" not in text
 
 
@@ -72,12 +72,17 @@ def test_the_personal_files_are_not_committed() -> None:
         assert name in ignored
 
 
-def test_shipped_instruments_file_loads() -> None:
-    instruments = load_instruments(EXAMPLES / "instruments.yaml")
+def test_shipped_instruments_file_loads_empty_and_its_example_loads_too(tmp_path: Path) -> None:
+    assert load_instruments(STARTER / "instruments.yaml") == {}
+    text = (STARTER / "instruments.yaml").read_text(encoding="utf-8")
+    example = text.partition("# For example:\n#\n")[2].partition("\ninstruments: {}")[0]
+    uncommented = tmp_path / "instruments.yaml"
+    uncommented.write_text("".join(f"{line[4:]}\n" for line in example.splitlines()))
+    instruments = load_instruments(uncommented)
     assert instruments["WIDG"].tab == "ETFs"
     assert instruments["WIDG"].price_symbol == "WIDG.DE"
     assert instruments["912797ZZ1"].maturity == date(2026, 12, 24)
 
 
-def test_shipped_categories_file_loads() -> None:
-    assert "Spedizioni" in categories.names(categories.load(EXAMPLES / "categories.yaml"))
+def test_shipped_categories_file_adds_nothing() -> None:
+    assert categories.load(STARTER / "categories.yaml") == ()

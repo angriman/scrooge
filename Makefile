@@ -11,11 +11,15 @@ NAS_DOCKER ?= /usr/local/bin/docker
 DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
-.PHONY: all help check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons
+.PHONY: all help setup check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk -F':.*?## ' '{printf "  \033[1m%-12s\033[0m %s\n", $$1, $$2}'
+
+setup: ## First run: install with ./uv, then make your setup in users/<name>/ (finanze init)
+	./uv sync --no-dev
+	./uv run --no-dev finanze init
 
 sync: ## Install/refresh the project environment
 	$(UV) sync

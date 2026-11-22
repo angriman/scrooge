@@ -1,0 +1,13 @@
+# Categories you add to the built-in ones of src/finanze/categories.py. Two levels for
+# expenses (uscite: a top-level category and its names), one for income (entrate).
+# `finanze import --review` and the import page write here when a category is added (`+Name`,
+# or `+Group:Name` to put an expense under a top-level category). The file is rewritten on
+# every addition: only these leading comments are kept. For example:
+#
+#   categories:
+#     uscite:
+#       Trasporti: [Spedizioni]
+#     entrate: [Prestiti]
+categories:
+  uscite: {}
+  entrate: []

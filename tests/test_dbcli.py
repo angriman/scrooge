@@ -1250,3 +1250,87 @@ def test_keys_of_an_older_config_are_ignored(run: Run) -> None:
         encoding="utf-8",
     )
     assert run.load() == dbcli.OK
+
+
+# ------------------------------------------------------------------ which setup
+
+
+def _setup(root: Path, name: str) -> Path:
+    """users/<name>/ with a config naming its database in it, as `finanze init` writes it."""
+    home = root / "users" / name
+    (home / "statements").mkdir(parents=True)
+    database = f"users/{name}/finanze.db"
+    (home / "finanze.yaml").write_text(CONFIG.format(database=database), encoding="utf-8")
+    return home
+
+
+def _main(*argv: str) -> tuple[int, str]:
+    out = io.StringIO()
+    code = dbcli.main(list(argv), out, now=lambda: NOW)
+    return code, out.getvalue()
+
+
+def test_the_only_setup_in_users_is_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = _setup(tmp_path, "lukas")
+    write_rules(home)
+    (home / "instruments.yaml").write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
+    shutil.copy(FIXTURES / FILES["Migros.csv"], home / "statements" / "Migros.csv")
+    config = home / "finanze.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "rules: [users/lukas/rules.yaml]\ninstruments: users/lukas/instruments.yaml\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    code, output = _main("import", "users/lukas/statements")  # no --config
+    assert code == dbcli.OK, output
+    assert "  staged Migros.csv (Migros Bank account statement)\n" in output
+    assert (home / "finanze.db").is_file()
+    assert (home / "originals").is_dir()
+
+
+def test_with_several_setups_one_is_chosen_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("anna", "Lukas"):
+        _setup(tmp_path, name)
+    monkeypatch.chdir(tmp_path)
+    assert _main("statements") == (
+        dbcli.FAILED,
+        "error: users/ holds several setups (Lukas, anna): choose one with --user\n",
+    )
+    # A folder's own name, whatever its case, and what `finanze init` makes of a name.
+    for named in ("Lukas", "lukas", "LUKAS"):
+        assert _main("statements", "--user", named) == (dbcli.OK, "No statements for Lukas.\n")
+    assert (tmp_path / "users" / "Lukas" / "finanze.db").is_file()
+    monkeypatch.setenv(dbcli.USER, "anna")
+    assert _main("statements")[0] == dbcli.OK
+    assert (tmp_path / "users" / "anna" / "finanze.db").is_file()
+    assert _main("statements", "--user", "zoe") == (
+        dbcli.FAILED,
+        "error: no setup 'zoe' in users/ (there are Lukas, anna): make one with 'finanze init'\n",
+    )
+
+
+def test_the_config_here_comes_before_a_setup_in_users(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "finanze.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
+    _setup(tmp_path, "anna")
+    monkeypatch.chdir(tmp_path)
+    assert _main("statements") == (dbcli.OK, "No statements for Lukas.\n")
+    assert (tmp_path / "data" / "f.db").is_file()
+    assert not (tmp_path / "users" / "anna" / "finanze.db").exists()
+    assert _main("statements", "--user", "anna")[0] == dbcli.OK  # unless --user says otherwise
+    assert (tmp_path / "users" / "anna" / "finanze.db").is_file()
+
+
+def test_without_users_the_config_here_is_read_as_before(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "finanze.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert _main("statements") == (dbcli.OK, "No statements for Lukas.\n")
+    assert (tmp_path / "data" / "f.db").is_file()
+    monkeypatch.setenv(dbcli.USER, "lukas")  # names a setup that is not there
+    assert _main("statements")[1].startswith("error: no setup 'lukas' in users/ (there is none")

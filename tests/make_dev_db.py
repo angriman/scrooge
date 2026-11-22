@@ -46,9 +46,11 @@ DEFAULT = ROOT / "output" / "dev"
 DATABASE = "finanze.db"
 MARK = ".made-by-make-dev-db"  # what tells a folder this script may empty
 # Where the real data is kept: never touched, whatever folder is asked for. The folder of the
-# database the real config names is added to these.
-REAL = (Path("~/.local/share/finanze_db"), ROOT / "statements")
+# database each real config names (the one in the root, and every setup's in users/) is added
+# to these.
+REAL = (Path("~/.local/share/finanze_db"), ROOT / "statements", ROOT / "users")
 REAL_CONFIG = ROOT / "finanze.yaml"
+SETUPS = ROOT / "users"  # finanze init's setups, one folder each
 OWNERS = ("Lukas", "Anna")
 PEOPLE_YAML = {"Lukas": {"match": ["LUKAS MEIER"]}, "Anna": {"match": ["ANNA MEIER"]}}
 # Whose statement each fixture is, under the name it is imported as. A statement that prints
@@ -82,7 +84,8 @@ AUGUST = (
 )
 INSTRUMENTS = INSTRUMENTS_YAML + "  912797YY2: {maturity: 2026-09-16}\n"
 # The rules naming the invented people and shops of the fixtures come first, then those of
-# examples/rules.yaml. What no rule matches is a present, so that everything can be committed.
+# the starter rules.yaml. What no rule matches is a present, so that
+# everything can be committed.
 SHOPS = """  - {match: 'ALPENBAHN', category: Treni}
   - {match: 'VELOSHARE', category: Trasporti locali}
   - {match: 'AEROSUR', category: Voli}
@@ -138,11 +141,12 @@ def build(
 ) -> Built:
     """(Re)build the development database in `folder`; what it prints goes to `out`.
 
-    `real` are the folders of the real data, and `config` the real config, whose database's
-    folder is one of them: none of them is ever touched.
+    `real` are the folders of the real data, and `config` the real config: its database's
+    folder, and that of every setup in users/, are among them. None of them is ever touched.
     """
     folder = folder.expanduser().resolve()
-    _check(folder, [*real, *_configured(config)])
+    setups = sorted(SETUPS.glob("*/finanze.yaml"))
+    _check(folder, [*real, *(place for c in (config, *setups) for place in _configured(c))])
     if folder.exists():
         shutil.rmtree(folder)
     folder.mkdir(parents=True)
@@ -206,7 +210,8 @@ def _configured(config: Path) -> list[Path]:
         return []
     found = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
     database = found.get("database") if isinstance(found, dict) else None
-    return [Path(str(database)).expanduser().parent] if database else []
+    # Relative to the folder the commands run in: the repository's.
+    return [(ROOT / Path(str(database)).expanduser()).parent] if database else []
 
 
 def _foreign(folder: Path) -> bool:
@@ -227,12 +232,12 @@ def _files(folder: Path) -> Built:
         encoding="utf-8",
     )
     # Never the repository's own rules.yaml or categories.yaml: those are the user's, real.
-    examples = ROOT / "examples"
-    generic = (examples / "rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
+    starter = ROOT / "src" / "finanze" / "starter"
+    generic = (starter / "rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
     own = RULES.replace("  - {match: '.', category: Regali}\n", SHOPS).rstrip("\n") + "\n"
     rules = folder / "rules.yaml"
     rules.write_text(own + generic.rstrip("\n") + FALLBACK, encoding="utf-8")
-    shutil.copy(examples / "categories.yaml", folder / "categories.yaml")
+    shutil.copy(starter / "categories.yaml", folder / "categories.yaml")
     instruments = folder / "instruments.yaml"
     instruments.write_text(INSTRUMENTS, encoding="utf-8")
     return Built(database, config, rules, instruments, certificates=False)

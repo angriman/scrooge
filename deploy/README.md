@@ -26,8 +26,9 @@ the devices call it.
 | `categories.yaml` | the categories added to the built-in ones |
 | `instruments.yaml` | the asset tab of what is held, bill maturities, price symbols |
 
-The image holds only the code. `examples/` in the project has a starting point for the three
-YAML files that are not the config.
+The image holds only the code. `src/finanze/starter/` in the project has a starting point for
+the three YAML files that are not the config (`finanze init` makes a setup from them on the
+Mac: its files can be copied here as they are).
 
 `finanze.yaml` on the NAS:
 

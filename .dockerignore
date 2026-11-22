@@ -23,3 +23,6 @@
 **/*.db
 **/*.db-*
 **/*.sqlite*
+
+# Except the starter files `finanze init` copies, which hold nothing personal.
+!src/finanze/starter/*.yaml

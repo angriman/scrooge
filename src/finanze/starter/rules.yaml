@@ -1,6 +1,7 @@
-# An example of `rules.yaml`: description -> category rules (D6 taxonomy, see docs/parser-spec.md).
-# Copy it next to `finanze.yaml` (on the NAS, into /data) and make it yours: the real file is
-# git-ignored, since rules that name shops, people or an employer are personal.
+# Your rules: description -> category (the categories are in src/finanze/categories.py).
+# `finanze init` wrote this file from the starter in src/finanze/starter/; it is yours now, in
+# your git-ignored users/<name>/ folder, since rules that name shops, people or an employer
+# are personal.
 #
 # `match` is a case-insensitive regular expression searched in the transaction's description and
 # counterparty. The first matching rule wins, so put the specific rules (a shop, a person) first.
