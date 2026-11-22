@@ -548,18 +548,18 @@ def _overview(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
         logos = api.logos(request, conn)
-        try:
-            shown = overview.run(conn, owner=asked.owner, currency=asked.currency, top=overview.TOP)
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            shown = None
+        shown = wire.unless_rate_missing(
+            errors,
+            lambda: overview.run(
+                conn, owner=asked.owner, currency=asked.currency, top=overview.TOP
+            ),
+            None,
+        )
         # A statement valued in a currency without a rate leaves out the brokers' figures,
         # not the page's own.
-        try:
-            checks = networth.checks(conn, owner=asked.owner)
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            checks = ()
+        checks = wire.unless_rate_missing(
+            errors, lambda: networth.checks(conn, owner=asked.owner), ()
+        )
     context = {
         "people": people,
         "owner": asked.owner,
@@ -1179,15 +1179,14 @@ def _networth_json(request: Request) -> Response:
     """What the chart of the first page draws, for the view of its address. Amounts are text,
     to the cent."""
     asked = forms.networth_view(_viewed(request))
-    error = ""
+    noted: list[str] = []
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
-        try:
-            result = networth.run(conn, owner=asked.owner, currency=asked.currency)
-        except networth.MissingRateError as exc:
-            error = wire.sentence(exc)
-    if asked.errors or error:
-        return JSONResponse({"errors": [*asked.errors, *([error] if error else [])]}, 400)
+        result = wire.unless_rate_missing(
+            noted, lambda: networth.run(conn, owner=asked.owner, currency=asked.currency), None
+        )
+    if asked.errors or result is None:
+        return JSONResponse({"errors": [*asked.errors, *noted]}, 400)
     lines = _parts(result, asked.by, people) if result.days else []
     return JSONResponse(
         {
@@ -1237,12 +1236,12 @@ def _holdings(request: Request, notice: str = "", status: int = 200) -> Response
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
         logos = api.logos(request, conn)
-        try:
-            today = request.app.state.clock().date()
-            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            held = None
+        today = request.app.state.clock().date()
+        held = wire.unless_rate_missing(
+            errors,
+            lambda: portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today),
+            None,
+        )
         # Bills wear their own icon; every other holding is asked for a logo it has not got.
         without = (
             store_logos.missing(conn, [h.symbol for h in held.holdings if h.asset != "Bills"])
@@ -1423,18 +1422,18 @@ def _analysis(request: Request) -> Response:
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
-        try:
-            shown = report.run(
+        shown = wire.unless_rate_missing(
+            errors,
+            lambda: report.run(
                 conn,
                 first=asked.first,
                 last=asked.last,
                 owner=asked.owner,
                 grouping=asked.grouping,
                 currency=asked.currency,
-            )
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            shown = None
+            ),
+            None,
+        )
     context: dict[str, object] = {
         "people": people,
         "owner": asked.owner,
