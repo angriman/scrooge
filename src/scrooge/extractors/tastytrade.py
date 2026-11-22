@@ -146,18 +146,8 @@ def _security_trade(txn: Transaction, row: dict[str, str], n: int) -> SecurityTr
     bill = row["Instrument Type"] == _T_BILL
     if bill:
         quantity, price = quantity * 1000, price / 10
-    return SecurityTrade(
-        date=txn.date,
-        account=txn.account,
-        amount=txn.amount,
-        currency=txn.currency,
-        description=txn.description,
-        kind=txn.kind,
-        source_file=txn.source_file,
-        source_ref=txn.source_ref,
-        counterparty=txn.counterparty,
-        category=txn.category,
-        booking_date=txn.booking_date,
+    return SecurityTrade.from_transaction(
+        txn,
         ticker=row["Symbol"],
         quantity=quantity if action.startswith("BUY") else -quantity,
         price=price,

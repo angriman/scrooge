@@ -135,17 +135,9 @@ def _trade(cash: Transaction, row: dict[str, str], n: int) -> SecurityTrade:
     if abs(quantity * price + cash.amount) >= _ROUNDING:  # the cash is rounded to 6 decimals
         msg = f"finpension row {n}: {quantity} x {price} is not the cash flow {cash.amount}"
         raise ExtractionError(msg)
-    return SecurityTrade(
-        date=cash.date,
-        account=cash.account,
-        amount=cash.amount,
-        currency=cash.currency,
+    return SecurityTrade.from_transaction(
+        cash,
         description=f"{cash.description} ({quantity} @ {price})",
-        kind=cash.kind,
-        source_file=cash.source_file,
-        source_ref=cash.source_ref,
-        counterparty=cash.counterparty,
-        category=cash.category,
         ticker=row["ISIN"],
         quantity=quantity,
         price=price,

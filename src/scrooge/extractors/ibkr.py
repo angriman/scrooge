@@ -549,10 +549,9 @@ class _Parser:
             counterparty=cusip,
         )
         quantity = parse_decimal(row["Quantity"], "Corporate Actions quantity")
-        fields = {name: getattr(principal, name) for name in principal.__slots__}
         legs: list[Transaction] = [
-            SecurityTrade(
-                **fields,
+            SecurityTrade.from_transaction(
+                principal,
                 ticker=cusip,
                 quantity=quantity,
                 price=Decimal(100),
