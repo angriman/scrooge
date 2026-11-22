@@ -447,7 +447,7 @@ def positions_of(
         valued.security_notes,
         cash if pension else None,
         *_ladder(conn, bills, currency, max(today or last[0], last[0])),
-        through=min(valued.through.values()),
+        through=valued.covered,
     )
 
 

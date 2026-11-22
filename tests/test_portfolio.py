@@ -11,7 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from scrooge import networth, portfolio, query, staging
-from scrooge.models import Holding, Kind
+from scrooge.models import Holding, Kind, TypedHolding
 from scrooge.networth import BILLS, ETFS, PENSION, STOCKS, MissingRateError
 from scrooge.portfolio import Portfolio, Position
 from scrooge.storage import db, store
@@ -80,6 +80,38 @@ def test_cash_alone_is_no_position(conn: sqlite3.Connection) -> None:
     assert len(networth.run(conn, currency="CHF").notes) == 2
     # neither the bank, nor what is typed, nor the pension fund; and none of their notes
     assert portfolio.run(conn, currency="CHF") == Portfolio("CHF", day(30), (), (), through=day(30))
+
+
+def type_shares(conn: sqlite3.Connection, owner: str) -> None:
+    """Three shares of ABCD typed for `owner` on the 1st, valued by a close of the 5th."""
+    holding = TypedHolding("ABCD", D(3), "USD")
+    staging.type_holding(conn, owner=owner, account="Broker", day=day(1), holding=holding)
+    price(conn, "ABCD", day(5), "10")
+    rate(conn, "USD", day(1), "0.9")
+
+
+def test_a_person_with_only_typed_figures_holds_them_through_the_day_typed(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    type_shares(conn, PARTNER)
+    held = portfolio.run(conn, owner=PARTNER, currency="CHF")
+    assert held.through == day(1)
+    assert [(p.owner, p.symbol, p.quantity, p.value) for p in held.positions] == [
+        (PARTNER, "ABCD", D(3), D("27.00"))
+    ]
+    # the one who has statements is covered further: the earliest day is the one shown
+    assert portfolio.run(conn, currency="CHF").through == day(1)
+    assert portfolio.run(conn, owner=OWNER, currency="CHF").through == day(30)
+
+
+def test_when_nobody_has_statements_the_typed_figures_are_all_there_is(
+    conn: sqlite3.Connection,
+) -> None:
+    type_shares(conn, OWNER)
+    held = portfolio.run(conn, currency="CHF")
+    assert held.through == day(1)
+    assert [p.symbol for p in held.positions] == ["ABCD"]
 
 
 # -------------------------------------------------------------------------------- shares
