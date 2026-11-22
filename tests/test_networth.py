@@ -17,6 +17,7 @@ from scrooge.models import (
     Holding,
     Kind,
     PrintedValue,
+    Rate,
     SecurityTrade,
     Transaction,
 )
@@ -110,6 +111,33 @@ def rate(
     conn: sqlite3.Connection, currency: str, on: date, rate_: str, source: str = "fetched:x"
 ) -> None:
     store.set_rate(conn, on, currency, D(rate_), source=source)
+
+
+def printed(
+    conn: sqlite3.Connection, symbol: str, on: date, close_: str, file: str = "IBKR USD 2026-09.csv"
+) -> None:
+    """A committed statement prints the close of a share it lists a position of."""
+    [account_id, file_id] = conn.execute(
+        "SELECT a.id, f.id FROM accounts a, statement_files f "
+        "WHERE a.name = 'IBKR USD' AND f.filename = ?",
+        (file,),
+    ).fetchone()
+    held = Holding("IBKR USD", symbol, "USD", D(10), D(close_), D(10) * D(close_), "Stocks")
+    store.set_holding(conn, account_id, on, held, file_id)
+
+
+def printed_rate(
+    conn: sqlite3.Connection,
+    currency: str,
+    on: date,
+    rate_: str,
+    file: str = "IBKR USD 2026-09.csv",
+) -> None:
+    """A committed statement prints the rate of a currency."""
+    [file_id] = conn.execute(
+        "SELECT id FROM statement_files WHERE filename = ?", (file,)
+    ).fetchone()
+    store.set_statement_rates(conn, file_id, on, {currency: D(rate_)})
 
 
 def line(result: networth.NetWorth, asset: str, owner: str = OWNER) -> dict[date, Decimal]:
@@ -480,12 +508,76 @@ def test_a_close_typed_or_printed_by_a_statement_counts_before_a_fetched_one(
 ) -> None:
     close(conn, ibkr(bought("WIDG", "10", "-500", day(15), asset_tab="Stocks")))
     price(conn, "WIDG", day(20), "60")
-    price(conn, "WIDG", day(20), "61", "statement")
-    price(conn, "WIDG", day(25), "70", "statement")
+    printed(conn, "WIDG", day(20), "61")
+    printed(conn, "WIDG", day(25), "70")
     price(conn, "WIDG", day(25), "71")
     price(conn, "WIDG", day(25), "72", "manual")
     stocks = line(networth.run(conn, currency="USD"), STOCKS)
     assert [stocks[d] for d in (day(15), day(20), day(25))] == [D(500), D(610), D(720)]
+
+
+def _october_printing_widg_at_70() -> Statement:
+    """A statement of the next month that prints a close of 70 for WIDG and a rate for USD."""
+    base = ibkr(opening="9500", month=OCTOBER)
+    printed_ = (Holding("IBKR USD", "WIDG", "USD", D(10), D(70), D(700), "ETFs"),)
+    rates = (Rate("USD", "CHF", D("0.9")),)
+    return replace(base, extraction=replace(base.extraction, holdings=printed_, rates=rates))
+
+
+def _september_holding_widg(conn: sqlite3.Connection) -> networth.NetWorth:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15))))
+    rate(conn, "USD", day(1), "0.8")
+    return networth.run(conn, currency="CHF")
+
+
+def test_a_staged_statement_moves_neither_the_days_nor_a_close_nor_a_rate(
+    conn: sqlite3.Connection,
+) -> None:
+    before = _september_holding_widg(conn)
+    assert before.days[-1] == day(30)
+    staging.stage(conn, batch(_october_printing_widg_at_70(), month=OCTOBER), NOW)
+    assert networth.run(conn, currency="CHF") == before
+
+
+def test_a_discarded_statement_leaves_no_close_and_no_rate_behind(
+    conn: sqlite3.Connection,
+) -> None:
+    before = _september_holding_widg(conn)
+    staging.stage(conn, batch(_october_printing_widg_at_70(), month=OCTOBER), NOW)
+    [staged] = store.statement_files(conn, store.ensure_owner(conn, OWNER), staged=True)
+    staging.discard(conn, owner=OWNER, file_id=staged.id)
+    assert conn.execute("SELECT count(*) FROM statement_rates").fetchone()[0] == 0
+    assert networth.run(conn, currency="CHF") == before
+
+
+def test_what_a_statement_prints_counts_once_committed_and_not_once_taken_back(
+    conn: sqlite3.Connection,
+) -> None:
+    before = _september_holding_widg(conn)
+    staging.stage(conn, batch(_october_printing_widg_at_70(), month=OCTOBER), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    after = networth.run(conn, currency="CHF")
+    assert after.days[-1] == date(2026, 10, 31)
+    # 10 shares at the printed 70 dollars, each dollar at the printed 0.9 francs
+    assert line(after, ETFS)[date(2026, 10, 31)] == 630
+    assert line(after, ETFS)[day(30)] == line(before, ETFS)[day(30)]
+    [file] = store.statement_files(conn, store.ensure_owner(conn, OWNER), staged=False)[-1:]
+    staging.uncommit(conn, owner=OWNER, file_id=file.id)
+    assert networth.run(conn, currency="CHF") == before
+
+
+def test_a_trade_another_person_staged_is_no_price_for_the_shares_someone_holds(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(bought("WIDG", "10", "-500", day(15))))
+    rate(conn, "USD", day(1), "0.8")
+    before = networth.run(conn, currency="USD")
+    assert line(before, ETFS)[day(30)] == 500  # the price of the last trade
+    other = ibkr(bought("WIDG", "5", "-400", day(20)))
+    staging.stage(conn, batch(other, owner=PARTNER), NOW)
+    assert networth.run(conn, currency="USD") == before
+    staging.commit(conn, owner=PARTNER, now=NOW)
+    assert line(networth.run(conn, currency="USD"), ETFS)[day(30)] == 800  # theirs, committed
 
 
 def test_without_any_close_the_last_trade_price_stands_in_and_a_note_says_so(
@@ -672,7 +764,7 @@ def test_a_rate_printed_by_a_statement_counts_before_a_fetched_one(
 ) -> None:
     close(conn, ibkr())
     rate(conn, "USD", day(30), "0.8")
-    rate(conn, "USD", day(30), "0.81", "statement")
+    printed_rate(conn, "USD", day(30), "0.81")
     assert networth.run(conn, currency="CHF").total[-1] == 8100
     rate(conn, "USD", day(30), "0.82", "manual")
     assert networth.run(conn, currency="CHF").total[-1] == 8200

@@ -6,7 +6,7 @@ Nothing here begins or commits a transaction, and nothing decides anything: call
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -696,8 +696,9 @@ def set_holding(
 ) -> None:
     """What the statement says the account held of one instrument at the end of `day`.
 
-    A share's close that day is kept as a price too. A bill's is a percentage of its face,
-    and no price of the bill: its worth is the value on the row.
+    The row's price is the share's close that day, as far as net worth is concerned, for as
+    long as the statement is committed. A bill's is a percentage of its face, and no price of
+    the bill: its worth is the value on the row.
     """
     instrument = instrument_id(conn, holding.ticker, holding.asset_tab, holding.currency)
     conn.execute(
@@ -715,8 +716,6 @@ def set_holding(
             int(holding.unvested),
         ),
     )
-    if _INSTRUMENT_TYPES[holding.asset_tab] != "bill":
-        set_price(conn, instrument, day, holding.price, source="statement")
 
 
 def set_price(  # noqa: PLR0913  # one argument per column
@@ -880,6 +879,20 @@ def set_statement_values(
             "INSERT INTO statement_values (statement_file_id, label, currency, value_nano) "
             "VALUES (?, ?, ?, ?)",
             (statement_file, value.label, value.currency, to_nano(value.value)),
+        )
+
+
+def set_statement_rates(
+    conn: sqlite3.Connection, statement_file: int, day: date, rates: Mapping[str, Decimal]
+) -> None:
+    """The rates the statement prints for `day` (currency to francs per unit); an import of
+    the same file again replaces them. They go with the file."""
+    for currency, rate in rates.items():
+        ensure_currency(conn, currency)
+        conn.execute(
+            "INSERT OR REPLACE INTO statement_rates "
+            "(statement_file_id, currency, date, rate_to_chf) VALUES (?, ?, ?, ?)",
+            (statement_file, currency, day.isoformat(), to_text(rate)),
         )
 
 
