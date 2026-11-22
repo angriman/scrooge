@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from scrooge.errors import ExtractionError
+from scrooge.models import Kind, SecurityTrade, Transaction
 
 _NUMBER = re.compile(r"[+-]?(\d+|\d{1,3}([,']\d{3})+)(\.\d+)?")
 _SWISS_DATE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
@@ -155,3 +156,53 @@ def read_table(
         msg = f"{what}: missing column(s) {missing}"
         raise ExtractionError(msg)
     return [{key: value or "" for key, value in row.items() if key} for row in reader]
+
+
+def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is the caller's
+    *,
+    day: date,
+    account: str,
+    currency: str,
+    source_file: str,
+    source_ref: str,
+    ticker: str,
+    quantity: Decimal,
+    price: Decimal,
+    description: str,
+    asset_tab: str,
+) -> list[Transaction]:
+    """Shares that vest: salary in shares at the vest price and, the same day, their purchase.
+
+    No cash moves, and what the shares cost is what they were worth. The purchase has
+    `description` and `source_ref` as given, the salary the same followed by what says it is
+    salary in shares.
+    """
+    worth = quantity * price
+    salary = Transaction(
+        date=day,
+        account=account,
+        amount=worth,
+        currency=currency,
+        description=f"{description}: salary in shares",
+        kind=Kind.INCOME,
+        source_file=source_file,
+        source_ref=f"{source_ref}:salary",
+        category="Stipendio",
+    )
+    purchase = SecurityTrade(
+        date=day,
+        account=account,
+        amount=-worth,
+        currency=currency,
+        description=description,
+        kind=Kind.SECURITY_TRADE,
+        source_file=source_file,
+        source_ref=source_ref,
+        category="Investimenti",
+        ticker=ticker,
+        quantity=quantity,
+        price=price,
+        cost=worth,
+        asset_tab=asset_tab,
+    )
+    return [salary, purchase]

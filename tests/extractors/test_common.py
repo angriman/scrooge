@@ -6,6 +6,7 @@ import pytest
 
 from scrooge.errors import ExtractionError
 from scrooge.extractors import common
+from scrooge.models import Kind, SecurityTrade, Transaction
 
 
 @pytest.mark.parametrize(
@@ -179,3 +180,45 @@ def test_us_dates_are_month_day_year(text: str, expected: date) -> None:
 def test_a_us_date_that_cannot_be_read_is_refused(text: str) -> None:
     with pytest.raises(ExtractionError, match=r"cannot read date .* \(t\)"):
         common.parse_us_date(text, "t")
+
+
+def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> None:
+    salary, purchase = common.share_vest(
+        day=date(2026, 3, 15),
+        account="Plan",
+        currency="USD",
+        source_file="plan.csv",
+        source_ref="7",
+        ticker="ACME",
+        quantity=Decimal(10),
+        price=Decimal("12.5"),
+        description="Vest of 10 ACME @ 12.5",
+        asset_tab="Stocks",
+    )
+    assert salary == Transaction(
+        date=date(2026, 3, 15),
+        account="Plan",
+        amount=Decimal("125.0"),
+        currency="USD",
+        description="Vest of 10 ACME @ 12.5: salary in shares",
+        kind=Kind.INCOME,
+        source_file="plan.csv",
+        source_ref="7:salary",
+        category="Stipendio",
+    )
+    assert purchase == SecurityTrade(
+        date=date(2026, 3, 15),
+        account="Plan",
+        amount=Decimal("-125.0"),
+        currency="USD",
+        description="Vest of 10 ACME @ 12.5",
+        kind=Kind.SECURITY_TRADE,
+        source_file="plan.csv",
+        source_ref="7",
+        category="Investimenti",
+        ticker="ACME",
+        quantity=Decimal(10),
+        price=Decimal("12.5"),
+        cost=Decimal("125.0"),
+        asset_tab="Stocks",
+    )
