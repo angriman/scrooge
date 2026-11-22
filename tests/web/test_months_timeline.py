@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import staging
 from scrooge.storage import db
 from scrooge.web import app as webapp
-from tests.storage.helpers import OWNER, PARTNER, txn
+from tests.storage.helpers import OWNER, PARTNER, certificate, certified, txn
 from tests.web.builders import (
     ANNA_SEPTEMBER,
     AUGUST,
@@ -118,3 +119,18 @@ def test_nothing_staged_says_so_and_a_copy_without_statements_has_no_timeline(
     nothing = TestClient(webapp.create_app(empty, lambda: TODAY), base_url=SITE).get("/months").text
     assert "Statements, month by month" not in nothing
     assert "<details>" not in nothing
+
+
+def test_a_certificate_after_the_statements_makes_no_account_behind(tmp_path: Path) -> None:
+    path = tmp_path / "f.db"
+    conn = db.connect(path)
+    db.migrate(conn, BUILT)
+    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    staging.stage(conn, certified(certificate(date(2026, 10, 15), "36000")), BUILT)
+    staging.commit(conn, owner=OWNER, now=BUILT)
+    conn.close()
+    page = TestClient(webapp.create_app(path, lambda: TODAY), base_url=SITE).get("/months").text
+    assert "none behind" in page
+    assert re.search(r"<h2>Committed up to</h2>\s*<p class=\"value\">2026-08-31</p>", page)
+    assert "Pillar 2 AXA" in page  # the timeline still shows the day of the certificate
+    assert "committed 2026-10-15 to 2026-10-15" in page

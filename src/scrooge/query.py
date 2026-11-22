@@ -13,7 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from scrooge.extractors.common import month_end
-from scrooge.models import Kind
+from scrooge.models import CERTIFICATE_SOURCES, Kind
 from scrooge.storage.money import from_nano, to_nano
 
 # Inside `Row`, `date` names the field: later annotations need another name for the type.
@@ -89,7 +89,9 @@ class Person:
 
     name: str
     committed: int  # statements
-    first: date | None  # the first and last day committed statements cover; None: there is none
+    # The first and last day committed statements cover, a pension certificate's one day not
+    # counted; None: there is none.
+    first: date | None
     last: date | None
     staged: int  # statements staged and not yet committed
     transactions: int  # of committed statements
@@ -100,12 +102,15 @@ def people(conn: sqlite3.Connection) -> tuple[Person, ...]:
     found = conn.execute(
         "SELECT o.name, "
         "count(f.id) FILTER (WHERE f.committed_at IS NOT NULL) AS committed, "
-        "min(f.period_start) FILTER (WHERE f.committed_at IS NOT NULL) AS first, "
-        "max(f.period_end) FILTER (WHERE f.committed_at IS NOT NULL) AS last, "
+        "min(f.period_start) FILTER (WHERE f.committed_at IS NOT NULL "
+        "AND f.source NOT IN (?, ?)) AS first, "
+        "max(f.period_end) FILTER (WHERE f.committed_at IS NOT NULL "
+        "AND f.source NOT IN (?, ?)) AS last, "
         "count(f.id) FILTER (WHERE f.committed_at IS NULL) AS staged, "
         "(SELECT count(*) FROM committed_transactions t WHERE t.owner = o.name) AS transactions "
         "FROM owners o LEFT JOIN statement_files f ON f.owner_id = o.id "
-        "GROUP BY o.id ORDER BY o.name"
+        "GROUP BY o.id ORDER BY o.name",
+        CERTIFICATE_SOURCES * 2,
     ).fetchall()
     return tuple(
         Person(

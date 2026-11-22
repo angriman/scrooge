@@ -5,7 +5,9 @@ account held that day at the last close on or before it, each converted at that 
 into the currency asked for. Nothing here is stored and nothing here writes.
 
 **The days run to the newest close or rate stored** (decided 2026-11-04), or to the last day
-committed statements cover, or typed, when that is later (no day after today can be typed).
+committed statements cover, or typed, or a pension certificate is dated, when that is later
+(no day after today can be typed). A certificate covers no day around its own, so the days a
+person's statements cover end where their last statement does.
 After the last day a person's statements cover, what they held then is carried: the same cash
 and the same quantities (a split still multiplies them), at the closes and rates of each day
 after, and a note says so. A bill goes on towards its face. So the first page shows what is
@@ -39,6 +41,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 from scrooge import query
+from scrooge.models import CERTIFICATE_SOURCES
 from scrooge.storage import holdings
 from scrooge.storage.bills import Event, open_lots
 from scrooge.storage.money import from_nano
@@ -186,14 +189,30 @@ def _days(first: date, last: date) -> tuple[date, ...]:
 
 
 def _last_days(conn: sqlite3.Connection, owner: str | None) -> dict[str, date]:
-    """owner -> the last day their committed statements cover."""
+    """owner -> the last day their committed statements cover. A pension certificate, the one
+    day it is dated, covers none around it: it counts only for a person who has nothing else."""
     rows = conn.execute(
-        "SELECT o.name, max(f.period_end) FROM statement_files f "
-        "JOIN owners o ON o.id = f.owner_id "
+        "SELECT o.name, max(f.period_end) FILTER (WHERE f.source NOT IN (?, ?)), "
+        "max(f.period_end) FROM statement_files f JOIN owners o ON o.id = f.owner_id "
         "WHERE f.committed_at IS NOT NULL AND o.name = coalesce(?, o.name) GROUP BY o.name",
-        (owner,),
+        (*CERTIFICATE_SOURCES, owner),
     ).fetchall()
-    return {str(name): date.fromisoformat(day) for name, day in rows}
+    return {
+        str(name): date.fromisoformat(statements or latest) for name, statements, latest in rows
+    }
+
+
+def _certified_days(conn: sqlite3.Connection, owner: str | None) -> dict[int, tuple[str, date]]:
+    """account -> its owner and the day of its last committed certificate."""
+    rows = conn.execute(
+        "SELECT s.account_id, o.name, max(f.period_end) FROM statement_files f "
+        "JOIN statement_accounts s ON s.statement_file_id = f.id "
+        "JOIN owners o ON o.id = f.owner_id "
+        "WHERE f.committed_at IS NOT NULL AND f.source IN (?, ?) AND o.name = coalesce(?, o.name) "
+        "GROUP BY s.account_id",
+        (*CERTIFICATE_SOURCES, owner),
+    )
+    return {int(account): (str(name), date.fromisoformat(day)) for account, name, day in rows}
 
 
 def _priced_through(conn: sqlite3.Connection) -> list[date]:
@@ -222,10 +241,11 @@ def _accounts(
     conn: sqlite3.Connection,
     last_days: Mapping[str, date],
     typed: Mapping[int, tuple[str, date]],
+    certified: Mapping[int, tuple[str, date]],
 ) -> dict[int, _Account]:
     """The accounts of the people who have committed statements or typed figures. An account
-    counts up to its owner's last day covered, or its own last day typed when that is later
-    (decided 2026-11-21: a balance or position typed today counts today)."""
+    counts up to its owner's last day covered, or its own last day typed or certified when that
+    is later (decided 2026-11-21: a balance or position typed today counts today)."""
     rows = conn.execute(
         "SELECT a.id, o.name, a.name, a.kind, a.currency, a.source FROM accounts a "
         "JOIN owners o ON o.id = a.owner_id ORDER BY a.id"
@@ -239,7 +259,11 @@ def _accounts(
             r[3],
             r[4],
             r[5],
-            max(last_days.get(r[1], date.min), typed.get(int(r[0]), ("", date.min))[1]),
+            max(
+                last_days.get(r[1], date.min),
+                typed.get(int(r[0]), ("", date.min))[1],
+                certified.get(int(r[0]), ("", date.min))[1],
+            ),
             int(r[0]) in typed,
         )
         for r in rows
@@ -258,7 +282,8 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
     typed = _typed_days(conn, owner)
     if not last_days and not typed:
         return None
-    accounts = _accounts(conn, last_days, typed)
+    certified = _certified_days(conn, owner)
+    accounts = _accounts(conn, last_days, typed, certified)
     through = {account.id: account.through for account in accounts.values()}
     flows = _flows(conn, through)
     anchors = _anchors(conn, through)
@@ -275,7 +300,14 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
     starts += [holding.steps[0].day for holding in held]
     if not starts:
         return None
-    last = max([*last_days.values(), *(day for _, day in typed.values()), *_priced_through(conn)])
+    last = max(
+        [
+            *last_days.values(),
+            *(day for _, day in typed.values()),
+            *(day for _, day in certified.values()),
+            *_priced_through(conn),
+        ]
+    )
     days = _days(min(starts), last)
     notes = [
         f"The statements of {name} end on {day}: from then on, what was held that day is "

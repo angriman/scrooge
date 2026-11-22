@@ -4,11 +4,11 @@ from datetime import date
 
 import pytest
 
-from scrooge import query, report
+from scrooge import query, report, staging
 from scrooge.report import Shortcut
 from scrooge.storage import db
 from tests import test_savings as rows
-from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close
+from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, certificate, certified, close
 
 END = rows.END
 
@@ -55,3 +55,23 @@ def test_nothing_committed_has_no_shortcuts() -> None:
     assert (shown.shortcuts, shown.savings.totals) == ((), None)
     with pytest.raises(query.QueryError):
         report.run(connection, owner="Nobody", currency="CHF")
+
+
+def test_a_certificate_dated_after_the_statements_does_not_move_the_last_day() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    close(
+        connection,
+        OWNER,
+        (rows.START, date(2025, 12, 31)),
+        date(2025, 12, 31),
+        ("migros", [*rows.LUKAS[:12]]),
+    )
+    staging.stage(connection, certified(certificate(date(2026, 1, 1), "9400")), CLOSED_AT)
+    staging.stage(connection, certified(certificate(date(2023, 1, 1), "8000")), CLOSED_AT)
+    staging.commit(connection, owner=OWNER, now=CLOSED_AT)
+    shown = report.run(connection, owner=OWNER, currency="CHF")
+    assert (shown.savings.first, shown.savings.last) == (date(2025, 1, 1), date(2025, 12, 31))
+    assert [shortcut.label for shortcut in shown.shortcuts] == ["Last 12 months", "2025", "All"]
+    assert shown.shortcuts[-1].first == "2025"
+    connection.close()

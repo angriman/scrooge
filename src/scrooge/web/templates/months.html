@@ -2,7 +2,7 @@
 {% block title %}Months{% endblock %}
 {% block main %}
 {%- if timeline %}
-{%- set committed = coverage|map(attribute="coverage.committed")|select|list %}
+{%- set committed = coverage|rejectattr("certificate")|map(attribute="coverage.committed")|select|list or coverage|map(attribute="coverage.committed")|select|list %}
 {%- set late = coverage|selectattr("behind")|list|length %}
 <div class="tiles">
   <section class="tile lead">
@@ -87,7 +87,7 @@
       {%- for person in shown %}
       <tr>
         <td class="lead">{{ person.name }}</td>
-        <td data-label="Committed">{% if person.committed %}{{ person.first }} to {{ person.last }} ({{ person.committed }} statement{{ "" if person.committed == 1 else "s" }}){% else %}none{% endif %}</td>
+        <td data-label="Committed">{% if person.committed %}{% if person.first %}{{ person.first }} to {{ person.last }} {% endif %}({{ person.committed }} statement{{ "" if person.committed == 1 else "s" }}){% else %}none{% endif %}</td>
         <td class="number" data-label="Transactions">{{ person.transactions }}</td>
         <td class="number" data-label="Staged">{% if person.staged %}<a href="{{ url_for('import') }}?owner={{ person.name|urlencode }}">{{ person.staged }}</a>{% else %}0{% endif %}</td>
       </tr>
