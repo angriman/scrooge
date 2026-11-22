@@ -45,12 +45,11 @@ test: ## pytest with branch coverage (90% global floor)
 	$(UV) run pytest --cov=scrooge --cov-report=term-missing
 
 strict-cover: ## 100% coverage floor on validation.py and everything that writes to the database
-	@inc=$$( { ls src/scrooge/validation.py src/scrooge/staging.py src/scrooge/marketdata.py; find src/scrooge/validation src/scrooge/storage -name '*.py'; } 2>/dev/null | paste -sd, -); \
-	if [ -z "$$inc" ]; then \
-		echo "strict-cover: no validation.py or storage/ modules yet, skipping"; \
-	else \
-		$(UV) run coverage report --include="$$inc" --fail-under=100 --no-skip-covered; \
-	fi
+	@for path in src/scrooge/validation.py src/scrooge/staging.py src/scrooge/marketdata.py src/scrooge/storage; do \
+		[ -e "$$path" ] || { echo "strict-cover: $$path does not exist: rename it here too"; exit 1; }; \
+	done; \
+	inc=$$( { ls src/scrooge/validation.py src/scrooge/staging.py src/scrooge/marketdata.py; find src/scrooge/storage -name '*.py'; } | paste -sd, -); \
+	$(UV) run coverage report --include="$$inc" --fail-under=100 --no-skip-covered
 
 fix: ## Auto-fix lint and formatting
 	$(UV) run ruff check --fix src tests
