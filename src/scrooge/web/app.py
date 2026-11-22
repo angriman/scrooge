@@ -71,7 +71,7 @@ from scrooge import (
 from scrooge.classification import UnknownInstrumentError, UnknownMaturityError
 from scrooge.errors import ConfigError, ExtractionError
 from scrooge.extractors.common import month_end
-from scrooge.models import CERTIFICATE_SOURCES, Kind
+from scrooge.models import Kind
 from scrooge.prices import MaturitySource, PriceError
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
@@ -813,10 +813,6 @@ def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
 
 
 _WIDE = Decimal(1000)  # the timeline of statements, in the units of its SVG
-_BEHIND = 35  # days an account may end before the newest day committed for its person
-# Pension certificates come once or twice a year: such an account is never behind, and the
-# day of a certificate is not a day the person's other accounts are measured against.
-_NOT_MONTHLY = frozenset(CERTIFICATE_SOURCES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -828,23 +824,11 @@ class _Account:
 
     @property
     def certificate(self) -> bool:
-        return self.coverage.source in _NOT_MONTHLY
+        return self.coverage.source in months.NOT_MONTHLY
 
 
 def _accounts(lines: Sequence[months.Coverage]) -> list[_Account]:
-    newest: dict[str, date] = {}
-    for line in lines:
-        if line.committed and line.source not in _NOT_MONTHLY:
-            newest[line.owner] = max(newest.get(line.owner, line.committed), line.committed)
-    return [
-        _Account(
-            line,
-            line.committed is not None
-            and line.source not in _NOT_MONTHLY
-            and (newest[line.owner] - line.committed).days > _BEHIND,
-        )
-        for line in lines
-    ]
+    return [_Account(line, late) for line, late in zip(lines, months.behind(lines), strict=True)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -911,7 +895,7 @@ def _months(request: Request) -> Response:
         "lines": lines,
         "coverage": accounts,
         "timeline": _timeline(tracks, accounts, today),
-        "behind": _BEHIND,
+        "behind": months.BEHIND,
     }
     return _templates.TemplateResponse(request, "months.html", context)
 

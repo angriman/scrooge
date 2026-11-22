@@ -9,12 +9,14 @@ what is committed.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
 from scrooge import router, staging
 from scrooge.extractors.common import month_end, months_between
+from scrooge.models import CERTIFICATE_SOURCES
 from scrooge.storage import store
 from scrooge.storage.money import from_nano
 from scrooge.validation import ReconciliationError
@@ -309,6 +311,42 @@ def coverage(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Covera
             )
         )
     return tuple(lines)
+
+
+BEHIND = 35  # days an account may end before the newest day committed for its person
+# Pension certificates come once or twice a year: such an account is never behind, and the
+# day of a certificate is not a day the person's other accounts are measured against.
+NOT_MONTHLY = frozenset(CERTIFICATE_SOURCES)
+# A finpension report ends on its last row, not at the end of a period: that nothing follows
+# a day says only that nothing was paid in or bought since, not that a report is missing.
+_ENDS_ON_ITS_LAST_ROW = frozenset({"finpension"})
+
+
+def monthly(line: Coverage) -> bool:
+    """Whether `line`'s statements say up to which day it is known: a statement of it is
+    missing once the person's others go well past it."""
+    return line.source not in NOT_MONTHLY and line.source not in _ENDS_ON_ITS_LAST_ROW
+
+
+def behind(lines: Sequence[Coverage]) -> tuple[bool, ...]:
+    """Of each of `lines`, whether what is committed of it ends more than `BEHIND` days before
+    the newest of its person's monthly accounts: a statement is probably missing."""
+    newest: dict[str, date] = {}
+    for line in lines:
+        if line.committed and monthly(line):
+            newest[line.owner] = max(newest.get(line.owner, line.committed), line.committed)
+    return tuple(
+        line.committed is not None
+        and monthly(line)
+        and (newest[line.owner] - line.committed).days > BEHIND
+        for line in lines
+    )
+
+
+def covered(lines: Sequence[Coverage]) -> date | None:
+    """The last day every monthly account of `lines` is committed to: before it, every
+    statement is in. None when no monthly account has anything committed."""
+    return min((line.committed for line in lines if line.committed and monthly(line)), default=None)
 
 
 def _joined(spans: list[tuple[date, date]], committed: bool) -> list[Span]:
