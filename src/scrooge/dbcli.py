@@ -28,8 +28,9 @@ There are no months to close (decided 2026-10-16): statements of any period are 
 whenever they are at hand, and `commit` commits what is staged. Of an account, what is
 committed already is left as it is: a statement is staged from the day after. A file that is
 not recognised, does not reconcile or is of another person's account is refused on its own,
-and the others are staged. What a statement books on the day of the import waits for the
-next one, since that day is not over.
+and the others are staged; `import` then exits 1, whatever else was staged or needs a
+category (it exits 2 only when nothing was refused). What a statement books on the day of the
+import waits for the next one, since that day is not over.
 
 `import` also takes the scan of a second-pillar pension certificate: it gives the pension
 fund's account the balance it states for its day, committed like any other statement. What
@@ -987,9 +988,10 @@ def _import(session: _Session, args: argparse.Namespace, config: dict[str, objec
             f"{staged.uncategorized} transactions need a category: "
             "import again with --review, or add rules by hand.\n"
         )
-        return NEEDS_REVIEW
     if found.refused:
         return FAILED
+    if staged.uncategorized:
+        return NEEDS_REVIEW
     if staged.files and not staged.gaps:
         out.write("Next: scrooge commit\n")
     return OK
