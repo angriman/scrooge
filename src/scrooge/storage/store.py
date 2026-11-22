@@ -405,13 +405,27 @@ def delete_statement_rows(
     return touched
 
 
+SameRow = tuple[str, str, int, str]  # the day it happened, currency, amount and description
+
+
+def same_row(day: str, currency: str, amount_nano: int, description: str) -> SameRow:
+    """What makes two rows the same one when their ids differ: the day it happened (ISO),
+    currency, amount (billionths) and description."""
+    return (day, currency, amount_nano, description)
+
+
+def transaction_same_row(txn: Transaction) -> SameRow:
+    """`same_row` of a statement's row."""
+    return same_row(txn.date.isoformat(), txn.currency, to_nano(txn.amount), txn.description)
+
+
 @dataclass(frozen=True, slots=True)
 class StoredRow:
     """A stored row as an import compares it with its own."""
 
     text: str  # what it is, to be read
     booked: date
-    same: tuple[str, str, int, str]  # the day it happened, currency, amount and description
+    same: SameRow
 
 
 def statement_rows(
@@ -433,7 +447,7 @@ def statement_rows(
         str(r[0]): StoredRow(
             f"{r[1]} {r[2]}: {r[3]}",
             date.fromisoformat(r[2]),
-            (str(r[4]), str(r[5]), int(r[6]), str(r[3])),
+            same_row(str(r[4]), str(r[5]), int(r[6]), str(r[3])),
         )
         for r in found
     }

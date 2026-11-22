@@ -35,7 +35,7 @@ from scrooge.models import CashBalance, Kind, Transaction, TypedHolding
 from scrooge.pipeline import Certificate, Month, Statement
 from scrooge.storage import bills, db, holdings, pairs, store
 from scrooge.storage.ids import transaction_ids
-from scrooge.storage.money import from_nano, to_nano
+from scrooge.storage.money import from_nano
 from scrooge.validation import (
     CertificatesDisagreeError,
     ChainMismatchError,
@@ -403,7 +403,7 @@ def _compare(
     loose = Counter(row.same for txn_id, row in stored.items() if txn_id not in found)
     unknown: list[str] = []
     for _, txn in unmatched:
-        same = (txn.date.isoformat(), txn.currency, to_nano(txn.amount), txn.description)
+        same = store.transaction_same_row(txn)
         if loose[same]:
             loose[same] -= 1
             continue
@@ -411,10 +411,7 @@ def _compare(
             f"{txn.account} {txn.booking_date}: {txn.description} ({txn.amount} "
             f"{txn.currency}) is in {statement.filename} and is not among the committed rows"
         )
-    moved = Counter(
-        (txn.date.isoformat(), txn.currency, to_nano(txn.amount), txn.description)
-        for _, txn in unmatched
-    )
+    moved = Counter(store.transaction_same_row(txn) for _, txn in unmatched)
     missing: list[str] = []
     for row in absent.values():
         if moved[row.same]:
