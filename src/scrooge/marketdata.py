@@ -3,7 +3,8 @@ and the maturities of the T-bills an import stopped on.
 
 This is the only caller of `scrooge.prices`, the one module that uses the network (D9). What
 is fetched is stored once and never fetched again (D10): each run asks only for the days after
-the last one stored, so a committed month keeps the figures it was closed with. Everything is
+the last one stored, and for those before the first only when older history was imported
+since, so a committed month keeps the figures it was closed with. Everything is
 fetched first and stored in one transaction afterwards.
 
 What cannot be fetched is reported, never guessed: a share without a close is valued at the
@@ -44,6 +45,7 @@ class _Fetched:
     instrument: store.Instrument
     price_symbol: str
     history: History
+    asked: date  # the first day asked for
 
 
 def refresh(  # noqa: PLR0913  # what to fetch, from where, up to when, and two local overrides
@@ -79,7 +81,9 @@ def refresh(  # noqa: PLR0913  # what to fetch, from where, up to when, and two 
                 added[2] += store.add_split(
                     conn, instrument, split.day, split.numerator, split.denominator
                 )
-        for currency, history in rates.items():
+            store.set_asked_from(conn, _close_series(instrument), name, item.asked)
+        for currency, (history, asked) in rates.items():
+            store.set_asked_from(conn, _rate_series(currency), name, asked)
             for day, rate in history.closes:
                 added[1] += store.add_rate(conn, day, currency, rate, source=name, fetched_at=stamp)
     return Refreshed(added[0], added[1], added[2], tuple(problems))
@@ -100,7 +104,8 @@ def _closes(
             continue
         first, last = spans[instrument.id]
         stored = store.price_days(conn, instrument.id, name)
-        wanted = _missing(first, last, stored)
+        asked = store.asked_from(conn, _close_series(instrument.id), name)
+        wanted = _missing(first, last, stored, asked)
         if not wanted:
             continue
         try:
@@ -119,21 +124,32 @@ def _closes(
             problems.append(
                 f"{instrument.symbol}: {price_symbol} has no close since {wanted[0][0]}"
             )
-        fetched.append(_Fetched(instrument, price_symbol, history))
+        fetched.append(_Fetched(instrument, price_symbol, history, wanted[0][0]))
     return fetched
 
 
-def _missing(first: date, last: date, stored: tuple[date, date] | None) -> list[tuple[date, date]]:
+def _close_series(instrument: int) -> str:
+    return f"close:{instrument}"
+
+
+def _rate_series(currency: str) -> str:
+    return f"rate:{currency}"
+
+
+def _missing(
+    first: date, last: date, stored: tuple[date, date] | None, asked: date | None
+) -> list[tuple[date, date]]:
     """The days to ask for, from a few before `first` to `last`, less those `stored` spans.
 
-    What is stored is never asked for again. Days before it are, when history older than the
-    first stored day was imported since; within the margin there may just be no close.
+    What is stored is never asked for again, and neither are the days a request already began
+    on (`asked`): the source may simply have no close that far back. Days before are asked
+    for only when history older than the first day asked was imported since.
     """
-    if stored is None:
+    if stored is None or asked is None:
         return [(first - _MARGIN, last)] if first <= last else []
     spans: list[tuple[date, date]] = []
-    if first + _MARGIN < stored[0]:
-        spans.append((first - _MARGIN, stored[0] - timedelta(days=1)))
+    if first - _MARGIN < asked:
+        spans.append((first - _MARGIN, asked - timedelta(days=1)))
     if stored[1] < last:
         spans.append((stored[1] + timedelta(days=1), last))
     return spans
@@ -195,14 +211,15 @@ def _rates(
     through: date,
     currencies: Collection[str],
     problems: list[str],
-) -> dict[str, History]:
+) -> dict[str, tuple[History, date]]:
     name = f"fetched:{source.name}"
     first = store.first_day(conn)
     if first is None:
         return {}
-    rates: dict[str, History] = {}
+    rates: dict[str, tuple[History, date]] = {}
     for currency in sorted({*store.currencies(conn), *currencies} - {BASE}):
-        spans = _missing(first, through, store.rate_days(conn, currency, name))
+        asked = store.asked_from(conn, _rate_series(currency), name)
+        spans = _missing(first, through, store.rate_days(conn, currency, name), asked)
         if not spans:
             continue
         symbol = rate_symbol(currency, BASE)
@@ -214,7 +231,7 @@ def _rates(
         if history.currency != BASE:
             problems.append(f"{currency}: {symbol} is quoted in {history.currency}, not in {BASE}")
             continue
-        rates[currency] = history
+        rates[currency] = (history, spans[0][0])
     return rates
 
 

@@ -9,8 +9,8 @@ from scrooge.storage import db, originals
 from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, txn
 from tests.web.builders import (
-    AUGUST,
     AUGUST_CLOSING,
+    AUGUST_DAYS,
     BUILT,
     LUKAS_AUGUST,
     SITE,
@@ -114,7 +114,7 @@ def test_a_statement_between_committed_ones_cannot_be_taken_back_and_says_why(
     path = tmp_path / "three.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    close(conn, OWNER, AUGUST, ("migros", LUKAS_AUGUST))
+    close(conn, OWNER, AUGUST_DAYS, ("migros", LUKAS_AUGUST))
     september = [txn("-10", source_ref="7", date=date(2026, 9, 3))]
     close(
         conn,

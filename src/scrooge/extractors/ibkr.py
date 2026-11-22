@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 
 from scrooge.errors import ExtractionError, UnsupportedStatementError
-from scrooge.extractors.common import month_start, parse_decimal, parse_iso_date
+from scrooge.extractors.common import fx_category, month_start, parse_decimal, parse_iso_date
 from scrooge.models import (
     CashBalance,
     Extraction,
@@ -51,8 +51,6 @@ _Sections = dict[str, list[_Row]]
 _PERIOD = re.compile(r"(\w+) (\d{1,2}), (\d{4}) - (\w+) (\d{1,2}), (\d{4})")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_name) if name}
 _OPTION_CATEGORIES = {"Options On Futures", "Equity and Index Options"}
-_FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
-_HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own accounts
 # Shares promised and taken back before they vest never were in the account.
 _UNVESTED_GRANTS = ("Stock Award Grant", "Stock Award Return")
 _STOCK_TABS = {"ETF": "ETFs", "COMMON": "Stocks", "ADR": "Stocks", "REIT": "Stocks"}
@@ -549,10 +547,9 @@ class _Parser:
             counterparty=cusip,
         )
         quantity = parse_decimal(row["Quantity"], "Corporate Actions quantity")
-        fields = {name: getattr(principal, name) for name in principal.__slots__}
         legs: list[Transaction] = [
-            SecurityTrade(
-                **fields,
+            SecurityTrade.from_transaction(
+                principal,
                 ticker=cusip,
                 quantity=quantity,
                 price=Decimal(100),
@@ -769,9 +766,7 @@ class _Parser:
         quantity = parse_decimal(row["Quantity"], "Trades quantity")
         proceeds = parse_decimal(row["Proceeds"], "Trades proceeds")
         bought = base if quantity > 0 else quote
-        category = f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
-        if bought == _HOME_CURRENCY:
-            category = "Giroconto"
+        category = fx_category(bought)
         price = parse_decimal(row["T. Price"], "FX price")
         description = f"FX {row['Symbol']} @ {format(price, 'f')}"
         return [

@@ -25,7 +25,7 @@ from decimal import Decimal
 from typing import NamedTuple
 
 from scrooge.errors import ExtractionError, UnsupportedStatementError
-from scrooge.extractors.common import month_start, parse_us_amount, parse_us_date
+from scrooge.extractors.common import month_start, parse_us_amount, parse_us_date, share_vest
 from scrooge.models import (
     CashBalance,
     Extraction,
@@ -189,36 +189,19 @@ def _release(
 ) -> list[Transaction]:
     quantity = _amount(match[1], "Release quantity")
     price = _amount(match[2], "Release price")
-    worth = quantity * price
     what = f"{format(quantity, 'f')} {ticker} @ {format(price, 'f')}"
-    salary = Transaction(
-        date=day,
+    return share_vest(
+        day=day,
         account=ACCOUNT,
-        amount=worth,
         currency=CURRENCY,
-        description=f"Release of {what}: salary in shares",
-        kind=Kind.INCOME,
-        source_file=source_file,
-        source_ref=f"Release:{ref}:salary",
-        category="Stipendio",
-    )
-    purchase = SecurityTrade(
-        date=day,
-        account=ACCOUNT,
-        amount=-worth,
-        currency=CURRENCY,
-        description=f"Release of {what}",
-        kind=Kind.SECURITY_TRADE,
         source_file=source_file,
         source_ref=f"Release:{ref}",
-        category="Investimenti",
         ticker=ticker,
         quantity=quantity,
         price=price,
-        cost=worth,
+        description=f"Release of {what}",
         asset_tab=_ASSET_TAB,
     )
-    return [salary, purchase]
 
 
 def _cash(day: date, text: str, row: _CashRow, ref: str, source_file: str) -> Transaction:

@@ -15,7 +15,14 @@ from scrooge import categories, cli, dbcli, networth, prices
 from scrooge.extractors import ocr
 from scrooge.storage import db, holdings, store
 from scrooge.web import auth
-from tests.conftest import FILES, FIXTURES, INSTRUMENTS_YAML, write_rules
+from tests.conftest import (
+    AUGUST_PURCHASE,
+    FILES,
+    FIXTURES,
+    INSTRUMENTS_YAML,
+    MATURED,
+    write_rules,
+)
 from tests.fakes import FakeSource
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -26,17 +33,6 @@ owners:
   Lukas: {{match: ['LUKAS MEIER']}}
   Anna: {{match: ['ANNA MEIER']}}
 """
-
-
-MATURED = "  912797YY2: {maturity: 2026-09-16}\n"
-AUGUST_PURCHASE = (
-    "Date,Type,Sub Type,Action,Symbol,Instrument Type,Description,Value,Quantity,Average Price,"
-    "Commissions,Fees,Multiplier,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,"
-    "Call or Put,Order #,Total,Currency\n"
-    "2026-08-20T15:58:53+0200,Trade,Buy to Open,BUY_TO_OPEN,912797YY2,Fixed Income Security,"
-    'Bought 10 912797YY2 @ 992.00,"-9,920.00",10,-992.00,0.00,0.00,,,,,,,900000001,'
-    '"-9,920.00",USD\n'
-)
 
 
 class Run:
@@ -575,14 +571,18 @@ def test_a_file_that_needs_a_category_ends_the_import_with_a_request_to_review(
     assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
 
 
-def test_a_refusal_comes_before_a_request_for_categories(run: Run) -> None:
+def test_a_refusal_ends_the_import_with_failure_even_when_others_need_categories(
+    run: Run,
+) -> None:
     statement = run.folder / "Migros.csv"
     statement.write_text(
         statement.read_text(encoding="utf-8").replace("-1288.18", "-1288.19"), encoding="utf-8"
     )
     run.rules.write_text("rules: []\n", encoding="utf-8")
-    assert run.load() == dbcli.NEEDS_REVIEW
+    assert run.load() == dbcli.FAILED
     assert "  refused Migros.csv" in run.output
+    assert "  staged IBKR.csv (IBKR activity statement)\n" in run.output
+    assert "transactions need a category" in run.output
 
 
 def test_owner_and_database_can_come_from_the_command_line(run: Run, tmp_path: Path) -> None:

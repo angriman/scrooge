@@ -13,7 +13,7 @@ import calendar
 import sqlite3
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -24,6 +24,7 @@ from scrooge.networth import convert, rates_on
 from scrooge.storage.money import from_nano
 
 CENT = Decimal("0.01")
+SHARE = Decimal("0.001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +46,11 @@ class Span:
     through: date  # the last day committed for everyone shown
     known: date  # the first day of the month from which every person shown has rows
 
+    def year_before(self) -> tuple[date, date] | None:
+        """The same range a year earlier; None when those days are not all known."""
+        start, end = year_before(self.start), year_before(self.end)
+        return (start, end) if start >= self.known else None
+
 
 @dataclass(frozen=True, slots=True)
 class Rows:
@@ -58,6 +64,20 @@ class Rows:
     def between(self, first: date, last: date) -> Sequence[Converted]:
         """The rows from `first` to `last`, both included."""
         return self.rows[bisect_left(self.days, first) : bisect_right(self.days, last)]
+
+    def within(self, span: Span, days: tuple[date, date]) -> Sequence[Converted]:
+        """The rows of a period, first to last day, left to the range's ends where the period
+        reaches beyond them."""
+        return self.between(max(days[0], span.start), min(days[1], span.end))
+
+    def by_period(
+        self, span: Span, grouping: Grouping
+    ) -> Iterator[tuple[str, tuple[date, date], Sequence[Converted]]]:
+        """Each period of the range, oldest first: its name, its first and last day (whole,
+        even where the range cuts it) and the rows of it that are in the range."""
+        for name in periods(span.start, span.end, grouping):
+            days = cashflow.days(name)
+            yield name, days, self.within(span, days)
 
     def span(self, first: date | None, last: date | None) -> Span | None:
         """The range asked for, its ends filled in; None when there is nothing to show, or
@@ -95,6 +115,11 @@ def rows(
         through(conn, owner),
         max(firsts.values(), default=None),
     )
+
+
+def share(part: Decimal, total: Decimal) -> Decimal | None:
+    """`part` as a part of `total`, to the thousandth; None when `total` is not above zero."""
+    return (part / total).quantize(SHARE) if total > 0 else None
 
 
 def periods(start: date, end: date, grouping: Grouping) -> list[str]:

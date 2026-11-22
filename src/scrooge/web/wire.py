@@ -9,13 +9,16 @@ frontend's.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date
 from decimal import Decimal
+from typing import TypeVar
 
 from scrooge import networth, overview, query
 
 JSON = dict[str, object]
+_T = TypeVar("_T")
+_F = TypeVar("_F")
 
 
 def number(value: Decimal | None) -> str | None:
@@ -30,6 +33,16 @@ def sentence(exc: Exception) -> str:
     """What went wrong, as a page says it."""
     message = str(exc)
     return f"{message[0].upper()}{message[1:]}."
+
+
+def unless_rate_missing(errors: list[str], compute: Callable[[], _T], fallback: _F) -> _T | _F:
+    """What `compute` returns; when a currency has no stored rate, `fallback`, and the reason
+    is added to `errors`."""
+    try:
+        return compute()
+    except networth.MissingRateError as exc:
+        errors.append(sentence(exc))
+        return fallback
 
 
 def person(shown: query.Person) -> JSON:

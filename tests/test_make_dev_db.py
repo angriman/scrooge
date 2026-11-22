@@ -18,6 +18,20 @@ NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 SCANS = {name: folder for names in make_dev_db.SCANS.values() for name, folder in names.items()}
 
 
+@pytest.fixture(autouse=True)
+def nothing_real(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """No test here can see the user's data: `~` is an empty home inside tmp_path, and the
+    repository's own config and setups (where the real database may be named) are not read."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(make_dev_db, "SETUPS", tmp_path / "no setups")
+    defaults = make_dev_db.build.__kwdefaults__  # `config` is a default fixed at definition
+    assert defaults is not None
+    monkeypatch.setitem(defaults, "config", tmp_path / "no config.yaml")
+    return home
+
+
 @pytest.fixture
 def scans(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tesseract stands in by the text stored next to each scan."""
@@ -169,12 +183,25 @@ def test_the_setups_in_users_and_the_databases_they_name_are_never_touched(
     assert make_dev_db.ROOT / "users" in make_dev_db.REAL
 
 
-def test_the_real_database_s_default_folder_is_refused(tmp_path: Path) -> None:
+def test_the_real_database_s_default_folder_is_refused(tmp_path: Path, nothing_real: Path) -> None:
+    # `~` is the empty home of `nothing_real`: this is a stand-in for the user's real folder.
+    assert Path("~").expanduser() == nothing_real
+    real = nothing_real / ".local" / "share" / "scrooge_db"
+    real.mkdir(parents=True)
+    (real / "scrooge.db").write_bytes(b"the real one")
     out = io.StringIO()
-    target = Path("~/.local/share/scrooge_db").expanduser()
-    assert make_dev_db.main([str(target)], out) == 1
-    assert out.getvalue().startswith(f"error: {target.resolve()}: the real data is kept at")
+    assert make_dev_db.main([str(real)], out) == 1
+    assert out.getvalue().startswith(f"error: {real.resolve()}: the real data is kept at")
     assert make_dev_db.REAL[0] == Path("~/.local/share/scrooge_db")
+    # Nothing was emptied, written or made there or anywhere in the stand-in home.
+    assert sorted(p.name for p in real.iterdir()) == ["scrooge.db"]
+    assert (real / "scrooge.db").read_bytes() == b"the real one"
+    assert sorted(p.relative_to(nothing_real).as_posix() for p in nothing_real.rglob("*")) == [
+        ".local",
+        ".local/share",
+        ".local/share/scrooge_db",
+        ".local/share/scrooge_db/scrooge.db",
+    ]
 
 
 def test_the_card_invoice_s_pdf_reads_back_as_its_text(tmp_path: Path) -> None:

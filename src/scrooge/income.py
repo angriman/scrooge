@@ -34,7 +34,6 @@ _GROUP_OF = {
     "Trading": INVESTIMENTI,
 }
 _TRADING = "Trading"  # a leaf on both sides: what was won and what was lost
-_SHARE = Decimal("0.001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +99,9 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
         return Income(currency, (), (), found.through)
     start, end = span.start, span.end
     periods = []
-    for name in analysis.periods(start, end, grouping):
-        days = cashflow.days(name)
+    for name, days, inside in found.by_period(span, grouping):
         totals = dict.fromkeys(GROUPS, Decimal(0))
-        for each in found.between(max(days[0], start), min(days[1], end)):
+        for each in inside:
             totals[group(each.row)] += each.amount
         periods.append(
             Period(
@@ -135,4 +133,4 @@ def _employer(found: analysis.Rows, span: analysis.Span, days: tuple[date, date]
     rows: list[Converted] = list(found.between(*window))
     total = sum((each.amount for each in rows), Decimal(0))
     work = sum((each.amount for each in rows if group(each.row) == LAVORO), Decimal(0))
-    return (work / total).quantize(_SHARE) if total > 0 else None
+    return analysis.share(work, total)

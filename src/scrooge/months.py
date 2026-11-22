@@ -380,7 +380,7 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
         msg = f"there is nobody called {owner}"
         raise staging.NothingStagedError(msg)
     span = (month.isoformat(), month_end(month).isoformat())
-    committed = "(f.committed_at IS NOT NULL OR t.statement_file_id IS NULL)"
+    committed = store.committed_or_typed("t.statement_file_id")
     files = conn.execute(
         "SELECT f.id, f.source, f.filename, f.period_start, f.period_end, f.reconciled, "
         "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id "

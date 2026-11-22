@@ -6,7 +6,7 @@ Nothing here begins or commits a transaction, and nothing decides anything: call
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -405,13 +405,27 @@ def delete_statement_rows(
     return touched
 
 
+SameRow = tuple[str, str, int, str]  # the day it happened, currency, amount and description
+
+
+def same_row(day: str, currency: str, amount_nano: int, description: str) -> SameRow:
+    """What makes two rows the same one when their ids differ: the day it happened (ISO),
+    currency, amount (billionths) and description."""
+    return (day, currency, amount_nano, description)
+
+
+def transaction_same_row(txn: Transaction) -> SameRow:
+    """`same_row` of a statement's row."""
+    return same_row(txn.date.isoformat(), txn.currency, to_nano(txn.amount), txn.description)
+
+
 @dataclass(frozen=True, slots=True)
 class StoredRow:
     """A stored row as an import compares it with its own."""
 
     text: str  # what it is, to be read
     booked: date
-    same: tuple[str, str, int, str]  # the day it happened, currency, amount and description
+    same: SameRow
 
 
 def statement_rows(
@@ -433,7 +447,7 @@ def statement_rows(
         str(r[0]): StoredRow(
             f"{r[1]} {r[2]}: {r[3]}",
             date.fromisoformat(r[2]),
-            (str(r[4]), str(r[5]), int(r[6]), str(r[3])),
+            same_row(str(r[4]), str(r[5]), int(r[6]), str(r[3])),
         )
         for r in found
     }
@@ -696,8 +710,9 @@ def set_holding(
 ) -> None:
     """What the statement says the account held of one instrument at the end of `day`.
 
-    A share's close that day is kept as a price too. A bill's is a percentage of its face,
-    and no price of the bill: its worth is the value on the row.
+    The row's price is the share's close that day, as far as net worth is concerned, for as
+    long as the statement is committed. A bill's is a percentage of its face, and no price of
+    the bill: its worth is the value on the row.
     """
     instrument = instrument_id(conn, holding.ticker, holding.asset_tab, holding.currency)
     conn.execute(
@@ -715,8 +730,6 @@ def set_holding(
             int(holding.unvested),
         ),
     )
-    if _INSTRUMENT_TYPES[holding.asset_tab] != "bill":
-        set_price(conn, instrument, day, holding.price, source="statement")
 
 
 def set_price(  # noqa: PLR0913  # one argument per column
@@ -790,6 +803,23 @@ def rate_days(conn: sqlite3.Connection, currency: str, source: str) -> tuple[dat
         (currency, source),
     ).fetchone()
     return None if row[0] is None else (date.fromisoformat(row[0]), date.fromisoformat(row[1]))
+
+
+def asked_from(conn: sqlite3.Connection, series: str, source: str) -> date | None:
+    """The earliest day a request to `source` for the series began on, if one was made."""
+    row = conn.execute(
+        "SELECT first_day FROM asked_from WHERE series = ? AND source = ?", (series, source)
+    ).fetchone()
+    return None if row is None else date.fromisoformat(row[0])
+
+
+def set_asked_from(conn: sqlite3.Connection, series: str, source: str, day: date) -> None:
+    """Remember that the series was asked for from `day`, unless it was from an earlier one."""
+    conn.execute(
+        "INSERT INTO asked_from (series, source, first_day) VALUES (?, ?, ?) "
+        "ON CONFLICT (series, source) DO UPDATE SET first_day = min(first_day, excluded.first_day)",
+        (series, source, day.isoformat()),
+    )
 
 
 def add_price(  # noqa: PLR0913  # one argument per column
@@ -866,6 +896,20 @@ def set_statement_values(
         )
 
 
+def set_statement_rates(
+    conn: sqlite3.Connection, statement_file: int, day: date, rates: Mapping[str, Decimal]
+) -> None:
+    """The rates the statement prints for `day` (currency to francs per unit); an import of
+    the same file again replaces them. They go with the file."""
+    for currency, rate in rates.items():
+        ensure_currency(conn, currency)
+        conn.execute(
+            "INSERT OR REPLACE INTO statement_rates "
+            "(statement_file_id, currency, date, rate_to_chf) VALUES (?, ?, ?, ?)",
+            (statement_file, currency, day.isoformat(), to_text(rate)),
+        )
+
+
 def anchors(conn: sqlite3.Connection, owner: int) -> list[Anchor]:
     """Every statement balance of the owner's accounts, by account and then by day.
 
@@ -926,6 +970,19 @@ class Waiting:
     kind: str
     description: str
     counterparty: str
+
+
+def committed_or_typed(file_column: str) -> str:
+    """The SQL condition that keeps a row whose statement is committed, or that no statement
+    gave (typed by hand). `file_column` is the row's `statement_file_id`, with its table's alias.
+
+    One rule for every reader of transactions, balances and positions that shows committed
+    data only; a staged or discarded statement's rows fail it.
+    """
+    return (
+        f"({file_column} IS NULL OR EXISTS (SELECT 1 FROM statement_files cf "  # noqa: S608  # `file_column` is a column name given by the callers
+        f"WHERE cf.id = {file_column} AND cf.committed_at IS NOT NULL))"
+    )
 
 
 # What can be given another category: money in or out as the statement books it, whose

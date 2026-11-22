@@ -148,7 +148,7 @@ def test_backup_copies_the_database(conn: sqlite3.Connection, tmp_path: Path) ->
 def test_the_schema_version_can_be_read_without_changing_anything(
     conn: sqlite3.Connection,
 ) -> None:
-    assert db.latest() == len(db.migrations())
+    assert db.latest() == db.migrations()[-1][0]  # numbers may skip: other branches take some
     assert db.version(conn) == db.latest()
     empty = db.connect(":memory:")
     assert db.version(empty) == 0  # no migration has run on it
@@ -362,10 +362,80 @@ def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.Mon
             VALUES ('t1', 1, '2026-09-07', '2026-09-07', -1000000000, 'EUR', 'x', 'expense', 2);
         """
     )
-    monkeypatch.undo()
+    monkeypatch.setattr(db, "migrations", lambda: every[:7])
     assert db.migrate(conn, NOW) == [7]
     row = conn.execute("SELECT counterparty_owner_id, counterparty_paired FROM transactions")
     assert tuple(row.fetchone()) == (2, 0)  # a mark made before is kept as the statement's own
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("UPDATE transactions SET counterparty_paired = 2")
+    conn.close()
+
+
+def test_migration_0008_takes_stored_closes_as_asked_for_as_the_old_rule_did(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:7])
+    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7]
+    monkeypatch.undo()
+    conn.executescript(
+        """
+        INSERT INTO currencies VALUES ('CHF', 2);
+        INSERT INTO currencies VALUES ('USD', 2);
+        INSERT INTO instruments (id, symbol, type, currency) VALUES (1, 'WIDG', 'etf', 'USD');
+        INSERT INTO prices VALUES (1, '2026-09-30', '55', 'fetched:fake', 'x');
+        INSERT INTO prices VALUES (1, '2026-09-28', '54', 'fetched:fake', 'x');
+        INSERT INTO prices VALUES (1, '2026-09-01', '50', 'manual', NULL);
+        INSERT INTO fx_rates VALUES ('2026-09-29', 'USD', '0.8', 'fetched:fake', 'x');
+        INSERT INTO fx_rates VALUES ('2026-09-05', 'USD', '0.8', 'manual', NULL);
+        """
+    )
+    monkeypatch.setattr(db, "migrations", lambda: every[:8])
+    assert db.migrate(conn, NOW) == [8]
+    stored = conn.execute("SELECT series, source, first_day FROM asked_from ORDER BY 1")
+    assert [tuple(row) for row in stored] == [
+        ("close:1", "fetched:fake", "2026-09-08"),  # 20 days before the first close
+        ("rate:USD", "fetched:fake", "2026-09-09"),
+    ]
+    conn.close()
+
+
+def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:8])
+    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7, 8]
+    monkeypatch.undo()
+    conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
+    conn.execute("INSERT OR IGNORE INTO currencies (code, decimals) VALUES ('USD', 2)")
+    for source, name, end in (("ibkr", "i", "2026-09-30"), ("migros", "m", "2026-09-30")):
+        conn.execute(
+            "INSERT INTO statement_files (owner_id, source, filename, sha256, period_start, "
+            "period_end, reconciled, imported_at) VALUES (1, ?, ?, ?, '2026-09-01', ?, 'yes', 'x')",
+            (source, name, name, end),
+        )
+    conn.execute("INSERT INTO instruments (symbol, type, currency) VALUES ('WIDG', 'stock', 'USD')")
+    for day, source, rate in (
+        ("2026-09-30", "statement", "0.8"),
+        ("2026-10-31", "statement", "0.9"),  # of a statement discarded: nothing has it
+        ("2026-09-30", "fetched:x", "0.7"),
+    ):
+        conn.execute("INSERT INTO fx_rates VALUES (?, 'USD', ?, ?, NULL)", (day, rate, source))
+    for source in ("statement", "manual"):
+        conn.execute("INSERT INTO prices VALUES (1, '2026-09-30', '50', ?, NULL)", (source,))
+
+    assert db.migrate(conn, NOW) == [9]
+    kept = conn.execute(
+        "SELECT f.source, r.currency, r.date, r.rate_to_chf FROM statement_rates r "
+        "JOIN statement_files f ON f.id = r.statement_file_id"
+    ).fetchall()
+    assert [tuple(row) for row in kept] == [("ibkr", "USD", "2026-09-30", "0.8")]
+    left = conn.execute("SELECT source FROM fx_rates").fetchall()
+    assert [row[0] for row in left] == ["fetched:x"]
+    assert [row[0] for row in conn.execute("SELECT source FROM prices")] == ["manual"]
+    conn.execute("DELETE FROM statement_files WHERE source = 'ibkr'")
+    assert conn.execute("SELECT count(*) FROM statement_rates").fetchone()[0] == 0
     conn.close()

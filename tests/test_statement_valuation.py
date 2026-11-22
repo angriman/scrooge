@@ -44,20 +44,13 @@ def test_holdings_values_and_rates_of_the_fixture_month_are_stored(
         ("IBKR USD", "ACME", "stock", "2026-09-30", "20", "113.1", 2_262_000_000_000, 0),
         ("IBKR USD", "GOOG", "stock", "2026-09-30", "5", "204.3", 1_021_500_000_000, 0),
     ]
-    # the close of a share is a price of that day; a bill has none
-    prices = rows(
-        conn,
-        "SELECT i.symbol, p.date, p.close, p.source FROM prices p "
-        "JOIN instruments i ON i.id = p.instrument_id ORDER BY i.symbol",
-    )
-    assert prices == [
-        ("ACME", "2026-09-30", "113.1", "statement"),
-        ("GOOG", "2026-09-30", "204.3", "statement"),
-    ]
-    assert rows(conn, "SELECT date, currency, rate_to_chf, source FROM fx_rates ORDER BY 2") == [
-        ("2026-09-30", "EUR", "0.95", "statement"),
-        ("2026-09-30", "USD", "0.8", "statement"),
-    ]
+    # the close of a share is the price of its position; no row of `prices` is written, which
+    # no statement file could take back
+    assert rows(conn, "SELECT count(*) FROM prices") == [(0,)]
+    assert rows(conn, "SELECT count(*) FROM fx_rates") == [(0,)]
+    assert rows(
+        conn, "SELECT date, currency, rate_to_chf FROM statement_rates ORDER BY currency"
+    ) == [("2026-09-30", "EUR", "0.95"), ("2026-09-30", "USD", "0.8")]
     values = rows(
         conn,
         "SELECT v.label, v.currency, v.value_nano FROM statement_values v "
@@ -127,7 +120,7 @@ def test_rates_in_another_base_than_francs_are_not_kept(conn: sqlite3.Connection
     values = (PrintedValue("Total", "JPY", D(1000)),)
     extraction = replace(base.extraction, rates=rates, values=values)
     staging.stage(conn, batch(replace(base, extraction=extraction)), NOW)
-    assert rows(conn, "SELECT currency, rate_to_chf FROM fx_rates") == [("USD", "0.8")]
+    assert rows(conn, "SELECT currency, rate_to_chf FROM statement_rates") == [("USD", "0.8")]
     # a currency is known from the first value in it
     assert rows(conn, "SELECT currency FROM statement_values") == [("JPY",)]
 

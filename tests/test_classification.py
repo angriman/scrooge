@@ -73,9 +73,29 @@ def _rules(tmp_path: Path, text: str, name: str = "rules.yaml") -> Path:
     return path
 
 
-def test_taxonomy_has_no_duplicates_and_keeps_sheet_order() -> None:
-    assert len(categories.ORDER) == len(categories.ALL)
+def test_taxonomy_names_are_unique_where_they_must_be_and_keep_sheet_order() -> None:
+    expense_leaves = [leaf for leaves in categories.USCITE.values() for leaf in leaves]
+    # A leaf sits under one top-level category only, or its group would be ambiguous.
+    assert len(expense_leaves) == len(set(expense_leaves))
+    assert len(categories.ENTRATE) == len(set(categories.ENTRATE))
+    assert len(categories.TRANSFERS) == len(set(categories.TRANSFERS))
+    assert all(leaves for leaves in categories.USCITE.values())
+    # Transfers are neither expenses nor income; a few leaves are both, and only those.
+    assert not set(categories.TRANSFERS) & (set(expense_leaves) | set(categories.ENTRATE))
+    both = set(expense_leaves) & set(categories.ENTRATE)
+    assert both == {"Trading", "Commissioni", "Investimenti", categories.UNSORTED}
+    # ORDER lists every leaf once: a leaf on both sides is written once, where it first appears.
+    assert len(categories.ORDER) == len(set(categories.ORDER))
+    assert set(categories.ORDER) == set(expense_leaves) | set(categories.ENTRATE) | set(
+        categories.TRANSFERS
+    )
+    assert len(categories.ORDER) == len(expense_leaves) + len(categories.ENTRATE) + len(
+        categories.TRANSFERS
+    ) - len(both)
     assert categories.ORDER[:3] == ("Affitto", "Utenze", "Arredamento e casa")
+    assert categories.ORDER.index("Trading") < categories.ORDER.index("Stipendio")
+    assert categories.ORDER[-1] == "Giroconto"
+    assert frozenset(categories.ORDER) == categories.ALL
     assert {"Elettronica", "Voli", "Donazioni", "Tasse", "Sport"} <= categories.ALL
     assert {"Trading", "Commissioni", "Cashback", "Topup IBKR"} <= categories.ALL
 
