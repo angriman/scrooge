@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { get, post } from '#lib/api.js';
 	import { money } from '#lib/format/number.js';
+	import Context from '#lib/transactions/Context.svelte';
 	import Days from '#lib/transactions/Days.svelte';
 	import Filters from '#lib/transactions/Filters.svelte';
 	import Summary from '#lib/transactions/Summary.svelte';
@@ -17,6 +18,7 @@
 	let { data }: PageProps = $props();
 
 	const listed = $derived(data.listed);
+	const context = $derived(data.context);
 	const session = $derived(data.session);
 	const owner = $derived(page.url.searchParams.get('owner'));
 	const people = $derived(session.people.length > 1 && !owner);
@@ -119,6 +121,15 @@
 		{today}
 		onchange={change}
 	/>
+
+	{#if context}
+		<div class="mt-5">
+			<Context
+				{context}
+				merchant={(name) => withQuery(page.url, { merchant: name, category: null, account: null })}
+			/>
+		</div>
+	{/if}
 
 	<div class="mt-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2" aria-live="polite">
 		<p class="text-body text-ink-secondary">

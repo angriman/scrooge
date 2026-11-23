@@ -498,3 +498,26 @@ export interface CashFlow {
 	ranges: { label: string; from: string; to: string }[];
 	errors: string[];
 }
+
+/** One category, merchant or account over the last two years (`/api/transactions/context`). */
+export interface TransactionsContext {
+	kind: 'category' | 'merchant' | 'account';
+	name: string;
+	currency: string;
+	/** The amounts are money earned (a category of income), not money spent. */
+	earned: boolean;
+	/** Two years of months up to the one of `through`, oldest first; none when nothing is
+	 * committed or a rate is missing. */
+	months: { month: string; amount: Amount }[];
+	/** The median of the twelve months before the last; null when they are not all known. */
+	usual: Amount | null;
+	this_month: Amount | null;
+	through: Day | null;
+	/** The last month is not over in the statements committed. */
+	partial: boolean;
+	/** For a category: where most was spent (or earned from) over those months. */
+	merchants: { name: string; amount: Amount; count: number }[] | null;
+	/** For an account: what it holds now. */
+	balance: Amount | null;
+	errors: string[];
+}
