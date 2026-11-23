@@ -24,6 +24,7 @@ from scrooge.extractors.common import (
     read_table,
     undo_double_encoding,
 )
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import CashBalance, Extraction, Kind, Transaction
 
 _COLUMNS = (
@@ -160,3 +161,15 @@ def _fee(row: dict[str, str]) -> tuple[tuple[Kind, str], str]:
     if _type(row) in {"CHARGE", "FEE"}:  # the fee is the charge itself (e.g. "Metal plan fee")
         return (Kind.EXPENSE, ""), row["Description"]
     return (Kind.COMMISSION, "Commissioni"), f"Fee: {row['Description']}"
+
+
+SOURCE = Source(
+    name="revolut",
+    label="Revolut account statement",
+    reads="text",
+    recognises=starts_with(
+        "Type\tProduct\t",
+        "Type,Product,",
+    ),
+    extract=extract,
+)

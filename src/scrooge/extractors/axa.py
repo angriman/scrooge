@@ -20,9 +20,10 @@ from decimal import Decimal
 
 from scrooge.errors import ExtractionError
 from scrooge.extractors.common import only_match, parse_swiss_amount, parse_swiss_date
+from scrooge.extractors.source import CertificateSource
 from scrooge.models import PensionCertificate
 
-SOURCE = "axa"
+_NAME = "axa"
 ACCOUNT = "Pillar 2 AXA"  # one account per pension fund (and person, D14)
 CURRENCY = "CHF"
 ADDS_UP = True  # the two portions must make the total: the figure is checked
@@ -58,7 +59,7 @@ def extract(content: str) -> PensionCertificate:
     if since > as_of:
         msg = f"AXA: the insurance begins on {since}, after the assets' date {as_of}"
         raise ExtractionError(msg)
-    return PensionCertificate(SOURCE, as_of, CURRENCY, total, mandatory, since, opened)
+    return PensionCertificate(_NAME, as_of, CURRENCY, total, mandatory, since, opened)
 
 
 def _assets(row: re.Match[str]) -> tuple[date, Decimal, Decimal]:
@@ -73,3 +74,13 @@ def _assets(row: re.Match[str]) -> tuple[date, Decimal, Decimal]:
         msg = f"AXA: the portions {mandatory} and {extra} do not add up to the total {total}"
         raise ExtractionError(msg)
     return day, mandatory, total
+
+
+SOURCE = CertificateSource(
+    name=_NAME,
+    label="AXA pension certificate",
+    account=ACCOUNT,
+    adds_up=ADDS_UP,
+    recognises=recognises,
+    extract=extract,
+)

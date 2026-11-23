@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import fx_category, month_start, parse_decimal, parse_iso_date
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import (
     CashBalance,
     Extraction,
@@ -796,3 +797,12 @@ def _describe(quantity: Decimal, symbol: str, price: Decimal, code: str) -> str:
     if effect:
         side = f"{side} to {effect}"
     return f"{side} {format(abs(quantity), 'f')} {symbol} @ {format(price, 'f')}"
+
+
+SOURCE = Source(
+    name="ibkr",
+    label="IBKR activity statement",
+    reads="text",
+    recognises=starts_with("Statement,Header,"),
+    extract=extract,
+)

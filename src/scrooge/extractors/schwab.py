@@ -38,6 +38,7 @@ from scrooge.extractors.common import (
     read_table,
     share_vest,
 )
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import Extraction, Kind, Transaction
 
 ACCOUNT = "Schwab"
@@ -159,3 +160,14 @@ def _money(text: str, n: int) -> Decimal:
 def _date(text: str, n: int) -> date:
     """`10/28/2026`: month, day, year."""
     return parse_us_date(text, f"Schwab row {n}")
+
+
+SOURCE = Source(
+    name="schwab",
+    label="Schwab Equity Awards transactions",
+    reads="text",
+    recognises=starts_with(
+        '"Date","Action","Symbol","Description","Quantity","FeesAndCommissions",',
+    ),
+    extract=extract,
+)
