@@ -147,16 +147,11 @@ def _matches(kind: str, name: str, *, earned: bool) -> Callable[[Counted], bool]
     """Which counted rows `name` adds up, as the cash flow counts them."""
     if earned:
         return lambda row: income.is_income(row) and name in (row.top, row.leaf)
-
-    def spent(row: Counted) -> bool:
-        return spending.is_spent(row) and not spending.paid_back(row)
-
     if kind == "category":
-        return lambda row: spent(row) and name in (row.top, row.leaf)
+        return lambda row: spending.is_expense(row) and name in (row.top, row.leaf)
     if kind == "account":
-        return lambda row: spent(row) and row.account == name
-    paid = " ".join(name.split()).casefold()
-    return lambda row: spent(row) and spending.merchant(row).casefold() == paid
+        return lambda row: spending.is_expense(row) and row.account == name
+    return spending.spent_at(name)
 
 
 def _written(rows: list[Converted], asked: str) -> str:

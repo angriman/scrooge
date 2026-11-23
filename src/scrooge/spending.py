@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -109,6 +110,19 @@ def paid_back(row: Counted) -> bool:
 def merchant(row: Counted) -> str:
     """Who was paid, as `query.merchant` names them: the transactions page filters by it."""
     return query.merchant(row.kind, row.account, row.counterparty)
+
+
+def is_expense(row: Counted) -> bool:
+    """Money spent, as the categories and merchants add it up: an expense or a refund of one,
+    not what the other person paid back."""
+    return is_spent(row) and not paid_back(row)
+
+
+def spent_at(name: str) -> Callable[[Counted], bool]:
+    """Whether a row is money spent at the merchant `name`, as the merchants are added up
+    here: spaces and case are not told apart. The transactions page lists these rows."""
+    paid = " ".join(name.split()).casefold()
+    return lambda row: is_expense(row) and merchant(row).casefold() == paid
 
 
 def run(  # noqa: PLR0913  # the range, whose, how grouped, in what

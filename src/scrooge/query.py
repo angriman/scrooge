@@ -35,7 +35,8 @@ class Filter:
     a top-level category stands for all its leaves. `at_least` and `at_most` bound the size of
     the amount, whatever its sign. `text` is looked for in the counterparty and the
     description, ignoring case. `merchant` is who was paid as the cash flow names them
-    (`merchant`), ignoring case.
+    (`merchant`), ignoring case, and keeps only what the cash flow counts as spent there: no
+    income, transfer, trade or money paid back.
     """
 
     first: date | None = None
@@ -230,12 +231,7 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         if needle in r["counterparty"].casefold() or needle in r["description"].casefold()
     )
     if wanted.merchant is not None:
-        paid = " ".join(wanted.merchant.split()).casefold()
-        rows = tuple(
-            row
-            for row in rows
-            if merchant(row.kind, row.account, row.counterparty).casefold() == paid
-        )
+        rows = _spent_at(conn, wanted.merchant, wanted.owner, rows)
 
     def day(row: Row) -> date:
         return row.booking_date if wanted.booking else row.date
@@ -268,6 +264,19 @@ def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
             whose = f" of {wanted.owner}" if what == "account" and wanted.owner else ""
             msg = f"no {what} named {name!r}{whose}"
             raise QueryError(msg)
+
+
+def _spent_at(
+    conn: sqlite3.Connection, name: str, owner: str | None, rows: tuple[Row, ...]
+) -> tuple[Row, ...]:
+    """The `rows` the cash flow counts as money spent at the merchant `name`, of `owner` or of
+    everyone: their total is then the figure the cash flow shows for it."""
+    # The cash flow reads its rows through this module: it is imported when asked for.
+    from scrooge import cashflow, spending  # noqa: PLC0415
+
+    at = spending.spent_at(name)
+    spent = {row.id for row in cashflow.counted(conn, owner) if at(row)}
+    return tuple(row for row in rows if row.id in spent)
 
 
 def _row(r: sqlite3.Row) -> Row:

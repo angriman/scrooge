@@ -126,7 +126,7 @@
 		<div class="mt-5">
 			<Context
 				{context}
-				merchant={(name) => withQuery(page.url, { merchant: name, category: null, account: null })}
+				merchant={(name) => withQuery(page.url, { merchant: name, category: null, account: null, currency: context.currency })}
 			/>
 		</div>
 	{/if}

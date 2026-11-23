@@ -167,9 +167,13 @@ def test_a_merchant_is_who_was_paid_as_the_cash_flow_names_them(
     assert amounts(query.run(conn, Filter(merchant="trattoria ÖLBERG"))) == ["-80", "-30"]
     assert amounts(query.run(conn, Filter(merchant=" Trattoria  Ölberg "))) == ["-80", "-30"]
     assert amounts(query.run(conn, Filter(merchant="Trattoria"))) == []  # the whole name
-    # A row that names nobody is the account's.
+    # A row that names nobody is the account's, and only what was spent there is listed: not
+    # the salary or the transfer.
     nobody = Filter(owner=OWNER, merchant="migros")
-    assert amounts(query.run(conn, nobody)) == ["-45.2", "6000", "6100", "-15", "-1000"]
+    assert amounts(query.run(conn, nobody)) == ["-45.2", "-15"]
+    # What the two paid each other is not spent for both together.
+    assert amounts(query.run(conn, Filter(owner=OWNER, merchant=GIFT))) == ["-200"]
+    assert amounts(query.run(conn, Filter(merchant=GIFT))) == []
 
 
 def test_a_merchant_is_named_without_numbers_places_or_addresses() -> None:

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import context, query
+from scrooge import context, query, spending
 from scrooge.context import Merchant
 from scrooge.models import Kind, Transaction
 from scrooge.networth import MissingRateError
@@ -161,6 +161,21 @@ def test_an_account_is_what_was_spent_from_it_converted_on_its_day(
     assert found.usual == Decimal(0)
     assert context.balance(conn, "IBKR USD", owner=OWNER, currency="CHF") == Decimal("-4.50")
     assert context.balance(conn, "Nowhere", owner=OWNER, currency="CHF") is None
+
+
+@pytest.mark.parametrize("owner", [OWNER, None])
+@pytest.mark.parametrize("name", ["KONSUM ZUERICH", "Coop Bern", "Anna Meier", "Migros"])
+def test_the_transactions_of_a_merchant_add_up_to_what_the_cash_flow_spent_there(
+    conn: sqlite3.Connection, name: str, owner: str | None
+) -> None:
+    first, last = date(2025, 9, 1), date(2026, 7, 31)
+    listed = query.run(conn, query.Filter(first=first, last=last, owner=owner, merchant=name))
+    flow = spending.run(conn, first=first, last=last, owner=owner, currency="CHF")
+    spent = {merchant.name: merchant.spent for merchant in flow.merchants}
+    # Migros names the salary and the trade only, which are not spent; Anna Meier was paid by
+    # Lukas, which is not spent for both together.
+    expected = [("CHF", -spent[name])] if name in spent else []
+    assert [(each.currency, each.total) for each in listed.totals] == expected
 
 
 def test_both_people_need_twelve_months_each_for_a_usual_month(conn: sqlite3.Connection) -> None:

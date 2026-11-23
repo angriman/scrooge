@@ -142,7 +142,7 @@ what an account holds now. A month pointed at is said in full beneath.
 								>
 									<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
 									<span class="text-caption text-ink-muted">{payee.count}×</span>
-									<Amount value={payee.amount} places={0} class="text-body text-ink" />
+									<Amount value={payee.amount} currency={context.currency} places={0} class="text-body text-ink" />
 								</a>
 							</li>
 						{/each}

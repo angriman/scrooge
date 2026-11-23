@@ -155,3 +155,12 @@ def test_the_transactions_can_be_cut_to_a_merchant(client: TestClient) -> None:
     sent = client.get("/api/transactions", params={"merchant": "coop bern"}).json()
     assert sent["count"] == 1
     assert sent["rows"][0]["counterparty"] == "Coop-3 Bern"
+
+
+def test_a_merchant_named_after_its_account_lists_only_what_was_spent(client: TestClient) -> None:
+    # The salary names nobody, so it is Migros's, but nothing was spent there.
+    salary = client.get("/api/transactions", params={"merchant": "migros", "owner": OWNER})
+    assert (salary.json()["count"], salary.json()["totals"]) == (0, [])
+    # A fee is the account's, as on the cash flow.
+    fee = client.get("/api/transactions", params={"merchant": "ibkr usd"}).json()
+    assert fee["totals"] == [{"currency": "USD", "count": 1, "total": "-10"}]
