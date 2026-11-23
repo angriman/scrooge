@@ -2,6 +2,20 @@
 // here as the day it names, never as an instant, so no time zone moves it.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = [
+	'January',
+	'February',
+	'March',
+	'April',
+	'May',
+	'June',
+	'July',
+	'August',
+	'September',
+	'October',
+	'November',
+	'December'
+];
 const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function parts(text: string): [year: number, month: number, day: number] {
@@ -30,8 +44,37 @@ export function month(text: string): string {
 	return `${MONTHS[month - 1]} ${year}`;
 }
 
+/** The midnight that starts the day `text` names, where the reader is: what a chart's time
+ * scale places, and ticks on, in local time. */
+export function toDate(text: string): Date {
+	const [year, month, date] = parts(text);
+	return new Date(year, month - 1, date);
+}
+
+/** `Sep 2026`, of a local midnight such as a chart's tick. */
+export function monthOf(date: Date): string {
+	return `${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/** `5 Nov`, of a local midnight such as a chart's tick. */
+export function dayOf(date: Date): string {
+	return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+}
+
 /** The day `days` after `text` (before it, when negative), as ISO text. */
 export function addDays(text: string, days: number): string {
 	const [year, month, date] = parts(text);
 	return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10);
+}
+
+/** `October 2026`, of a month written `2026-10`. */
+export function monthName(text: string): string {
+	const [year, month] = parts(`${text}-01`);
+	return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+/** How many days from `first` to `last`, both ISO days: 1 from one day to the next. */
+export function daysBetween(first: string, last: string): number {
+	const [a, b] = [parts(first), parts(last)];
+	return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000);
 }

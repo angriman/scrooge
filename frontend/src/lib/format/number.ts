@@ -107,6 +107,49 @@ export function signedPercent(text: string, places = 1): string {
 	return `${write(round(read(text), places, 'half-up'), 'always')}%`;
 }
 
+/** The sum of `values`, exactly, as decimal text. */
+export function sum(values: readonly string[]): string {
+	const read_ = values.map(read);
+	const scale = Math.max(0, ...read_.map((value) => value.scale));
+	const total = read_.reduce(
+		(added, value) =>
+			added + (value.negative ? -1n : 1n) * value.units * 10n ** BigInt(scale - value.scale),
+		0n
+	);
+	const negative = total < 0n;
+	const digits = (negative ? -total : total).toString().padStart(scale + 1, '0');
+	const point = digits.length - scale;
+	return `${negative ? '-' : ''}${digits.slice(0, point)}${scale ? `.${digits.slice(point)}` : ''}`;
+}
+
+/** `a` less `b`, exactly, as decimal text: how much a figure moved since it was `b`. */
+export function difference(a: string, b: string): string {
+	return sum([a, negate(b)]);
+}
+
+/** `value` with its sign turned. */
+export function negate(value: string): string {
+	const trimmed = value.trim();
+	return trimmed.startsWith('-') ? trimmed.slice(1) : `-${trimmed.replace(/^\+/, '')}`;
+}
+
+/** `part` in percent of `whole`, exactly, to `places` decimals with a tie to the even
+ * neighbour, as decimal text; null unless `whole` is above zero, when a percent says nothing. */
+export function percentOf(part: string, whole: string, places = 2): string | null {
+	const [top, bottom] = [read(part), read(whole)];
+	if (bottom.negative || bottom.units === 0n) return null;
+	// part / whole * 100, with `places` decimals: both made whole numbers of the same scale.
+	const numerator = top.units * 10n ** BigInt(bottom.scale + places + 2);
+	const denominator = bottom.units * 10n ** BigInt(top.scale);
+	let units = numerator / denominator;
+	const twice = (numerator % denominator) * 2n;
+	if (twice > denominator || (twice === denominator && units % 2n === 1n)) units += 1n;
+	const digits = units.toString().padStart(places + 1, '0');
+	const point = digits.length - places;
+	const sign = top.negative && units !== 0n ? '-' : '';
+	return `${sign}${digits.slice(0, point)}${places ? `.${digits.slice(point)}` : ''}`;
+}
+
 /** The nearest float, for what is only drawn (the height of a bar, a point on a line), never
  * for what is written. */
 export function approximate(text: string): number {
