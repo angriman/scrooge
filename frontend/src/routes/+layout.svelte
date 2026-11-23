@@ -31,17 +31,17 @@
 		return query ? `?${query}` : '';
 	});
 	const ours = (
-		path: '/' | '/holdings' | '/cashflow' | '/statements' | '/transactions' | '/import'
+		path: '/' | '/cashflow' | '/investments' | '/accounts' | '/transactions' | '/import'
 	) => ({
 		href: resolve(path) + along,
 		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, '')
 	});
 	const pages = $derived([
 		{ label: 'Overview', icon: House, ...ours('/') },
-		{ label: 'Holdings', icon: ChartPie, ...ours('/holdings') },
 		{ label: 'Cash flow', icon: ArrowLeftRight, ...ours('/cashflow') },
-		{ label: 'Transactions', icon: ReceiptText, ...ours('/transactions') },
-		{ label: 'Statements', icon: Files, ...ours('/statements') }
+		{ label: 'Investments', icon: ChartPie, ...ours('/investments') },
+		{ label: 'Accounts', icon: Files, ...ours('/accounts') },
+		{ label: 'Transactions', icon: ReceiptText, ...ours('/transactions') }
 	]);
 </script>
 

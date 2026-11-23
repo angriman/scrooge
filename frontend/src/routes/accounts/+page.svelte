@@ -47,7 +47,7 @@
 </script>
 
 <svelte:head>
-	<title>Statements · scrooge</title>
+	<title>Accounts · scrooge</title>
 </svelte:head>
 
 <Notices attention={data.attention} onePerson={single || owner !== null} />

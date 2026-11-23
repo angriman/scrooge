@@ -1,6 +1,6 @@
 // Which colour of the theme's data colours (`--data-1` … `--data-8`) each series wears. A series
 // keeps its colour on every page and in every chart: Stocks are the same colour on the
-// overview's chart and on the holdings page's map.
+// overview's chart and on the investments page's map.
 
 export type Slot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 

@@ -25,10 +25,10 @@ figures that differ from those worked out here. Nothing when nothing waits.
 	let { attention, onePerson }: Props = $props();
 
 	const importing = (owner: string) => `${resolve('/import')}?owner=${encodeURIComponent(owner)}`;
-	// The checks are on the Statements page, for the same person and currency.
+	// The checks are on the Accounts page, for the same person and currency.
 	const checks = $derived.by(() => {
 		const query = pick(here(), ['owner', 'currency']).toString();
-		return `${resolve('/statements')}${query ? `?${query}` : ''}#checks`;
+		return `${resolve('/accounts')}${query ? `?${query}` : ''}#checks`;
 	});
 	const statements = (count: number) => (count === 1 ? '1 statement' : `${count} statements`);
 	const count = $derived(
