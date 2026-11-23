@@ -17,9 +17,11 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from statistics import median
 
 from scrooge import cashflow, query
 from scrooge.cashflow import Counted, Grouping
+from scrooge.extractors.common import month_end
 from scrooge.networth import convert, rates_on
 from scrooge.storage.money import from_nano
 
@@ -115,6 +117,26 @@ def rows(
         through(conn, owner),
         max(firsts.values(), default=None),
     )
+
+
+def usual(
+    found: Rows, month: date, part: Callable[[Converted], tuple[str, Decimal] | None]
+) -> dict[str, Decimal] | None:
+    """What a usual month is before the one of `month`: for each name `part` gives a row,
+    the median of what it gives in each of the twelve months before, to the cent (a month
+    without any counts as nothing). `part` names a row and says what it adds, or leaves it
+    out with None. None when those twelve months are not all known."""
+    first = month.replace(day=1)
+    starts = [add_months(first, n) for n in range(-12, 0)]
+    if found.known is None or starts[0] < found.known:
+        return None
+    sums: dict[str, list[Decimal]] = defaultdict(lambda: [Decimal(0)] * 12)
+    for n, start in enumerate(starts):
+        for each in found.between(start, month_end(start)):
+            named = part(each)
+            if named is not None:
+                sums[named[0]][n] += named[1]
+    return {name: median(values).quantize(CENT) for name, values in sums.items()}
 
 
 def share(part: Decimal, total: Decimal) -> Decimal | None:

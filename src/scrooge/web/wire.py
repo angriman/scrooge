@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 from scrooge import importing, months, networth, overview, portfolio, query, recap, report, savings
+from scrooge.context import Context
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -554,4 +555,28 @@ def cashflow_report(shown: report.Report) -> JSON:
             for line in flow.totals
         ],
         "through": day(kept.through),
+    }
+
+
+def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
+    """`shown` as `/api/transactions/context` sends it; `balance` is an account's, now."""
+    return {
+        "kind": shown.kind,
+        "name": shown.name,
+        "currency": shown.currency,
+        "earned": shown.earned,
+        "months": [
+            {"month": _month(month.first), "amount": number(month.amount)} for month in shown.months
+        ],
+        "usual": number(shown.usual),
+        "this_month": number(shown.this_month),
+        "through": day(shown.through),
+        "partial": shown.partial,
+        "merchants": None
+        if shown.merchants is None
+        else [
+            {"name": merchant.name, "amount": number(merchant.amount), "count": merchant.count}
+            for merchant in shown.merchants
+        ],
+        "balance": number(balance),
     }

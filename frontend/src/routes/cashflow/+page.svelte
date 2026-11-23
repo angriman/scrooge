@@ -42,11 +42,14 @@
 	] as const;
 	const view = $derived(oneOf(here(), 'view', ['time', 'flow', 'table'], 'time'));
 
-	// The transactions behind a line: the same person and the same range.
+	// The transactions behind a line: the same person, the same range, and the same currency
+	// for the months shown above them.
 	const transactions = (changes: Record<string, string>) => {
 		const query = new URLSearchParams();
-		const owner = page.url.searchParams.get('owner');
-		if (owner) query.set('owner', owner);
+		for (const name of ['owner', 'currency']) {
+			const value = page.url.searchParams.get(name);
+			if (value) query.set(name, value);
+		}
 		if (flow.first) query.set('from', flow.first);
 		if (flow.last) query.set('to', flow.last);
 		for (const [name, value] of Object.entries(changes)) query.set(name, value);

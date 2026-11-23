@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filtered, kindName, periodName, periods } from './filter.js';
+import { FIELDS, dimension, filtered, kindName, periodName, periods } from './filter.js';
 
 const at = (search: string) => {
 	const url = new URL(`http://x/transactions${search}`);
@@ -15,6 +15,16 @@ describe('the filter of the transactions page', () => {
 		expect(filtered(at(''))).toBe(false);
 		expect(filtered(at('?owner=Anna'))).toBe(false);
 		expect(filtered(at('?text=rent'))).toBe(true);
+		expect(filtered(at('?merchant=Coop'))).toBe(true);
+		expect(FIELDS).toContain('merchant');
+	});
+
+	it('has a context only when it cuts to exactly one category, merchant or account', () => {
+		expect(dimension(at('?category=Casa&text=rent&from=2026'))).toEqual({ name: 'category', value: 'Casa' });
+		expect(dimension(at('?merchant=Coop%20Bern&owner=Anna'))).toEqual({ name: 'merchant', value: 'Coop Bern' });
+		expect(dimension(at('?account=Migros&kind=expense'))).toEqual({ name: 'account', value: 'Migros' });
+		expect(dimension(at('?category=Casa&account=Migros'))).toBeNull();
+		expect(dimension(at('?text=rent&category='))).toBeNull();
 	});
 
 	it('offers periods counted from today, across the turn of a year', () => {
