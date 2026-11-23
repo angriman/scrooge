@@ -43,14 +43,19 @@ for each other field. Every change goes in the address, so a filter can be kept 
 	let to = $state('');
 	let least = $state('');
 	let most = $state('');
+	let payee = $state('');
 	let periodOpen = $state(false);
 	let amountOpen = $state(false);
+	let merchantOpen = $state(false);
 	let unreadable = $state(false);
 	// An amount as the API reads it: digits, a point for the cents, apostrophes or commas between
 	// thousands.
 	const readable = (text: string) => !text || /^\d[\d'’,]*(\.\d+)?$/.test(text);
 	$effect(() => {
 		if (periodOpen) [from, to] = [values.from ?? '', values.to ?? ''];
+	});
+	$effect(() => {
+		if (merchantOpen) payee = values.merchant ?? '';
 	});
 	$effect(() => {
 		if (amountOpen) {
@@ -183,6 +188,31 @@ for each other field. Every change goes in the address, so a filter can be kept 
 					<p class="px-2 pt-2 pb-1 text-caption text-ink-muted">{group.heading}</p>
 					{@render list(group.names.map((name) => ({ value: name, label: name })), values.category, 'category', close)}
 				{/each}
+			{/snippet}
+		</FilterChip>
+
+		<FilterChip
+			label="Merchant"
+			value={values.merchant || null}
+			onclear={() => onchange({ merchant: null })}
+			bind:open={merchantOpen}
+		>
+			{#snippet children(close)}
+				<form
+					class="space-y-2 p-1"
+					onsubmit={(event) => {
+						event.preventDefault();
+						onchange({ merchant: payee.trim() || null });
+						close();
+					}}
+				>
+					<label class="block text-caption text-ink-secondary">
+						Who was paid, as the cash flow names them
+						<input bind:value={payee} placeholder="Coop" autocomplete="off" spellcheck="false" class={cn(field, 'mt-1')} />
+					</label>
+					<p class="text-caption text-ink-muted">Without store numbers or places; a fee is its account's.</p>
+					<button type="submit" class={apply}>Show this merchant</button>
+				</form>
 			{/snippet}
 		</FilterChip>
 
