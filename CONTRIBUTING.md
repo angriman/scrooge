@@ -52,3 +52,20 @@ A source is a kind of file one institution exports. It has one module in
 `tests/extractors/test_sources.py` fails when a module in the package declares no `SOURCE`,
 names it differently from the module, is missing from the router, has no fixture,
 `expected.json` or `test_<name>.py`, or recognises another source's fixture.
+
+## SQL
+
+The database is SQLite through the standard `sqlite3` module, with SQL written by hand: no
+ORM or query builder.
+
+- SQL is run only in `storage/` and the read-only services beside it (`query`, `months`,
+  `cashflow`, `networth`, `portfolio`). Extractors, web handlers and commands call those.
+- **Every value goes in as a parameter** (`?`), never into the text: not a name, a date, an
+  amount or anything a person typed.
+- An f-string may put into the SQL only text the code itself fixes: a column or table name
+  picked from literals (`"booking_date" if booking else "date"`), a constant fragment, or the
+  marks of an `IN (...)`, which `store.marks(n)` writes.
+- Ruff flags such an f-string (S608). Silence it on that line with a comment saying what is
+  put in, e.g. `# noqa: S608  # only "?" marks are interpolated`.
+- A schema change is a new numbered migration in `storage/migrations/`; one that has run on
+  a real database is never edited.
