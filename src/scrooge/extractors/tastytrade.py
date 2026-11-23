@@ -17,6 +17,7 @@ from scrooge.extractors.common import (
     parse_iso_date,
     read_table,
 )
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import ControlTotal, Extraction, Kind, SecurityTrade, Transaction
 
 ACCOUNT = "Tastytrade"
@@ -194,3 +195,12 @@ def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
         return _MONEY_MOVEMENTS[row["Sub Type"]]
     msg = f"Tastytrade row {n}: unsupported row type {row['Type']!r} / {row['Sub Type']!r}"
     raise UnsupportedStatementError(msg)
+
+
+SOURCE = Source(
+    name="tastytrade",
+    label="Tastytrade transactions",
+    reads="text",
+    recognises=starts_with("Date,Type,Sub Type,"),
+    extract=extract,
+)

@@ -165,6 +165,7 @@ first on the PATH. A Tesseract installed elsewhere works too; CI and the image u
 
 `make check` runs ruff, `mypy --strict` and pytest with branch coverage. Real statements stay in
 `users/<name>/statements/` (git-ignored); only redacted fixtures live in `tests/fixtures/`.
+To add a bank or broker, see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-source).
 
 `make dev-db` builds a database from those fixtures alone (two invented people, every source,
 invented prices) in `output/dev/`, made again on every run, and prints how to serve it. It
