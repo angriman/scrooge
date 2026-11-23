@@ -2,8 +2,9 @@
  * a hue at its plainest). Nothing outside src/lib/design/tokens reads these: a theme gives
  * them roles (night.css), and the app only ever names a role.
  *
- * On Night's panels, text in mist-500 or lighter reads at 4.5:1 or more, and so does every
- * hue at 400. */
+ * On every surface of Night, the page, panels and what is raised over them (menus, tooltips,
+ * a hovered row), text in mist-500 or lighter reads at 4.5:1 or more, and so does every hue at
+ * 400; navy-700, the edge of an input, stands out at 3:1 or more. */
 
 :root {
 	/* Night's neutrals: the navy of the surfaces and lines, the mist of the text. */
@@ -12,15 +13,15 @@
 	--navy-850: #1b2440;
 	--navy-800: #232e50;
 	--navy-750: #2a3554;
-	--navy-700: #536283;
+	--navy-700: #6b7ca0;
 	--navy-600: #5b6684;
-	--mist-500: #8791ab;
-	--mist-400: #9aa4ba;
+	--mist-500: #949db4;
+	--mist-400: #a9b2c6;
 	--mist-100: #e6eaf2;
 
 	/* The hues of the data and the signals. */
 	--indigo-300: #a3aefb;
-	--indigo-400: #7c8cf8;
+	--indigo-400: #8796f9;
 	--indigo-950: #12173a;
 	--teal-400: #3cc8b4;
 	--amber-400: #f2b84b;

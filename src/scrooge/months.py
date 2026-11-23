@@ -313,32 +313,36 @@ def coverage(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Covera
     return tuple(lines)
 
 
-BEHIND = 35  # days an account may end before the newest day committed for its person
+BEHIND = 35  # days a monthly account may end before the newest day committed for its person
 # Pension certificates come once or twice a year: such an account is never behind, and the
 # day of a certificate is not a day the person's other accounts are measured against.
 NOT_MONTHLY = frozenset(CERTIFICATE_SOURCES)
-# A finpension report ends on its last row, not at the end of a period: that nothing follows
-# a day says only that nothing was paid in or bought since, not that a report is missing.
-_ENDS_ON_ITS_LAST_ROW = frozenset({"finpension"})
+# Sources that report less often than monthly, and the days such an account may end before its
+# person's newest. A finpension report ends on its last payment, and payments come once or twice
+# a year; a Tastytrade export ends on its last row, and a Schwab one unless its name says the
+# day it was made, which a quiet quarter may leave far back; Morgan Stanley's statements are
+# quarterly. Long after that, a file is probably missing all the same.
+_SLOWER = {"finpension": 400, "tastytrade": 100, "schwab": 100, "morganstanley": 100}
 
 
 def monthly(line: Coverage) -> bool:
-    """Whether `line`'s statements say up to which day it is known: a statement of it is
-    missing once the person's others go well past it."""
-    return line.source not in NOT_MONTHLY and line.source not in _ENDS_ON_ITS_LAST_ROW
+    """Whether `line` reports every month up to the end of its period: until it has, the month
+    is not complete. The others say nothing of a month by having nothing after a day."""
+    return line.source not in NOT_MONTHLY and line.source not in _SLOWER
 
 
 def behind(lines: Sequence[Coverage]) -> tuple[bool, ...]:
-    """Of each of `lines`, whether what is committed of it ends more than `BEHIND` days before
-    the newest of its person's monthly accounts: a statement is probably missing."""
+    """Of each of `lines`, whether what is committed of it ends further before the newest of
+    its person's accounts than its source may (`BEHIND` days for one that reports monthly): a
+    statement is probably missing."""
     newest: dict[str, date] = {}
     for line in lines:
-        if line.committed and monthly(line):
+        if line.committed and line.source not in NOT_MONTHLY:
             newest[line.owner] = max(newest.get(line.owner, line.committed), line.committed)
     return tuple(
         line.committed is not None
-        and monthly(line)
-        and (newest[line.owner] - line.committed).days > BEHIND
+        and line.source not in NOT_MONTHLY
+        and (newest[line.owner] - line.committed).days > _SLOWER.get(line.source, BEHIND)
         for line in lines
     )
 
