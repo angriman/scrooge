@@ -143,7 +143,15 @@ def test_the_page_may_run_its_own_script_and_no_other(database: Path, spa: Path)
         "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
     )
     assert client.get("/app").headers["content-security-policy"] == policy
-    assert client.get("/").headers["content-security-policy"] == policy
+    assert client.get("/app/holdings").headers["content-security-policy"] == policy
+    assert client.get("/app/_app/start.js").headers["content-security-policy"] == policy
+
+
+def test_the_servers_own_pages_keep_the_strict_policy(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    strict = "default-src 'self'; frame-ancestors 'none'"
+    for address in ("/", "/api/session", "/apple"):
+        assert client.get(address).headers["content-security-policy"] == strict
 
 
 def test_before_it_is_built_app_says_how_to_build_it(database: Path, tmp_path: Path) -> None:
