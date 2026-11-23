@@ -8,14 +8,20 @@
 	import HoldingsList from '#lib/holdings/HoldingsList.svelte';
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
+	import { rangeName } from '#lib/cashflow/names.js';
+	import Income from '#lib/investments/Income.svelte';
+	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
 	import type { HeldInstrument } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
+	import Segmented from '#lib/ui/Segmented.svelte';
+	import { oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
-	const held = $derived(data.held.holdings);
+	const held = $derived(data.held?.holdings);
+	const errors = $derived(data.held?.errors ?? data.income?.errors ?? []);
 	const owner = $derived(page.url.searchParams.get('owner'));
 	const people = $derived(data.session.people.length > 1 && !owner);
 	const title = $derived(
@@ -39,6 +45,17 @@
 		return share === null ? null : { count, share };
 	});
 
+	// What is held, or what the investments paid: each view loads its own figures.
+	const VIEWS = [
+		{ value: 'holdings', label: 'Holdings' },
+		{ value: 'income', label: 'Income' }
+	] as const;
+	const view = $derived(oneOf(page.url, 'view', ['holdings', 'income'], 'holdings'));
+	const ranges = $derived(data.income?.ranges ?? []);
+	const chosen = $derived(
+		chosenRange(ranges, page.url.searchParams.get('from') ?? '', page.url.searchParams.get('to') ?? '')
+	);
+
 	let open = $state<string | null>(null);
 	/** Open `holding` in the list, and bring it into view. */
 	async function choose(holding: HeldInstrument) {
@@ -52,7 +69,28 @@
 	<title>Investments · scrooge</title>
 </svelte:head>
 
-{#each data.held.errors as error (error)}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+	<Segmented
+		label="Show"
+		value={view}
+		options={VIEWS}
+		onchange={(value) =>
+			show(page.url, value === 'income' ? { view: value } : { view: null, from: null, to: null })}
+	/>
+	{#if view === 'income' && ranges.length}
+		<Segmented
+			label="Range"
+			value={chosen}
+			options={ranges.map((range) => ({ value: range.label, label: range.label }))}
+			onchange={(label) => {
+				const range = ranges.find((r) => r.label === label)!;
+				show(page.url, label === DEFAULT_RANGE ? { from: null, to: null } : { from: range.from, to: range.to || null });
+			}}
+		/>
+	{/if}
+</div>
+
+{#each errors as error (error)}
 	<p
 		class="mb-4 flex items-start gap-2 rounded-panel border border-caution/40 bg-caution-soft px-4 py-3 text-body text-ink"
 		role="status"
@@ -62,8 +100,26 @@
 	</p>
 {/each}
 
-{#if !held || !held.day}
-	{#if !data.held.errors.length}
+{#if data.income}
+	{#if !data.income.income?.through}
+		{#if !errors.length}
+			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
+				<h1 class="text-heading font-medium text-ink">Import your first statements</h1>
+				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
+					What your investments paid shows here once a statement is committed.
+				</p>
+			</section>
+		{/if}
+	{:else}
+		<Income
+			income={data.income.income}
+			logos={data.income.logos}
+			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
+			{owner}
+		/>
+	{/if}
+{:else if !held || !held.day}
+	{#if !errors.length}
 		<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
 			<h1 class="text-heading font-medium text-ink">Import your first statements</h1>
 			<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
@@ -114,7 +170,7 @@
 
 	<HoldingsList
 		holdings={held.holdings}
-		logos={data.held.logos}
+		logos={data.held?.logos ?? {}}
 		currency={held.currency}
 		lastDay={held.day}
 		{people}
