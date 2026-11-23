@@ -14,6 +14,7 @@ from scrooge.web import app as webapp
 from tests.storage.helpers import OCTOBER, OWNER, PARTNER, batch
 from tests.test_networth import NOW, account, close
 from tests.test_overview import household
+from tests.web import builders
 from tests.web.test_login import STORED
 
 SITE = "http://127.0.0.1:8765"
@@ -43,6 +44,21 @@ def test_the_session_names_the_people_and_the_currencies(client: TestClient) -> 
     assert sent["read_only"] is False
     assert sent["signing"] is False
     assert sent["token"]
+
+    assert {person["covered"] for person in sent["people"]} == {"2026-09-30"}
+
+
+def test_the_session_says_up_to_which_day_each_persons_statements_are_in(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    builders.household(path)  # Lukas: August committed; Anna: September staged, none committed
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    covered = {p["name"]: p["covered"] for p in client.get("/api/session").json()["people"]}
+    assert covered == {OWNER: "2026-08-31", PARTNER: None}
+    conn = db.connect(path)
+    staging.commit(conn, owner=PARTNER, now=builders.BUILT)
+    conn.close()
+    covered = {p["name"]: p["covered"] for p in client.get("/api/session").json()["people"]}
+    assert covered == {OWNER: "2026-08-31", PARTNER: "2026-09-30"}
 
 
 def test_the_overview_is_the_services_figures_as_text(client: TestClient, database: Path) -> None:
