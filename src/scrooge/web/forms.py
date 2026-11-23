@@ -57,6 +57,14 @@ class HoldingsView:
     errors: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class MonthView:
+    owner: str | None
+    currency: str
+    month: date | None  # its first day; None: the last one every account covers
+    errors: tuple[str, ...]
+
+
 def _text(params: Mapping[str, str], name: str) -> str | None:
     return params.get(name, "").strip() or None
 
@@ -169,3 +177,18 @@ def networth_view(params: Mapping[str, str]) -> NetWorthView:
         errors.append(f"'{by}' is not total, asset or owner.")
         by = DEFAULT_BREAKDOWN
     return NetWorthView(_text(params, "owner"), currency, by, tuple(errors))
+
+
+def month_view(params: Mapping[str, str]) -> MonthView:
+    """`owner`, `currency` (euros when left out) and `month` (`2026-10`; the last complete
+    one when left out; an unreadable one is an error)."""
+    errors: list[str] = []
+    currency = _currency(params, errors)
+    asked = _text(params, "month")
+    month = None
+    if asked:
+        try:
+            month = date.fromisoformat(f"{asked}-01")
+        except ValueError:
+            errors.append(f"'{asked}' is not a month written as 2026-10.")
+    return MonthView(_text(params, "owner"), currency, month, tuple(errors))

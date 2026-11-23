@@ -18,7 +18,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from scrooge import networth, overview, query
+from scrooge import months, networth, overview, query, recap
 from scrooge.storage import db, store
 from scrooge.web import forms, wire
 
@@ -103,8 +103,52 @@ def _networth(request: Request) -> Response:
     return JSONResponse({"series": series, "errors": errors})
 
 
+def _month(request: Request) -> Response:
+    """One month for `owner` in `currency`: `month` (`2026-10`), else the last one every
+    account's statements cover. `month` is null when nothing is committed."""
+    asked = forms.month_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = recap.run(conn, owner=asked.owner, currency=asked.currency, month=asked.month)
+        except networth.MissingRateError as exc:
+            return JSONResponse({"month": None, "errors": [wire.sentence(exc)]})
+    return JSONResponse({"month": None if shown is None else wire.month(shown), "errors": []})
+
+
+def _attention(request: Request) -> Response:
+    """What waits for `owner`, or for everyone: statements staged and not committed, accounts
+    whose statements end well before the person's others, and lines of statements whose
+    figures differ from those worked out here."""
+    owner = request.query_params.get("owner") or None
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        people = [p for p in query.people(conn) if owner in (None, p.name)]
+        lines = months.coverage(conn, owner)
+        try:
+            checks = networth.checks(conn, owner=owner)
+        except networth.MissingRateError as exc:
+            errors.append(wire.sentence(exc))
+            checks = ()
+    return JSONResponse(
+        {
+            "staged": [{"owner": p.name, "count": p.staged} for p in people if p.staged],
+            "behind": [
+                wire.account(line)
+                for line, late in zip(lines, months.behind(lines), strict=True)
+                if late
+            ],
+            "differ": sum(1 for check in checks if check.difference),
+            "errors": errors,
+        }
+    )
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
     Route("/networth", _networth, name="api_networth"),
+    Route("/month", _month, name="api_month"),
+    Route("/attention", _attention, name="api_attention"),
 ]
