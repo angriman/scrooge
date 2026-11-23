@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
-from scrooge import networth, overview, query
+from scrooge import months, networth, overview, query, recap
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -146,4 +146,57 @@ def series(worth: networth.NetWorth, by: str) -> JSON:
             for name in names
         ],
         "notes": list(worth.notes),
+    }
+
+
+def _percent(fraction: Decimal | None) -> str | None:
+    """A part of a whole sent as a fraction (`0.372`), in percent (`"37.200"`)."""
+    return number(None if fraction is None else fraction * 100)
+
+
+def _month(first: date | None) -> str | None:
+    return None if first is None else f"{first:%Y-%m}"
+
+
+def account(line: months.Coverage) -> JSON:
+    """An account a source feeds, and the last day committed of it."""
+    return {
+        "owner": line.owner,
+        "account": line.account,
+        "label": line.label,
+        "committed": day(line.committed),
+    }
+
+
+def month(shown: recap.Recap) -> JSON:
+    """One month at a glance: how net worth moved over it, what was saved, what was spent by
+    category against the usual month; rates in percent."""
+    return {
+        "currency": shown.currency,
+        "month": _month(shown.month),
+        "first": day(shown.month),
+        "last": day(shown.last),
+        "over": shown.over,
+        "before": number(shown.before),
+        "after": number(shown.after),
+        "moved": number(shown.moved),
+        "income": number(shown.income),
+        "spent": number(shown.spent),
+        "arrived": number(shown.arrived),
+        "saved": number(shown.saved),
+        "other": number(shown.other),
+        "rate": _percent(shown.rate),
+        "rate_year": _percent(shown.rate_year),
+        "categories": [
+            {
+                "name": c.name,
+                "spent": number(c.spent),
+                "usual": number(c.usual),
+                "against_usual": number(c.against_usual),
+            }
+            for c in shown.categories
+        ],
+        "missing": [account(line) for line in shown.missing],
+        "earlier": _month(shown.earlier),
+        "later": _month(shown.later),
     }

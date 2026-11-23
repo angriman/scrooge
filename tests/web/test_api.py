@@ -2,20 +2,22 @@
 
 import base64
 import hashlib
+from datetime import date
 from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import overview
+from scrooge import overview, staging
 from scrooge.storage import db
 from scrooge.web import app as webapp
-from tests.storage.helpers import OWNER, PARTNER
-from tests.test_networth import NOW
+from tests.storage.helpers import OCTOBER, OWNER, PARTNER, batch
+from tests.test_networth import NOW, account, close
 from tests.test_overview import household
 from tests.web.test_login import STORED
 
 SITE = "http://127.0.0.1:8765"
+NOVEMBER = date(2026, 11, 1)
 
 
 @pytest.fixture(scope="module")
@@ -104,6 +106,7 @@ def test_an_empty_database_has_nothing_to_show(tmp_path: Path) -> None:
         "parts": [],
         "notes": [],
     }
+    assert client.get("/api/month").json() == {"month": None, "errors": []}
 
 
 def test_a_missing_rate_is_said_and_the_rest_is_shown(client: TestClient) -> None:
@@ -111,6 +114,70 @@ def test_a_missing_rate_is_said_and_the_rest_is_shown(client: TestClient) -> Non
     assert sent["overview"] is None
     assert sent["errors"]
     assert client.get("/api/networth", params={"currency": "JPY"}).json()["series"] is None
+    month = client.get("/api/month", params={"currency": "JPY"}).json()
+    assert month["month"] is None
+    assert month["errors"]
+
+
+def test_a_month_is_how_net_worth_moved_and_what_was_spent_as_text(client: TestClient) -> None:
+    sent = client.get("/api/month", params={"currency": "USD"}).json()
+    assert sent["errors"] == []
+    shown = sent["month"]
+    # The last month every account covers, and the months either side of it there are.
+    assert (shown["month"], shown["first"], shown["last"], shown["over"]) == (
+        "2026-09",
+        "2026-09-01",
+        "2026-09-30",
+        True,
+    )
+    assert (shown["earlier"], shown["later"]) == ("2026-08", None)
+    assert [shown[k] for k in ("before", "after", "moved", "income", "spent", "saved")] == [
+        "30975.00",
+        "30847.50",
+        "-127.50",
+        "0.00",
+        "150.00",
+        "-150.00",
+    ]
+    assert (shown["other"], shown["rate"], shown["rate_year"]) == ("22.50", None, None)
+    assert shown["arrived"] == "0"
+    assert shown["categories"] == [
+        {"name": "Alimentari", "spent": "150.00", "usual": None, "against_usual": None}
+    ]
+    assert shown["missing"] == []
+    # August: the history starts on its last day, so how it moved is not known.
+    august = client.get("/api/month", params={"month": "2026-08"}).json()["month"]
+    assert (august["month"], august["before"], august["moved"]) == ("2026-08", None, None)
+
+
+def test_a_month_that_cannot_be_read_is_refused(client: TestClient) -> None:
+    response = client.get("/api/month", params={"month": "September"})
+    assert response.status_code == 400
+    assert response.json() == {"errors": ["'September' is not a month written as 2026-10."]}
+
+
+def test_what_waits_is_what_is_staged_and_the_accounts_left_behind(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    household(conn)
+    # Two more months of Lukas's bank account: his card and his broker end two months before.
+    for month in (OCTOBER, NOVEMBER):
+        close(conn, account("migros", "Migros", "CHF", "700", month=month), month=month)
+    # October of Anna's Revolut account, staged and not committed.
+    revolut = account("revolut", "Revolut USD", "USD", "50", month=OCTOBER)
+    staging.stage(conn, batch(revolut, owner=PARTNER, month=OCTOBER), NOW)
+    conn.close()
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    sent = client.get("/api/attention").json()
+    assert sent["staged"] == [{"owner": PARTNER, "count": 1}]
+    assert [(line["owner"], line["account"], line["committed"]) for line in sent["behind"]] == [
+        (OWNER, "IBKR USD", "2026-09-30"),
+        (OWNER, "Swisscard", "2026-09-30"),
+    ]
+    assert (sent["differ"], sent["errors"]) == (0, [])
+    hers = client.get("/api/attention", params={"owner": PARTNER}).json()
+    assert (hers["staged"], hers["behind"]) == ([{"owner": PARTNER, "count": 1}], [])
 
 
 def test_without_signing_in_the_api_says_so(database: Path) -> None:
