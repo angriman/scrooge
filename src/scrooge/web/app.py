@@ -303,6 +303,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     read_only: bool = False,
     maturities: MaturitySource | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
+    currencies: Sequence[str] = networth.DEFAULT_COLUMNS,
     spa: Path | None = None,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
@@ -319,6 +320,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     thing a page asks the network for (decided 2026-11-03). Without it the page only says
     which bills to add to `instruments.yaml`.
     `currency` is what the figures are shown in until another is chosen on a page.
+    `currencies` are those the month-end table of net worth shows side by side.
     `spa` is the folder of the frontend built from frontend/, served at /app: every address
     there that is not one of its files is its page. Without it there is no /app.
     """
@@ -410,6 +412,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.imports = None if read_only else imports
     app.state.maturities = maturities
     app.state.currency = currency
+    app.state.currencies = tuple(currencies)
     app.state.held = {}
     app.state.access = access
     app.state.read_only = read_only

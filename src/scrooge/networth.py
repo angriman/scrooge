@@ -41,6 +41,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 from scrooge import query
+from scrooge.extractors.common import month_end
 from scrooge.models import CERTIFICATE_SOURCES
 from scrooge.storage import holdings
 from scrooge.storage.bills import Event, open_lots
@@ -50,6 +51,7 @@ from scrooge.storage.store import committed_or_typed
 BASE = "CHF"  # every stored rate is francs per unit of the currency
 CURRENCIES = ("EUR", "CHF", "USD", "GBP", "JPY")  # what net worth can be shown in
 DEFAULT_CURRENCY = "EUR"
+DEFAULT_COLUMNS = ("CHF", "USD", "EUR")  # the currencies of the month-end table, side by side
 CASH, ETFS, STOCKS, BILLS, PENSION, CARD = "Cash", "ETFs", "Stocks", "Bills", "Pillar 3a", "Card"
 PILLAR2 = "Pillar 2"  # an occupational pension fund: only the figure its certificates state
 ASSETS = (CASH, ETFS, STOCKS, BILLS, PILLAR2, PENSION, CARD)  # in the order they are listed
@@ -748,12 +750,19 @@ def run(
     return worth_of(conn, value(conn, owner), currency)
 
 
-def worth_of(conn: sqlite3.Connection, valued: Valued | None, currency: str) -> NetWorth:
+def worth_of(
+    conn: sqlite3.Connection,
+    valued: Valued | None,
+    currency: str,
+    rates: Mapping[str, Sequence[Decimal]] | None = None,
+) -> NetWorth:
     """`run` for what `value` already worked out: a page that shows more than net worth
-    values everything once."""
+    values everything once. `rates` are those `rates_on` read for `valued.days`, for who
+    converts into several currencies; they are read here without them."""
     if valued is None:
         return NetWorth(currency, (), (), ())
-    rates = rates_on(conn, valued.days)
+    if rates is None:
+        rates = rates_on(conn, valued.days)
     sums: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
     came: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
     first = valued.days[0]
@@ -792,6 +801,79 @@ def balances(
         [value] = convert(series.values[-1:], series.currency, currency, rates)
         sums[series.owner, names[series.account_id]] += value
     return {key: value.quantize(_CENT) for key, value in sums.items()}
+
+
+# ---------------------------------------------------------------------------- month by month
+
+
+@dataclass(frozen=True, slots=True)
+class Figure:
+    """Net worth at a month's end in one currency, and how it moved since the month before."""
+
+    total: Decimal
+    change: Decimal | None  # None: the history starts within the month
+    percent: Decimal | None  # `change` in percent of the month before; None unless that is above 0
+
+
+@dataclass(frozen=True, slots=True)
+class MonthEnd:
+    """The last day of a month there is, and net worth on it in each currency asked for."""
+
+    month: date  # its first day
+    day: date  # its last day, or the last day there is while the month is not over
+    values: dict[str, Figure]  # by currency, in the order asked for
+
+    @property
+    def partial(self) -> bool:
+        """Whether the month has not ended: its figures are so far."""
+        return self.day < month_end(self.month)
+
+
+def month_ends(
+    conn: sqlite3.Connection, valued: Valued | None, currencies: Sequence[str]
+) -> tuple[MonthEnd, ...]:
+    """Net worth at the end of every month of `valued.days` in each of `currencies`, newest
+    first (see `by_month`). Everything is valued once and the rates are read once: only the
+    conversion is done for each currency."""
+    if valued is None:
+        return ()
+    rates = rates_on(conn, valued.days)
+    return by_month([worth_of(conn, valued, currency, rates) for currency in currencies])
+
+
+def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
+    """The month-ends of the same days in several currencies, newest first.
+
+    A month ends on its last day, or on the last day there is while it is not over. Its
+    change is against the end of the month before, less what accounts brought into view in
+    between (`NetWorth.arrived`), which the month's recap sets apart too: an account whose
+    first statement is imported brings what it held, and that was not made in the month. So
+    a change is not always the difference of two totals. The first month has nothing before
+    it to change from.
+    """
+    if not worths or not worths[0].days:
+        return ()
+    days = worths[0].days
+    ends = [
+        index
+        for index, day in enumerate(days)
+        if index == len(days) - 1 or days[index + 1].month != day.month
+    ]
+    found: list[MonthEnd] = []
+    for at, index in enumerate(ends):
+        before = ends[at - 1] if at else None
+        values: dict[str, Figure] = {}
+        for worth in worths:
+            total = worth.total[index]
+            if before is None:
+                values[worth.currency] = Figure(total, None, None)
+                continue
+            was = worth.total[before]
+            change = total - was - sum(worth.arrived[before + 1 : index + 1], Decimal(0))
+            percent = (change * 100 / was).quantize(_CENT) if was > 0 else None
+            values[worth.currency] = Figure(total, change, percent)
+        found.append(MonthEnd(days[index].replace(day=1), days[index], values))
+    return tuple(reversed(found))
 
 
 # What a statement calls an asset, and what that is here. Its total is set against the sum

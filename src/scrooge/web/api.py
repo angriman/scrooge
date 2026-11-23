@@ -674,10 +674,34 @@ async def _uncommit(request: Request) -> Response:
     return await _remove(request, staging.uncommit)
 
 
+def _networth_months(request: Request) -> Response:
+    """Net worth at the end of every month for `owner`, newest first, in each currency of the
+    config's `currencies`, and in `currency` too when it is not one of them."""
+    asked = forms.networth_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    configured: tuple[str, ...] = request.app.state.currencies
+    currencies = [*configured, *(() if asked.currency in configured else (asked.currency,))]
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        valued = networth.value(conn, asked.owner)
+        ends = wire.unless_rate_missing(
+            errors, lambda: networth.month_ends(conn, valued, currencies), ()
+        )
+    return JSONResponse(
+        {
+            "currencies": currencies,
+            "months": [wire.month_end(end) for end in ends],
+            "errors": errors,
+        }
+    )
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
     Route("/networth", _networth, name="api_networth"),
+    Route("/networth/months", _networth_months, name="api_networth_months"),
     Route("/month", _month, name="api_month"),
     Route("/attention", _attention, name="api_attention"),
     Route("/holdings", _holdings, name="api_holdings"),

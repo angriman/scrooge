@@ -1765,6 +1765,31 @@ def test_a_currency_the_pages_do_not_offer_is_refused(run: Run, currency: str) -
     )
 
 
+@pytest.mark.parametrize(
+    ("named", "shown"),
+    [("", ("CHF", "USD", "EUR")), ("currencies: [usd, GBP, USD]\n", ("USD", "GBP"))],
+)
+def test_the_month_end_table_shows_the_currencies_of_the_config(
+    run: Run, monkeypatch: pytest.MonkeyPatch, named: str, shown: tuple[str, ...]
+) -> None:
+    run.config.write_text(run.config.read_text(encoding="utf-8") + named, encoding="utf-8")
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert run("serve") == dbcli.OK
+    assert served[-1].state.currencies == shown
+
+
+@pytest.mark.parametrize("named", ["CHF", "[]", "[CHF, XAU]", "[CHF, 1]"])
+def test_currencies_the_table_cannot_show_are_refused(run: Run, named: str) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + f"currencies: {named}\n", encoding="utf-8"
+    )
+    assert run("serve") == dbcli.FAILED
+    assert run.output.endswith(
+        f"error: {run.config}: 'currencies' must be a list of EUR, CHF, USD, GBP, JPY\n"
+    )
+
+
 @pytest.mark.parametrize("broken", ["owners: [\n", "owners: {a: b\ncurrency: CHF\n"])
 def test_a_config_that_is_no_yaml_is_refused_with_its_file_and_line(run: Run, broken: str) -> None:
     run.config.write_text(broken, encoding="utf-8")

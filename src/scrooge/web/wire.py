@@ -549,3 +549,21 @@ def cashflow_report(shown: report.Report) -> JSON:
         ],
         "through": day(kept.through),
     }
+
+
+def month_end(end: networth.MonthEnd) -> JSON:
+    """Net worth at a month's end, by currency: its total, and how it moved since the month
+    before (`networth.by_month`)."""
+    return {
+        "month": f"{end.month:%Y-%m}",
+        "day": day(end.day),
+        "partial": end.partial,
+        "values": {
+            currency: {
+                "total": number(figure.total),
+                "change": number(figure.change),
+                "percent": number(figure.percent),
+            }
+            for currency, figure in end.values.items()
+        },
+    }

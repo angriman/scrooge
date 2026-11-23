@@ -30,6 +30,10 @@ unmatched: Non classificato
 # What the pages show figures in until another is chosen there: EUR, CHF, USD, GBP or JPY.
 currency: $currency
 
+# The currencies the month-end table of net worth shows side by side; CHF, USD and EUR
+# without it.
+# currencies: [CHF, USD, EUR]
+
 # A second account at one bank or broker gets a name of its own from its number (IBKR) or
 # its IBAN (Migros): "<label> <last word of the usual name>", e.g. "Risparmio Migros".
 # account_labels:

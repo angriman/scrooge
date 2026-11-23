@@ -55,6 +55,7 @@ owners:                              # how each person appears as a counterparty
   Lukas: {match: ["LUKAS MEIER"]}
   Anna: {match: ["ANNA MEIER", "CH00 0000 0000"]}
 currency: CHF                        # EUR, CHF, USD, GBP or JPY; EUR without it
+currencies: [CHF, USD, EUR]          # the month-end table's columns; these without it
 unmatched: Non classificato          # the category of rows no rule matches
 account_labels: {U7654321: "IBKR 2"} # a second account at a broker, by its number
 ```
