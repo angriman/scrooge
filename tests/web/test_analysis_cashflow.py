@@ -2,6 +2,7 @@ import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
@@ -155,3 +156,23 @@ def test_an_empty_range_has_no_cash_flow(client: TestClient) -> None:
 def test_the_cash_flow_page_is_gone(client: TestClient) -> None:
     assert client.get("/cashflow").status_code == 404
     assert "Cash flow" not in client.get("/").text
+
+
+def test_what_was_saved_is_sent_as_a_part_of_income_and_of_salary(client: TestClient) -> None:
+    def report(**params: str) -> dict[str, Any]:
+        sent: dict[str, Any] = client.get("/api/cashflow", params=params).json()["report"]
+        return sent
+
+    his = report(owner=OWNER, currency="CHF", **{"from": "2026-07"})
+    # All he earned was salary: both rates are the same.
+    assert (his["totals"]["work"], his["totals"]["rate"], his["totals"]["rate_salary"]) == (
+        "12100.00",
+        "82.400",
+        "82.400",
+    )
+    assert his["periods"][-1]["rate_salary"] == "96.300"
+    # Two months of history: no twelve months to measure either rate over.
+    assert (his["periods"][-1]["rate_12"], his["periods"][-1]["rate_salary_12"]) == (None, None)
+    # She was paid no salary: there is nothing to measure what she kept against.
+    hers = report(owner=PARTNER, currency="CHF", **{"from": "2026-07"})["totals"]
+    assert (hers["work"], hers["rate"], hers["rate_salary"]) == ("0.00", None, None)

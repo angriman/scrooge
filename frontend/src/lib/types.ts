@@ -133,6 +133,11 @@ export interface MonthRecap {
 	/** Saved, in percent of income: the month's, and the twelve months' ending with it. */
 	rate: Amount | null;
 	rate_year: Amount | null;
+	/** The income from work, the salary. */
+	work: Amount;
+	/** Saved, in percent of salary: the month's, and the twelve months' ending with it. */
+	rate_salary: Amount | null;
+	rate_salary_year: Amount | null;
 	categories: MonthCategory[];
 	/** Monthly accounts whose statements end before `last`. */
 	missing: Account[];
@@ -422,6 +427,10 @@ export interface Saved {
 	rate: Amount | null;
 	/** The share of income from work, in percent. */
 	from_work: Amount | null;
+	/** The income from work, the salary. */
+	work: Amount;
+	/** What was saved in percent of salary; null without salary. */
+	rate_salary: Amount | null;
 }
 
 export interface CashFlowPeriod extends Saved {
@@ -431,6 +440,8 @@ export interface CashFlowPeriod extends Saved {
 	last: string;
 	/** The savings rate of the twelve months ending with it. */
 	rate_12: Amount | null;
+	/** The same, on the salary of those twelve months. */
+	rate_salary_12: Amount | null;
 	/** Spent in each of `CashFlowReport.parts`. */
 	spent_by: Record<string, Amount>;
 	/** Earned in each income group (Lavoro, Investimenti, Altro). */

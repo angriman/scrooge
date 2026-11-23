@@ -1,8 +1,8 @@
 <!--
 @component
 What was left of what came in over the range: the amount saved, as a sentence with the savings
-rate and how it compares with the same months a year before; beside it what came in, what went
-out and how much of the income was earned by working.
+rate, how it compares with the same months a year before, and the rate on salary; beside it what
+came in, what went out, the salary and how much of the income was earned by working.
 -->
 <script lang="ts">
 	import { approximate, difference, negate, percent, signed } from '#lib/format/number.js';
@@ -41,11 +41,11 @@ out and how much of the income was earned by working.
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.rate !== null && !short}
 					<span class="text-title font-medium text-brand">{percent(totals.rate)}</span>
-					of what came in was kept{#if points !== null},
-						<span class={cn(points.startsWith('-') ? 'text-loss' : 'text-gain')}>
-							{signed(points, 1)} points
-						</span>
-						on the same months a year before{/if}.
+					of what came in was kept{#if points !== null}{' '}(<span class={cn(points.startsWith('-') ? 'text-loss' : 'text-gain')}
+							>{signed(points, 1)} points</span
+						> on the same months a year before){/if}{#if totals.rate_salary !== null},
+						<span class="text-title font-medium text-brand">{percent(totals.rate_salary)}</span>
+						of salary{/if}.
 				{:else if short}
 					Savings, or money from earlier, made up the difference.
 				{:else}
@@ -53,7 +53,7 @@ out and how much of the income was earned by working.
 				{/if}
 			</p>
 		</div>
-		<dl class="grid grid-cols-3 gap-x-6 gap-y-1 text-small md:text-right">
+		<dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-small sm:grid-cols-4 md:text-right">
 			<div>
 				<dt class="text-ink-secondary">Came in</dt>
 				<dd class="text-title text-gain"><Amount value={totals.income} places={0} /></dd>
@@ -63,11 +63,15 @@ out and how much of the income was earned by working.
 				<dd class="text-title text-ink"><Amount value={totals.spent} places={0} /></dd>
 			</div>
 			<div>
+				<dt class="text-ink-secondary">Salary</dt>
+				<dd class="text-title text-ink"><Amount value={totals.work} places={0} /></dd>
+			</div>
+			<div>
 				<dt class="text-ink-secondary">From work</dt>
 				<dd class="text-title text-ink">{totals.from_work === null ? '–' : percent(totals.from_work, 0)}</dd>
 			</div>
 			{#if approximate(paidBack) > 0}
-				<p class="col-span-3 text-caption text-ink-muted">
+				<p class="col-span-full text-caption text-ink-muted">
 					After <Amount value={paidBack} {currency} places={0} /> paid back.
 				</p>
 			{/if}
