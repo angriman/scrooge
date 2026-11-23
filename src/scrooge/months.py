@@ -386,6 +386,41 @@ def timeline(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Track,
     )
 
 
+def by_account(
+    conn: sqlite3.Connection, owner: str | None = None
+) -> dict[tuple[str, str], tuple[Statement, ...]]:
+    """Every statement file of `owner` (of everyone without one), by the person and account it
+    covers, newest first; one that covers several accounts is listed under each."""
+    found = conn.execute(
+        "SELECT o.name, a.name, f.id, f.source, f.filename, f.sha256, f.period_start, "
+        "f.period_end, f.reconciled, f.imported_at, "
+        "(SELECT count(*) FROM transactions t WHERE t.statement_file_id = f.id), f.committed_at "
+        "FROM statement_accounts s JOIN statement_files f ON f.id = s.statement_file_id "
+        "JOIN accounts a ON a.id = s.account_id JOIN owners o ON o.id = a.owner_id "
+        "WHERE o.name = coalesce(?, o.name) "
+        "ORDER BY o.name, a.name, f.period_end DESC, f.period_start DESC, f.id DESC",
+        (owner,),
+    ).fetchall()
+    files: dict[tuple[str, str], list[Statement]] = {}
+    for row in found:
+        files.setdefault((row[0], row[1]), []).append(
+            Statement(
+                id=row[2],
+                owner=row[0],
+                source=row[3],
+                filename=row[4],
+                sha256=row[5],
+                first=_day(row[6]),
+                last=_day(row[7]),
+                checked=row[8] == "yes",
+                imported_at=row[9],
+                transactions=row[10],
+                committed_at=row[11],
+            )
+        )
+    return {key: tuple(listed) for key, listed in files.items()}
+
+
 def listing(conn: sqlite3.Connection, owner: str | None = None) -> tuple[MonthLine, ...]:
     """Every month that committed statements of `owner` (of everyone without one) cover,
     newest first."""

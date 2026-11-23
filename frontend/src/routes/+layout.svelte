@@ -33,7 +33,7 @@
 		const query = pick(here(), ['owner', 'currency']).toString();
 		return query ? `?${query}` : '';
 	});
-	const ours = (path: '/' | '/holdings') => ({
+	const ours = (path: '/' | '/holdings' | '/statements') => ({
 		href: resolve(path) + along,
 		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, ''),
 		classic: false
@@ -43,7 +43,7 @@
 		{ label: 'Holdings', icon: ChartPie, ...ours('/holdings') },
 		{ label: 'Cash flow', icon: ArrowLeftRight, href: classic('/analysis'), current: false, classic: true },
 		{ label: 'Transactions', icon: ReceiptText, href: classic('/transactions'), current: false, classic: true },
-		{ label: 'Statements', icon: Files, href: classic('/months'), current: false, classic: true }
+		{ label: 'Statements', icon: Files, ...ours('/statements') }
 	]);
 </script>
 

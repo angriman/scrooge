@@ -1,6 +1,8 @@
 # Sensitive: real statements and derived data. Never commit. (Statements of a setup made
 # before users/ existed were kept here.)
 statements/
+# The frontend's page of statements is code, not statements.
+!/frontend/src/routes/statements/
 transactions_*.csv
 # The database, its snapshots and backups, the statements kept beside it, the NAS data folder
 *.db

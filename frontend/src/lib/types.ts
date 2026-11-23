@@ -231,3 +231,42 @@ export interface Holdings {
 	logos: Record<string, string>;
 	errors: string[];
 }
+
+/** One statement file (src/scrooge/months.py `Statement`). */
+export interface StatementFile {
+	id: number;
+	filename: string;
+	label: string;
+	first: Day;
+	last: Day;
+	/** False: the statement prints nothing to reconcile against. */
+	checked: boolean;
+	transactions: number;
+	committed: boolean;
+	imported: Day;
+	/** Where its file can be downloaded, when it is kept. */
+	original: string | null;
+}
+
+/** An account a source feeds, with its statements. */
+export interface StatementsAccount extends Account {
+	source: string;
+	/** The last day staged beyond what is committed. */
+	staged: Day | null;
+	behind: boolean;
+	/** Whether its statements run month by month to their end. */
+	monthly: boolean;
+	/** What it holds now, cash and securities, in the currency asked for. */
+	balance: Amount | null;
+	spans: { first: Day; last: Day; committed: boolean }[];
+	statements: StatementFile[];
+}
+
+export interface Statements {
+	currency: string;
+	/** Up to this day every monthly account's statements are in. */
+	covered: Day | null;
+	accounts: StatementsAccount[];
+	checks: Check[];
+	errors: string[];
+}

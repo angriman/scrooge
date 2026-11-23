@@ -1,0 +1,229 @@
+<!--
+@component
+Every account a source feeds, one row each: what it holds now, how far its statements go, and the
+days they cover on a line of time, committed solid, staged hatched, a gap left open. The line is
+the page's one picture: where a statement is missing shows as a hole. A row opens to its
+statements, newest first, each with the file it came from.
+-->
+<script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Download from '@lucide/svelte/icons/download';
+	import { addDays, day, daysBetween, monthOf, toDate } from '#lib/format/date.js';
+	import type { StatementsAccount } from '#lib/types.js';
+	import Amount from '#lib/ui/Amount.svelte';
+	import Segmented from '#lib/ui/Segmented.svelte';
+	import { cn } from '#lib/ui/cn.js';
+
+	interface Props {
+		accounts: StatementsAccount[];
+		currency: string;
+		/** The last day of the line: today. */
+		today: string;
+		/** Whether several people's accounts are listed: they are then grouped by person. */
+		people: boolean;
+	}
+
+	let { accounts, currency, today, people }: Props = $props();
+
+	const RANGES = [
+		{ value: '1y', label: '1Y' },
+		{ value: '3y', label: '3Y' },
+		{ value: 'all', label: 'All' }
+	] as const;
+	let range = $state<(typeof RANGES)[number]['value']>('1y');
+
+	const earliest = $derived(
+		accounts
+			.flatMap((account) => account.spans.map((span) => span.first))
+			.reduce((first, each) => (each < first ? each : first), today)
+	);
+	const start = $derived(
+		range === 'all' ? earliest : addDays(today, range === '1y' ? -365 : -1095)
+	);
+	const length = $derived(Math.max(1, daysBetween(start, today)));
+	/** Where `when` falls on the line, in percent, kept on it. */
+	const at = (when: string) => Math.min(100, Math.max(0, (daysBetween(start, when) / length) * 100));
+
+	// A tick at the start of every month, or of every year when the line is long; the name of
+	// the month (of January only, when long) written under it.
+	const ticks = $derived.by(() => {
+		const marks: { left: number; label: string | null }[] = [];
+		const first = toDate(start);
+		const cursor = new Date(first.getFullYear(), first.getMonth() + 1, 1);
+		const long = length > 800;
+		while (cursor <= toDate(today)) {
+			const iso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-01`;
+			const yearly = cursor.getMonth() === 0;
+			if (!long || yearly) {
+				marks.push({
+					left: at(iso),
+					label: long ? String(cursor.getFullYear()) : yearly || length <= 400 ? monthOf(cursor) : null
+				});
+			}
+			cursor.setMonth(cursor.getMonth() + 1);
+		}
+		return marks;
+	});
+
+	const groups = $derived(
+		people
+			? [...new Set(accounts.map((a) => a.owner))].map((owner) => ({
+					owner,
+					accounts: accounts.filter((a) => a.owner === owner)
+				}))
+			: [{ owner: null, accounts }]
+	);
+
+	let open = $state<string | null>(null);
+	const keyOf = (account: StatementsAccount) => `${account.owner}|${account.account}|${account.source}`;
+	const span = (first: string, last: string) =>
+		first.slice(0, 4) === last.slice(0, 4) && first !== last
+			? `${day(first).replace(/ \d{4}$/, '')} to ${day(last)}`
+			: first === last
+				? day(first)
+				: `${day(first)} to ${day(last)}`;
+</script>
+
+<section class="mt-10" aria-labelledby="coverage-title">
+	<header class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+		<h2 id="coverage-title" class="text-heading font-medium text-ink">
+			{accounts.length === 1 ? '1 account' : `${accounts.length} accounts`}
+		</h2>
+		<div class="flex flex-wrap items-center gap-4">
+			<span class="flex items-center gap-3 text-caption text-ink-muted" aria-hidden="true">
+				<span class="flex items-center gap-1.5"><span class="h-2 w-4 rounded-mark bg-data-7"></span>committed</span>
+				<span class="flex items-center gap-1.5"><span class="staged h-2 w-4 rounded-mark"></span>staged</span>
+			</span>
+			<Segmented label="Line of time" value={range} options={RANGES} onchange={(chosen) => (range = chosen)} />
+		</div>
+	</header>
+
+	<div class="rounded-panel bg-panel">
+		{#each groups as group (group.owner)}
+			{#if group.owner}
+				<h3 class="border-b border-line px-4 pt-4 pb-2 text-small text-ink-secondary">{group.owner}</h3>
+			{/if}
+			<ul>
+				{#each group.accounts as account (keyOf(account))}
+					{@const key = keyOf(account)}
+					{@const expanded = open === key}
+					<li class="border-b border-line last:border-b-0">
+						<button
+							type="button"
+							aria-expanded={expanded}
+							onclick={() => (open = expanded ? null : key)}
+							class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_7.5rem_auto]"
+						>
+							<span class="min-w-0">
+								<span class="block truncate font-medium text-ink">{account.account}</span>
+								<span class={cn('block truncate text-small', account.behind ? 'text-caution' : 'text-ink-muted')}>
+									{#if account.behind}
+										Behind: ends on {account.committed ? day(account.committed) : 'no day'}
+									{:else if account.committed}
+										Up to {day(account.committed)}{#if account.staged}, staged to {day(account.staged)}{/if}
+									{:else}
+										Staged only
+									{/if}
+								</span>
+							</span>
+							<!-- The line of the account's days: hidden on a phone, where the words say it. -->
+							<span class="relative hidden h-5 md:block" aria-hidden="true">
+								<span class="absolute inset-x-0 top-1/2 h-px bg-line"></span>
+								{#each ticks as tick, index (index)}
+									<span class="absolute top-0 h-full w-px bg-line/60" style:left="{tick.left}%"></span>
+								{/each}
+								{#each account.spans as run, index (index)}
+									{#if run.last >= start}
+										<span
+											class={cn(
+												'absolute top-1 h-3 rounded-mark',
+												run.committed ? 'bg-data-7' : 'staged'
+											)}
+											style:left="{at(run.first)}%"
+											style:width="max(3px, {at(run.last) - at(run.first)}%)"
+										></span>
+									{/if}
+								{/each}
+							</span>
+							<span class="hidden text-right md:block">
+								{#if account.balance !== null}<Amount value={account.balance} {currency} places={0} />{/if}
+							</span>
+							<ChevronDown
+								class={cn('size-4 text-ink-muted transition-transform', expanded && 'rotate-180')}
+								aria-hidden="true"
+							/>
+						</button>
+
+						{#if expanded}
+							<div class="px-4 pb-4">
+								<p class="mb-2 text-small text-ink-secondary md:hidden">
+									Holds {#if account.balance !== null}<Amount value={account.balance} {currency} places={0} />{:else}nothing known{/if}
+								</p>
+								<p class="mb-3 text-small text-ink-muted">
+									{account.label}{#if !account.monthly}<span class="block"
+											>Reports less often than monthly, so it counts as behind only after a longer wait.</span
+										>{/if}
+								</p>
+								<ul class="grid gap-1">
+									{#each account.statements as statement (statement.id)}
+										<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 rounded-control px-2 py-2 hover:bg-raised sm:grid-cols-[14rem_minmax(0,1fr)_auto_auto]">
+											<span class="text-body text-ink">{span(statement.first, statement.last)}</span>
+											<span class="order-last col-span-2 truncate text-small text-ink-muted sm:order-none sm:col-span-1" title={statement.filename}>
+												{statement.filename}
+											</span>
+											<span class="flex items-center gap-2 text-small whitespace-nowrap">
+												<span class={statement.committed ? 'text-ink-secondary' : 'text-caution'}>
+													{statement.committed ? 'Committed' : 'Staged'}
+												</span>
+												<span class="text-ink-muted">
+													{statement.transactions} {statement.transactions === 1 ? 'row' : 'rows'}{#if !statement.checked}, nothing to check{/if}
+												</span>
+											</span>
+											<span class="hidden items-center gap-3 text-small sm:flex">
+												{#if statement.original}
+													<a href={statement.original} data-sveltekit-reload class="inline-flex items-center gap-1 text-brand hover:text-brand-hover" aria-label="Download {statement.filename}">
+														<Download class="size-3.5" aria-hidden="true" />File
+													</a>
+												{/if}
+												<a
+													href="/statements/{statement.id}"
+													data-sveltekit-reload
+													title="Opens the server’s page of this statement"
+													class="text-brand hover:text-brand-hover"
+												>
+													{statement.committed ? 'Take back' : 'Remove'}
+												</a>
+											</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/each}
+
+		<!-- The months of the line, under the rows. -->
+		<div class="relative mx-4 hidden h-6 md:ml-[calc(16rem+2rem)] md:mr-[calc(7.5rem+3rem)] md:block" aria-hidden="true">
+			{#each ticks as tick, index (index)}
+				{#if tick.label}
+					<span class="absolute top-1 -translate-x-1/2 text-caption whitespace-nowrap text-ink-muted" style:left="{tick.left}%">
+						{tick.label}
+					</span>
+				{/if}
+			{/each}
+		</div>
+	</div>
+</section>
+
+<style>
+	/* Staged days: hatched, waiting to be committed. */
+	.staged {
+		background: repeating-linear-gradient(
+			135deg,
+			var(--caution) 0 3px,
+			transparent 3px 6px
+		);
+	}
+</style>

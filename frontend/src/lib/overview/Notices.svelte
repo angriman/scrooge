@@ -10,9 +10,11 @@ figures that differ from those worked out here. Nothing when nothing waits.
 	import Clock from '@lucide/svelte/icons/clock';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Scale from '@lucide/svelte/icons/scale';
+	import { resolve } from '$app/paths';
 	import { day } from '#lib/format/date.js';
 	import type { Attention } from '#lib/types.js';
 	import Notice from '#lib/ui/Notice.svelte';
+	import { here, pick } from '#lib/view.js';
 
 	interface Props {
 		attention: Attention;
@@ -23,6 +25,11 @@ figures that differ from those worked out here. Nothing when nothing waits.
 	let { attention, onePerson }: Props = $props();
 
 	const importing = (owner: string) => `/import?owner=${encodeURIComponent(owner)}`;
+	// The checks are on the Statements page, for the same person and currency.
+	const checks = $derived.by(() => {
+		const query = pick(here(), ['owner', 'currency']).toString();
+		return `${resolve('/statements')}${query ? `?${query}` : ''}#checks`;
+	});
 	const statements = (count: number) => (count === 1 ? '1 statement' : `${count} statements`);
 	const count = $derived(
 		attention.staged.length + attention.behind.length + (attention.differ ? 1 : 0)
@@ -51,7 +58,7 @@ figures that differ from those worked out here. Nothing when nothing waits.
 		</Notice>
 	{/each}
 	{#if attention.differ}
-		<Notice tone="caution" icon={Scale} action={{ label: 'Review them', href: '#checks' }}>
+		<Notice tone="caution" icon={Scale} action={{ label: 'Review them', href: checks }}>
 			{attention.differ === 1 ? '1 balance differs' : `${attention.differ} balances differ`} from
 			what the statements say.
 		</Notice>

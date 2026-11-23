@@ -778,6 +778,22 @@ def worth_of(conn: sqlite3.Connection, valued: Valued | None, currency: str) -> 
     return NetWorth(currency, valued.days, ordered(sums), valued.notes, ordered(came))
 
 
+def balances(
+    conn: sqlite3.Connection, valued: Valued | None, currency: str
+) -> dict[tuple[str, str], Decimal]:
+    """What each account holds on the last day, its cash and its securities together, in
+    `currency` at that day's rates, to the cent; by its owner and name."""
+    if valued is None:
+        return {}
+    names = {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
+    rates = rates_on(conn, valued.days[-1:])
+    sums: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
+    for series in valued.series:
+        [value] = convert(series.values[-1:], series.currency, currency, rates)
+        sums[series.owner, names[series.account_id]] += value
+    return {key: value.quantize(_CENT) for key, value in sums.items()}
+
+
 # What a statement calls an asset, and what that is here. Its total is set against the sum
 # of these: the difference is then what the statement counts and these pages do not.
 _PRINTED = {"Cash": (CASH,), "Stock": (ETFS, STOCKS), "Bonds": (BILLS,)}
