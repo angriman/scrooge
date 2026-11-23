@@ -15,6 +15,7 @@ from __future__ import annotations
 import secrets
 import sqlite3
 from collections.abc import Callable
+from datetime import date
 from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
@@ -25,6 +26,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from scrooge import (
+    analysis,
     categories,
     classification,
     marketdata,
@@ -34,6 +36,7 @@ from scrooge import (
     portfolio,
     query,
     recap,
+    report,
     staging,
 )
 from scrooge.classification import UnknownMaturityError
@@ -608,6 +611,61 @@ async def _remove(request: Request, action: Callable[..., object]) -> Response:
     return JSONResponse({"owner": owner, "errors": []})
 
 
+def _ranges(through: date, start: int) -> list[dict[str, str]]:
+    """The ranges offered, as `from` and `to` take them: the year up to the last day committed,
+    the twelve months before it, each earlier year of the statements (two at most) and all of
+    them, when they go back before this year."""
+    twelve = analysis.add_months(through, -11)
+    years = range(through.year - 1, max(start, through.year - 2) - 1, -1)
+    return [
+        {"label": "Year to date", "from": str(through.year), "to": ""},
+        {"label": "Last 12 months", "from": f"{twelve:%Y-%m}", "to": ""},
+        *({"label": str(year), "from": str(year), "to": str(year)} for year in years),
+        *([{"label": "All", "from": str(start), "to": ""}] if start < through.year else []),
+    ]
+
+
+def _cashflow(request: Request) -> Response:
+    """The cash flow of `from` to `to`, by `by` (month when left out), in `currency`: the year
+    to date when no range is asked for."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        try:
+            query.check_names(conn, query.Filter(owner=asked.owner))
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        through = analysis.through(conn, asked.owner)
+        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
+        first, last = asked.first, asked.last
+        if first is None and last is None and through is not None:
+            first = date(through.year, 1, 1)
+        shown = wire.unless_rate_missing(
+            errors,
+            lambda: report.run(
+                conn,
+                first=first,
+                last=last,
+                owner=asked.owner,
+                grouping=asked.grouping,
+                currency=asked.currency,
+            ),
+            None,
+        )
+    return JSONResponse(
+        {
+            "report": None if shown is None else wire.cashflow_report(shown),
+            "first": wire.day(first),
+            "last": wire.day(last),
+            "by": asked.grouping.value,
+            "ranges": [] if through is None else _ranges(through, min(firsts).year),
+            "errors": errors,
+        }
+    )
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -626,6 +684,7 @@ routes = [
     Route("/statements", _statements, name="api_statements"),
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
+    Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),
     Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../app.css';
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
-	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import ChartPie from '@lucide/svelte/icons/chart-pie';
 	import Files from '@lucide/svelte/icons/files';
 	import House from '@lucide/svelte/icons/house';
@@ -26,22 +25,21 @@
 		...data.session.people.map((person) => ({ value: person.name, label: person.name }))
 	]);
 
-	// The pages not made here yet open as the server's own pages, for the same person.
-	const classic = (path: string) => (owner ? `${path}?owner=${encodeURIComponent(owner)}` : path);
 	// Between pages, whose figures and their currency go along; a page's own view does not.
 	const along = $derived.by(() => {
 		const query = pick(here(), ['owner', 'currency']).toString();
 		return query ? `?${query}` : '';
 	});
-	const ours = (path: '/' | '/holdings' | '/statements' | '/transactions' | '/import') => ({
+	const ours = (
+		path: '/' | '/holdings' | '/cashflow' | '/statements' | '/transactions' | '/import'
+	) => ({
 		href: resolve(path) + along,
-		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, ''),
-		classic: false
+		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, '')
 	});
 	const pages = $derived([
 		{ label: 'Overview', icon: House, ...ours('/') },
 		{ label: 'Holdings', icon: ChartPie, ...ours('/holdings') },
-		{ label: 'Cash flow', icon: ArrowLeftRight, href: classic('/analysis'), current: false, classic: true },
+		{ label: 'Cash flow', icon: ArrowLeftRight, ...ours('/cashflow') },
 		{ label: 'Transactions', icon: ReceiptText, ...ours('/transactions') },
 		{ label: 'Statements', icon: Files, ...ours('/statements') }
 	]);
@@ -66,8 +64,6 @@
 					<a
 						href={item.href}
 						aria-current={item.current ? 'page' : undefined}
-						data-sveltekit-reload={item.classic ? '' : undefined}
-						title={item.classic ? 'Opens the current page of the server' : undefined}
 						class={cn(
 							'relative flex items-center gap-1.5 px-2.5 py-2 text-body whitespace-nowrap text-ink-secondary hover:text-ink',
 							item.current &&
@@ -76,7 +72,6 @@
 					>
 						<item.icon class="size-4" aria-hidden="true" />
 						{item.label}
-						{#if item.classic}<ArrowUpRight class="size-3 text-ink-muted" aria-hidden="true" />{/if}
 					</a>
 				{/each}
 			</nav>

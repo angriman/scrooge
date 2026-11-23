@@ -412,3 +412,89 @@ export interface Upload {
 	notice?: string | null;
 	errors: string[];
 }
+
+/** Income, spending and what was saved over a span (src/scrooge/savings.py `Totals`). */
+export interface Saved {
+	income: Amount;
+	spent: Amount;
+	saved: Amount;
+	/** What was saved in percent of income; null without income. */
+	rate: Amount | null;
+	/** The share of income from work, in percent. */
+	from_work: Amount | null;
+}
+
+export interface CashFlowPeriod extends Saved {
+	/** `2026-09`, `2026-Q3`, `2026`, as the API names it. */
+	name: string;
+	first: string;
+	last: string;
+	/** The savings rate of the twelve months ending with it. */
+	rate_12: Amount | null;
+	/** Spent in each of `CashFlowReport.parts`. */
+	spent_by: Record<string, Amount>;
+	/** Earned in each income group (Lavoro, Investimenti, Altro). */
+	earned_by: Record<string, Amount>;
+}
+
+export interface CashFlowReport {
+	currency: string;
+	totals: Saved | null;
+	/** The same range a year earlier, when it is known. */
+	year_before: Saved | null;
+	periods: CashFlowPeriod[];
+	/** What the bars stack: the largest categories, then "Others" and "Paid back". */
+	parts: string[];
+	/** The calendar months the range touches. */
+	months: number;
+	/** What the other person paid back, taken off what was spent. */
+	paid_back: Amount;
+	categories: {
+		name: string;
+		count: number;
+		spent: Amount;
+		share: Amount | null;
+		monthly: Amount;
+		/** The median month of the twelve before the range. */
+		usual: Amount | null;
+		year_before: Amount | null;
+		leaves: { name: string; count: number; spent: Amount }[];
+	}[];
+	merchants: {
+		name: string;
+		category: string;
+		count: number;
+		spent: Amount;
+		first: string;
+		last: string;
+	}[];
+	other_merchants: { count: number; spent: Amount };
+	sources: { group: string; name: string; count: number; total: Amount }[];
+	/** Income and expenses in each currency, as paid: nothing converted. */
+	as_paid: {
+		period: string;
+		currency: string;
+		income: Amount;
+		expenses: Amount;
+		investing: Amount;
+	}[];
+	as_paid_totals: {
+		currency: string;
+		side: string;
+		category: string;
+		count: number;
+		total: Amount;
+	}[];
+	through: string | null;
+}
+
+export interface CashFlow {
+	report: CashFlowReport | null;
+	/** The range shown: `last` null means up to the last day committed. */
+	first: string | null;
+	last: string | null;
+	by: 'week' | 'month' | 'quarter' | 'year';
+	/** The ranges offered, as `from` and `to` take them. */
+	ranges: { label: string; from: string; to: string }[];
+	errors: string[];
+}
