@@ -111,6 +111,7 @@ _MAP = (Decimal(1000), Decimal(420))
 _LINE = (Decimal(1000), Decimal(90))
 _APART = Decimal(64)  # the least room between two days written under the line
 _STATIC = "/static/"  # with `/login`, all a browser that is not signed in may ask for
+_APP = "/app"  # where the frontend of its own is served, with the headers it needs
 _API = "/api/"  # the JSON of the pages (`web/api.py`): not signed in, it is told so, not sent on
 # The frontend of its own, built by `make web` from frontend/ (git-ignored): `serve` gives it to
 # `create_app`, at /app.
@@ -237,16 +238,21 @@ _templates.env.globals["days"] = cashflow.days
 
 
 class _OwnAssetsOnly:
-    """Adds the headers that keep a page from loading or sending anything elsewhere."""
+    """Adds the headers that keep a page from loading or sending anything elsewhere: those of
+    the frontend's own under /app, `_HEADERS` everywhere else."""
 
     def __init__(self, app: ASGIApp, headers: Mapping[str, str]) -> None:
         self.app = app
-        self.headers = [(k.encode(), v.encode()) for k, v in headers.items()]
+        self.pages = [(k.encode(), v.encode()) for k, v in _HEADERS.items()]
+        self.frontend = [(k.encode(), v.encode()) for k, v in headers.items()]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path", "")
+        headers = self.frontend if path == _APP or path.startswith(f"{_APP}/") else self.pages
+
         async def add_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
-                message["headers"] += self.headers
+                message["headers"] += headers
             await send(message)
 
         await self.app(scope, receive, add_headers)
@@ -439,9 +445,11 @@ def _shell(spa: Path) -> bytes | None:
 
 
 def _headers(shell: bytes | None) -> dict[str, str]:
-    """`_HEADERS`, letting the scripts of `shell` run: the frontend's page starts itself with
-    one written in it, which the policy allows by its digest and nothing else written in a
-    page."""
+    """The headers of the frontend at /app: `_HEADERS`, letting the scripts of `shell` run.
+    Its page starts itself with one written in it, which the policy allows by its digest and
+    nothing else written in a page. Its elements carry style attributes (where a chart places a
+    mark, where a menu opens), which it allows too; a stylesheet still comes only from here.
+    The server's own pages need neither, and keep `_HEADERS`."""
     if shell is None:
         return _HEADERS
     digests = [
@@ -450,7 +458,10 @@ def _headers(shell: bytes | None) -> dict[str, str]:
     ]
     if not digests:
         return _HEADERS
-    policy = f"default-src 'self'; script-src 'self' {' '.join(digests)}; frame-ancestors 'none'"
+    policy = (
+        f"default-src 'self'; script-src 'self' {' '.join(digests)}; "
+        "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
+    )
     return {**_HEADERS, "content-security-policy": policy}
 
 
