@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from scrooge import networth, query
+from scrooge import context, networth, query
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
 from scrooge.storage import money
@@ -105,7 +105,8 @@ def analysis_view(params: Mapping[str, str]) -> AnalysisView:
 
 
 def transactions_filter(params: Mapping[str, str]) -> Parsed:
-    """`from`, `to`, `booking`, `owner`, `account`, `category`, `kind`, `min`, `max`, `text`.
+    """`from`, `to`, `booking`, `owner`, `account`, `category`, `kind`, `min`, `max`, `text`,
+    `merchant`.
 
     `from` and `to` are a day, a month or a year, as for `scrooge query`. An empty field is
     the same as a missing one.
@@ -141,8 +142,30 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
         at_least=amount("min"),
         at_most=amount("max"),
         text=text("text") or "",
+        merchant=text("merchant"),
     )
     return Parsed(wanted, tuple(errors))
+
+
+@dataclass(frozen=True, slots=True)
+class ContextView:
+    owner: str | None
+    currency: str
+    kind: str  # one of `context.KINDS`; "" when it cannot be read
+    name: str
+    errors: tuple[str, ...]
+
+
+def context_view(params: Mapping[str, str]) -> ContextView:
+    """`owner`, `currency` (euros when left out) and exactly one of `category`, `merchant` and
+    `account`, which says what the context is of."""
+    errors: list[str] = []
+    currency = _currency(params, errors)
+    given = [(kind, name) for kind in context.KINDS if (name := _text(params, kind))]
+    if len(given) != 1:
+        errors.append("Ask for exactly one of category, merchant and account.")
+    kind, name = given[0] if len(given) == 1 else ("", "")
+    return ContextView(_text(params, "owner"), currency, kind, name, tuple(errors))
 
 
 def _currency(params: Mapping[str, str], errors: list[str]) -> str:

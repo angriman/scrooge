@@ -29,6 +29,7 @@ def test_every_field_is_read() -> None:
         "min": "10",
         "max": "1'250.50",
         "text": " konsum ",
+        "merchant": " Trattoria Ölberg ",
     }
     assert forms.transactions_filter(params) == forms.Parsed(
         Filter(
@@ -42,6 +43,7 @@ def test_every_field_is_read() -> None:
             at_least=Decimal(10),
             at_most=Decimal("1250.50"),
             text="konsum",
+            merchant="Trattoria Ölberg",
         ),
         (),
     )
@@ -121,3 +123,13 @@ def test_a_breakdown_that_cannot_be_read_is_reported_and_asset_type_shown() -> N
     assert forms.networth_view({"by": "shape"}) == forms.NetWorthView(
         None, "EUR", "asset", ("'shape' is not total, asset or owner.",)
     )
+
+
+def test_a_context_is_of_exactly_one_category_merchant_or_account() -> None:
+    asked = forms.context_view({"merchant": " Trattoria ", "owner": "Anna", "text": "x"})
+    assert asked == forms.ContextView("Anna", "EUR", "merchant", "Trattoria", ())
+    assert forms.context_view({"account": "Migros", "currency": "chf"}).currency == "CHF"
+    for params in ({}, {"category": " "}, {"category": "Casa", "account": "Migros"}):
+        refused = forms.context_view(params)
+        assert (refused.kind, refused.name) == ("", "")
+        assert refused.errors == ("Ask for exactly one of category, merchant and account.",)
