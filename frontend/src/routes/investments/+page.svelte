@@ -49,7 +49,7 @@
 </script>
 
 <svelte:head>
-	<title>Holdings · scrooge</title>
+	<title>Investments · scrooge</title>
 </svelte:head>
 
 {#each data.held.errors as error (error)}

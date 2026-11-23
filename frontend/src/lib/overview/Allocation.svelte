@@ -1,8 +1,9 @@
 <!--
 @component
-What net worth is made of, by type: a ring of what is held (what is owed is not in it) over a
-table of every type with its value, its share of net worth as a bar of the whole, and how it
-moved over the range the chart shows.
+The allocation of net worth, what it is made of by type: a ring of what is held (what is owed
+is not in it) over a table of every type with its value, its share of net worth as a bar of the
+whole, and how it moved over the range the chart shows. The investments page has the allocation
+of securities alone.
 -->
 <script lang="ts">
 	import { PieChart, type ChartState } from 'layerchart';
@@ -45,7 +46,7 @@ moved over the range the chart shows.
 	const pointed = $derived(context?.tooltip.data ?? null);
 </script>
 
-<Panel title="Allocation">
+<Panel title="Allocation" note="Of net worth, by type">
 	<div class="grid grid-cols-1 gap-5">
 		<div class="relative mx-auto size-44">
 			<PieChart

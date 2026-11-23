@@ -1,8 +1,9 @@
-import { get } from '#lib/api.js';
-import type { Holdings } from '#lib/types.js';
-import { pick } from '#lib/view.js';
+import { redirect } from '@sveltejs/kit';
+import { resolve } from '$app/paths';
+import { movedTo } from '#lib/moved.js';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ fetch, url }) => ({
-	held: await get<Holdings>(fetch, '/api/holdings', pick(url, ['owner', 'currency']))
-});
+// Holdings is called Investments now: an old link to it still finds the page.
+export const load: PageLoad = ({ url }) => {
+	redirect(307, movedTo(resolve('/investments'), url, globalThis.location ?? null));
+};

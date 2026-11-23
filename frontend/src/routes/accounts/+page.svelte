@@ -8,7 +8,9 @@
 	import Notices from '#lib/overview/Notices.svelte';
 	import Checks from '#lib/coverage/Checks.svelte';
 	import Coverage from '#lib/coverage/Coverage.svelte';
+	import { heldTogether } from '#lib/coverage/held.js';
 	import type { StatementsAccount } from '#lib/types.js';
+	import Amount from '#lib/ui/Amount.svelte';
 	import type { PageProps } from './$types';
 
 	type Statement = StatementsAccount['statements'][number];
@@ -44,10 +46,12 @@
 		await goto(`${resolve('/import')}?owner=${encodeURIComponent(done.sent.owner)}`);
 	}
 	const behind = $derived(listed.accounts.filter((account) => account.behind).length);
+	const held = $derived(heldTogether(listed.accounts));
+	const title = $derived(single ? 'Accounts' : owner ? `${owner}’s accounts` : 'Household accounts');
 </script>
 
 <svelte:head>
-	<title>Statements · scrooge</title>
+	<title>Accounts · scrooge</title>
 </svelte:head>
 
 <Notices attention={data.attention} onePerson={single || owner !== null} />
@@ -76,22 +80,30 @@
 		</a>
 	</section>
 {:else}
-	<!-- The lead: up to when every statement is in, said as a sentence, not a figure. -->
-	<section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="statements">
-		<p id="statements" class="text-small text-ink-secondary">Statements</p>
-		<h1 class="mt-1 text-figure font-medium tracking-tight text-ink sm:text-hero">
-			{#if listed.covered}
-				All in up to {day(listed.covered)}
+	<!-- The lead: what the accounts hold now, then up to when every statement of them is in. -->
+	<section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="accounts">
+		<h1 id="accounts" class="text-small text-ink-secondary">{title}</h1>
+		<p class="mt-1 text-hero font-medium tracking-tight text-ink">
+			{#if held.total !== null}
+				<Amount value={held.total} currency={listed.currency} />
 			{:else}
-				Nothing committed yet
+				<span class="text-figure text-ink-secondary">No balance known</span>
 			{/if}
-		</h1>
-		<p class="mt-2 text-body text-ink-secondary">
-			{listed.accounts.length === 1 ? '1 account' : `${listed.accounts.length} accounts`}{#if behind},
+		</p>
+		<p class="mt-1 text-small text-ink-muted">
+			{listed.accounts.length === 1 ? '1 account' : `${listed.accounts.length} accounts`}, {#if listed.covered}all
+				in up to {day(listed.covered)}{:else}nothing committed yet{/if}{#if behind},
 				<span class="text-caution">{behind} behind</span>{/if}{#if staged},
 				<span class="text-brand">{staged} with statements staged</span>{/if}{#if !behind && !staged},
 				none behind and nothing staged{/if}.
 		</p>
+		{#if held.total !== null && held.unknown}
+			<p class="mt-1 text-small text-ink-muted">
+				{held.unknown === 1
+					? '1 account is not in it: its balance is not known.'
+					: `${held.unknown} accounts are not in it: their balances are not known.`}
+			</p>
+		{/if}
 	</section>
 
 	{#if problem}
