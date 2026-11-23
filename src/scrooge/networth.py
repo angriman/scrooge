@@ -86,15 +86,26 @@ class NetWorth:
     days: tuple[date, ...]  # every day from the first anything is known for, oldest first
     lines: tuple[Line, ...]  # by owner and asset; kinds a person never held are absent
     notes: tuple[str, ...]  # what the reader must know about how a figure came about
+    # What came into view, by owner and asset: the balance a cash series starts with, before its
+    # first day's rows, and the shares a statement says were held at its start (`Series.arrival`),
+    # after the first day of all. Net worth rises by it without anything having been earned: a
+    # change over days that takes it out is what moved.
+    arrivals: tuple[Line, ...] = ()
 
     @property
     def total(self) -> tuple[Decimal, ...]:
         return _added(line.values for line in self.lines) or (Decimal(0),) * len(self.days)
 
-    def by(self, attribute: str) -> dict[str, tuple[Decimal, ...]]:
-        """The lines added up by "owner" or by "asset", in the order they are listed."""
+    @property
+    def arrived(self) -> tuple[Decimal, ...]:
+        """What came into view each day, everyone and every asset together."""
+        return _added(line.values for line in self.arrivals) or (Decimal(0),) * len(self.days)
+
+    def by(self, attribute: str, *, arrivals: bool = False) -> dict[str, tuple[Decimal, ...]]:
+        """The lines (their arrivals) added up by "owner" or by "asset", in the order they are
+        listed."""
         groups: dict[str, list[tuple[Decimal, ...]]] = {}
-        for line in self.lines:
+        for line in self.arrivals if arrivals else self.lines:
             groups.setdefault(getattr(line, attribute), []).append(line.values)
         return {name: _added(values) for name, values in groups.items()}
 
@@ -151,6 +162,10 @@ class Series:
     instrument_id: int | None = None  # None: the cash of the account
     quantity: Decimal | None = None  # of the instrument, held at the end of the last day
     quote: Quote | None = None  # what the last day is valued at; None for cash and bills
+    # What it brings on the day it first counts, in `currency`: a cash balance the statements
+    # start from (before that day's rows), or what the shares held at the start of the history
+    # are worth that day; None when it starts from nothing (its rows, or shares bought)
+    arrival: tuple[date, Decimal] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,8 +447,28 @@ def _cash(
             asset = PENSION
         elif account.kind == _CARRIED_FLAT and account.source is not None:
             asset = PILLAR2
-        series.append(Series(account.owner, account.id, asset, account.currency, values))
+        opening = _opening(booked, known)
+        series.append(
+            Series(
+                account.owner,
+                account.id,
+                asset,
+                account.currency,
+                values,
+                arrival=(min([*booked, *known]), from_nano(opening)) if opening else None,
+            )
+        )
     return series
+
+
+def _opening(booked: Mapping[date, _Flow], known: Mapping[date, int]) -> int:
+    """The balance an account's cash starts from, before the rows of its first day, in nano:
+    what its first balance says, less what was booked up to it. Zero when no balance is known,
+    the cash then adding up from its first row."""
+    if not known:
+        return 0
+    first = min(known)
+    return known[first] - sum(f.nano for day, f in booked.items() if day <= first)
 
 
 def _balances(
@@ -530,6 +565,13 @@ def _securities(
                 notes.append(f"{symbol} has no price at all: it is not counted.")
         if not any(values):
             continue
+        # Shares held before the history starts come into view with what they are worth on
+        # its first day; those bought then do not.
+        arrival = None
+        start = holding.steps[0]
+        if kind not in {"bill", "bond"} and holding.opening > 0 and start.quantity:
+            worth = values[(start.day - days[0]).days]
+            arrival = (start.day, worth * holding.opening / start.quantity)
         asset = PENSION if account.source == _PENSION_SOURCE else _BY_TYPE[kind]
         series.append(
             Series(
@@ -541,6 +583,7 @@ def _securities(
                 holding.instrument_id,
                 holding.on(days[-1]),
                 quote,
+                arrival,
             )
         )
     if unpriced:
@@ -712,16 +755,27 @@ def worth_of(conn: sqlite3.Connection, valued: Valued | None, currency: str) -> 
         return NetWorth(currency, (), (), ())
     rates = rates_on(conn, valued.days)
     sums: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
+    came: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
+    first = valued.days[0]
     for series in valued.series:
         converted = convert(series.values, series.currency, currency, rates)
         sums[series.owner, series.asset].append(converted)
-    lines = tuple(
-        Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)))
-        for (owner_name, asset), parts in sorted(
-            sums.items(), key=lambda item: (item[0][0], ASSETS.index(item[0][1]))
+        if series.arrival is None or series.arrival[0] <= first:
+            continue
+        index = (series.arrival[0] - first).days
+        native = [Decimal(0)] * len(converted)
+        native[index] = series.arrival[1]
+        came[series.owner, series.asset].append(convert(native, series.currency, currency, rates))
+
+    def ordered(groups: Mapping[tuple[str, str], list[list[Decimal]]]) -> tuple[Line, ...]:
+        return tuple(
+            Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)))
+            for (owner_name, asset), parts in sorted(
+                groups.items(), key=lambda item: (item[0][0], ASSETS.index(item[0][1]))
+            )
         )
-    )
-    return NetWorth(currency, valued.days, lines, valued.notes)
+
+    return NetWorth(currency, valued.days, ordered(sums), valued.notes, ordered(came))
 
 
 # What a statement calls an asset, and what that is here. Its total is set against the sum

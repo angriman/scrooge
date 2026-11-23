@@ -1004,3 +1004,66 @@ def test_every_kind_of_asset_has_its_place_in_the_stack() -> None:
 def test_days_run_without_a_gap() -> None:
     days = networth._days(day(27, 2), day(2, 3))
     assert days == tuple(day(27, 2) + timedelta(days=n) for n in range(4))
+
+
+def test_an_account_that_comes_into_view_later_arrives_with_what_it_holds(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000", spent("-100", day(10))))
+    october = date(2026, 10, 1)
+    rows = spent("-20", date(2026, 10, 5), account="Revolut CHF")
+    close(conn, account("revolut", "Revolut CHF", "CHF", "500", rows, month=october), month=october)
+    result = networth.run(conn, currency="CHF")
+    arrived = dict(zip(result.days, result.arrived, strict=True))
+    # The bank account is there from the first day: nothing arrives with it. The second one
+    # counts from the eve of its first statement, with the 500 francs it opens with.
+    assert {when: amount for when, amount in arrived.items() if amount} == {day(30): D("500.00")}
+    assert result.by("asset", arrivals=True)[CASH] == result.arrived
+    assert result.by("owner", arrivals=True) == {OWNER: result.arrived}
+
+
+def test_an_account_arrives_with_the_shares_its_first_statement_begins_with(
+    conn: sqlite3.Connection,
+) -> None:
+    august = date(2026, 8, 1)
+    close(conn, account("revolut", "Revolut USD", "USD", "100", month=august), month=august)
+    # A broker whose first statement, a month later, opens with cash and with shares held.
+    base = ibkr()
+    held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
+    result = networth.run(conn, currency="USD")
+    arrived = dict(zip(result.days, result.arrived, strict=True))
+    # Its cash on the eve of the statement, its shares on its first day: all of it brought,
+    # none of it earned.
+    assert {when: amount for when, amount in arrived.items() if amount} == {
+        day(31, 8): D("10000.00"),
+        day(1): D("550.00"),
+    }
+    assert result.by("asset", arrivals=True)[ETFS][(day(1) - result.days[0]).days] == D("550.00")
+
+
+def test_what_an_account_books_on_its_first_day_does_not_arrive_with_it(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    october = date(2026, 10, 1)
+    rows = spent("-20", october, account="Revolut CHF")
+    close(conn, account("revolut", "Revolut CHF", "CHF", "500", rows, month=october), month=october)
+    result = networth.run(conn, currency="CHF")
+    arrived = dict(zip(result.days, result.arrived, strict=True))
+    # It opens with 500 on the eve of its statement; the 20 spent on its first day is spending.
+    assert {when: amount for when, amount in arrived.items() if amount} == {day(30): D("500.00")}
+
+
+def test_shares_bought_on_the_first_day_do_not_arrive_with_those_held(
+    conn: sqlite3.Connection,
+) -> None:
+    august = date(2026, 8, 1)
+    close(conn, account("revolut", "Revolut USD", "USD", "100", month=august), month=august)
+    # 10 shares held when the statement starts, 5 more bought with its cash on its first day.
+    base = ibkr(bought("WIDG", "5", "-275", day(1)))
+    held = (Holding("IBKR USD", "WIDG", "USD", D(15), D(55), D(825), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
+    result = networth.run(conn, currency="USD")
+    etfs = result.by("asset", arrivals=True)[ETFS]
+    assert etfs[(day(1) - result.days[0]).days] == D("550.00")
