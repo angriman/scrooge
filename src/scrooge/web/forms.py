@@ -181,7 +181,7 @@ def networth_view(params: Mapping[str, str]) -> NetWorthView:
 
 def month_view(params: Mapping[str, str]) -> MonthView:
     """`owner`, `currency` (euros when left out) and `month` (`2026-10`; the last complete
-    one when left out or unreadable)."""
+    one when left out; an unreadable one is an error)."""
     errors: list[str] = []
     currency = _currency(params, errors)
     asked = _text(params, "month")
