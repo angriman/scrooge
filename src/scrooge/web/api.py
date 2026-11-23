@@ -33,6 +33,7 @@ from scrooge import (
     months,
     networth,
     overview,
+    payouts,
     portfolio,
     query,
     recap,
@@ -666,6 +667,42 @@ def _cashflow(request: Request) -> Response:
     )
 
 
+def _income(request: Request) -> Response:
+    """What investments paid from `from` to `to`, in `currency`: the twelve months up to the
+    last day committed when no range is asked for."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        try:
+            query.check_names(conn, query.Filter(owner=asked.owner))
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        through = analysis.through(conn, asked.owner)
+        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
+        shown = wire.unless_rate_missing(
+            errors,
+            lambda: payouts.run(
+                conn,
+                first=asked.first,
+                last=asked.last,
+                owner=asked.owner,
+                currency=asked.currency,
+            ),
+            None,
+        )
+        found = logos(request, conn)
+    return JSONResponse(
+        {
+            "income": None if shown is None else wire.payouts_report(shown),
+            "logos": found,
+            "ranges": [] if through is None else _ranges(through, min(firsts).year),
+            "errors": errors,
+        }
+    )
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -685,6 +722,7 @@ routes = [
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
+    Route("/income", _income, name="api_income"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),
     Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),

@@ -14,7 +14,18 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
-from scrooge import importing, months, networth, overview, portfolio, query, recap, report, savings
+from scrooge import (
+    importing,
+    months,
+    networth,
+    overview,
+    payouts,
+    portfolio,
+    query,
+    recap,
+    report,
+    savings,
+)
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -548,4 +559,40 @@ def cashflow_report(shown: report.Report) -> JSON:
             for line in flow.totals
         ],
         "through": day(kept.through),
+    }
+
+
+def _paid(paid: payouts.Paid) -> JSON:
+    return {
+        "dividends": number(paid.dividends),
+        "interest": number(paid.interest),
+        "tax": number(paid.tax),
+    }
+
+
+def payouts_report(shown: payouts.Payouts) -> JSON:
+    """What investments paid over a range, in one currency: in all and against the same
+    months a year before, month by month, and holding by holding. Tax withheld is negative."""
+    return {
+        "currency": shown.currency,
+        "first": day(shown.first),
+        "last": day(shown.last),
+        "through": day(shown.through),
+        "totals": {**_paid(shown.totals), "net": number(shown.totals.net)},
+        "year_before": None
+        if shown.year_before is None
+        else {**_paid(shown.year_before), "net": number(shown.year_before.net)},
+        "months": [{"month": month.name, **_paid(month.paid)} for month in shown.months],
+        "holdings": [
+            {
+                "key": holding.key,
+                "name": holding.name,
+                "symbol": holding.symbol,
+                "account": holding.account,
+                **_paid(holding.paid),
+                "count": holding.count,
+                "last": day(holding.last),
+            }
+            for holding in shown.holdings
+        ],
     }
