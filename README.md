@@ -2,6 +2,7 @@
 
 [![check](https://github.com/angriman/scrooge/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/angriman/scrooge/actions/workflows/check.yml)
 [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fangriman%2Fscrooge%2Fbadges%2Fcoverage.json)](https://github.com/angriman/scrooge/actions/workflows/coverage.yml)
+[![version](https://img.shields.io/github/v/tag/angriman/scrooge?sort=semver&label=version)](https://github.com/angriman/scrooge/tags)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 
 Parses bank and broker statements, checks them against their own balances and keeps the
@@ -170,3 +171,8 @@ To add a bank or broker, see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-source).
 `make dev-db` builds a database from those fixtures alone (two invented people, every source,
 invented prices) in `output/dev/`, made again on every run, and prints how to serve it. It
 never empties a folder it did not make, nor the real database's.
+
+## License
+
+Apache License 2.0: see [LICENSE](LICENSE). Contributions are accepted under the same
+license.

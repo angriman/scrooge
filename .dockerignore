@@ -4,6 +4,7 @@
 *
 
 !pyproject.toml
+!LICENSE
 !uv.lock
 !src
 !src/**

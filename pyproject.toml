@@ -3,6 +3,8 @@ name = "scrooge"
 version = "0.1.0"
 description = "Parse bank and brokerage statements into a local database and web app"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 dependencies = [
     "jinja2>=3.1.6",
     "pdfplumber>=0.11",
@@ -29,7 +31,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # 77 reads `license` as an SPDX expression
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
