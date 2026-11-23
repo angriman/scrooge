@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
@@ -23,49 +22,26 @@ from scrooge.extractors import (
     swisscard,
     tastytrade,
 )
+from scrooge.extractors.source import CertificateSource, Reads, Source
 from scrooge.models import Extraction, PensionCertificate
 
-_Extractor = Callable[[str, str], Extraction]
-# (source name, what the text starts with, extractor)
-_TEXT_SOURCES: tuple[tuple[str, tuple[str, ...], _Extractor], ...] = (
-    ("ibkr", ("Statement,Header,",), ibkr.extract),
-    ("tastytrade", ("Date,Type,Sub Type,",), tastytrade.extract),
-    ("revolut", ("Type\tProduct\t", "Type,Product,"), revolut.extract),
-    ("revolut_savings", ("Date\tDescription\tValue, ",), revolut_savings.extract),
-    ("migros", ('"Estratto conto da:"', "Estratto conto da:;"), migros.extract),
-    (
-        "schwab",
-        ('"Date","Action","Symbol","Description","Quantity","FeesAndCommissions",',),
-        schwab.extract,
-    ),
-    (
-        "finpension",
-        (
-            "Date\tCategory\tAsset Name\t",
-            "Date;Category;Asset Name;",
-            "Date,Category,Asset Name,",
-            'Date;Category;"Asset Name";',  # newer exports quote the names that hold a space
-            'Date,Category,"Asset Name",',
-        ),
-        finpension.extract,
-    ),
+# Every source of statements, in the order they are asked whether a file is theirs.
+SOURCES: tuple[Source, ...] = (
+    ibkr.SOURCE,
+    tastytrade.SOURCE,
+    revolut.SOURCE,
+    revolut_savings.SOURCE,
+    migros.SOURCE,
+    schwab.SOURCE,
+    finpension.SOURCE,
+    swisscard.SOURCE,
+    morganstanley.SOURCE,
 )
+# Every issuer of the scanned pension certificates.
+CERTIFICATES: tuple[CertificateSource, ...] = (axa.SOURCE, servisa.SOURCE)
 # What each source's files are called on the import page and in `scrooge import`.
-LABELS = {
-    "ibkr": "IBKR activity statement",
-    "tastytrade": "Tastytrade transactions",
-    "revolut": "Revolut account statement",
-    "revolut_savings": "Revolut Savings statement",
-    "migros": "Migros Bank account statement",
-    "schwab": "Schwab Equity Awards transactions",
-    "finpension": "finpension pillar 3a transactions",
-    "swisscard": "Swisscard invoice",
-    "axa": "AXA pension certificate",
-    "servisa": "Servisa pension certificate",
-    "morganstanley": "Morgan Stanley stock plan statement",
-}
-# What only a card invoice's text says: its issuer.
-_CARD_ISSUER = "Swisscard AECS"
+_ALL: tuple[Source | CertificateSource, ...] = (*SOURCES, *CERTIFICATES)
+LABELS = {source.name: source.label for source in _ALL}
 # A UTF-8 byte-order mark that was read as Latin-1 and saved again (seen on re-saved exports).
 _GARBLED_MARK = "\u00ef\u00bb\u00bf"
 _TEXT_SUFFIXES = {".csv", ".tsv"}
@@ -77,13 +53,6 @@ class Scanned(NamedTuple):
     account: str  # the pension account it states the balance of
     adds_up: bool  # its own figures were checked against each other
     certificate: PensionCertificate
-
-
-# (recognises the text of a scan, extractor, account, whether its figures add up)
-_SCANS: tuple[tuple[Callable[[str], bool], Callable[[str], PensionCertificate], str, bool], ...] = (
-    (axa.recognises, axa.extract, axa.ACCOUNT, axa.ADDS_UP),
-    (servisa.recognises, servisa.extract, servisa.ACCOUNT, servisa.ADDS_UP),
-)
 
 
 def _is_pdf(path: Path) -> bool:
@@ -107,9 +76,9 @@ def load_certificate(path: Path) -> Scanned | None:
     if not _named_pdf(path) or not ocr.is_scan(path):
         return None
     text = ocr.read_text(path)
-    for recognises, extract, account, adds_up in _SCANS:
-        if recognises(text):
-            return Scanned(account, adds_up, extract(text))
+    for source in CERTIFICATES:
+        if source.recognises(text):
+            return Scanned(source.account, source.adds_up, source.extract(text))
     return None
 
 
@@ -122,18 +91,14 @@ def _pdf_statement(path: Path, name: str) -> tuple[str, Extraction] | None:
         except PdfminerException as exc:
             problem = f"{name} is named as a card invoice but is not a readable PDF"
             raise ExtractionError(problem) from exc
-        return "swisscard", swisscard.extract_account(text, name)
+        return swisscard.SOURCE.name, swisscard.SOURCE.extract(text, name)
     if ocr.is_scan(path):  # images of paper, and a file that is no PDF after all, have no text
         return None
     try:
         text = swisscard.read_text(path)
     except PdfminerException:
         return None
-    if _CARD_ISSUER in text:
-        return "swisscard", swisscard.extract_account(text, name)
-    if morganstanley.recognises(text):
-        return "morganstanley", morganstanley.extract(text, name)
-    return None
+    return _first(text, name, "pdf")
 
 
 def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
@@ -161,8 +126,24 @@ def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
         msg = "not UTF-8 text (an old export format?): export the statement again"
         raise ExtractionError(msg) from None
     text = text.removeprefix(_GARBLED_MARK)
-    for source, starts, extract in _TEXT_SOURCES:
-        if text.startswith(starts):
-            return source, extract(text, name)
+    found = _first(text, name, "text")
+    if found is not None:
+        return found
     msg = "not a statement format this parser knows: export it again or move it out of the folder"
     raise ExtractionError(msg)
+
+
+def _first(text: str, name: str, reads: Reads) -> tuple[str, Extraction] | None:
+    """What the first source read this way that recognises the text extracts from it.
+
+    A statement must give its rows something to be checked against: the balances or totals it
+    prints, or the accounts it prints nothing for, which the import then names.
+    """
+    for source in SOURCES:
+        if source.reads == reads and source.recognises(text):
+            extraction = source.extract(text, name)
+            if not (extraction.balances or extraction.controls or extraction.unreconciled):
+                msg = f"{source.label}: the extractor gives nothing to reconcile the rows against"
+                raise ExtractionError(msg)
+            return source.name, extraction
+    return None

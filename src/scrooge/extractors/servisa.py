@@ -16,9 +16,10 @@ import re
 
 from scrooge.errors import ExtractionError
 from scrooge.extractors.common import only_match, parse_swiss_amount, parse_swiss_date
+from scrooge.extractors.source import CertificateSource
 from scrooge.models import PensionCertificate
 
-SOURCE = "servisa"
+_NAME = "servisa"
 ACCOUNT = "Pillar 2 Servisa"  # one account per pension fund (and person, D14)
 CURRENCY = "CHF"
 ADDS_UP = False  # nothing on the page adds up to the total: the reader must compare it
@@ -57,4 +58,14 @@ def extract(content: str) -> PensionCertificate:
     if since > as_of:
         msg = f"Servisa: the insurance begins on {since}, after the leaving benefit's date {as_of}"
         raise ExtractionError(msg)
-    return PensionCertificate(SOURCE, as_of, CURRENCY, total, mandatory, since)
+    return PensionCertificate(_NAME, as_of, CURRENCY, total, mandatory, since)
+
+
+SOURCE = CertificateSource(
+    name=_NAME,
+    label="Servisa pension certificate",
+    account=ACCOUNT,
+    adds_up=ADDS_UP,
+    recognises=recognises,
+    extract=extract,
+)

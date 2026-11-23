@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import day_span, month_start, parse_decimal, read_table
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import Extraction, Kind, Transaction
 
 _DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
@@ -127,3 +128,12 @@ def _date(text: str) -> date:
     except (KeyError, ValueError):
         msg = f"cannot read date {text!r} (Revolut Savings)"
         raise ExtractionError(msg) from None
+
+
+SOURCE = Source(
+    name="revolut_savings",
+    label="Revolut Savings statement",
+    reads="text",
+    recognises=starts_with("Date\tDescription\tValue, "),
+    extract=extract,
+)
