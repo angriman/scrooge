@@ -1,12 +1,13 @@
 import sqlite3
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from scrooge import months, staging
 from scrooge.models import CashBalance, Kind
+from scrooge.months import Coverage
 from scrooge.router import LABELS
 from scrooge.storage import db
 from tests.storage.helpers import (
@@ -306,3 +307,51 @@ def test_a_statement_says_whether_it_is_committed_and_what_holds_it(
     assert committed is not None
     assert committed.committed_at == "2026-12-20T12:00:00+00:00"
     assert committed.held_by == ()  # nothing committed lies after it
+
+
+def _line(owner: str, account: str, committed: date | None, source: str = "migros") -> Coverage:
+    return Coverage(owner, account, source, committed, None)
+
+
+def test_an_account_is_behind_once_it_ends_over_35_days_before_its_persons_newest() -> None:
+    lines = (
+        _line("Anna", "Migros", date(2026, 10, 31)),
+        _line("Anna", "IBKR USD", date(2026, 9, 26), source="ibkr"),
+        _line("Anna", "Revolut", date(2026, 9, 25), source="revolut"),
+        _line("Anna", "Pillar 2", date(2025, 12, 31), source="axa"),
+        _line("Anna", "Swisscard", None, source="swisscard"),
+        _line("Lukas", "Migros", date(2026, 8, 31)),
+    )
+    # 35 days is not behind, 36 is; a pension certificate never is, nor an account with
+    # nothing committed, and each person is measured against their own newest account.
+    assert months.behind(lines) == (False, False, True, False, False, False)
+
+
+@pytest.mark.parametrize(
+    ("source", "allowed"),
+    [("finpension", 400), ("morganstanley", 100), ("tastytrade", 100), ("schwab", 100)],
+)
+def test_a_source_that_reports_less_often_is_behind_only_after_its_own_allowance(
+    source: str, allowed: int
+) -> None:
+    newest = date(2026, 10, 31)
+    lines = (
+        _line("Anna", "Migros", newest),
+        _line("Anna", "On time", newest - timedelta(days=allowed), source=source),
+        _line("Anna", "Late", newest - timedelta(days=allowed + 1), source=source),
+    )
+    assert months.behind(lines) == (False, False, True)
+
+
+def test_every_monthly_account_is_covered_up_to_the_earliest_end() -> None:
+    lines = (
+        _line("Anna", "Migros", date(2026, 10, 31)),
+        _line("Lukas", "Migros", date(2026, 9, 30)),
+        _line("Anna", "Pillar 2", date(2025, 12, 31), source="axa"),
+        _line("Anna", "Swisscard", None, source="swisscard"),
+        _line("Anna", "Finpension 3a", date(2026, 3, 12), source="finpension"),
+        _line("Anna", "Morgan Stanley", date(2026, 6, 30), source="morganstanley"),
+    )
+    # Those that report less often than monthly hold nothing back by ending earlier.
+    assert months.covered(lines) == date(2026, 9, 30)
+    assert months.covered(lines[2:]) is None

@@ -51,7 +51,7 @@
     {%- endfor %}
   </div>
   {%- endfor %}
-  <p class="legend"><span class="swatch committed"></span> committed <span class="swatch staged"></span> staged, not yet committed. A gap is a stretch no statement covers; an account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person.</p>
+  <p class="legend"><span class="swatch committed"></span> committed <span class="swatch staged"></span> staged, not yet committed. A gap is a stretch no statement covers; an account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person, or longer for one that reports less often (a quarter for Morgan Stanley, Tastytrade and Schwab, over a year for finpension).</p>
 </section>
 {%- endif %}
 {%- if timeline %}
@@ -78,7 +78,7 @@
       {%- endfor %}
     </tbody>
   </table>
-  <p class="note">An account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person: a statement is probably missing.</p>
+  <p class="note">An account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person, or longer for one that reports less often (a quarter for Morgan Stanley, Tastytrade and Schwab, over a year for finpension): a statement is probably missing.</p>
   <table class="cards">
     <thead>
       <tr><th>Person</th><th>Committed</th><th class="number">Transactions</th><th class="number">Staged</th></tr>
