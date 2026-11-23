@@ -20,6 +20,7 @@ from enum import StrEnum
 from scrooge import query
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
+from scrooge.storage import store
 from scrooge.storage.money import from_nano
 
 INCOME, EXPENSES, INVESTING = "entrate", "uscite", "investing"
@@ -123,12 +124,11 @@ def counted(conn: sqlite3.Connection, owner: str | None = None) -> list[Counted]
     """Every committed row of `owner` (of everyone) that counts, oldest first. For everyone,
     what the two paid each other is left out; for one person it is there, and marked."""
     query.check_names(conn, query.Filter(owner=owner))
-    kinds = ", ".join("?" * len(_NOT_COUNTED))
     found = conn.execute(
         "SELECT date, owner, account, kind, currency, category_side, "  # noqa: S608  # only "?" marks are interpolated
         "coalesce(category_parent, category), category, amount_nano, counterparty, "
         f"counterparty_owner FROM committed_transactions "
-        f"WHERE kind NOT IN ({kinds}) AND category_side <> 'transfer' "
+        f"WHERE kind NOT IN ({store.marks(len(_NOT_COUNTED))}) AND category_side <> 'transfer' "
         # One person: their rows. Everyone: all but what the two paid each other.
         "AND CASE WHEN ? IS NULL THEN counterparty_owner IS NULL ELSE owner = ? END "
         "ORDER BY date, id",

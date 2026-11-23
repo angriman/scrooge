@@ -44,7 +44,8 @@
 		{ label: 'Cash flow', icon: ArrowLeftRight, href: classic('/analysis'), current: false, classic: true },
 		{ label: 'Transactions', icon: ReceiptText, href: classic('/transactions'), current: false, classic: true },
 		{ label: 'Statements', icon: Files, ...ours('/statements') }
-	]);</script>
+	]);
+</script>
 
 <svelte:head>
 	<title>scrooge</title>

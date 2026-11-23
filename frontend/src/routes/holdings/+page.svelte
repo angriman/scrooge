@@ -27,12 +27,16 @@
 	);
 
 	// What the gain since bought is of, when some costs are not known: it would read as the
-	// whole otherwise.
+	// whole otherwise. It adds up the positions whose cost is known, as the gain does, so a
+	// holding whose cost is known in one account only counts with that account's part.
 	const costed = $derived.by(() => {
 		if (!held) return null;
-		const known = held.holdings.filter((holding) => holding.cost !== null);
-		const share = percentOf(sum(known.map((holding) => holding.value)), held.total);
-		return share === null ? null : { count: known.length, share };
+		const known = held.holdings.map((holding) =>
+			holding.positions.filter((position) => position.cost_native !== null)
+		);
+		const share = percentOf(sum(known.flat().map((position) => position.value)), held.total);
+		const count = known.filter((positions) => positions.length).length;
+		return share === null ? null : { count, share };
 	});
 
 	let open = $state<string | null>(null);
@@ -125,7 +129,7 @@
 			{people}
 		/>
 		{#if held.ladder.length && held.ladder_day}
-			<Bills ladder={held.ladder} from={held.ladder_day} />
+			<Bills ladder={held.ladder} from={held.ladder_day} {people} />
 		{/if}
 	</div>
 
