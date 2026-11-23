@@ -83,15 +83,15 @@ def load_certificate(path: Path) -> Scanned | None:
 
 
 def _pdf_statement(path: Path, name: str) -> tuple[str, Extraction] | None:
-    """A card invoice or a stock plan statement; None for any other PDF, and for one that is
-    no PDF, unless its name says it is a card invoice: then it is refused."""
+    """What the source that recognises the PDF's text extracts; None for any other PDF, and for
+    one that is no PDF, unless its name says it is a card invoice: then it is refused."""
     if "swisscard" in path.name.lower():
         try:
             text = swisscard.read_text(path)
         except PdfminerException as exc:
             problem = f"{name} is named as a card invoice but is not a readable PDF"
             raise ExtractionError(problem) from exc
-        return swisscard.SOURCE.name, swisscard.SOURCE.extract(text, name)
+        return _extract(swisscard.SOURCE, text, name)
     if ocr.is_scan(path):  # images of paper, and a file that is no PDF after all, have no text
         return None
     try:
@@ -110,8 +110,8 @@ def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
     A .csv/.tsv is always taken for a statement: one that no extractor recognises raises, since
     skipping it would drop a whole account from the month without a word.
 
-    A PDF is a card invoice when its name or its text says so, and a stock plan statement
-    when its text says so; any other PDF (the copy of the IBKR statement, a scan) is no
+    A PDF is a statement when a source that reads PDFs recognises its text, or a card invoice
+    when its name says so; any other PDF (the copy of the IBKR statement, a scan) is no
     statement here. `load_certificate` reads the scan of a pension certificate.
     """
     name = name or path.name
@@ -134,16 +134,21 @@ def load(path: Path, name: str = "") -> tuple[str, Extraction] | None:
 
 
 def _first(text: str, name: str, reads: Reads) -> tuple[str, Extraction] | None:
-    """What the first source read this way that recognises the text extracts from it.
+    """What the first source read this way that recognises the text extracts from it."""
+    for source in SOURCES:
+        if source.reads == reads and source.recognises(text):
+            return _extract(source, text, name)
+    return None
+
+
+def _extract(source: Source, text: str, name: str) -> tuple[str, Extraction]:
+    """What the source extracts from the text, refused when its rows cannot be checked.
 
     A statement must give its rows something to be checked against: the balances or totals it
     prints, or the accounts it prints nothing for, which the import then names.
     """
-    for source in SOURCES:
-        if source.reads == reads and source.recognises(text):
-            extraction = source.extract(text, name)
-            if not (extraction.balances or extraction.controls or extraction.unreconciled):
-                msg = f"{source.label}: the extractor gives nothing to reconcile the rows against"
-                raise ExtractionError(msg)
-            return source.name, extraction
-    return None
+    extraction = source.extract(text, name)
+    if not (extraction.balances or extraction.controls or extraction.unreconciled):
+        msg = f"{source.label}: the extractor gives nothing to reconcile the rows against"
+        raise ExtractionError(msg)
+    return source.name, extraction
