@@ -71,14 +71,19 @@ def _refused(errors: tuple[str, ...]) -> Response:
 
 
 def _session(request: Request) -> Response:
-    """What every screen needs: who there is, what the figures can be shown in, and what this
-    app lets a browser do. `token` goes with every change sent, once there are any."""
+    """What every screen needs: who there is and up to which day each one's statements are
+    all in, what the figures can be shown in, and what this app lets a browser do. `token` goes
+    with every change sent, once there are any."""
     state = request.app.state
     with db.reading(state.database) as conn:
         people = query.people(conn)
+        lines = months.coverage(conn)
     return JSONResponse(
         {
-            "people": [wire.person(person) for person in people],
+            "people": [
+                wire.person(p, months.covered([line for line in lines if line.owner == p.name]))
+                for p in people
+            ],
             "currencies": list(networth.CURRENCIES),
             "currency": state.currency,
             "read_only": state.read_only,

@@ -11,6 +11,8 @@ export interface Person {
 	last: Day | null;
 	staged: number;
 	transactions: number;
+	/** Up to this day every monthly account's statements are in; null: nothing is committed. */
+	covered: Day | null;
 }
 
 export interface Session {
