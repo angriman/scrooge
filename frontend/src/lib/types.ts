@@ -150,3 +150,84 @@ export interface Attention {
 	differ: number;
 	errors: string[];
 }
+
+/** One instrument in one account (src/scrooge/portfolio.py `Position`). Native figures are in
+ * the instrument's currency; `value` is in the currency asked for. */
+export interface Position {
+	owner: string;
+	account: string;
+	quantity: Amount;
+	/** The close it is valued at; null for a bill. */
+	price: Amount | null;
+	price_day: Day | null;
+	/** No close is stored: the price of a trade stands in. */
+	price_is_trade: boolean;
+	value_native: Amount;
+	value: Amount;
+	cost_native: Amount | null;
+	gain_native: Amount | null;
+	gain_percent: Amount | null;
+}
+
+/** One instrument, every account together, with its positions. */
+export interface HeldInstrument {
+	symbol: string;
+	name: string;
+	asset: string;
+	currency: string;
+	value: Amount;
+	/** Of all securities, in percent. */
+	share: Amount;
+	cost: Amount | null;
+	gain: Amount | null;
+	return_percent: Amount | null;
+	positions: Position[];
+}
+
+export interface SpreadSlice {
+	name: string;
+	value: Amount;
+	share: Amount;
+}
+
+/** A bill or bond held, valued on `ladder_day`; its face is what it repays. */
+export interface Rung {
+	symbol: string;
+	name: string;
+	owner: string;
+	account: string;
+	currency: string;
+	maturity: Day | null;
+	/** From `ladder_day` to the maturity; below zero: matured. */
+	days: number | null;
+	face: Amount;
+	value_native: Amount;
+	value: Amount;
+	interest: Amount | null;
+}
+
+export interface Portfolio {
+	currency: string;
+	day: Day | null;
+	through: Day | null;
+	total: Amount;
+	/** Of the positions whose cost is known: `unknown_cost` are in neither. */
+	cost: Amount;
+	gain: Amount;
+	return_percent: Amount | null;
+	unknown_cost: number;
+	accounts: number;
+	holdings: HeldInstrument[];
+	spread: Record<'asset' | 'currency' | 'account' | 'owner', SpreadSlice[]>;
+	ladder_day: Day | null;
+	ladder: Rung[];
+	/** The cash of the pension accounts: in Pillar 3a on the overview, not listed here. */
+	pension_cash: Amount | null;
+	notes: string[];
+}
+
+export interface Holdings {
+	holdings: Portfolio | null;
+	logos: Record<string, string>;
+	errors: string[];
+}

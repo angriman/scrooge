@@ -18,7 +18,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from scrooge import months, networth, overview, query, recap
+from scrooge import months, networth, overview, portfolio, query, recap
 from scrooge.storage import db, store
 from scrooge.web import forms, wire
 
@@ -145,10 +145,28 @@ def _attention(request: Request) -> Response:
     )
 
 
+def _holdings(request: Request) -> Response:
+    """What `owner`, or everyone, holds, in `currency`: `holdings` is null when nothing is
+    committed, or a rate is missing (`errors` says which)."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    today = request.app.state.clock().date()
+    with db.reading(request.app.state.database) as conn:
+        try:
+            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
+        except networth.MissingRateError as exc:
+            return JSONResponse({"holdings": None, "logos": {}, "errors": [wire.sentence(exc)]})
+        found = logos(request, conn)
+    shown = wire.holdings(held) if held.day else None
+    return JSONResponse({"holdings": shown, "logos": found, "errors": []})
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
     Route("/networth", _networth, name="api_networth"),
     Route("/month", _month, name="api_month"),
     Route("/attention", _attention, name="api_attention"),
+    Route("/holdings", _holdings, name="api_holdings"),
 ]
