@@ -149,7 +149,7 @@ read as complete.
 							<span class="block h-1.5 rounded-mark bg-sunken" aria-hidden="true">
 								<span
 									class="block h-full rounded-mark bg-ink-muted"
-									style:width="{(approximate(category.spent) / widest) * 100}%"
+									style:width="{(Math.max(0, approximate(category.spent)) / widest) * 100}%"
 								></span>
 							</span>
 							<span class="text-right"><Amount value={category.spent} places={0} /></span>

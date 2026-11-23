@@ -86,8 +86,8 @@ class NetWorth:
     days: tuple[date, ...]  # every day from the first anything is known for, oldest first
     lines: tuple[Line, ...]  # by owner and asset; kinds a person never held are absent
     notes: tuple[str, ...]  # what the reader must know about how a figure came about
-    # What came into view, by owner and asset: what an account brings as it starts to count,
-    # from the day it first does to the first day of its first statement (`Valued.opening`),
+    # What came into view, by owner and asset: the balance a cash series starts with, before its
+    # first day's rows, and the shares a statement says were held at its start (`Series.arrival`),
     # after the first day of all. Net worth rises by it without anything having been earned: a
     # change over days that takes it out is what moved.
     arrivals: tuple[Line, ...] = ()
@@ -162,6 +162,10 @@ class Series:
     instrument_id: int | None = None  # None: the cash of the account
     quantity: Decimal | None = None  # of the instrument, held at the end of the last day
     quote: Quote | None = None  # what the last day is valued at; None for cash and bills
+    # What it brings on the day it first counts, in `currency`: a cash balance the statements
+    # start from (before that day's rows), or what the shares held at the start of the history
+    # are worth that day; None when it starts from nothing (its rows, or shares bought)
+    arrival: tuple[date, Decimal] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,9 +193,6 @@ class Valued:
     # owner -> the last day their committed statements cover, or for one with typed figures
     # only, the last day typed: what they held then is carried to the last of `days`
     through: dict[str, date] = field(default_factory=dict)
-    # account -> the days it comes into view: from the first it counts on (its first booking,
-    # balance or holding) to the first day of its first statement, when what it held then counts
-    opening: dict[int, tuple[date, date]] = field(default_factory=dict)
 
     @property
     def covered(self) -> date:
@@ -203,18 +204,20 @@ def _days(first: date, last: date) -> tuple[date, ...]:
     return tuple(first + timedelta(days=n) for n in range((last - first).days + 1))
 
 
-def _last_days(conn: sqlite3.Connection, owner: str | None) -> dict[str, date]:
-    """owner -> the last day their committed statements cover. A pension certificate, the one
-    day it is dated, covers none around it: it counts only for a person who has nothing else."""
+def _last_days(conn: sqlite3.Connection, owner: str | None) -> tuple[dict[str, date], set[str]]:
+    """owner -> the last day their committed statements cover, and the owners whose only
+    statements are pension certificates. A certificate, the one day it is dated, covers none
+    around it: it counts only for a person who has nothing else."""
     rows = conn.execute(
         "SELECT o.name, max(f.period_end) FILTER (WHERE f.source NOT IN (?, ?)), "
         "max(f.period_end) FROM statement_files f JOIN owners o ON o.id = f.owner_id "
         "WHERE f.committed_at IS NOT NULL AND o.name = coalesce(?, o.name) GROUP BY o.name",
         (*CERTIFICATE_SOURCES, owner),
     ).fetchall()
-    return {
+    last = {
         str(name): date.fromisoformat(statements or latest) for name, statements, latest in rows
     }
+    return last, {str(name) for name, statements, _ in rows if statements is None}
 
 
 def _certified_days(conn: sqlite3.Connection, owner: str | None) -> dict[int, tuple[str, date]]:
@@ -295,7 +298,7 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
     None when nothing is committed, or nothing is known of what is.
     """
     query.check_names(conn, query.Filter(owner=owner))
-    last_days = _last_days(conn, owner)
+    last_days, certificates_only = _last_days(conn, owner)
     typed = _typed_days(conn, owner)
     if not last_days and not typed:
         return None
@@ -312,22 +315,11 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
         and holding.steps
         and holding.steps[0].day <= through[holding.account_id]
     ]
-    began: dict[int, date] = {}
-    firsts = [
-        *((account, min(booked)) for account, booked in flows.items() if booked),
-        *((account, min(known)) for account, known in anchors.items() if known),
-        *((holding.account_id, holding.steps[0].day) for holding in held),
-    ]
-    for account, first in firsts:
-        began[account] = min(first, began.get(account, first))
-    starts = list(began.values())
+    starts = [min(booked) for booked in flows.values()]
+    starts += [min(known) for known in anchors.values()]
+    starts += [holding.steps[0].day for holding in held]
     if not starts:
         return None
-    first_statements = _first_statements(conn)
-    opening = {
-        account: (first, max(first, first_statements.get(account, first)))
-        for account, first in began.items()
-    }
     last = max(
         [
             *last_days.values(),
@@ -341,32 +333,24 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
         f"The statements of {name} end on {day}: from then on, what was held that day is "
         f"valued at the closes and rates stored up to {last}."
         for name, day in sorted(last_days.items())
-        if day < last
+        if day < last and name not in certificates_only
     ]
     series = _cash(accounts, flows, anchors, days, notes)
     security_notes: list[str] = []
     series += _securities(conn, accounts, held, days, security_notes)
-    through_typed: dict[str, date] = {}
+    # How far each person is known: their statements; with certificates alone, the later of
+    # those and the figures typed.
+    known = {name: last_days[name] for name in certificates_only}
     for name, typed_day in typed.values():
-        through_typed[name] = max(typed_day, through_typed.get(name, typed_day))
+        known[name] = max(typed_day, known.get(name, typed_day))
+    known.update({n: d for n, d in last_days.items() if n not in certificates_only})
     return Valued(
         days,
         tuple(series),
         (*notes, *security_notes),
         tuple(security_notes),
-        {**through_typed, **last_days},
-        opening,
+        known,
     )
-
-
-def _first_statements(conn: sqlite3.Connection) -> dict[int, date]:
-    """account -> the first day of its first committed statement."""
-    rows = conn.execute(
-        "SELECT s.account_id, min(f.period_start) FROM statement_accounts s "
-        "JOIN statement_files f ON f.id = s.statement_file_id "
-        "WHERE f.committed_at IS NOT NULL GROUP BY s.account_id"
-    )
-    return {int(account): date.fromisoformat(day) for account, day in rows}
 
 
 # ---------------------------------------------------------------------------------- cash
@@ -463,8 +447,28 @@ def _cash(
             asset = PENSION
         elif account.kind == _CARRIED_FLAT and account.source is not None:
             asset = PILLAR2
-        series.append(Series(account.owner, account.id, asset, account.currency, values))
+        opening = _opening(booked, known)
+        series.append(
+            Series(
+                account.owner,
+                account.id,
+                asset,
+                account.currency,
+                values,
+                arrival=(min([*booked, *known]), from_nano(opening)) if opening else None,
+            )
+        )
     return series
+
+
+def _opening(booked: Mapping[date, _Flow], known: Mapping[date, int]) -> int:
+    """The balance an account's cash starts from, before the rows of its first day, in nano:
+    what its first balance says, less what was booked up to it. Zero when no balance is known,
+    the cash then adding up from its first row."""
+    if not known:
+        return 0
+    first = min(known)
+    return known[first] - sum(f.nano for day, f in booked.items() if day <= first)
 
 
 def _balances(
@@ -561,6 +565,13 @@ def _securities(
                 notes.append(f"{symbol} has no price at all: it is not counted.")
         if not any(values):
             continue
+        # Shares held before the history starts come into view with what they are worth on
+        # its first day; those bought then do not.
+        arrival = None
+        start = holding.steps[0]
+        if kind not in {"bill", "bond"} and holding.opening > 0 and start.quantity:
+            worth = values[(start.day - days[0]).days]
+            arrival = (start.day, worth * holding.opening / start.quantity)
         asset = PENSION if account.source == _PENSION_SOURCE else _BY_TYPE[kind]
         series.append(
             Series(
@@ -572,6 +583,7 @@ def _securities(
                 holding.instrument_id,
                 holding.on(days[-1]),
                 quote,
+                arrival,
             )
         )
     if unpriced:
@@ -748,14 +760,12 @@ def worth_of(conn: sqlite3.Connection, valued: Valued | None, currency: str) -> 
     for series in valued.series:
         converted = convert(series.values, series.currency, currency, rates)
         sums[series.owner, series.asset].append(converted)
-        # What the account gains on each of the days it comes into view: a share bought then
-        # with its cash moves nothing, the cash and the share each arriving with what they hold.
-        start, end = valued.opening.get(series.account_id, (first, first))
-        arrival = [Decimal(0)] * len(converted)
-        for index in range(max(1, (start - first).days), (end - first).days + 1):
-            arrival[index] = converted[index] - converted[index - 1]
-        if any(arrival):
-            came[series.owner, series.asset].append(arrival)
+        if series.arrival is None or series.arrival[0] <= first:
+            continue
+        index = (series.arrival[0] - first).days
+        native = [Decimal(0)] * len(converted)
+        native[index] = series.arrival[1]
+        came[series.owner, series.asset].append(convert(native, series.currency, currency, rates))
 
     def ordered(groups: Mapping[tuple[str, str], list[list[Decimal]]]) -> tuple[Line, ...]:
         return tuple(

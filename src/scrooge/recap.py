@@ -141,7 +141,7 @@ def run(
         income=totals.income,
         spent=totals.spent,
         arrived=sum(
-            worth.arrived[(shown - worth.days[0]).days : (last - worth.days[0]).days + 1],
+            worth.arrived[max(0, (shown - worth.days[0]).days) : (last - worth.days[0]).days + 1],
             Decimal(0),
         ),
         rate=totals.rate,

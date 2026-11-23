@@ -394,6 +394,22 @@ def test_a_person_with_certificates_alone_counts_up_to_the_last_of_them(
     assert valued.through == {OWNER: day(9)}
 
 
+@pytest.mark.parametrize(("typed_on", "known"), [(day(20), day(20)), (day(3), day(9))])
+def test_with_certificates_alone_a_later_typed_figure_says_how_far_a_person_is_known(
+    conn: sqlite3.Connection, typed_on: date, known: date
+) -> None:
+    staging.stage(conn, certified(certificate(day(5), "100"), certificate(day(9), "200")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    staging.type_balance(
+        conn, owner=OWNER, account="Old bank", day=typed_on, amount=D(50), currency="CHF"
+    )
+    valued = networth.value(conn, OWNER)
+    assert valued is not None
+    assert valued.through == {OWNER: known}
+    # No statement of theirs ends early: the certificates and the typed figure say so themselves.
+    assert not [note for note in valued.notes if note.startswith("The statements of")]
+
+
 def test_a_pension_fund_is_converted_like_any_cash_in_francs(conn: sqlite3.Connection) -> None:
     rate(conn, "EUR", day(1), "0.95")
     rate(conn, "EUR", day(15), "0.94")
@@ -1024,3 +1040,30 @@ def test_an_account_arrives_with_the_shares_its_first_statement_begins_with(
         day(1): D("550.00"),
     }
     assert result.by("asset", arrivals=True)[ETFS][(day(1) - result.days[0]).days] == D("550.00")
+
+
+def test_what_an_account_books_on_its_first_day_does_not_arrive_with_it(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    october = date(2026, 10, 1)
+    rows = spent("-20", october, account="Revolut CHF")
+    close(conn, account("revolut", "Revolut CHF", "CHF", "500", rows, month=october), month=october)
+    result = networth.run(conn, currency="CHF")
+    arrived = dict(zip(result.days, result.arrived, strict=True))
+    # It opens with 500 on the eve of its statement; the 20 spent on its first day is spending.
+    assert {when: amount for when, amount in arrived.items() if amount} == {day(30): D("500.00")}
+
+
+def test_shares_bought_on_the_first_day_do_not_arrive_with_those_held(
+    conn: sqlite3.Connection,
+) -> None:
+    august = date(2026, 8, 1)
+    close(conn, account("revolut", "Revolut USD", "USD", "100", month=august), month=august)
+    # 10 shares held when the statement starts, 5 more bought with its cash on its first day.
+    base = ibkr(bought("WIDG", "5", "-275", day(1)))
+    held = (Holding("IBKR USD", "WIDG", "USD", D(15), D(55), D(825), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
+    result = networth.run(conn, currency="USD")
+    etfs = result.by("asset", arrivals=True)[ETFS]
+    assert etfs[(day(1) - result.days[0]).days] == D("550.00")
