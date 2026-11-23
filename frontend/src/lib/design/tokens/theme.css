@@ -3,8 +3,9 @@
  * `fill-data-3`), never a colour, so that changing a theme changes no component. Tailwind's
  * own colours are left out: a class can only name a role. */
 
-/* `dark:` is the night theme, for the rare component that has to differ beyond its tokens. */
-@custom-variant dark (&:where([data-theme='night'], [data-theme='night'] *));
+/* `dark:` is the night theme, for the rare component that has to differ beyond its tokens:
+ * named, or worn by a page that names no theme (night.css). */
+@custom-variant dark (&:where([data-theme='night'], [data-theme='night'] *, :root:not([data-theme]), :root:not([data-theme]) *));
 
 @theme inline {
 	--color-*: initial;
