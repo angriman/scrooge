@@ -1,5 +1,8 @@
 # Contributing
 
+Contributions are licensed under the Apache License 2.0, like the rest of the project
+(section 5 of [LICENSE](LICENSE)).
+
 Every change comes as a pull request against `main`, and `make check` must pass: ruff,
 `mypy --strict`, and pytest with branch coverage. Never lower a threshold, loosen a rule, or
 skip a test to get there.

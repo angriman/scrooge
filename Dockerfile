@@ -38,6 +38,7 @@ WORKDIR /build
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
+COPY LICENSE ./
 COPY src ./src
 COPY --from=web /web/src/scrooge/web/spa ./src/scrooge/web/spa
 RUN uv sync --locked --no-dev --no-editable
