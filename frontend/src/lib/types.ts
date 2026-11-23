@@ -509,3 +509,32 @@ export interface CashFlow {
 	ranges: { label: string; from: string; to: string }[];
 	errors: string[];
 }
+
+/** A payment that comes back at a steady pace, as paid (positive). */
+export interface RecurringPayment {
+	name: string;
+	owner: string;
+	account: string;
+	every: 'monthly' | 'yearly';
+	amount: Amount;
+	currency: string;
+	/** What was paid before the latest amount, when the price changed. */
+	previous: Amount | null;
+	count: number;
+	first: string;
+	last: string;
+	next: string;
+	/** The latest amount over a month, in `Recurring.currency`; null when a rate is missing. */
+	monthly: Amount | null;
+}
+
+export interface Recurring {
+	currency: string;
+	/** The last day of the statements, the day the list is as of. */
+	through: string | null;
+	/** What the active ones cost a month; null when a rate is missing. */
+	monthly: Amount | null;
+	active: RecurringPayment[];
+	ended: RecurringPayment[];
+	errors: string[];
+}

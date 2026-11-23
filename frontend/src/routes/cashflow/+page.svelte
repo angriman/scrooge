@@ -7,6 +7,7 @@
 	import Income from '#lib/cashflow/Income.svelte';
 	import Lead from '#lib/cashflow/Lead.svelte';
 	import OverTime from '#lib/cashflow/OverTime.svelte';
+	import Recurring from '#lib/cashflow/Recurring.svelte';
 	import Spending from '#lib/cashflow/Spending.svelte';
 	import Table from '#lib/cashflow/Table.svelte';
 	import { partColors, rangeName } from '#lib/cashflow/names.js';
@@ -50,6 +51,13 @@
 		if (flow.first) query.set('from', flow.first);
 		if (flow.last) query.set('to', flow.last);
 		for (const [name, value] of Object.entries(changes)) query.set(name, value);
+		return `${resolve('/transactions')}?${query}`;
+	};
+	// The transactions of a recurring payment: all of them, whenever they were.
+	const allTransactions = (changes: Record<string, string>) => {
+		const query = new URLSearchParams(changes);
+		const owner = page.url.searchParams.get('owner');
+		if (owner) query.set('owner', owner);
 		return `${resolve('/transactions')}?${query}`;
 	};
 </script>
@@ -121,6 +129,10 @@
 	<div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
 		<Spending {report} {colors} {transactions} />
 		<Income {report} {transactions} />
+	</div>
+
+	<div class="mt-6">
+		<Recurring recurring={data.recurring} transactions={allTransactions} />
 	</div>
 
 	<div class="mt-6">
