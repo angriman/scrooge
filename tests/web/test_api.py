@@ -96,7 +96,14 @@ def test_an_empty_database_has_nothing_to_show(tmp_path: Path) -> None:
     assert figures["day"] is None
     assert figures["top"] == []
     series = client.get("/api/networth").json()["series"]
-    assert series == {"currency": "EUR", "first": None, "total": [], "parts": [], "notes": []}
+    assert series == {
+        "currency": "EUR",
+        "first": None,
+        "total": [],
+        "arrived": {},
+        "parts": [],
+        "notes": [],
+    }
 
 
 def test_a_missing_rate_is_said_and_the_rest_is_shown(client: TestClient) -> None:

@@ -86,15 +86,26 @@ class NetWorth:
     days: tuple[date, ...]  # every day from the first anything is known for, oldest first
     lines: tuple[Line, ...]  # by owner and asset; kinds a person never held are absent
     notes: tuple[str, ...]  # what the reader must know about how a figure came about
+    # What came into view, by owner and asset: what an account brings as it starts to count,
+    # from the day it first does to the first day of its first statement (`Valued.opening`),
+    # after the first day of all. Net worth rises by it without anything having been earned: a
+    # change over days that takes it out is what moved.
+    arrivals: tuple[Line, ...] = ()
 
     @property
     def total(self) -> tuple[Decimal, ...]:
         return _added(line.values for line in self.lines) or (Decimal(0),) * len(self.days)
 
-    def by(self, attribute: str) -> dict[str, tuple[Decimal, ...]]:
-        """The lines added up by "owner" or by "asset", in the order they are listed."""
+    @property
+    def arrived(self) -> tuple[Decimal, ...]:
+        """What came into view each day, everyone and every asset together."""
+        return _added(line.values for line in self.arrivals) or (Decimal(0),) * len(self.days)
+
+    def by(self, attribute: str, *, arrivals: bool = False) -> dict[str, tuple[Decimal, ...]]:
+        """The lines (their arrivals) added up by "owner" or by "asset", in the order they are
+        listed."""
         groups: dict[str, list[tuple[Decimal, ...]]] = {}
-        for line in self.lines:
+        for line in self.arrivals if arrivals else self.lines:
             groups.setdefault(getattr(line, attribute), []).append(line.values)
         return {name: _added(values) for name, values in groups.items()}
 
@@ -178,6 +189,9 @@ class Valued:
     # owner -> the last day their committed statements cover, or for one with typed figures
     # only, the last day typed: what they held then is carried to the last of `days`
     through: dict[str, date] = field(default_factory=dict)
+    # account -> the days it comes into view: from the first it counts on (its first booking,
+    # balance or holding) to the first day of its first statement, when what it held then counts
+    opening: dict[int, tuple[date, date]] = field(default_factory=dict)
 
     @property
     def covered(self) -> date:
@@ -298,11 +312,22 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
         and holding.steps
         and holding.steps[0].day <= through[holding.account_id]
     ]
-    starts = [min(booked) for booked in flows.values()]
-    starts += [min(known) for known in anchors.values()]
-    starts += [holding.steps[0].day for holding in held]
+    began: dict[int, date] = {}
+    firsts = [
+        *((account, min(booked)) for account, booked in flows.items() if booked),
+        *((account, min(known)) for account, known in anchors.items() if known),
+        *((holding.account_id, holding.steps[0].day) for holding in held),
+    ]
+    for account, first in firsts:
+        began[account] = min(first, began.get(account, first))
+    starts = list(began.values())
     if not starts:
         return None
+    first_statements = _first_statements(conn)
+    opening = {
+        account: (first, max(first, first_statements.get(account, first)))
+        for account, first in began.items()
+    }
     last = max(
         [
             *last_days.values(),
@@ -330,7 +355,18 @@ def value(conn: sqlite3.Connection, owner: str | None) -> Valued | None:
         (*notes, *security_notes),
         tuple(security_notes),
         {**through_typed, **last_days},
+        opening,
     )
+
+
+def _first_statements(conn: sqlite3.Connection) -> dict[int, date]:
+    """account -> the first day of its first committed statement."""
+    rows = conn.execute(
+        "SELECT s.account_id, min(f.period_start) FROM statement_accounts s "
+        "JOIN statement_files f ON f.id = s.statement_file_id "
+        "WHERE f.committed_at IS NOT NULL GROUP BY s.account_id"
+    )
+    return {int(account): date.fromisoformat(day) for account, day in rows}
 
 
 # ---------------------------------------------------------------------------------- cash
@@ -707,16 +743,29 @@ def worth_of(conn: sqlite3.Connection, valued: Valued | None, currency: str) -> 
         return NetWorth(currency, (), (), ())
     rates = rates_on(conn, valued.days)
     sums: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
+    came: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
+    first = valued.days[0]
     for series in valued.series:
         converted = convert(series.values, series.currency, currency, rates)
         sums[series.owner, series.asset].append(converted)
-    lines = tuple(
-        Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)))
-        for (owner_name, asset), parts in sorted(
-            sums.items(), key=lambda item: (item[0][0], ASSETS.index(item[0][1]))
+        # What the account gains on each of the days it comes into view: a share bought then
+        # with its cash moves nothing, the cash and the share each arriving with what they hold.
+        start, end = valued.opening.get(series.account_id, (first, first))
+        arrival = [Decimal(0)] * len(converted)
+        for index in range(max(1, (start - first).days), (end - first).days + 1):
+            arrival[index] = converted[index] - converted[index - 1]
+        if any(arrival):
+            came[series.owner, series.asset].append(arrival)
+
+    def ordered(groups: Mapping[tuple[str, str], list[list[Decimal]]]) -> tuple[Line, ...]:
+        return tuple(
+            Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)))
+            for (owner_name, asset), parts in sorted(
+                groups.items(), key=lambda item: (item[0][0], ASSETS.index(item[0][1]))
+            )
         )
-    )
-    return NetWorth(currency, valued.days, lines, valued.notes)
+
+    return NetWorth(currency, valued.days, ordered(sums), valued.notes, ordered(came))
 
 
 # What a statement calls an asset, and what that is here. Its total is set against the sum

@@ -117,10 +117,17 @@ def check(found: networth.Check) -> JSON:
     }
 
 
+def _days_of(values: Sequence[Decimal]) -> dict[str, str | None]:
+    """The days on which `values` are not zero, by their index from the first day."""
+    return {str(index): number(value) for index, value in enumerate(values) if value}
+
+
 def series(worth: networth.NetWorth, by: str) -> JSON:
     """Net worth day by day from `first`, and its parts by `by` ("asset" in the order of
-    `networth.STACK`, "owner" by name, "total" none)."""
+    `networth.STACK`, "owner" by name, "total" none). `arrived` is what came into view on the
+    days anything did (`networth.NetWorth.arrivals`), by the index of the day."""
     parts = worth.by(by) if by != "total" else {}
+    came = worth.by(by, arrivals=True) if by != "total" else {}
     if by == "asset":
         names: Sequence[str] = [name for name in networth.STACK if name in parts]
     else:
@@ -129,8 +136,14 @@ def series(worth: networth.NetWorth, by: str) -> JSON:
         "currency": worth.currency,
         "first": day(worth.days[0]) if worth.days else None,
         "total": [number(value) for value in worth.total] if worth.days else [],
+        "arrived": _days_of(worth.arrived) if worth.days else {},
         "parts": [
-            {"name": name, "values": [number(value) for value in parts[name]]} for name in names
+            {
+                "name": name,
+                "values": [number(value) for value in parts[name]],
+                "arrived": _days_of(came.get(name, ())),
+            }
+            for name in names
         ],
         "notes": list(worth.notes),
     }
