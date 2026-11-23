@@ -283,3 +283,44 @@ def holdings(held: portfolio.Portfolio) -> JSON:
         "pension_cash": number(held.pension_cash),
         "notes": list(held.notes),
     }
+
+
+def statement(file: months.Statement, original: str | None) -> JSON:
+    """One statement file; `original` is the address its file can be downloaded from, when it
+    is kept."""
+    return {
+        "id": file.id,
+        "filename": file.filename,
+        "label": file.label,
+        "first": day(file.first),
+        "last": day(file.last),
+        "checked": file.checked,
+        "transactions": file.transactions,
+        "committed": file.committed_at is not None,
+        "imported": file.imported_at[:10],
+        "original": original,
+    }
+
+
+def statements_account(
+    line: months.Coverage,
+    late: bool,
+    balance: Decimal | None,
+    spans: Sequence[months.Span],
+    files: Sequence[JSON],
+) -> JSON:
+    """An account a source feeds: how far it is committed and staged, whether it is behind, what
+    it holds now, the runs of days its statements cover, and the statements themselves."""
+    return {
+        **account(line),
+        "source": line.source,
+        "staged": day(line.staged),
+        "behind": late,
+        "monthly": months.monthly(line),
+        "balance": number(balance),
+        "spans": [
+            {"first": day(span.first), "last": day(span.last), "committed": span.committed}
+            for span in spans
+        ],
+        "statements": list(files),
+    }

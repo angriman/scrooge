@@ -4,7 +4,6 @@
 	import { assetColor, inOrder } from '#lib/design/data.js';
 	import { addDays } from '#lib/format/date.js';
 	import Allocation from '#lib/overview/Allocation.svelte';
-	import Checks from '#lib/overview/Checks.svelte';
 	import Holdings from '#lib/overview/Holdings.svelte';
 	import MonthSection from '#lib/overview/MonthSection.svelte';
 	import NetWorthCard from '#lib/overview/NetWorthCard.svelte';
@@ -116,7 +115,4 @@
 		<MonthSection recap={data.month.month} />
 	{/if}
 
-	{#if data.shown.checks.length}
-		<Checks checks={data.shown.checks} open={page.url.hash === '#checks'} {single} />
-	{/if}
 {/if}

@@ -295,3 +295,21 @@ def test_what_is_held_without_a_rate_says_so(client: TestClient, tmp_path: Path)
     conn.close()
     empty = TestClient(webapp.create_app(path), base_url=SITE)
     assert empty.get("/api/holdings").json() == {"holdings": None, "logos": {}, "errors": []}
+
+
+def test_every_account_is_sent_with_its_statements_and_what_it_holds(client: TestClient) -> None:
+    sent = client.get("/api/statements", params={"currency": "USD"}).json()
+    assert (sent["covered"], sent["errors"], sent["checks"]) == ("2026-09-30", [], [])
+    accounts = {(a["owner"], a["account"]): a for a in sent["accounts"]}
+    migros = accounts[OWNER, "Migros"]
+    assert (migros["committed"], migros["staged"], migros["behind"]) == ("2026-09-30", None, False)
+    assert (migros["balance"], migros["monthly"]) == ("875.00", True)
+    assert migros["spans"] == [{"first": "2026-09-01", "last": "2026-09-30", "committed": True}]
+    [statement] = migros["statements"]
+    assert (statement["filename"], statement["committed"], statement["original"]) == (
+        "Migros 2026-09.csv",
+        True,
+        None,
+    )
+    assert client.get("/api/statements", params={"currency": "JPY"}).json()["errors"]
+    assert client.get("/api/statements", params={"currency": "XYZ"}).status_code == 400

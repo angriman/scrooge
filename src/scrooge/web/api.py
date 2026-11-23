@@ -19,7 +19,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from scrooge import months, networth, overview, portfolio, query, recap
-from scrooge.storage import db, store
+from scrooge.storage import db, originals, store
 from scrooge.web import forms, wire
 
 _DIGEST = 12  # how much of a logo's digest its address carries, to change when the image does
@@ -162,6 +162,61 @@ def _holdings(request: Request) -> Response:
     return JSONResponse({"holdings": shown, "logos": found, "errors": []})
 
 
+def _statements(request: Request) -> Response:
+    """Every account a source feeds, of `owner` or of everyone: how far its statements go, what
+    it holds now in `currency`, the runs of days they cover and the statements themselves; the
+    day every monthly account is covered to; and the statements' own balances against those
+    worked out here."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    state = request.app.state
+    folder = originals.folder_of(state.database)
+    errors: list[str] = []
+    with db.reading(state.database) as conn:
+        query.check_names(conn, query.Filter(owner=asked.owner))
+        lines = months.coverage(conn, asked.owner)
+        tracks = {
+            (t.owner, t.account, t.source): t.spans for t in months.timeline(conn, asked.owner)
+        }
+        files = months.by_account(conn, asked.owner)
+        try:
+            balances = networth.balances(conn, networth.value(conn, asked.owner), asked.currency)
+            checks = networth.checks(conn, owner=asked.owner)
+        except networth.MissingRateError as exc:
+            errors.append(wire.sentence(exc))
+            balances, checks = {}, ()
+
+    def listed(statement: months.Statement) -> wire.JSON:
+        kept = originals.find(folder, statement.sha256, statement.filename)
+        address = str(request.url_for("original", number=statement.id)) if kept else None
+        return wire.statement(statement, address)
+
+    accounts = [
+        wire.statements_account(
+            line,
+            late,
+            balances.get((line.owner, line.account)),
+            tracks.get((line.owner, line.account, line.source), ()),
+            [
+                listed(s)
+                for s in files.get((line.owner, line.account), ())
+                if s.source == line.source
+            ],
+        )
+        for line, late in zip(lines, months.behind(lines), strict=True)
+    ]
+    return JSONResponse(
+        {
+            "currency": asked.currency,
+            "covered": wire.day(months.covered(lines)),
+            "accounts": accounts,
+            "checks": [wire.check(check) for check in checks],
+            "errors": errors,
+        }
+    )
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
@@ -169,4 +224,5 @@ routes = [
     Route("/month", _month, name="api_month"),
     Route("/attention", _attention, name="api_attention"),
     Route("/holdings", _holdings, name="api_holdings"),
+    Route("/statements", _statements, name="api_statements"),
 ]

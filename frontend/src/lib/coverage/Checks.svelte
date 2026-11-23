@@ -17,11 +17,7 @@ worked out here for the same accounts and day. Folded away unless asked for (`#c
 	const differing = $derived(checks.filter(differs).length);
 </script>
 
-<details
-	id="checks"
-	{open}
-	class="group mt-6 scroll-mt-20 rounded-panel bg-panel"
->
+<details id="checks" {open} class="group scroll-mt-20 rounded-panel bg-panel">
 	<summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
 		<span>
 			<span class="text-title font-medium text-ink">Balances against the statements</span>
