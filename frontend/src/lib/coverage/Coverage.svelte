@@ -114,7 +114,7 @@ statements, newest first, each with the file it came from.
 							type="button"
 							aria-expanded={expanded}
 							onclick={() => (open = expanded ? null : key)}
-							class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_7.5rem_auto]"
+							class="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_10rem_auto]"
 						>
 							<span class="min-w-0">
 								<span class="block truncate font-medium text-ink">{account.account}</span>
@@ -147,8 +147,13 @@ statements, newest first, each with the file it came from.
 									{/if}
 								{/each}
 							</span>
-							<span class="hidden text-right md:block">
-								{#if account.balance !== null}<Amount value={account.balance} {currency} places={0} />{/if}
+							<!-- What it holds: the figure of the row, beside the line on a wide screen. -->
+							<span class="text-right">
+								{#if account.balance !== null}
+									<Amount value={account.balance} {currency} places={0} class="text-title font-medium text-ink" />
+								{:else}
+									<span class="text-small text-ink-muted">Not known</span>
+								{/if}
 							</span>
 							<ChevronDown
 								class={cn('size-4 text-ink-muted transition-transform', expanded && 'rotate-180')}
@@ -158,9 +163,6 @@ statements, newest first, each with the file it came from.
 
 						{#if expanded}
 							<div class="px-4 pb-4">
-								<p class="mb-2 text-small text-ink-secondary md:hidden">
-									Holds {#if account.balance !== null}<Amount value={account.balance} {currency} places={0} />{:else}nothing known{/if}
-								</p>
 								<p class="mb-3 text-small text-ink-muted">
 									{account.label}{#if !account.monthly}<span class="block"
 											>Reports less often than monthly, so it counts as behind only after a longer wait.</span
@@ -208,8 +210,9 @@ statements, newest first, each with the file it came from.
 			</ul>
 		{/each}
 
-		<!-- The months of the line, under the rows. -->
-		<div class="relative mx-4 hidden h-6 md:ml-[calc(16rem+2rem)] md:mr-[calc(7.5rem+3rem)] md:block" aria-hidden="true">
+		<!-- The months of the line, under the rows: its margins are the columns either side of the
+		     line in a row (padding, name, gap; gap, balance, gap, chevron, padding). -->
+		<div class="relative mx-4 hidden h-6 md:ml-[calc(16rem+2rem)] md:mr-[calc(10rem+4rem)] md:block" aria-hidden="true">
 			{#each ticks as tick, index (index)}
 				{#if tick.label}
 					<span class="absolute top-1 -translate-x-1/2 text-caption whitespace-nowrap text-ink-muted" style:left="{tick.left}%">

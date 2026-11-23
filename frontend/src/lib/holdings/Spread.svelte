@@ -1,8 +1,8 @@
 <!--
 @component
-How securities are spread: by type, currency, account and (several people's) person, each a bar
-of the whole with its parts. It leads with what one bar cannot say: how much the largest single
-holding weighs.
+The allocation of securities, how they are spread: by type, currency, account and (several
+people's) person, each a bar of the whole with its parts. It leads with what one bar cannot say:
+how much the largest single holding weighs. The overview has the allocation of net worth.
 -->
 <script lang="ts">
 	import { assetColor, inOrder } from '#lib/design/data.js';
@@ -36,7 +36,7 @@ holding weighs.
 			: inOrder(lens.slices.map((slice) => slice.name));
 </script>
 
-<Panel title="How it is spread">
+<Panel title="Allocation" note="Of securities">
 	{#if largest}
 		<p class="mb-4 text-body text-ink-secondary">
 			The largest holding, <span class="text-ink">{largest.name || largest.symbol}</span>, is

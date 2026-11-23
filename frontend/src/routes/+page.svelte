@@ -98,6 +98,11 @@
 			/>
 		{/key}
 
+		<!-- The month next: how net worth moved in it and why, before what it is made of. -->
+		{#if data.month.month}
+			<MonthSection recap={data.month.month} />
+		{/if}
+
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
 			<Allocation
 				assets={figures.assets}
@@ -110,9 +115,5 @@
 			<Holdings top={figures.top} rest={figures.rest} logos={data.shown.logos} {currency} />
 		</div>
 	</div>
-
-	{#if data.month.month}
-		<MonthSection recap={data.month.month} />
-	{/if}
 
 {/if}

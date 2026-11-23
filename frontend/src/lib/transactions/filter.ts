@@ -12,6 +12,7 @@ export const FIELDS = [
 	'booking',
 	'account',
 	'category',
+	'merchant',
 	'kind',
 	'min',
 	'max'
@@ -34,6 +35,16 @@ const KINDS: Readonly<Record<string, string>> = {
 
 export function kindName(kind: string): string {
 	return KINDS[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1).replaceAll('_', ' ');
+}
+
+/** What the transactions can be cut to that a context is shown for, above the list. */
+export const DIMENSIONS = ['category', 'merchant', 'account'] as const;
+
+/** The one dimension the filter cuts the transactions to, with its value; null when it cuts
+ * them to none of them, or to more than one. */
+export function dimension(url: Address): { name: (typeof DIMENSIONS)[number]; value: string } | null {
+	const set = DIMENSIONS.filter((name) => url.searchParams.get(name));
+	return set.length === 1 ? { name: set[0], value: url.searchParams.get(set[0]) ?? '' } : null;
 }
 
 /** Whether any of the filter's fields is set: the page shows everything otherwise. */

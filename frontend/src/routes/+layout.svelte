@@ -8,6 +8,8 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import { coveredUpTo } from '#lib/coverage/covered.js';
+	import { day, dayOfYear } from '#lib/format/date.js';
 	import Choice from '#lib/ui/Choice.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { cn } from '#lib/ui/cn.js';
@@ -20,6 +22,8 @@
 
 	const owner = $derived(page.url.searchParams.get('owner') ?? EVERYONE);
 	const currency = $derived(page.url.searchParams.get('currency') ?? data.session.currency);
+	// Up to when the statements of whose figures are shown are all in.
+	const covered = $derived(coveredUpTo(data.session.people, owner));
 	const people = $derived([
 		{ value: EVERYONE, label: 'Household' },
 		...data.session.people.map((person) => ({ value: person.name, label: person.name }))
@@ -31,17 +35,17 @@
 		return query ? `?${query}` : '';
 	});
 	const ours = (
-		path: '/' | '/holdings' | '/cashflow' | '/statements' | '/transactions' | '/import'
+		path: '/' | '/cashflow' | '/investments' | '/accounts' | '/transactions' | '/import'
 	) => ({
 		href: resolve(path) + along,
 		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, '')
 	});
 	const pages = $derived([
 		{ label: 'Overview', icon: House, ...ours('/') },
-		{ label: 'Holdings', icon: ChartPie, ...ours('/holdings') },
 		{ label: 'Cash flow', icon: ArrowLeftRight, ...ours('/cashflow') },
-		{ label: 'Transactions', icon: ReceiptText, ...ours('/transactions') },
-		{ label: 'Statements', icon: Files, ...ours('/statements') }
+		{ label: 'Investments', icon: ChartPie, ...ours('/investments') },
+		{ label: 'Accounts', icon: Files, ...ours('/accounts') },
+		{ label: 'Transactions', icon: ReceiptText, ...ours('/transactions') }
 	]);
 </script>
 
@@ -75,6 +79,21 @@
 					</a>
 				{/each}
 			</nav>
+
+			<!-- Right before the switches, or on a phone at the end of the first line, by the name. -->
+			{#if covered}
+				<div class="flex-1 text-right">
+					<a
+						href={ours('/accounts').href}
+						aria-label={`Statements complete up to ${day(covered)}`}
+						title="Every monthly account's statements are in up to this day"
+						class="text-caption whitespace-nowrap text-ink-muted hover:text-ink-secondary"
+					>
+						<span class="hidden md:inline">Complete up to {day(covered)}</span>
+						<span class="md:hidden">Up to {dayOfYear(covered)}</span>
+					</a>
+				</div>
+			{/if}
 
 			<div class="ml-auto flex items-center gap-2">
 				{#if data.session.people.length > 1}

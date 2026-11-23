@@ -55,7 +55,7 @@ read as complete.
 	};
 </script>
 
-<section class="mt-10" aria-labelledby="month-title">
+<section aria-labelledby="month-title">
 	<header
 		class="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line pb-3"
 	>

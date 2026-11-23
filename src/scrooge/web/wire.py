@@ -26,6 +26,7 @@ from scrooge import (
     report,
     savings,
 )
+from scrooge.context import Context
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -56,7 +57,8 @@ def unless_rate_missing(errors: list[str], compute: Callable[[], _T], fallback: 
         return fallback
 
 
-def person(shown: query.Person) -> JSON:
+def person(shown: query.Person, covered: date | None) -> JSON:
+    """`covered`: the day up to which every monthly account of theirs is committed."""
     return {
         "name": shown.name,
         "committed": shown.committed,
@@ -64,6 +66,7 @@ def person(shown: query.Person) -> JSON:
         "last": day(shown.last),
         "staged": shown.staged,
         "transactions": shown.transactions,
+        "covered": day(covered),
     }
 
 
@@ -597,4 +600,28 @@ def recurring_payments(shown: recurring.Recurring) -> JSON:
         "active": [recurring_payment(each) for each in shown.active],
         "ended": [recurring_payment(each) for each in shown.ended],
         "errors": [sentence(exc) for exc in shown.errors],
+    }
+
+
+def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
+    """`shown` as `/api/transactions/context` sends it; `balance` is an account's, now."""
+    return {
+        "kind": shown.kind,
+        "name": shown.name,
+        "currency": shown.currency,
+        "earned": shown.earned,
+        "months": [
+            {"month": _month(month.first), "amount": number(month.amount)} for month in shown.months
+        ],
+        "usual": number(shown.usual),
+        "this_month": number(shown.this_month),
+        "through": day(shown.through),
+        "partial": shown.partial,
+        "merchants": None
+        if shown.merchants is None
+        else [
+            {"name": merchant.name, "amount": number(merchant.amount), "count": merchant.count}
+            for merchant in shown.merchants
+        ],
+        "balance": number(balance),
     }
