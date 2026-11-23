@@ -126,12 +126,18 @@ read as complete.
 				<div>
 					<dt class="text-caption text-ink-muted">Savings rate</dt>
 					<dd class="text-title">{recap.rate === null ? '–' : percent(recap.rate, 0)}</dd>
+					{#if recap.rate_salary !== null}
+						<dd class="text-caption text-ink-secondary">{percent(recap.rate_salary, 0)} of salary</dd>
+					{/if}
 				</div>
 				<div>
 					<dt class="text-caption text-ink-muted">12-month rate</dt>
 					<dd class="text-title">
 						{recap.rate_year === null ? '–' : percent(recap.rate_year, 0)}
 					</dd>
+					{#if recap.rate_salary_year !== null}
+						<dd class="text-caption text-ink-secondary">{percent(recap.rate_salary_year, 0)} of salary</dd>
+					{/if}
 				</div>
 			</dl>
 		</Panel>

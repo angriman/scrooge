@@ -7,7 +7,7 @@
 	import Allocation from '#lib/overview/Allocation.svelte';
 	import Holdings from '#lib/overview/Holdings.svelte';
 	import MonthSection from '#lib/overview/MonthSection.svelte';
-	import NetWorthCard from '#lib/overview/NetWorthCard.svelte';
+	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
 	import { daysBack, DEFAULT_RANGE, RANGES, rangeLabel, type Range } from '#lib/overview/range.js';
 	import { here, oneOf, show } from '#lib/view.js';
@@ -34,6 +34,16 @@
 			DEFAULT_RANGE
 		)
 	);
+	// The chart or the table of the month-ends: a view of the page, which loads nothing again.
+	const view = $derived(
+		oneOf(
+			here(),
+			'view',
+			VIEWS.map((option) => option.value),
+			'chart'
+		)
+	);
+	const months = $derived(view === 'table' ? data.monthEnds() : null);
 	const lastDay = $derived(
 		series?.first ? addDays(series.first, series.total.length - 1) : null
 	);
@@ -95,6 +105,10 @@
 				{breakdowns}
 				by={data.by}
 				onby={(by) => show(here(), { by: by === 'asset' ? null : by })}
+				{view}
+				onview={(chosen: View) =>
+					show(here(), { view: chosen === 'chart' ? null : chosen }, { shallow: true })}
+				{months}
 			/>
 		{/key}
 

@@ -114,6 +114,7 @@ class Counted:
     amount_nano: int  # signed, in `currency`
     counterparty: str
     counterparty_owner: str | None  # the other person, when they are the counterparty
+    id: str  # of the transaction: the transactions page lists the rows a figure adds up
 
     @property
     def investing(self) -> bool:
@@ -127,7 +128,7 @@ def counted(conn: sqlite3.Connection, owner: str | None = None) -> list[Counted]
     found = conn.execute(
         "SELECT date, owner, account, kind, currency, category_side, "  # noqa: S608  # only "?" marks are interpolated
         "coalesce(category_parent, category), category, amount_nano, counterparty, "
-        f"counterparty_owner FROM committed_transactions "
+        f"counterparty_owner, id FROM committed_transactions "
         f"WHERE kind NOT IN ({store.marks(len(_NOT_COUNTED))}) AND category_side <> 'transfer' "
         # One person: their rows. Everyone: all but what the two paid each other.
         "AND CASE WHEN ? IS NULL THEN counterparty_owner IS NULL ELSE owner = ? END "

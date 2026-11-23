@@ -29,6 +29,7 @@ from scrooge import (
     analysis,
     categories,
     classification,
+    context,
     marketdata,
     months,
     networth,
@@ -37,6 +38,7 @@ from scrooge import (
     portfolio,
     query,
     recap,
+    recurring,
     report,
     staging,
 )
@@ -71,14 +73,19 @@ def _refused(errors: tuple[str, ...]) -> Response:
 
 
 def _session(request: Request) -> Response:
-    """What every screen needs: who there is, what the figures can be shown in, and what this
-    app lets a browser do. `token` goes with every change sent, once there are any."""
+    """What every screen needs: who there is and up to which day each one's statements are
+    all in, what the figures can be shown in, and what this app lets a browser do. `token` goes
+    with every change sent, once there are any."""
     state = request.app.state
     with db.reading(state.database) as conn:
         people = query.people(conn)
+        lines = months.coverage(conn)
     return JSONResponse(
         {
-            "people": [wire.person(person) for person in people],
+            "people": [
+                wire.person(p, months.covered([line for line in lines if line.owner == p.name]))
+                for p in people
+            ],
             "currencies": list(networth.CURRENCIES),
             "currency": state.currency,
             "read_only": state.read_only,
@@ -703,6 +710,53 @@ def _income(request: Request) -> Response:
     )
 
 
+def _recurring(request: Request) -> Response:
+    """The payments that come back at a steady pace for `owner`, or for everyone, and what
+    they cost a month in `currency`."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            query.check_names(conn, query.Filter(owner=asked.owner))
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        found = recurring.run(conn, owner=asked.owner, currency=asked.currency)
+    return JSONResponse(wire.recurring_payments(found))
+
+
+def _transactions_context(request: Request) -> Response:
+    """Exactly one `category`, `merchant` or `account` of `owner`, month by month in
+    `currency`: the last months up to the one of the last day committed, the usual month
+    before it, and the merchants of a category or what an account holds now."""
+    asked = forms.context_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    errors: list[str] = []
+    empty = context.Context(asked.kind, asked.name, asked.currency, False, (), None, None, None)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = wire.unless_rate_missing(
+                errors,
+                lambda: context.run(
+                    conn, asked.kind, asked.name, owner=asked.owner, currency=asked.currency
+                ),
+                empty,
+            )
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        held = None
+        if asked.kind == "account":
+            held = wire.unless_rate_missing(
+                errors,
+                lambda: context.balance(
+                    conn, asked.name, owner=asked.owner, currency=asked.currency
+                ),
+                None,
+            )
+    return JSONResponse({**wire.transactions_context(shown, held), "errors": errors})
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -711,18 +765,44 @@ async def _uncommit(request: Request) -> Response:
     return await _remove(request, staging.uncommit)
 
 
+def _networth_months(request: Request) -> Response:
+    """Net worth at the end of every month for `owner`, newest first, in each currency of the
+    config's `currencies`, and in `currency` too when it is not one of them."""
+    asked = forms.networth_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    configured: tuple[str, ...] = request.app.state.currencies
+    currencies = [*configured, *(() if asked.currency in configured else (asked.currency,))]
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        valued = networth.value(conn, asked.owner)
+        ends = wire.unless_rate_missing(
+            errors, lambda: networth.month_ends(conn, valued, currencies), ()
+        )
+    return JSONResponse(
+        {
+            "currencies": currencies,
+            "months": [wire.month_end(end) for end in ends],
+            "errors": errors,
+        }
+    )
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
     Route("/networth", _networth, name="api_networth"),
+    Route("/networth/months", _networth_months, name="api_networth_months"),
     Route("/month", _month, name="api_month"),
     Route("/attention", _attention, name="api_attention"),
     Route("/holdings", _holdings, name="api_holdings"),
     Route("/statements", _statements, name="api_statements"),
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
+    Route("/transactions/context", _transactions_context, name="api_transactions_context"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
+    Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),
     Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),

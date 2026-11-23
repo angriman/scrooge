@@ -7,7 +7,8 @@ family's. What a pension fund takes from the salary before it is paid is not see
 is counted as it arrives.
 
 The savings rate of a period is that of the twelve months ending with it, on the same terms
-as the employer's share of income.
+as the employer's share of income. Beside the rate on income there is the rate on salary,
+the income from work alone: what was saved as a part of what work paid.
 """
 
 from __future__ import annotations
@@ -40,6 +41,11 @@ class Totals:
         return analysis.share(self.saved, self.income)
 
     @property
+    def rate_salary(self) -> Decimal | None:
+        """What was saved, as a part of the salary (the income from work); None without one."""
+        return analysis.share(self.saved, self.work)
+
+    @property
     def from_work(self) -> Decimal | None:
         return analysis.share(self.work, self.income)
 
@@ -51,6 +57,7 @@ class Period:
     last: date
     totals: Totals
     rate: Decimal | None  # the savings rate of the twelve months ending with it
+    rate_salary: Decimal | None  # the same, on the salary of those twelve months
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,8 +105,16 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     periods = []
     for name, days, inside in found.by_period(span, grouping):
         window = analysis.window(span, days)
-        rate = None if window is None else _totals(found.between(*window)).rate
-        periods.append(Period(name, *days, _totals(inside), rate))
+        year = None if window is None else _totals(found.between(*window))
+        periods.append(
+            Period(
+                name,
+                *days,
+                _totals(inside),
+                None if year is None else year.rate,
+                None if year is None else year.rate_salary,
+            )
+        )
     before = span.year_before()
     return Savings(
         currency,

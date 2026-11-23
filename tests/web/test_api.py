@@ -9,11 +9,14 @@ import pytest
 from starlette.testclient import TestClient
 
 from scrooge import overview, staging
+from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.storage.helpers import OCTOBER, OWNER, PARTNER, batch
-from tests.test_networth import NOW, account, close
+from tests.test_income import SALARY
+from tests.test_networth import NOW, account, close, spent
 from tests.test_overview import household
+from tests.web import builders
 from tests.web.test_login import STORED
 
 SITE = "http://127.0.0.1:8765"
@@ -43,6 +46,21 @@ def test_the_session_names_the_people_and_the_currencies(client: TestClient) -> 
     assert sent["read_only"] is False
     assert sent["signing"] is False
     assert sent["token"]
+
+    assert {person["covered"] for person in sent["people"]} == {"2026-09-30"}
+
+
+def test_the_session_says_up_to_which_day_each_persons_statements_are_in(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    builders.household(path)  # Lukas: August committed; Anna: September staged, none committed
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    covered = {p["name"]: p["covered"] for p in client.get("/api/session").json()["people"]}
+    assert covered == {OWNER: "2026-08-31", PARTNER: None}
+    conn = db.connect(path)
+    staging.commit(conn, owner=PARTNER, now=builders.BUILT)
+    conn.close()
+    covered = {p["name"]: p["covered"] for p in client.get("/api/session").json()["people"]}
+    assert covered == {OWNER: "2026-08-31", PARTNER: "2026-09-30"}
 
 
 def test_the_overview_is_the_services_figures_as_text(client: TestClient, database: Path) -> None:
@@ -140,6 +158,7 @@ def test_a_month_is_how_net_worth_moved_and_what_was_spent_as_text(client: TestC
         "-150.00",
     ]
     assert (shown["other"], shown["rate"], shown["rate_year"]) == ("22.50", None, None)
+    assert (shown["work"], shown["rate_salary"], shown["rate_salary_year"]) == ("0.00", None, None)
     assert shown["arrived"] == "0"
     assert shown["categories"] == [
         {"name": "Alimentari", "spent": "150.00", "usual": None, "against_usual": None}
@@ -148,6 +167,29 @@ def test_a_month_is_how_net_worth_moved_and_what_was_spent_as_text(client: TestC
     # August: the history starts on its last day, so how it moved is not known.
     august = client.get("/api/month", params={"month": "2026-08"}).json()["month"]
     assert (august["month"], august["before"], august["moved"]) == ("2026-08", None, None)
+
+
+def test_a_month_sends_what_was_saved_of_income_and_of_salary(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    rows = (
+        spent("5000", date(2026, 9, 25), **SALARY),
+        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interessi"),
+        spent("-1500", date(2026, 9, 10)),
+    )
+    close(conn, account("migros", "Migros", "CHF", "1000", *rows))
+    conn.close()
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    shown = client.get("/api/month").json()["month"]
+    # 4500 kept of the 6000 that came in, and of the 5000 of salary.
+    assert [shown[k] for k in ("income", "work", "rate", "rate_salary")] == [
+        "6000.00",
+        "5000.00",
+        "75.000",
+        "90.000",
+    ]
+    assert (shown["rate_year"], shown["rate_salary_year"]) == (None, None)
 
 
 def test_a_month_that_cannot_be_read_is_refused(client: TestClient) -> None:
