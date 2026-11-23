@@ -54,10 +54,13 @@ class Recap:
     before: Decimal | None  # net worth on the eve of the month; None: before the history
     after: Decimal  # net worth on `last`
     income: Decimal
+    work: Decimal  # the income from work, the salary
     spent: Decimal  # money out, less what came back
     arrived: Decimal  # what accounts held on the day they first counted, within the month
     rate: Decimal | None  # what was saved, as a part of income; None without income
     rate_year: Decimal | None  # the same, over the twelve months ending with the month
+    rate_salary: Decimal | None  # what was saved, as a part of the salary; None without one
+    rate_salary_year: Decimal | None  # the same, over the twelve months ending with the month
     categories: tuple[Category, ...]  # the largest first
     missing: tuple[months.Coverage, ...]  # monthly accounts whose statements end before `last`
     earlier: date | None  # the month before, when the history reaches it
@@ -139,6 +142,7 @@ def run(
         before=_on(worth, shown - timedelta(days=1)),
         after=worth.total[(last - worth.days[0]).days],
         income=totals.income,
+        work=totals.work,
         spent=totals.spent,
         arrived=sum(
             worth.arrived[max(0, (shown - worth.days[0]).days) : (last - worth.days[0]).days + 1],
@@ -146,6 +150,8 @@ def run(
         ),
         rate=totals.rate,
         rate_year=saved.periods[-1].rate if saved.periods else None,
+        rate_salary=totals.rate_salary,
+        rate_salary_year=saved.periods[-1].rate_salary if saved.periods else None,
         categories=tuple(
             Category(category.name, category.spent, category.usual) for category in spent.categories
         ),

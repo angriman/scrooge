@@ -76,7 +76,7 @@ most was spent at. Each opens its transactions over the same range.
 			<ul class="mt-2 divide-y divide-line">
 				{#each report.merchants as merchant (merchant.name)}
 					<li>
-						<a href={transactions({ text: merchant.name })} class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken">
+						<a href={transactions({ merchant: merchant.name })} class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken">
 							<span class="min-w-0 flex-1 truncate text-body text-ink">{merchant.name}</span>
 							<span class="hidden text-caption text-ink-muted sm:inline">{merchant.category}, {merchant.count}×</span>
 							<Amount value={merchant.spent} places={0} class="text-body text-ink" />

@@ -6,6 +6,7 @@ own currency, so every total is per currency: nothing is converted here.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -33,7 +34,9 @@ class Filter:
     booking date when `booking` is set. `category` is a name at either level of the taxonomy:
     a top-level category stands for all its leaves. `at_least` and `at_most` bound the size of
     the amount, whatever its sign. `text` is looked for in the counterparty and the
-    description, ignoring case.
+    description, ignoring case. `merchant` is who was paid as the cash flow names them
+    (`merchant`), ignoring case, and keeps only what the cash flow counts as spent there: no
+    income, transfer, trade or money paid back.
     """
 
     first: date | None = None
@@ -46,6 +49,19 @@ class Filter:
     at_least: Decimal | None = None
     at_most: Decimal | None = None
     text: str = ""
+    merchant: str | None = None
+
+
+_FEES = frozenset({Kind.COMMISSION, Kind.TAX, Kind.INTEREST})
+
+
+def merchant(kind: Kind, account: str, counterparty: str) -> str:
+    """Who was paid: the counterparty up to its first comma, without digits or signs; the
+    account for a fee, a tax, interest, or a row that names nobody."""
+    if kind in _FEES:
+        return account
+    name = re.sub(r"[\W\d_]+", " ", counterparty.partition(",")[0])
+    return " ".join(name.split()) or account
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +230,8 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         for r in found
         if needle in r["counterparty"].casefold() or needle in r["description"].casefold()
     )
+    if wanted.merchant is not None:
+        rows = _spent_at(conn, wanted.merchant, wanted.owner, rows)
 
     def day(row: Row) -> date:
         return row.booking_date if wanted.booking else row.date
@@ -246,6 +264,19 @@ def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
             whose = f" of {wanted.owner}" if what == "account" and wanted.owner else ""
             msg = f"no {what} named {name!r}{whose}"
             raise QueryError(msg)
+
+
+def _spent_at(
+    conn: sqlite3.Connection, name: str, owner: str | None, rows: tuple[Row, ...]
+) -> tuple[Row, ...]:
+    """The `rows` the cash flow counts as money spent at the merchant `name`, of `owner` or of
+    everyone: their total is then the figure the cash flow shows for it."""
+    # The cash flow reads its rows through this module: it is imported when asked for.
+    from scrooge import cashflow, spending  # noqa: PLC0415
+
+    at = spending.spent_at(name)
+    spent = {row.id for row in cashflow.counted(conn, owner) if at(row)}
+    return tuple(row for row in rows if row.id in spent)
 
 
 def _row(r: sqlite3.Row) -> Row:

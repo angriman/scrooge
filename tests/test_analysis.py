@@ -145,7 +145,7 @@ def test_the_window_of_a_whole_month_starts_on_the_first_of_a_month(day: date) -
 
 def converted(day: date, amount: str = "10") -> Converted:
     row = Counted(
-        day, "Lukas", "Migros", Kind.EXPENSE, "CHF", "expenses", "Spesa", "Spesa", 0, "", None
+        day, "Lukas", "Migros", Kind.EXPENSE, "CHF", "expenses", "Spesa", "Spesa", 0, "", None, "1"
     )
     return Converted(row, Decimal(amount))
 

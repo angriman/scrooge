@@ -8,6 +8,7 @@
 	import Lead from '#lib/cashflow/Lead.svelte';
 	import OverTime from '#lib/cashflow/OverTime.svelte';
 	import Spending from '#lib/cashflow/Spending.svelte';
+	import Table from '#lib/cashflow/Table.svelte';
 	import { partColors, rangeName } from '#lib/cashflow/names.js';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
@@ -36,15 +37,19 @@
 	const by = $derived(oneOf(page.url, 'by', ['month', 'quarter', 'year'], 'month'));
 	const VIEWS = [
 		{ value: 'time', label: 'Over time' },
-		{ value: 'flow', label: 'Flow' }
+		{ value: 'flow', label: 'Flow' },
+		{ value: 'table', label: 'Table' }
 	] as const;
-	const view = $derived(oneOf(here(), 'view', ['time', 'flow'], 'time'));
+	const view = $derived(oneOf(here(), 'view', ['time', 'flow', 'table'], 'time'));
 
-	// The transactions behind a line: the same person and the same range.
+	// The transactions behind a line: the same person, the same range, and the same currency
+	// for the months shown above them.
 	const transactions = (changes: Record<string, string>) => {
 		const query = new URLSearchParams();
-		const owner = page.url.searchParams.get('owner');
-		if (owner) query.set('owner', owner);
+		for (const name of ['owner', 'currency']) {
+			const value = page.url.searchParams.get(name);
+			if (value) query.set(name, value);
+		}
 		if (flow.first) query.set('from', flow.first);
 		if (flow.last) query.set('to', flow.last);
 		for (const [name, value] of Object.entries(changes)) query.set(name, value);
@@ -109,6 +114,8 @@
 		{/snippet}
 		{#if view === 'flow'}
 			<Flow {report} {colors} />
+		{:else if view === 'table'}
+			<Table periods={report.periods} totals={report.totals} currency={report.currency} />
 		{:else}
 			<OverTime periods={report.periods} {colors} currency={report.currency} />
 		{/if}

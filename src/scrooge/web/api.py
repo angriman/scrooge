@@ -29,6 +29,7 @@ from scrooge import (
     analysis,
     categories,
     classification,
+    context,
     marketdata,
     months,
     networth,
@@ -671,6 +672,38 @@ def _cashflow(request: Request) -> Response:
     )
 
 
+def _transactions_context(request: Request) -> Response:
+    """Exactly one `category`, `merchant` or `account` of `owner`, month by month in
+    `currency`: the last months up to the one of the last day committed, the usual month
+    before it, and the merchants of a category or what an account holds now."""
+    asked = forms.context_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    errors: list[str] = []
+    empty = context.Context(asked.kind, asked.name, asked.currency, False, (), None, None, None)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = wire.unless_rate_missing(
+                errors,
+                lambda: context.run(
+                    conn, asked.kind, asked.name, owner=asked.owner, currency=asked.currency
+                ),
+                empty,
+            )
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        held = None
+        if asked.kind == "account":
+            held = wire.unless_rate_missing(
+                errors,
+                lambda: context.balance(
+                    conn, asked.name, owner=asked.owner, currency=asked.currency
+                ),
+                None,
+            )
+    return JSONResponse({**wire.transactions_context(shown, held), "errors": errors})
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -689,6 +722,7 @@ routes = [
     Route("/statements", _statements, name="api_statements"),
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
+    Route("/transactions/context", _transactions_context, name="api_transactions_context"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),

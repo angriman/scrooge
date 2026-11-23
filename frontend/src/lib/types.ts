@@ -135,6 +135,11 @@ export interface MonthRecap {
 	/** Saved, in percent of income: the month's, and the twelve months' ending with it. */
 	rate: Amount | null;
 	rate_year: Amount | null;
+	/** The income from work, the salary. */
+	work: Amount;
+	/** Saved, in percent of salary: the month's, and the twelve months' ending with it. */
+	rate_salary: Amount | null;
+	rate_salary_year: Amount | null;
 	categories: MonthCategory[];
 	/** Monthly accounts whose statements end before `last`. */
 	missing: Account[];
@@ -424,6 +429,10 @@ export interface Saved {
 	rate: Amount | null;
 	/** The share of income from work, in percent. */
 	from_work: Amount | null;
+	/** The income from work, the salary. */
+	work: Amount;
+	/** What was saved in percent of salary; null without salary. */
+	rate_salary: Amount | null;
 }
 
 export interface CashFlowPeriod extends Saved {
@@ -433,6 +442,8 @@ export interface CashFlowPeriod extends Saved {
 	last: string;
 	/** The savings rate of the twelve months ending with it. */
 	rate_12: Amount | null;
+	/** The same, on the salary of those twelve months. */
+	rate_salary_12: Amount | null;
 	/** Spent in each of `CashFlowReport.parts`. */
 	spent_by: Record<string, Amount>;
 	/** Earned in each income group (Lavoro, Investimenti, Altro). */
@@ -498,5 +509,28 @@ export interface CashFlow {
 	by: 'week' | 'month' | 'quarter' | 'year';
 	/** The ranges offered, as `from` and `to` take them. */
 	ranges: { label: string; from: string; to: string }[];
+	errors: string[];
+}
+
+/** One category, merchant or account over the last two years (`/api/transactions/context`). */
+export interface TransactionsContext {
+	kind: 'category' | 'merchant' | 'account';
+	name: string;
+	currency: string;
+	/** The amounts are money earned (a category of income), not money spent. */
+	earned: boolean;
+	/** Two years of months up to the one of `through`, oldest first; none when nothing is
+	 * committed or a rate is missing. */
+	months: { month: string; amount: Amount }[];
+	/** The median of the twelve months before the last; null when they are not all known. */
+	usual: Amount | null;
+	this_month: Amount | null;
+	through: Day | null;
+	/** The last month is not over in the statements committed. */
+	partial: boolean;
+	/** For a category: where most was spent (or earned from) over those months. */
+	merchants: { name: string; amount: Amount; count: number }[] | null;
+	/** For an account: what it holds now. */
+	balance: Amount | null;
 	errors: string[];
 }

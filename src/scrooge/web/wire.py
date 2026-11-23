@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 from scrooge import importing, months, networth, overview, portfolio, query, recap, report, savings
+from scrooge.context import Context
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -189,6 +190,9 @@ def month(shown: recap.Recap) -> JSON:
         "other": number(shown.other),
         "rate": _percent(shown.rate),
         "rate_year": _percent(shown.rate_year),
+        "work": number(shown.work),
+        "rate_salary": _percent(shown.rate_salary),
+        "rate_salary_year": _percent(shown.rate_salary_year),
         "categories": [
             {
                 "name": c.name,
@@ -463,6 +467,8 @@ def _totals(totals: savings.Totals | None) -> JSON | None:
         "saved": number(totals.saved),
         "rate": _percent(totals.rate),
         "from_work": _percent(totals.from_work),
+        "work": number(totals.work),
+        "rate_salary": _percent(totals.rate_salary),
     }
 
 
@@ -485,6 +491,7 @@ def cashflow_report(shown: report.Report) -> JSON:
                 "last": day(period.last),
                 **(_totals(period.totals) or {}),
                 "rate_12": _percent(period.rate),
+                "rate_salary_12": _percent(period.rate_salary),
                 "spent_by": {
                     name: number(value) for name, value in spent_in.get(period.name, {}).items()
                 },
@@ -550,4 +557,28 @@ def cashflow_report(shown: report.Report) -> JSON:
             for line in flow.totals
         ],
         "through": day(kept.through),
+    }
+
+
+def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
+    """`shown` as `/api/transactions/context` sends it; `balance` is an account's, now."""
+    return {
+        "kind": shown.kind,
+        "name": shown.name,
+        "currency": shown.currency,
+        "earned": shown.earned,
+        "months": [
+            {"month": _month(month.first), "amount": number(month.amount)} for month in shown.months
+        ],
+        "usual": number(shown.usual),
+        "this_month": number(shown.this_month),
+        "through": day(shown.through),
+        "partial": shown.partial,
+        "merchants": None
+        if shown.merchants is None
+        else [
+            {"name": merchant.name, "amount": number(merchant.amount), "count": merchant.count}
+            for merchant in shown.merchants
+        ],
+        "balance": number(balance),
     }
