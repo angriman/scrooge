@@ -14,9 +14,11 @@ repayment, the money that comes back first.
 		ladder: Rung[];
 		/** The day the bills are valued on and counted from: today. */
 		from: string;
+		/** Whether several people's bills are listed: each says whose it is. */
+		people: boolean;
 	}
 
-	let { ladder, from }: Props = $props();
+	let { ladder, from, people }: Props = $props();
 
 	const dated = $derived(ladder.filter((rung) => rung.maturity !== null));
 	const first = $derived(dated.find((rung) => (rung.days ?? -1) >= 0));
@@ -81,7 +83,9 @@ repayment, the money that comes back first.
 				<tr class="border-t border-line">
 					<td class="py-2">
 						{rung.maturity ? day(rung.maturity) : 'no maturity'}
-						<span class="block text-caption text-ink-muted">{when(rung)}</span>
+						<span class="block text-caption text-ink-muted">
+							{when(rung)} · {rung.account}{#if people}, {rung.owner}{/if}
+						</span>
 					</td>
 					<td class="py-2 text-right tabular-nums">
 						{money(rung.face, 0)} <span class="text-caption text-ink-muted">{rung.currency}</span>
