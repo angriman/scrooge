@@ -8,7 +8,8 @@ import {
 	month,
 	monthName,
 	monthOf,
-	toDate
+	toDate,
+	weekday
 } from './date.js';
 
 describe('days', () => {
@@ -47,5 +48,12 @@ describe('days', () => {
 
 	it('refuses what is not an ISO day', () => {
 		expect(() => day('30.09.2026')).toThrow(RangeError);
+	});
+});
+
+describe('a day in a list of days', () => {
+	it('names its weekday, and its year only when it is another', () => {
+		expect(weekday('2026-09-15', 2026)).toBe('Tue 15 Sep');
+		expect(weekday('2025-12-31', 2026)).toBe('Wed 31 Dec 2025');
 	});
 });

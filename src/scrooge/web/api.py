@@ -12,13 +12,18 @@ pages' header is theirs, and a frontend of its own keeps its own choice.
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
+from urllib.parse import urlsplit
 
+from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from scrooge import months, networth, overview, portfolio, query, recap
+from scrooge import months, networth, overview, portfolio, query, recap, staging
+from scrooge.models import Kind
 from scrooge.storage import db, originals, store
 from scrooge.web import forms, wire
 
@@ -56,6 +61,8 @@ def _session(request: Request) -> Response:
             "currency": state.currency,
             "read_only": state.read_only,
             "signing": state.access is not None,
+            # Whether a category chosen can be remembered as a rule for the next import.
+            "rules": state.rules is not None,
             "token": state.token,
         }
     )
@@ -217,6 +224,110 @@ def _statements(request: Request) -> Response:
     )
 
 
+_PAGE = 100  # rows sent at once, unless fewer or more (up to `_MOST`) are asked for
+_MOST = 500
+
+
+def _count(params: dict[str, str], name: str, default: int, most: int) -> int:
+    text = params.get(name, "")
+    return min(int(text), most) if text.isdecimal() and len(text) <= 6 else default
+
+
+def _transactions(request: Request) -> Response:
+    """The committed rows that match the filter of the transactions page, newest first,
+    `limit` of them from `offset`; what all that match add up to, in all and by category; how
+    often each comes back; and what the filters can be set to."""
+    params = dict(request.query_params)
+    parsed = forms.transactions_filter(params)
+    if parsed.errors:
+        return _refused(parsed.errors)
+    wanted = parsed.wanted
+    with db.reading(request.app.state.database) as conn:
+        try:
+            result = query.run(conn, wanted)
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        every = query.recurring(query.run(conn, query.Filter(owner=wanted.owner)).rows)
+        found = query.choices(conn, wanted.owner)
+    offset = _count(params, "offset", 0, len(result.rows))
+    limit = _count(params, "limit", _PAGE, _MOST)
+    newest = result.rows[::-1][offset : offset + limit]
+    return JSONResponse(
+        {
+            "count": len(result.rows),
+            "offset": offset,
+            "totals": [
+                {"currency": s.currency, "count": s.count, "total": wire.number(s.total)}
+                for s in result.totals
+            ],
+            "by_category": [
+                {
+                    "name": c.name,
+                    "currency": c.currency,
+                    "count": c.count,
+                    "total": wire.number(c.total),
+                }
+                for c in query.by_category(result.rows)
+            ],
+            "rows": [wire.transaction(row, every.get(row.id)) for row in newest],
+            "choices": wire.choices(found),
+            "kinds": [kind.value for kind in Kind],
+            "errors": [],
+        }
+    )
+
+
+def _writable(request: Request, token: str) -> None:
+    """Refuse a change sent from another site, without the token of these pages, or to a copy
+    that is only shown here."""
+    state = request.app.state
+    origin = request.headers.get("origin", "null")
+    if origin != "null" and urlsplit(origin).hostname not in state.hosts:
+        raise HTTPException(403)
+    if not secrets.compare_digest(token.encode(), state.token.encode()):
+        raise HTTPException(403)
+    if state.read_only:
+        raise HTTPException(403)
+
+
+async def _categorize(request: Request) -> Response:
+    """Give committed rows of one person another category, `{"owner", "ids", "category",
+    "remember"}`: remembered as a rule for the next imports when asked and when rules are
+    kept."""
+    _writable(request, request.headers.get("x-token", ""))
+    try:
+        sent = await request.json()
+    except ValueError:
+        sent = None
+    if not isinstance(sent, dict) or not isinstance(sent.get("ids"), list):
+        return _refused(("Send the owner, the ids of the rows and the category as JSON.",))
+    state = request.app.state
+    owner, category = str(sent.get("owner", "")), str(sent.get("category", ""))
+    ids = [str(row) for row in sent.get("ids", [])]
+    remember = sent.get("remember") is True and state.rules is not None
+
+    def change() -> int:
+        conn = db.connect(state.database)
+        try:
+            return staging.categorize(
+                conn,
+                owner=owner,
+                ids=ids,
+                category=category,
+                now=state.clock(),
+                remember=state.rules.of(owner) if remember else None,
+                change=True,
+            )
+        finally:
+            conn.close()
+
+    try:
+        changed = await run_in_threadpool(change)
+    except (staging.StagingError, store.UnknownCategoryError) as exc:
+        return JSONResponse({"changed": 0, "errors": [wire.sentence(exc)]}, 409)
+    return JSONResponse({"changed": changed, "errors": []})
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
@@ -225,4 +336,6 @@ routes = [
     Route("/attention", _attention, name="api_attention"),
     Route("/holdings", _holdings, name="api_holdings"),
     Route("/statements", _statements, name="api_statements"),
+    Route("/transactions", _transactions, name="api_transactions"),
+    Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
 ]
