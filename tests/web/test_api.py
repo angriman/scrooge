@@ -402,3 +402,43 @@ def test_a_copy_refuses_every_change(database: Path) -> None:
     sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Affitto"}
     headers = {"X-Token": session["token"]}
     assert copy.post("/api/transactions/category", json=sent, headers=headers).status_code == 403
+
+
+def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: TestClient) -> None:
+    sent = client.get("/api/cashflow").json()
+    assert (sent["first"], sent["last"], sent["by"], sent["errors"]) == (
+        "2026-01-01",
+        None,
+        "month",
+        [],
+    )
+    assert [r["label"] for r in sent["ranges"]] == ["Year to date", "Last 12 months"]
+    shown = sent["report"]
+    assert shown["currency"] == "CHF"
+    assert [period["name"] for period in shown["periods"]][-1] == "2026-09"
+    assert shown["periods"][-1]["spent_by"] == {"Alimentari": "120.00"}
+    assert [category["name"] for category in shown["categories"]] == ["Alimentari"]
+    assert shown["totals"]["spent"] == "120.00"
+    assert {line["currency"] for line in shown["as_paid"]} <= {"CHF", "EUR", "USD"}
+    quarters = client.get("/api/cashflow", params={"by": "quarter", "from": "2026-07"}).json()
+    assert [period["name"] for period in quarters["report"]["periods"]] == ["2026-Q3"]
+
+
+def test_a_cash_flow_that_cannot_be_read_is_refused(client: TestClient) -> None:
+    assert client.get("/api/cashflow", params={"by": "decade"}).status_code == 400
+    assert client.get("/api/cashflow", params={"owner": "Zoe"}).status_code == 400
+    assert client.get("/api/cashflow", params={"currency": "XYZ"}).status_code == 400
+
+
+def test_an_empty_database_has_no_cash_flow(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    conn.close()
+    sent = TestClient(webapp.create_app(path), base_url=SITE).get("/api/cashflow").json()
+    assert (sent["first"], sent["ranges"], sent["errors"]) == (None, [], [])
+
+
+def test_rates_and_shares_of_the_cash_flow_are_in_percent(client: TestClient) -> None:
+    shown = client.get("/api/cashflow").json()["report"]
+    assert shown["categories"][0]["share"] == "100.000"

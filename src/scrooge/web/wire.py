@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
-from scrooge import importing, months, networth, overview, portfolio, query, recap
+from scrooge import importing, months, networth, overview, portfolio, query, recap, report, savings
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -449,4 +449,103 @@ def imported(done: importing.Read) -> JSON:
         "already": staged.already if staged else 0,
         "differences": list(staged.differences) if staged else [],
         "later": staged.later if staged else 0,
+    }
+
+
+def _totals(totals: savings.Totals | None) -> JSON | None:
+    if totals is None:
+        return None
+    return {
+        "income": number(totals.income),
+        "spent": number(totals.spent),
+        "saved": number(totals.saved),
+        "rate": _percent(totals.rate),
+        "from_work": _percent(totals.from_work),
+    }
+
+
+def cashflow_report(shown: report.Report) -> JSON:
+    """The cash flow of a range: what was saved, where the money went and where it came from,
+    period by period and in all, converted into one currency; and income and expenses in each
+    currency as they were paid."""
+    spent, earned, kept, flow = shown.spending, shown.income, shown.savings, shown.cashflow
+    # The same periods, by name: one of them may leave out those it has nothing for.
+    spent_in = {period.name: period.parts for period in spent.periods}
+    earned_in = {period.name: period.groups for period in earned.periods}
+    return {
+        "currency": spent.currency,
+        "totals": _totals(kept.totals),
+        "year_before": _totals(kept.year_before),
+        "periods": [
+            {
+                "name": period.name,
+                "first": day(period.first),
+                "last": day(period.last),
+                **(_totals(period.totals) or {}),
+                "rate_12": _percent(period.rate),
+                "spent_by": {
+                    name: number(value) for name, value in spent_in.get(period.name, {}).items()
+                },
+                "earned_by": {
+                    name: number(value) for name, value in earned_in.get(period.name, {}).items()
+                },
+            }
+            for period in kept.periods
+        ],
+        "parts": list(spent.parts),
+        "months": spent.months,
+        "paid_back": number(spent.paid_back),
+        "categories": [
+            {
+                "name": category.name,
+                "count": category.count,
+                "spent": number(category.spent),
+                "share": _percent(category.share),
+                "monthly": number(category.monthly),
+                "usual": number(category.usual),
+                "year_before": number(category.year_before),
+                "leaves": [
+                    {"name": leaf.name, "count": leaf.count, "spent": number(leaf.spent)}
+                    for leaf in category.leaves
+                ],
+            }
+            for category in spent.categories
+        ],
+        "merchants": [
+            {
+                "name": merchant.name,
+                "category": merchant.category,
+                "count": merchant.count,
+                "spent": number(merchant.spent),
+                "first": day(merchant.first),
+                "last": day(merchant.last),
+            }
+            for merchant in spent.merchants
+        ],
+        "other_merchants": {"count": spent.other_merchants, "spent": number(spent.other_spent)},
+        "sources": [
+            {"group": s.group, "name": s.leaf, "count": s.count, "total": number(s.total)}
+            for s in earned.sources
+        ],
+        "as_paid": [
+            {
+                "period": balance.period,
+                "currency": balance.currency,
+                "income": number(balance.income),
+                "expenses": number(balance.expenses),
+                "investing": number(balance.investing),
+            }
+            for balance in flow.balances
+        ],
+        "as_paid_totals": [
+            {
+                "currency": line.currency,
+                "side": line.side,
+                "category": line.category,
+                "count": line.count,
+                "total": number(line.total),
+            }
+            for line in flow.totals
+        ],
+        "through": day(kept.through),
     }
