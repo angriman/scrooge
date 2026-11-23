@@ -14,18 +14,36 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
+from collections.abc import Callable
 from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from scrooge import months, networth, overview, portfolio, query, recap, staging
+from scrooge import (
+    categories,
+    classification,
+    marketdata,
+    months,
+    networth,
+    overview,
+    portfolio,
+    query,
+    recap,
+    staging,
+)
+from scrooge.classification import UnknownMaturityError
+from scrooge.errors import ConfigError
 from scrooge.models import Kind
+from scrooge.prices import PriceError
 from scrooge.storage import db, originals, store
+from scrooge.validation import ReconciliationError
 from scrooge.web import forms, wire
+from scrooge.web import uploads as uploads_
 
 _DIGEST = 12  # how much of a logo's digest its address carries, to change when the image does
 
@@ -290,20 +308,28 @@ def _writable(request: Request, token: str) -> None:
         raise HTTPException(403)
 
 
-async def _categorize(request: Request) -> Response:
-    """Give committed rows of one person another category, `{"owner", "ids", "category",
-    "remember"}`: remembered as a rule for the next imports when asked and when rules are
-    kept."""
+async def _sent(request: Request) -> dict[str, object] | None:
+    """The JSON object a change sends, once it is known to come from these pages (`_writable`
+    with its `X-Token`); None when it is no JSON object."""
     _writable(request, request.headers.get("x-token", ""))
     try:
         sent = await request.json()
     except ValueError:
-        sent = None
-    if not isinstance(sent, dict) or not isinstance(sent.get("ids"), list):
+        return None
+    return sent if isinstance(sent, dict) else None
+
+
+async def _categorize(request: Request) -> Response:
+    """Give committed rows of one person another category, `{"owner", "ids", "category",
+    "remember"}`: remembered as a rule for the next imports when asked and when rules are
+    kept."""
+    sent = await _sent(request)
+    listed = None if sent is None else sent.get("ids")
+    if sent is None or not isinstance(listed, list):
         return _refused(("Send the owner, the ids of the rows and the category as JSON.",))
     state = request.app.state
     owner, category = str(sent.get("owner", "")), str(sent.get("category", ""))
-    ids = [str(row) for row in sent.get("ids", [])]
+    ids = [str(row) for row in listed]
     remember = sent.get("remember") is True and state.rules is not None
 
     def change() -> int:
@@ -328,6 +354,268 @@ async def _categorize(request: Request) -> Response:
     return JSONResponse({"changed": changed, "errors": []})
 
 
+def _importable(request: Request) -> list[str]:
+    """Who statements can be imported for: the people the config names. Nobody over a copy."""
+    imports = request.app.state.imports
+    if imports is None:
+        raise HTTPException(404)
+    return list(imports.people)
+
+
+def _staged(request: Request) -> Response:
+    """What is staged for one person (the first one importable without `owner`), what a row
+    can be given, and what this app can do about it."""
+    state = request.app.state
+    owners = _importable(request)
+    owner = request.query_params.get("owner") or next(iter(owners), "")
+    if owner not in owners:
+        return _refused((f"{owner} is nobody the config names.",))
+    with db.reading(state.database) as conn:
+        staged = months.draft(conn, owner)
+        found = query.choices(conn, owner)
+    return JSONResponse(
+        {
+            "owners": owners,
+            "owner": owner,
+            **wire.draft(staged),
+            "choices": wire.choices(found),
+            # What a new expense category can go under.
+            "under": list(found.groups),
+            "rules": state.rules is not None,
+            "lookup": state.maturities is not None,
+            "errors": [],
+        }
+    )
+
+
+def _undated(
+    request: Request, owner: str, uploads: list[tuple[str, bytes]], bills: tuple[str, ...]
+) -> wire.JSON:
+    state = request.app.state
+    held = uploads_.Held(owner, uploads, bills, state.clock() + uploads_.HELD)
+    return {"bills": list(bills), "held": uploads_.hold(state, held) if state.maturities else None}
+
+
+async def _stage(
+    request: Request, owner: str, uploads: list[tuple[str, bytes]], notice: str | None = None
+) -> Response:
+    """Stage `uploads` for `owner`, and say what became of each file."""
+    state = request.app.state
+    try:
+        done = await run_in_threadpool(uploads_.stage, state, owner, uploads)
+    except UnknownMaturityError as exc:
+        return JSONResponse(
+            {
+                "errors": [f"Nothing was imported: {wire.sentence(exc)}"],
+                "undated": _undated(request, owner, uploads, exc.bills),
+                "notice": notice,
+            },
+            409,
+        )
+    except uploads_.REFUSED as exc:
+        return JSONResponse(
+            {"errors": [f"Nothing was imported: {wire.sentence(exc)}"], "notice": notice}, 409
+        )
+    return JSONResponse({"imported": wire.imported(done), "notice": notice, "errors": []})
+
+
+async def _upload(request: Request) -> Response:
+    """Stage the statements sent (`file`, as many as there are) for one person (`owner`):
+    a file that fails stores nothing of itself and stops no other."""
+    _writable(request, request.headers.get("x-token", ""))
+    owners = _importable(request)
+    async with request.form(max_files=uploads_.UPLOADS) as form:
+        owner = str(form.get("owner", ""))
+        sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
+        uploads = [
+            (uploads_.name(part.filename), await part.read()) for part in sent if part.filename
+        ]
+    if owner not in owners:
+        return _refused((f"{owner or 'Nobody'} is nobody the config names.",))
+    if not uploads:
+        return _refused(("Choose at least one file.",))
+    return await _stage(request, owner, uploads)
+
+
+async def _look_up(request: Request) -> Response:
+    """Look up when the bills an import stopped on mature, write it down, and import the same
+    files again: `{"held"}`, the key the import gave."""
+    sent = await _sent(request)
+    state = request.app.state
+    _importable(request)
+    if state.maturities is None:
+        raise HTTPException(404)
+    key = str((sent or {}).get("held", ""))
+    held = state.held.get(key)
+    if held is None or held.until <= state.clock():
+        return JSONResponse(
+            {"errors": ["The files of that import are no longer kept: choose them again."]}, 409
+        )
+    # What failed keeps the files, and the button that tries again.
+    again = {"bills": list(held.bills), "held": key}
+    try:
+        looked = await run_in_threadpool(marketdata.maturities, state.maturities, held.bills)
+    except PriceError as exc:
+        message = f"TreasuryDirect could not tell: {wire.sentence(exc)} Try again later, or add "
+        return JSONResponse(
+            {"errors": [message + "the maturity to instruments.yaml."], "undated": again}, 502
+        )
+    if looked.unknown:
+        unknown = ", ".join(looked.unknown)
+        message = f"TreasuryDirect knows no bill {unknown}: add its maturity to instruments.yaml."
+        return JSONResponse({"errors": [message], "undated": again}, 409)
+    try:
+        classification.add_maturities(state.imports.instruments, looked.found)
+    except ConfigError as exc:
+        return JSONResponse({"errors": [wire.sentence(exc)], "undated": again}, 409)
+    state.held.pop(key, None)
+    days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
+    return await _stage(
+        request, held.owner, held.uploads, f"{days} (TreasuryDirect), written in instruments.yaml."
+    )
+
+
+class _Refused(Exception):
+    """What was sent cannot be done; its message says why."""
+
+
+def _choices(sent: dict[str, object], staged: months.Draft) -> list[staging.Choice]:
+    """The categories chosen for staged rows, `[{"ids", "category", "rule"}]`, as choices that
+    give them: rows without one are given it, those with one have it changed."""
+    rows = {row.id: row for row in staged.rows}
+    chosen = sent.get("choices", [])
+    if not isinstance(chosen, list) or not all(isinstance(c, dict) for c in chosen):
+        raise _Refused("Send the choices as a list of rows and their category.")
+    made: list[staging.Choice] = []
+    for choice in chosen:
+        listed = choice.get("ids")
+        ids = [str(row) for row in listed] if isinstance(listed, list) else []
+        if not ids or any(row not in rows for row in ids):
+            raise _Refused("Those rows are not staged any more: load the page again.")
+        category, rule = str(choice.get("category", "")), choice.get("rule") is True
+        waiting = [row for row in ids if rows[row].waiting]
+        having = [row for row in ids if not rows[row].waiting and rows[row].category != category]
+        if waiting:
+            made.append(staging.Choice(waiting, category, rule=rule))
+        if having:
+            made.append(staging.Choice(having, category, rule=rule, change=True))
+    return made
+
+
+async def _categorize_staged(request: Request) -> Response:
+    """Give the categories chosen to staged rows of one person, all of them or none, and with
+    `"commit": true` then commit everything staged for that person:
+    `{"owner", "choices": [{"ids", "category", "rule"}], "commit"}`."""
+    sent = await _sent(request)
+    owners = _importable(request)
+    state = request.app.state
+    if sent is None or str(sent.get("owner", "")) not in owners:
+        return _refused(("Send whose rows they are and the categories chosen, as JSON.",))
+    owner = str(sent["owner"])
+
+    def apply() -> tuple[int, int | None]:
+        conn = db.connect(state.database)
+        try:
+            made = _choices(sent, months.draft(conn, owner))
+            remember = None if state.rules is None else state.rules.of(owner)
+            changed = (
+                staging.categorize_all(
+                    conn, owner=owner, choices=made, now=state.clock(), remember=remember
+                )
+                if made
+                else 0
+            )
+            if sent.get("commit") is not True:
+                return changed, None
+            files, _ = staging.commit_with_copy(
+                conn, state.database, owner=owner, now=state.clock()
+            )
+            return changed, len(files)
+        finally:
+            conn.close()
+
+    try:
+        changed, committed = await run_in_threadpool(apply)
+    except _Refused as exc:
+        return JSONResponse({"errors": [str(exc)]}, 409)
+    except (staging.UncategorizedRowsError, ReconciliationError) as exc:
+        return JSONResponse({"errors": [f"Not committed: {wire.sentence(exc)}"]}, 409)
+    except (staging.StagingError, store.UnknownCategoryError) as exc:
+        return JSONResponse({"errors": [f"No category was set: {wire.sentence(exc)}"]}, 409)
+    return JSONResponse({"changed": changed, "committed": committed, "errors": []})
+
+
+async def _add_category(request: Request) -> Response:
+    """One more category in the taxonomy, for every import from now on: `{"name", "side",
+    "group"}`, an expense (`uscite`) under `group` or a group of its own, or income
+    (`entrate`)."""
+    sent = await _sent(request)
+    state = request.app.state
+    _importable(request)
+    if state.rules is None:  # nowhere to write it down for the next import
+        raise HTTPException(404)
+    if sent is None:
+        return _refused(("Send the name of the category and where it goes, as JSON.",))
+
+    def add() -> str:
+        conn = db.connect(state.database)
+        try:
+            added = staging.add_category(
+                conn,
+                state.rules.shared.with_name(categories.FILE),
+                name=str(sent.get("name", "")),
+                side=str(sent.get("side", "")),
+                group=str(sent.get("group", "")),
+            )
+        finally:
+            conn.close()
+        return added.name
+
+    try:
+        name = await run_in_threadpool(add)
+    except (staging.StagingError, ConfigError) as exc:
+        return JSONResponse({"errors": [f"No category was added: {wire.sentence(exc)}"]}, 409)
+    return JSONResponse({"name": name, "errors": []})
+
+
+async def _remove(request: Request, action: Callable[..., object]) -> Response:
+    """Remove a staged statement (`staging.discard`) or take back a committed one
+    (`staging.uncommit`), which stages it again; says whose it was, for the import page."""
+    await _sent(request)
+    state = request.app.state
+    number = request.path_params["number"]
+    if number >= 2**63:  # no id SQLite holds
+        return JSONResponse({"errors": ["There is no such statement."]}, 404)
+
+    def act() -> str | None:
+        with db.reading(state.database) as conn:
+            statement = months.statement(conn, number)
+        if statement is None:
+            return None
+        conn = db.connect(state.database)
+        try:
+            action(conn, owner=statement.owner, file_id=statement.id)
+        finally:
+            conn.close()
+        return statement.owner
+
+    try:
+        owner = await run_in_threadpool(act)
+    except staging.StagingError as exc:
+        return JSONResponse({"errors": [f"Nothing was changed: {wire.sentence(exc)}"]}, 409)
+    if owner is None:
+        return JSONResponse({"errors": ["There is no such statement."]}, 404)
+    return JSONResponse({"owner": owner, "errors": []})
+
+
+async def _discard(request: Request) -> Response:
+    return await _remove(request, staging.discard)
+
+
+async def _uncommit(request: Request) -> Response:
+    return await _remove(request, staging.uncommit)
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
@@ -338,4 +626,11 @@ routes = [
     Route("/statements", _statements, name="api_statements"),
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
+    Route("/import", _staged, name="api_staged"),
+    Route("/import", _upload, methods=["POST"], name="api_upload"),
+    Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),
+    Route("/import/categories", _categorize_staged, methods=["POST"], name="api_categorize_staged"),
+    Route("/import/category", _add_category, methods=["POST"], name="api_add_category"),
+    Route("/statements/{number:int}/discard", _discard, methods=["POST"], name="api_discard"),
+    Route("/statements/{number:int}/uncommit", _uncommit, methods=["POST"], name="api_uncommit"),
 ]

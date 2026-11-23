@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
-from scrooge import months, networth, overview, portfolio, query, recap
+from scrooge import importing, months, networth, overview, portfolio, query, recap
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -361,4 +361,92 @@ def choices(found: query.Choices) -> JSON:
         "accounts": list(found.accounts),
         "categories": _headed(found.categories),
         "leaves": _headed(found.leaves),
+    }
+
+
+def _pending(row: months.Pending) -> JSON:
+    return {
+        "id": row.id,
+        "date": day(row.date),
+        "account": row.account,
+        "amount": number(row.amount),
+        "currency": row.currency,
+        "counterparty": row.counterparty,
+        "description": row.description,
+        "category": row.category or None,
+        "side": row.side or None,
+        # Whether a category can be given here: it has none yet, or one a rule or a choice gave.
+        "choosable": row.waiting or row.changeable,
+        "statement": row.statement,
+    }
+
+
+def draft(staged: months.Draft) -> JSON:
+    """What is staged for one person: its statements, every row with the category it has,
+    the waiting rows by counterparty (`groups`), what they add up to, and what stands in the
+    way of committing them (`gaps`, `waiting`)."""
+    return {
+        "files": [
+            {
+                "id": file.id,
+                "label": file.label,
+                "filename": file.filename,
+                "first": day(file.first),
+                "last": day(file.last),
+                "checked": file.checked,
+                "transactions": file.transactions,
+            }
+            for file in staged.files
+        ],
+        "rows": [_pending(row) for row in staged.rows],
+        "groups": [
+            {"name": group.name, "incoming": group.incoming, "ids": [r.id for r in group.rows]}
+            for group in staged.groups
+        ],
+        "totals": [
+            {
+                "side": line.side or None,
+                "category": line.category or None,
+                "currency": line.currency,
+                "count": line.count,
+                "total": number(line.total),
+            }
+            for line in staged.totals
+        ],
+        # What stands in the way of committing: only another statement settles a gap, and a
+        # category the rows that wait for one.
+        "gaps": list(staged.gaps),
+        "waiting": len(staged.uncategorized),
+    }
+
+
+def imported(done: importing.Read) -> JSON:
+    """What became of each file of an import, and what the import found on the way."""
+    staged = done.staged
+    return {
+        "files": [
+            {
+                "name": file.name,
+                "label": file.label,
+                "problem": file.problem or None,
+                "staged": file.staged,
+                "nothing_new": file.nothing_new,
+            }
+            for file in done.files
+        ],
+        "certificates": [
+            {
+                "account": certificate.account,
+                "filename": certificate.filename,
+                "balance": number(certificate.stated.balance),
+                "currency": certificate.stated.currency,
+                "as_of": day(certificate.stated.as_of),
+                "adds_up": certificate.adds_up,
+            }
+            for certificate in done.certificates
+        ],
+        "unreconciled": list(done.month.unreconciled),
+        "already": staged.already if staged else 0,
+        "differences": list(staged.differences) if staged else [],
+        "later": staged.later if staged else 0,
     }

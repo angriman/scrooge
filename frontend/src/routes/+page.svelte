@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { page } from '$app/state';
 	import { assetColor, inOrder } from '#lib/design/data.js';
@@ -73,8 +74,7 @@
 			Net worth, holdings and cash flow show here once a statement is committed.
 		</p>
 		<a
-			href="/import"
-			data-sveltekit-reload
+			href={resolve('/import')}
 			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
 		>
 			Import statements

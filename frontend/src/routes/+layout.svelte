@@ -33,7 +33,7 @@
 		const query = pick(here(), ['owner', 'currency']).toString();
 		return query ? `?${query}` : '';
 	});
-	const ours = (path: '/' | '/holdings' | '/statements' | '/transactions') => ({
+	const ours = (path: '/' | '/holdings' | '/statements' | '/transactions' | '/import') => ({
 		href: resolve(path) + along,
 		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, ''),
 		classic: false
@@ -98,8 +98,7 @@
 				/>
 				{#if !data.session.read_only}
 					<a
-						href={classic('/import')}
-						data-sveltekit-reload
+						href={ours('/import').href}
 						aria-label="Import statements"
 						class="inline-flex h-8 items-center gap-1.5 rounded-control bg-brand px-2.5 text-small font-medium text-on-brand hover:bg-brand-hover sm:px-3"
 					>
