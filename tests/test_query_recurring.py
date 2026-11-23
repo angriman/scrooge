@@ -56,6 +56,17 @@ def test_twice_a_year_apart_is_yearly_and_two_months_apart_is_nothing() -> None:
     assert query.recurring([*insurance, *gym]) == {"1": "yearly", "2": "yearly"}
 
 
+def test_a_shop_some_of_whose_purchases_cost_about_the_same_is_not_monthly() -> None:
+    # The purchases near the middle amount are a month apart in the middle of their gaps
+    # (5, 51, 21, 30, 43 days), not one after the other.
+    days = [date(2026, 1, 1), date(2026, 1, 6), date(2026, 2, 26), date(2026, 3, 19)]
+    days += [date(2026, 4, 18), date(2026, 5, 31)]
+    shop = [_row(n, on, "-30", "Shop") for n, on in enumerate(days, 1)]
+    other = zip(range(10, 14), ("-80", "-12", "-95", "-9"), strict=True)
+    shop += [_row(n, date(2026, 2, n), amount, "Shop") for n, amount in other]
+    assert query.recurring(shop) == {}
+
+
 def test_only_money_in_and_out_comes_back() -> None:
     salary = [_row(n, date(2026, m, 25), "5000", "Employer") for n, m in ((1, 6), (2, 7), (3, 8))]
     moves = [

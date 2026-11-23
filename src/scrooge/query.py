@@ -311,13 +311,19 @@ _MONTHLY = range(26, 36)  # days between two payments of a month apart, give or 
 _YEARLY = range(350, 381)
 
 
+def _paced(gaps: list[int], pace: range) -> bool:
+    """Whether three gaps in four are of `pace`: a payment skipped or made twice is allowed."""
+    return sum(gap in pace for gap in gaps) * 4 >= len(gaps) * 3
+
+
 def recurring(rows: Iterable[Row]) -> dict[str, str]:
     """The rows that come back at a steady pace: row id -> "monthly" or "yearly".
 
     Rows go together when they are of the same person and account, the same counterparty (or
     description, without one) and the same direction; of those, the ones within a fifth of
     their middle amount are its payments. Three or more with a month between them, as a rule
-    (the middle of the gaps), are monthly; two or more a year apart are yearly. Only money in
+    (three gaps in four), are monthly; two or more a year apart are yearly: a shop where some
+    purchases happen to cost about the same is not paid at a pace. Only money in
     and out (`_PAID`) is a payment: trades, fees, dividends and moves between one's own
     accounts are never recurring.
     """
@@ -334,15 +340,14 @@ def recurring(rows: Iterable[Row]) -> dict[str, str]:
             (row for row in listed if abs(abs(row.amount) - middle) * 5 <= middle),
             key=lambda row: row.date,
         )
-        gaps = sorted((b.date - a.date).days for a, b in pairwise(steady))
+        gaps = [(b.date - a.date).days for a, b in pairwise(steady)]
         if not gaps or not middle:
             continue
-        gap = gaps[len(gaps) // 2]
         every = (
             "monthly"
-            if len(steady) >= 3 and gap in _MONTHLY
+            if len(steady) >= 3 and _paced(gaps, _MONTHLY)
             else "yearly"
-            if gap in _YEARLY
+            if _paced(gaps, _YEARLY)
             else None
         )
         if every:
