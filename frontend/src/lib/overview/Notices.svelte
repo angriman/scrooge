@@ -24,7 +24,7 @@ figures that differ from those worked out here. Nothing when nothing waits.
 
 	let { attention, onePerson }: Props = $props();
 
-	const importing = (owner: string) => `/import?owner=${encodeURIComponent(owner)}`;
+	const importing = (owner: string) => `${resolve('/import')}?owner=${encodeURIComponent(owner)}`;
 	// The checks are on the Statements page, for the same person and currency.
 	const checks = $derived.by(() => {
 		const query = pick(here(), ['owner', 'currency']).toString();
@@ -41,7 +41,7 @@ figures that differ from those worked out here. Nothing when nothing waits.
 		<Notice
 			tone="waiting"
 			icon={Inbox}
-			action={{ label: 'Commit them', href: importing(waiting.owner), reload: true }}
+			action={{ label: 'Commit them', href: importing(waiting.owner) }}
 		>
 			{statements(waiting.count)}{onePerson ? '' : ` of ${waiting.owner}`}
 			{waiting.count === 1 ? 'is' : 'are'} staged and not yet counted.
@@ -51,7 +51,7 @@ figures that differ from those worked out here. Nothing when nothing waits.
 		<Notice
 			tone="caution"
 			icon={Clock}
-			action={{ label: 'Import', href: importing(account.owner), reload: true }}
+			action={{ label: 'Import', href: importing(account.owner) }}
 		>
 			{onePerson ? '' : `${account.owner}’s `}{account.account} statements end on
 			{account.committed ? day(account.committed) : 'no day yet'}, over a month before the others.

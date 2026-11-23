@@ -21,9 +21,11 @@ statements, newest first, each with the file it came from.
 		today: string;
 		/** Whether several people's accounts are listed: they are then grouped by person. */
 		people: boolean;
+		/** Take back a committed statement or remove a staged one; none over a copy. */
+		onremove?: (statement: StatementsAccount['statements'][number]) => void;
 	}
 
-	let { accounts, currency, today, people }: Props = $props();
+	let { accounts, currency, today, people, onremove }: Props = $props();
 
 	const RANGES = [
 		{ value: '1y', label: '1Y' },
@@ -185,14 +187,16 @@ statements, newest first, each with the file it came from.
 														<Download class="size-3.5" aria-hidden="true" />File
 													</a>
 												{/if}
-												<a
-													href="/statements/{statement.id}"
-													data-sveltekit-reload
-													title="Opens the server’s page of this statement"
-													class="text-brand hover:text-brand-hover"
-												>
-													{statement.committed ? 'Take back' : 'Remove'}
-												</a>
+												{#if onremove}
+													<button
+														type="button"
+														onclick={() => onremove(statement)}
+														aria-label="{statement.committed ? 'Take back' : 'Remove'} {statement.filename}"
+														class="text-brand hover:text-brand-hover"
+													>
+														{statement.committed ? 'Take back' : 'Remove'}
+													</button>
+												{/if}
 											</span>
 										</li>
 									{/each}

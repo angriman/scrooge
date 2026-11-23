@@ -21,11 +21,10 @@ import hashlib
 import io
 import re
 import secrets
-import tempfile
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import TypeVar
@@ -68,16 +67,16 @@ from scrooge import (
     spending,
     staging,
 )
-from scrooge.classification import UnknownInstrumentError, UnknownMaturityError
-from scrooge.errors import ConfigError, ExtractionError
+from scrooge.classification import UnknownMaturityError
+from scrooge.errors import ConfigError
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
 from scrooge.prices import MaturitySource, PriceError
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
-from scrooge.storage.money import PrecisionError
 from scrooge.validation import ReconciliationError
 from scrooge.web import api, auth, forms, shapes, wire
+from scrooge.web import uploads as uploads_
 
 HOST = "127.0.0.1"  # where the app is served unless `scrooge.yaml` names another address
 _HOSTS = (HOST, "localhost")
@@ -128,21 +127,6 @@ _PAGE = 200  # transactions shown at once
 _STALE = (
     "Nothing was imported: this page was loaded before the app was last started. "
     "Choose the files again and send them from here."
-)
-_UPLOADS = 200  # files taken by one import: a year of monthly statements of every source
-# How long the files of an import that stopped on bills without a maturity are kept, for the
-# button that looks them up to import them again; in memory, like the sessions.
-_HELD = timedelta(hours=1)
-# What stops an import: nothing is stored, and the page says why.
-_REFUSED = (
-    ExtractionError,
-    ReconciliationError,
-    ConfigError,
-    UnknownInstrumentError,
-    staging.StagingError,
-    PrecisionError,
-    store.UnknownCategoryError,
-    store.AccountMismatchError,
 )
 _CSV = (
     "date",
@@ -671,12 +655,12 @@ async def _import(request: Request) -> Response:
     state = request.app.state
     if state.imports is None:
         raise HTTPException(404)
-    async with request.form(max_files=_UPLOADS) as form:
+    async with request.form(max_files=uploads_.UPLOADS) as form:
         token = str(form.get("token", ""))
         owner = str(form.get("owner", ""))
         sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
         uploads = [
-            (_upload_name(part.filename), await part.read()) for part in sent if part.filename
+            (uploads_.name(part.filename), await part.read()) for part in sent if part.filename
         ]
     try:
         _own_token(request, token)
@@ -694,16 +678,6 @@ async def _import(request: Request) -> Response:
 
 
 @dataclass(frozen=True, slots=True)
-class _Held:
-    """The files of an import that stopped on bills without a maturity."""
-
-    owner: str
-    uploads: list[tuple[str, bytes]]
-    bills: tuple[str, ...]
-    until: datetime
-
-
-@dataclass(frozen=True, slots=True)
 class _Undated:
     """Bills an import stopped on, and the files kept to import again once they are dated
     ("" when nothing can look them up)."""
@@ -718,41 +692,23 @@ async def _staged(
     """Read and stage `uploads` for `owner`, and the page that says what became of them."""
     state = request.app.state
 
-    def stage() -> importing.Read:
-        with tempfile.TemporaryDirectory() as folder:
-            files = _saved(Path(folder), uploads)
-            found = importing.read(owner, files, state.imports)
-            conn = db.connect(state.database)
-            try:
-                return importing.stage(conn, state.database, found, state.imports, state.clock())
-            finally:
-                conn.close()
-
     try:
-        done = await run_in_threadpool(stage)
+        done = await run_in_threadpool(uploads_.stage, state, owner, uploads)
     except UnknownMaturityError as exc:
-        held = _hold(state, _Held(owner, uploads, exc.bills, state.clock() + _HELD))
+        held = uploads_.hold(
+            state, uploads_.Held(owner, uploads, exc.bills, state.clock() + uploads_.HELD)
+        )
         undated = _Undated(exc.bills, held if state.maturities else "")
         error = f"Nothing was imported: {exc}."
         return await run_in_threadpool(
             _import_form, request, owner, error, None, 409, undated=undated, notice=notice
         )
-    except _REFUSED as exc:
+    except uploads_.REFUSED as exc:
         error = f"Nothing was imported: {exc}."
         return await run_in_threadpool(
             _import_form, request, owner, error, None, 409, notice=notice
         )
     return await run_in_threadpool(_import_form, request, owner, "", done, notice=notice)
-
-
-def _hold(state: State, held: _Held) -> str:
-    """Keep `held` for the button that looks its bills up; what has waited too long goes."""
-    now = state.clock()
-    for key in [key for key, kept in state.held.items() if kept.until <= now]:
-        del state.held[key]
-    key = secrets.token_urlsafe(16)
-    state.held[key] = held
-    return key
 
 
 async def _look_up(request: Request) -> Response:
@@ -797,26 +753,6 @@ async def _look_up(request: Request) -> Response:
     days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
     notice = f"{days} (TreasuryDirect), written in instruments.yaml."
     return await _staged(request, held.owner, held.uploads, notice)
-
-
-def _upload_name(sent: str) -> str:
-    """The name an upload is kept under: the last part of the one the browser sent, or
-    `unnamed` when nothing usable is left (`..` would be the folder itself)."""
-    name = Path(sent).name
-    return name if name not in {"", ".", ".."} else "unnamed"
-
-
-def _saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
-    """Write each upload under the name it came with. Files that share a name each go in a
-    numbered folder of their own, which is how the import tells them apart."""
-    names = [name for name, _ in uploads]
-    files: list[Path] = []
-    for number, (name, content) in enumerate(uploads, start=1):
-        path = folder / str(number) / name if names.count(name) > 1 else folder / name
-        path.parent.mkdir(exist_ok=True)
-        path.write_bytes(content)
-        files.append(path)
-    return files
 
 
 _WIDE = Decimal(1000)  # the timeline of statements, in the units of its SVG

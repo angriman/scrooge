@@ -327,3 +327,88 @@ export interface Transactions {
 	kinds: string[];
 	errors: string[];
 }
+
+/** A row of a staged statement, with the category it has, if any. */
+export interface StagedRow {
+	id: string;
+	date: string;
+	account: string;
+	amount: Amount;
+	currency: string;
+	counterparty: string;
+	description: string;
+	category: string | null;
+	side: string | null;
+	/** Whether a category can be chosen for it here: it has none, or one a rule gave. */
+	choosable: boolean;
+	statement: number | null;
+}
+
+/** What is staged for one person. */
+export interface Staged {
+	/** Who statements can be imported for, and whose these are. */
+	owners: string[];
+	owner: string;
+	files: {
+		id: number;
+		label: string;
+		filename: string;
+		first: string;
+		last: string;
+		checked: boolean;
+		transactions: number;
+	}[];
+	rows: StagedRow[];
+	/** The rows waiting for a category, by counterparty and direction. */
+	groups: { name: string; incoming: boolean; ids: string[] }[];
+	totals: {
+		side: string | null;
+		category: string | null;
+		currency: string;
+		count: number;
+		total: Amount;
+	}[];
+	/** What only another statement can settle: it cannot be committed before. */
+	gaps: string[];
+	/** How many rows wait for a category: none may, to commit. */
+	waiting: number;
+	choices: Transactions['choices'];
+	/** What a new expense category can go under. */
+	under: string[];
+	rules: boolean;
+	/** Whether bills without a maturity can be looked up. */
+	lookup: boolean;
+	errors: string[];
+}
+
+/** What became of the files of an import. */
+export interface Imported {
+	files: {
+		name: string;
+		label: string;
+		problem: string | null;
+		staged: boolean;
+		nothing_new: boolean;
+	}[];
+	certificates: {
+		account: string;
+		filename: string;
+		balance: Amount;
+		currency: string;
+		as_of: string;
+		adds_up: boolean;
+	}[];
+	unreconciled: string[];
+	already: number;
+	differences: string[];
+	later: number;
+}
+
+/** What an upload, or a look-up of its bills, answered. */
+export interface Upload {
+	imported?: Imported;
+	/** Bills it stopped on, and the key that imports the same files once they are looked up. */
+	undated?: { bills: string[]; held: string | null };
+	notice?: string | null;
+	errors: string[];
+}
