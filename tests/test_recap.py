@@ -9,8 +9,10 @@ from decimal import Decimal
 import pytest
 
 from scrooge import overview, recap, savings, spending
+from scrooge.models import Kind
 from scrooge.recap import Category
 from scrooge.storage import db
+from tests.test_income import SALARY
 from tests.test_networth import NOW, account, close, spent
 from tests.test_overview import household
 
@@ -61,6 +63,22 @@ def test_income_and_spending_are_those_of_the_analysis(conn: sqlite3.Connection)
     assert (shown.income, shown.spent) == (totals.income, totals.spent)
     spent = spending.run(conn, first=SEPTEMBER, last=last, owner="Lukas", currency="CHF")
     assert shown.categories == tuple(Category(c.name, c.spent, c.usual) for c in spent.categories)
+
+
+def test_what_was_saved_is_also_a_part_of_the_salary(conn: sqlite3.Connection) -> None:
+    rows = (
+        spent("5000", date(2026, 9, 25), **SALARY),
+        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interessi"),
+        spent("-1500", date(2026, 9, 10)),
+    )
+    close(conn, account("migros", "Migros", "CHF", "1000", *rows))
+    shown = recap.run(conn, currency="CHF")
+    assert shown is not None
+    # 4500 saved of 6000 that came in, of which 5000 from work.
+    assert (shown.income, shown.work, shown.saved) == (D("6000.00"), D("5000.00"), D("4500.00"))
+    assert (shown.rate, shown.rate_salary) == (D("0.750"), D("0.900"))
+    # One month of history: no twelve months to measure.
+    assert (shown.rate_year, shown.rate_salary_year) == (None, None)
 
 
 def test_the_month_shown_is_the_last_every_account_covers(conn: sqlite3.Connection) -> None:
