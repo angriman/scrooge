@@ -3,18 +3,27 @@
 The lead of the first page: net worth, how it moved over the range shown, and its chart. The
 legend is also a filter: a part clicked away leaves the chart, and the headline and its change
 become what the parts still shown add up to. Pointing at a day writes that day's figures in the
-headline and the legend.
+headline and the legend. The chart can give way to a table of the month-ends.
 -->
+<script lang="ts" module>
+	export const VIEWS = [
+		{ value: 'chart', label: 'Chart' },
+		{ value: 'table', label: 'Table' }
+	] as const;
+	export type View = (typeof VIEWS)[number]['value'];
+</script>
+
 <script lang="ts">
 	import NetWorthChart, { type Day } from '#lib/charts/NetWorthChart.svelte';
 	import { addDays, day } from '#lib/format/date.js';
 	import { money, short, sum } from '#lib/format/number.js';
-	import type { Series } from '#lib/types.js';
+	import type { NetWorthMonths, Series } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
+	import MonthEnds from './MonthEnds.svelte';
 	import { arrivedBetween, change as moveOf, daysBack, RANGES, rangeLabel, type Range } from './range.js';
 
 	interface Props {
@@ -31,10 +40,28 @@ headline and the legend.
 		breakdowns: readonly { value: string; label: string }[];
 		by: string;
 		onby: (by: string) => void;
+		/** The chart, or the table of the month-ends. */
+		view: View;
+		onview: (view: View) => void;
+		/** The month-ends, asked for once the table is shown. */
+		months: Promise<NetWorthMonths> | null;
 	}
 
-	let { series, colors, title, currency, through, range, onrange, breakdowns, by, onby }: Props =
-		$props();
+	let {
+		series,
+		colors,
+		title,
+		currency,
+		through,
+		range,
+		onrange,
+		breakdowns,
+		by,
+		onby,
+		view,
+		onview,
+		months
+	}: Props = $props();
 
 	let hidden = $state<ReadonlySet<string>>(new Set());
 	let hovered = $state<Day | null>(null);
@@ -116,7 +143,7 @@ headline and the legend.
 	</div>
 
 	<div class="mt-4 flex flex-wrap items-center justify-between gap-3 px-5">
-		{#if series.parts.length}
+		{#if view === 'chart' && series.parts.length}
 			<ul class="flex flex-wrap items-center gap-x-1 gap-y-1" aria-label="Parts shown on the chart">
 				{#each series.parts as part (part.name)}
 					{@const shown = !hidden.has(part.name)}
@@ -158,7 +185,17 @@ headline and the legend.
 			<span></span>
 		{/if}
 		<div class="flex flex-wrap gap-2">
-			{#if breakdowns.length > 1}
+			<Segmented
+				label="Show"
+				value={view}
+				options={VIEWS}
+				onchange={(chosen) => {
+					hidden = new Set();
+					hovered = null;
+					onview(chosen);
+				}}
+			/>
+			{#if view === 'chart' && breakdowns.length > 1}
 				<Segmented
 					label="Cut the chart by"
 					value={by}
@@ -173,12 +210,16 @@ headline and the legend.
 		</div>
 	</div>
 
-	<NetWorthChart
-		{series}
-		{colors}
-		{back}
-		{hidden}
-		bind:hovered
-		class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-3"
-	/>
+	{#if view === 'table' && months}
+		<MonthEnds {months} {currency} class="mt-3 pb-3" />
+	{:else}
+		<NetWorthChart
+			{series}
+			{colors}
+			{back}
+			{hidden}
+			bind:hovered
+			class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-3"
+		/>
+	{/if}
 </section>

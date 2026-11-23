@@ -1,7 +1,7 @@
 """Net worth day by day: cash, holdings at the close of the day, at the rate of the day."""
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -801,6 +801,76 @@ def test_a_currency_without_any_rate_cannot_be_converted(conn: sqlite3.Connectio
 def test_what_is_already_in_the_currency_asked_for_needs_no_rate(conn: sqlite3.Connection) -> None:
     close(conn, ibkr())
     assert networth.run(conn, currency="USD").total[-1] == 10000
+
+
+# ---------------------------------------------------------------------------- month by month
+
+
+def worth_from(
+    first: date, totals: list[int], currency: str = "CHF", arrived: dict[date, int] | None = None
+) -> networth.NetWorth:
+    """Net worth of one cash line, a figure a day from `first`, and what arrived on some."""
+    days = tuple(first + timedelta(days=n) for n in range(len(totals)))
+    came = arrived or {}
+    arrivals = (networth.Line(OWNER, CASH, tuple(D(came.get(d, 0)) for d in days)),)
+    lines = (networth.Line(OWNER, CASH, tuple(D(total) for total in totals)),)
+    return networth.NetWorth(currency, days, lines, (), arrivals if came else ())
+
+
+def test_each_month_ends_on_its_last_day_in_every_currency_newest_first(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    close(conn, ibkr(), account("migros", "Migros", "CHF", "900"))
+    rate(conn, "USD", day(1), "0.8")
+    rate(conn, "USD", day(12, 10), "0.9")  # the newest rate: the days run to it
+    rate(conn, "EUR", day(1), "1")
+    read: list[int] = []
+    rates_on = networth.rates_on
+
+    def counted(c: sqlite3.Connection, days: Sequence[date]) -> dict[str, list[D]]:
+        read.append(len(days))
+        return rates_on(c, days)
+
+    monkeypatch.setattr(networth, "rates_on", counted)
+    ends = networth.month_ends(conn, networth.value(conn, None), ["USD", "CHF", "EUR"])
+    assert len(read) == 1  # the rates are read once for every currency
+    assert [(end.month, end.day, end.partial) for end in ends] == [
+        (day(1, 10), day(12, 10), True),  # October is not over: its last day there is
+        (day(1), day(30), False),
+        (day(1, 8), day(31, 8), False),  # the eve of the first statement
+    ]
+    october, september, august = ends
+    assert list(october.values) == ["USD", "CHF", "EUR"]  # in the order asked for
+    assert october.values["CHF"] == networth.Figure(D(9900), D(1000), D("11.24"))
+    # 900 francs are fewer dollars at the higher rate of October's last day
+    assert october.values["USD"] == networth.Figure(D(11000), D(-125), D("-1.12"))
+    assert september.values["EUR"] == networth.Figure(D(8900), D(0), D("0.00"))
+    assert august.values["USD"] == networth.Figure(D(11125), None, None)
+    assert networth.month_ends(conn, None, ["CHF"]) == ()
+
+
+def test_a_month_ends_with_the_last_day_there_is_even_when_the_history_begins_within_it() -> None:
+    [only] = networth.by_month([worth_from(day(20), [100] * 5)])
+    assert (only.month, only.day, only.partial) == (day(1), day(24), True)
+    assert only.values == {"CHF": networth.Figure(D(100), None, None)}
+    assert networth.by_month([]) == ()
+    assert networth.by_month([networth.NetWorth("CHF", (), (), ())]) == ()
+
+
+def test_what_arrived_into_view_in_a_month_is_left_out_of_its_change() -> None:
+    # 100 francs on the last two days of September; an account comes into view with 400
+    # francs on 10 October, and October ends 100 francs better than that.
+    totals = [100, 100, *[100] * 9, *[500] * 21, 600]
+    worth = worth_from(day(29), totals, arrived={day(10, 10): 400})
+    october, september = networth.by_month([worth])
+    assert september.values["CHF"].change is None
+    assert october.values["CHF"] == networth.Figure(D(600), D(100), D("100.00"))
+
+
+@pytest.mark.parametrize("before", [0, -50])
+def test_a_change_from_nothing_or_less_has_no_percent(before: int) -> None:
+    october, _ = networth.by_month([worth_from(day(30), [before, 100])])
+    assert october.values["CHF"] == networth.Figure(D(100), D(100 - before), None)
 
 
 # -------------------------------------------------------------------------------- people

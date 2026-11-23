@@ -512,6 +512,34 @@ export interface CashFlow {
 	errors: string[];
 }
 
+/** Net worth at a month's end in one currency, and how it moved since the month before, less
+ * what accounts brought when they came into view (src/scrooge/networth.py `Figure`). */
+export interface MonthEndFigure {
+	total: Amount;
+	/** Null for the first month: nothing before it. */
+	change: Amount | null;
+	/** In percent of the month before; null unless that was above zero. */
+	percent: Amount | null;
+}
+
+/** The last day of one month there is, and net worth on it by currency. */
+export interface MonthEnd {
+	/** `2026-10`. */
+	month: string;
+	day: Day;
+	/** The month is not over: `day` is the last day there is. */
+	partial: boolean;
+	values: Record<string, MonthEndFigure>;
+}
+
+export interface NetWorthMonths {
+	/** The table's currencies, in the order of the config. */
+	currencies: string[];
+	/** Newest first. */
+	months: MonthEnd[];
+	errors: string[];
+}
+
 /** A payment that comes back at a steady pace, as paid (positive). */
 export interface RecurringPayment {
 	name: string;
