@@ -133,6 +133,18 @@ class Group:
 
 
 @dataclass(frozen=True, slots=True)
+class Slice:
+    """What the positions of one currency, account, person or kind of asset are worth."""
+
+    name: str
+    value: Decimal  # in `Portfolio.currency`
+    share: Decimal  # of `Portfolio.total` in percent; the slices of one cut add up to 100
+
+
+SPREADS = ("asset", "currency", "account", "owner")  # how what is held can be cut
+
+
+@dataclass(frozen=True, slots=True)
 class Holding:
     """One instrument, whoever holds it and in whichever account."""
 
@@ -244,6 +256,31 @@ class Portfolio:
                 )
             )
         return tuple(sorted(holdings, key=lambda h: (-h.value, h.symbol)))
+
+    def spread(self, by: str) -> tuple[Slice, ...]:
+        """What is held cut by one of `SPREADS`: by kind of asset in the order of
+        `networth.ASSETS`, otherwise largest first. An account is named with its owner's name
+        when several people's positions are listed. The shares add up to exactly 100."""
+        owners = {position.owner for position in self.positions}
+        sums: dict[str, Decimal] = defaultdict(Decimal)
+        for position in self.positions:
+            name = getattr(position, by)
+            if by == "account" and len(owners) > 1:
+                name = f"{position.account} ({position.owner})"
+            sums[name] += position.value
+        if by == "asset":
+            names = [asset for asset in networth.ASSETS if asset in sums]
+        else:
+            names = sorted(sums, key=lambda name: (-sums[name], name))
+        total = self.total
+        shares = (
+            shared_out([sums[name] * 100 / total for name in names])
+            if total
+            else [Decimal(0)] * len(names)
+        )
+        return tuple(
+            Slice(name, sums[name], share) for name, share in zip(names, shares, strict=True)
+        )
 
     @property
     def groups(self) -> tuple[Group, ...]:

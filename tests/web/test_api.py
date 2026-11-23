@@ -252,3 +252,46 @@ def test_a_page_without_a_script_of_its_own_changes_no_policy(
     assert client.get("/app").headers["content-security-policy"] == (
         "default-src 'self'; frame-ancestors 'none'"
     )
+
+
+def test_what_is_held_is_sent_with_each_instrument_its_positions_and_its_spread(
+    client: TestClient,
+) -> None:
+    sent = client.get("/api/holdings", params={"currency": "USD"}).json()
+    assert sent["errors"] == []
+    held = sent["holdings"]
+    assert [held[k] for k in ("total", "cost", "gain", "return_percent", "unknown_cost")] == [
+        "11672.50",
+        "11650.00",
+        "22.50",
+        "0.19",
+        0,
+    ]
+    assert held["accounts"] == 3
+    # Each instrument, largest first, with its positions account by account.
+    assert [(h["symbol"], h["share"], len(h["positions"])) for h in held["holdings"]] == [
+        ("912797ZZ1", "84.58", 1),
+        ("GADG", "7.71", 1),
+        ("WIDG", "7.71", 3),
+    ]
+    widget = held["holdings"][2]["positions"]
+    assert [(p["owner"], p["account"], p["value"]) for p in widget] == [
+        (OWNER, "IBKR USD", "500.00"),
+        (PARTNER, "IBKR USD", "350.00"),
+        (PARTNER, "Revolut USD", "50.00"),
+    ]
+    assert list(held["spread"]) == ["asset", "currency", "account", "owner"]
+    assert held["spread"]["currency"] == [{"name": "USD", "value": "11672.50", "share": "100.00"}]
+    [bill] = held["ladder"]
+    assert (bill["maturity"], bill["face"], bill["interest"]) == ("2026-12-24", "10000", "150.00")
+
+
+def test_what_is_held_without_a_rate_says_so(client: TestClient, tmp_path: Path) -> None:
+    sent = client.get("/api/holdings", params={"currency": "JPY"}).json()
+    assert (sent["holdings"], sent["errors"][0][:28]) == (None, "No exchange rate is stored f")
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    conn.close()
+    empty = TestClient(webapp.create_app(path), base_url=SITE)
+    assert empty.get("/api/holdings").json() == {"holdings": None, "logos": {}, "errors": []}

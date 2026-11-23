@@ -12,7 +12,7 @@
 	import Choice from '#lib/ui/Choice.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { here, show } from '#lib/view.js';
+	import { here, pick, show } from '#lib/view.js';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -28,9 +28,19 @@
 
 	// The pages not made here yet open as the server's own pages, for the same person.
 	const classic = (path: string) => (owner ? `${path}?owner=${encodeURIComponent(owner)}` : path);
+	// Between pages, whose figures and their currency go along; a page's own view does not.
+	const along = $derived.by(() => {
+		const query = pick(here(), ['owner', 'currency']).toString();
+		return query ? `?${query}` : '';
+	});
+	const ours = (path: '/' | '/holdings') => ({
+		href: resolve(path) + along,
+		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, ''),
+		classic: false
+	});
 	const pages = $derived([
-		{ label: 'Overview', icon: House, href: resolve('/') + here().search, current: true, classic: false },
-		{ label: 'Holdings', icon: ChartPie, href: classic('/holdings'), current: false, classic: true },
+		{ label: 'Overview', icon: House, ...ours('/') },
+		{ label: 'Holdings', icon: ChartPie, ...ours('/holdings') },
 		{ label: 'Cash flow', icon: ArrowLeftRight, href: classic('/analysis'), current: false, classic: true },
 		{ label: 'Transactions', icon: ReceiptText, href: classic('/transactions'), current: false, classic: true },
 		{ label: 'Statements', icon: Files, href: classic('/months'), current: false, classic: true }

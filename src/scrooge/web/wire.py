@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
-from scrooge import months, networth, overview, query, recap
+from scrooge import months, networth, overview, portfolio, query, recap
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -199,4 +199,87 @@ def month(shown: recap.Recap) -> JSON:
         "missing": [account(line) for line in shown.missing],
         "earlier": _month(shown.earlier),
         "later": _month(shown.later),
+    }
+
+
+def _position(position: portfolio.Position) -> JSON:
+    return {
+        "owner": position.owner,
+        "account": position.account,
+        "quantity": number(position.quantity),
+        "price": number(position.price),
+        "price_day": day(position.price_day),
+        "price_is_trade": position.price_is_trade,
+        "value_native": number(position.value_native),
+        "value": number(position.value),
+        "cost_native": number(position.cost_native),
+        "gain_native": number(position.gain_native),
+        "gain_percent": number(position.gain_percent),
+    }
+
+
+def holdings(held: portfolio.Portfolio) -> JSON:
+    """What is held on `day`: the totals, each instrument with its positions account by
+    account, how it is spread (`portfolio.SPREADS`), and the bills by maturity."""
+    positions: dict[tuple[str, str, str], list[portfolio.Position]] = {}
+    for position in held.positions:
+        key = (position.symbol, position.currency, position.asset)
+        positions.setdefault(key, []).append(position)
+    return {
+        "currency": held.currency,
+        "day": day(held.day),
+        "through": day(held.through),
+        "total": number(held.total),
+        "cost": number(held.cost),
+        "gain": number(held.gain),
+        "return_percent": number(held.return_percent),
+        "unknown_cost": held.unknown_cost,
+        "accounts": len({(p.owner, p.account) for p in held.positions}),
+        "holdings": [
+            {
+                "symbol": h.symbol,
+                "name": h.name,
+                "asset": h.asset,
+                "currency": h.currency,
+                "value": number(h.value),
+                "share": number(h.share),
+                "cost": number(h.cost),
+                "gain": number(h.gain),
+                "return_percent": number(h.return_percent),
+                "positions": [
+                    _position(p)
+                    for p in sorted(
+                        positions[h.symbol, h.currency, h.asset],
+                        key=lambda p: (-p.value, p.owner, p.account),
+                    )
+                ],
+            }
+            for h in held.holdings
+        ],
+        "spread": {
+            by: [
+                {"name": s.name, "value": number(s.value), "share": number(s.share)}
+                for s in held.spread(by)
+            ]
+            for by in portfolio.SPREADS
+        },
+        "ladder_day": day(held.ladder_day),
+        "ladder": [
+            {
+                "symbol": rung.position.symbol,
+                "name": rung.position.name,
+                "owner": rung.position.owner,
+                "account": rung.position.account,
+                "currency": rung.position.currency,
+                "maturity": day(rung.position.maturity),
+                "days": rung.days,
+                "face": number(rung.position.quantity),
+                "value_native": number(rung.value_native),
+                "value": number(rung.value),
+                "interest": number(rung.interest),
+            }
+            for rung in held.ladder
+        ],
+        "pension_cash": number(held.pension_cash),
+        "notes": list(held.notes),
     }
