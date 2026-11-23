@@ -328,7 +328,8 @@ def test_an_account_is_behind_once_it_ends_over_35_days_before_its_persons_newes
 
 
 @pytest.mark.parametrize(
-    ("source", "allowed"), [("finpension", 400), ("morganstanley", 100), ("tastytrade", 100)]
+    ("source", "allowed"),
+    [("finpension", 400), ("morganstanley", 100), ("tastytrade", 100), ("schwab", 100)],
 )
 def test_a_source_that_reports_less_often_is_behind_only_after_its_own_allowance(
     source: str, allowed: int
