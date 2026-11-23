@@ -22,6 +22,7 @@ from scrooge.extractors.common import (
     parse_iso_date,
     read_table,
 )
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import CashBalance, Extraction, Kind, SecurityTrade, Transaction
 
 ACCOUNT = "Finpension 3a"
@@ -145,3 +146,18 @@ def _trade(cash: Transaction, row: dict[str, str], n: int) -> SecurityTrade:
         asset_tab=ASSET_TAB,
         name=row["Asset Name"],
     )
+
+
+SOURCE = Source(
+    name="finpension",
+    label="finpension pillar 3a transactions",
+    reads="text",
+    recognises=starts_with(
+        "Date\tCategory\tAsset Name\t",
+        "Date;Category;Asset Name;",
+        "Date,Category,Asset Name,",
+        'Date;Category;"Asset Name";',  # newer exports quote the names that hold a space
+        'Date,Category,"Asset Name",',
+    ),
+    extract=extract,
+)

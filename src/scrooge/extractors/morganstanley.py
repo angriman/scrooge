@@ -26,6 +26,7 @@ from typing import NamedTuple
 
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import month_start, parse_us_amount, parse_us_date, share_vest
+from scrooge.extractors.source import Source
 from scrooge.models import (
     CashBalance,
     Extraction,
@@ -333,3 +334,12 @@ def _amount(text: str, what: str) -> Decimal:
 def _us_date(text: str, what: str) -> date:
     """Read `9/30/26`: month, day, two-digit year."""
     return parse_us_date(text, what)
+
+
+SOURCE = Source(
+    name="morganstanley",
+    label="Morgan Stanley stock plan statement",
+    reads="pdf",
+    recognises=recognises,
+    extract=extract,
+)

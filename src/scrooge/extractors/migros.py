@@ -32,6 +32,7 @@ from scrooge.extractors.common import (
     parse_swiss_date,
     read_table,
 )
+from scrooge.extractors.source import Source, starts_with
 from scrooge.models import CashBalance, Extraction, Kind, Transaction
 
 _COLUMNS = ("Data", "Testo di registrazione", "Importo", "Saldo", "Valuta")
@@ -198,3 +199,15 @@ def _counterparty(text: str) -> str:
     if twint and "," not in twint[2]:  # a shop
         return f"{twint[1]} {twint[2]}"
     return text.partition(",")[0]
+
+
+SOURCE = Source(
+    name="migros",
+    label="Migros Bank account statement",
+    reads="text",
+    recognises=starts_with(
+        '"Estratto conto da:"',
+        "Estratto conto da:;",
+    ),
+    extract=extract,
+)

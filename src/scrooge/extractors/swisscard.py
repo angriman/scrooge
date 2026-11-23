@@ -18,6 +18,7 @@ import pdfplumber
 
 from scrooge.errors import ExtractionError
 from scrooge.extractors.common import month_start, parse_decimal, parse_swiss_date
+from scrooge.extractors.source import Source
 from scrooge.models import CashBalance, ControlTotal, Extraction, Kind, Transaction
 
 ACCOUNT = "Migros"  # the bank account that pays the card, where D3 books the purchases
@@ -38,6 +39,8 @@ _START = "Nuovetransazioni"
 # Under "Saldo ultima fattura / I Suoi pagamenti / Totale nuove transazioni / Nuovo saldo".
 _FIGURES = re.compile(" ".join([rf"CHF {_AMOUNT}"] * 4))
 _MISCELLANEOUS = "Varie"
+# What only a card invoice's text says: its issuer.
+_ISSUER = "Swisscard AECS"
 
 
 def read_text(path: Path) -> str:
@@ -66,6 +69,11 @@ class _Invoice:
     account_id: str  # the number of the card account, "" when not printed
     first: date  # first day the invoice covers
     last: date  # last day it covers: not before the invoice day, on which its rows are booked
+
+
+def recognises(text: str) -> bool:
+    """Whether the text of a PDF is a Swisscard invoice."""
+    return _ISSUER in text
 
 
 def extract(content: str, source_file: str) -> Extraction:
@@ -233,3 +241,12 @@ def _classify(merchant: str, billed: Decimal, section: str) -> tuple[Kind, str]:
     if merchant.startswith("REVOLUT**"):  # card top-up of the Revolut account
         return Kind.TRANSFER, "Topup Revolut"
     return (Kind.EXPENSE if billed > 0 else Kind.INCOME), ""  # category from rules.yaml
+
+
+SOURCE = Source(
+    name="swisscard",
+    label="Swisscard invoice",
+    reads="pdf",
+    recognises=recognises,
+    extract=extract_account,  # the database keeps the card as an account of its own
+)
