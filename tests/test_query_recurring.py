@@ -96,3 +96,38 @@ def test_rows_add_up_by_top_level_category_and_currency_largest_first() -> None:
         CategorySum("Spesa", "CHF", 2, D("-50")),
         CategorySum("Spesa", "EUR", 1, D("-10")),
     )
+
+
+def test_the_groups_say_when_the_next_payment_is_due_and_whether_it_stopped() -> None:
+    days = ((1, date(2026, 1, 31)), (2, date(2026, 2, 28)), (3, date(2026, 3, 31)))
+    rent = [_row(n, on, "-1850") for n, on in days]
+    insurance = [
+        _row(4, date(2025, 2, 28), "-600", "Insurer, Zurich 8000"),
+        _row(5, date(2026, 2, 28), "-660", "Insurer, Zurich 8000"),
+    ]
+    late = _row(6, date(2026, 9, 1), "-5", "Kiosk")
+    rent_group, insurer = query.recurrences([*rent, *insurance, late])
+    assert (rent_group.name, rent_group.next, rent_group.ended) == (
+        "Landlord AG",
+        date(2026, 4, 30),
+        True,
+    )
+    assert (rent_group.first, rent_group.last, rent_group.previous) == (
+        date(2026, 1, 31),
+        date(2026, 3, 31),
+        None,
+    )
+    assert (insurer.name, insurer.every, insurer.next, insurer.ended) == (
+        "Insurer",
+        "yearly",
+        date(2027, 2, 28),
+        False,
+    )
+    assert (insurer.previous, insurer.monthly) == (D(-600), D(-55))
+    assert rent_group.monthly == D(-1850)
+
+
+def test_a_counterparty_of_only_digits_keeps_its_name() -> None:
+    days = ((1, 5), (2, 6), (3, 7))
+    (group,) = query.recurrences([_row(n, date(2026, m, 1), "-9", "123") for n, m in days])
+    assert group.name == "123"

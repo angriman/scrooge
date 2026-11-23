@@ -14,7 +14,18 @@ from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
-from scrooge import importing, months, networth, overview, portfolio, query, recap, report, savings
+from scrooge import (
+    importing,
+    months,
+    networth,
+    overview,
+    portfolio,
+    query,
+    recap,
+    recurring,
+    report,
+    savings,
+)
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -554,4 +565,36 @@ def cashflow_report(shown: report.Report) -> JSON:
             for line in flow.totals
         ],
         "through": day(kept.through),
+    }
+
+
+def recurring_payment(shown: recurring.Payment) -> JSON:
+    found = shown.found
+    return {
+        "name": found.name,
+        "owner": found.owner,
+        "account": found.account,
+        "every": found.every,
+        "amount": number(-found.latest.amount),
+        "currency": found.latest.currency,
+        "previous": number(None if found.previous is None else -found.previous),
+        "count": len(found.rows),
+        "first": day(found.first),
+        "last": day(found.last),
+        "next": day(found.next),
+        "monthly": number(shown.monthly),
+    }
+
+
+def recurring_payments(shown: recurring.Recurring) -> JSON:
+    """The recurring payments, as amounts paid (positive), and what the active ones cost a
+    month."""
+    through = next((each.found.through for each in shown.active + shown.ended), None)
+    return {
+        "currency": shown.currency,
+        "through": day(through),
+        "monthly": number(shown.monthly),
+        "active": [recurring_payment(each) for each in shown.active],
+        "ended": [recurring_payment(each) for each in shown.ended],
+        "errors": [sentence(exc) for exc in shown.errors],
     }

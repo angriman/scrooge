@@ -6,6 +6,7 @@ own currency, so every total is per currency: nothing is converted here.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -316,8 +317,69 @@ def _paced(gaps: list[int], pace: range) -> bool:
     return sum(gap in pace for gap in gaps) * 4 >= len(gaps) * 3
 
 
-def recurring(rows: Iterable[Row]) -> dict[str, str]:
-    """The rows that come back at a steady pace: row id -> "monthly" or "yearly".
+@dataclass(frozen=True, slots=True)
+class Recurrence:
+    """Payments that come back at a steady pace: those of one person and account to one name.
+
+    `name` is the counterparty as a person reads it (up to its first comma, without digits or
+    signs); `rows` are the payments themselves, oldest first; `ended` when none came for an
+    interval and a half before `through`, the last day of the rows looked at.
+    """
+
+    name: str
+    owner: str
+    account: str
+    every: str  # "monthly" or "yearly"
+    rows: tuple[Row, ...]
+    through: date
+
+    @property
+    def latest(self) -> Row:
+        return self.rows[-1]
+
+    @property
+    def previous(self) -> Decimal | None:
+        """What was paid before the latest amount, when that changed: the price before."""
+        changed = (row.amount for row in reversed(self.rows) if row.amount != self.latest.amount)
+        return next(changed, None)
+
+    @property
+    def first(self) -> date:
+        return self.rows[0].date
+
+    @property
+    def last(self) -> date:
+        return self.latest.date
+
+    @property
+    def next(self) -> date:
+        """When the next payment is due: a month or a year after the last, on the same day
+        where the month has it."""
+        months = 1 if self.every == "monthly" else 12
+        year, month = divmod(self.last.year * 12 + self.last.month - 1 + months, 12)
+        end = month_end(date(year, month + 1, 1))
+        return end.replace(day=min(self.last.day, end.day))
+
+    @property
+    def monthly(self) -> Decimal:
+        """The latest amount spread over a month: a yearly one is a twelfth of it."""
+        return self.latest.amount if self.every == "monthly" else self.latest.amount / 12
+
+    @property
+    def ended(self) -> bool:
+        return (self.through - self.last).days * 2 > 3 * _INTERVAL[self.every]
+
+
+_INTERVAL = {"monthly": 30, "yearly": 365}
+
+
+def _display(row: Row) -> str:
+    name = re.sub(r"[\W\d_]+", " ", (row.counterparty or row.description).partition(",")[0])
+    return " ".join(name.split()) or (row.counterparty or row.description).strip()
+
+
+def recurrences(rows: Iterable[Row]) -> tuple[Recurrence, ...]:
+    """The groups of rows that come back at a steady pace.
 
     Rows go together when they are of the same person and account, the same counterparty (or
     description, without one) and the same direction; of those, the ones within a fifth of
@@ -328,12 +390,14 @@ def recurring(rows: Iterable[Row]) -> dict[str, str]:
     accounts are never recurring.
     """
     groups: dict[tuple[str, str, str, bool], list[Row]] = {}
+    through: date | None = None
     for row in rows:
+        through = row.date if through is None else max(through, row.date)
         name = (row.counterparty or row.description).strip().casefold()
         if name and row.kind in _PAID:
             groups.setdefault((row.owner, row.account, name, row.amount > 0), []).append(row)
-    found: dict[str, str] = {}
-    for listed in groups.values():
+    found: list[Recurrence] = []
+    for (owner, account, _, _), listed in groups.items():
         sizes = sorted(abs(row.amount) for row in listed)
         middle = sizes[len(sizes) // 2]
         steady = sorted(
@@ -341,7 +405,7 @@ def recurring(rows: Iterable[Row]) -> dict[str, str]:
             key=lambda row: row.date,
         )
         gaps = [(b.date - a.date).days for a, b in pairwise(steady)]
-        if not gaps or not middle:
+        if not gaps or not middle or through is None:
             continue
         every = (
             "monthly"
@@ -351,5 +415,12 @@ def recurring(rows: Iterable[Row]) -> dict[str, str]:
             else None
         )
         if every:
-            found.update(dict.fromkeys((row.id for row in steady), every))
-    return found
+            name = _display(steady[-1])
+            found.append(Recurrence(name, owner, account, every, tuple(steady), through))
+    return tuple(found)
+
+
+def recurring(rows: Iterable[Row]) -> dict[str, str]:
+    """The rows that come back at a steady pace: row id -> "monthly" or "yearly" (see
+    `recurrences`)."""
+    return {row.id: group.every for group in recurrences(rows) for row in group.rows}

@@ -36,6 +36,7 @@ from scrooge import (
     portfolio,
     query,
     recap,
+    recurring,
     report,
     staging,
 )
@@ -666,6 +667,21 @@ def _cashflow(request: Request) -> Response:
     )
 
 
+def _recurring(request: Request) -> Response:
+    """The payments that come back at a steady pace for `owner`, or for everyone, and what
+    they cost a month in `currency`."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            query.check_names(conn, query.Filter(owner=asked.owner))
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        found = recurring.run(conn, owner=asked.owner, currency=asked.currency)
+    return JSONResponse(wire.recurring_payments(found))
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -685,6 +701,7 @@ routes = [
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
+    Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),
     Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),
