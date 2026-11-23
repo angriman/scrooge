@@ -306,6 +306,7 @@ def test_a_row_without_a_counterparty_is_the_accounts() -> None:
         0,
         " 42 ",
         None,
+        "1",
     )
     assert spending.merchant(row) == "Revolut CHF"
 

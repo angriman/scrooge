@@ -19,7 +19,7 @@ def test_recurring_payments_are_amounts_paid_with_their_monthly_cost(tmp_path: P
     assert (sent["currency"], sent["through"], sent["monthly"], sent["errors"]) == (
         "CHF",
         "2026-10-25",
-        "1562",
+        "1562.00",
         [],
     )
     assert [p["name"] for p in sent["active"]] == ["Landlord AG", "Insurer", "Streamio"]
@@ -35,7 +35,7 @@ def test_recurring_payments_are_amounts_paid_with_their_monthly_cost(tmp_path: P
         "first": "2026-05-03",
         "last": "2026-10-03",
         "next": "2026-11-03",
-        "monthly": "12",
+        "monthly": "12.00",
     }
     assert [p["name"] for p in sent["ended"]] == ["Gym"]
 

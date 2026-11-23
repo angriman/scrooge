@@ -1,9 +1,11 @@
 """The payments that come back at a steady pace, subscriptions among them, and what they cost
 a month: the panel of the cash-flow page.
 
-Only money going out is listed: a salary comes back each month too, but it is not something
-one pays for. What each costs a month is converted at the rate of the last day of the
-statements, the day the list is as of.
+Only money spent, as the cash-flow page counts it, is listed: a salary comes back each month
+too, but it is not something one pays for, and neither is a standing transfer to one's own
+broker or pension fund, or (for both people together) what the two pay each other. What each
+costs a month is converted at the rate of the last day of the statements, the day the list is
+as of, and rounded to the cent.
 """
 
 from __future__ import annotations
@@ -12,7 +14,8 @@ import sqlite3
 from dataclasses import dataclass
 from decimal import Decimal
 
-from scrooge import networth, query
+from scrooge import cashflow, networth, query, spending
+from scrooge.analysis import CENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +40,12 @@ def run(conn: sqlite3.Connection, *, owner: str | None, currency: str) -> Recurr
     """The recurring payments of `owner`, or of everyone, with their monthly cost in
     `currency`."""
     rows = query.run(conn, query.Filter(owner=owner)).rows
-    found = [group for group in query.recurrences(rows) if group.latest.amount < 0]
+    spent = {row.id for row in cashflow.counted(conn, owner) if spending.is_spent(row)}
+    found = [
+        group
+        for group in query.recurrences(rows)
+        if group.latest.amount < 0 and group.latest.id in spent
+    ]
     errors: dict[str, networth.MissingRateError] = {}
     payments = []
     if found:
@@ -46,6 +54,7 @@ def run(conn: sqlite3.Connection, *, owner: str | None, currency: str) -> Recurr
             cost: Decimal | None
             try:
                 cost = networth.convert([-group.monthly], group.latest.currency, currency, rates)[0]
+                cost = cost.quantize(CENT)
             except networth.MissingRateError as exc:
                 cost = None
                 errors.setdefault(str(exc), exc)

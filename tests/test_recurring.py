@@ -77,6 +77,38 @@ def test_active_payments_come_most_a_month_first_and_ended_ones_apart(database: 
     )
 
 
+def test_transfers_and_what_the_two_pay_each_other_are_not_payments(tmp_path: Path) -> None:
+    months = [(2026, m) for m in range(5, 11)]
+    broker = [
+        txn(
+            "-1000",
+            date=date(y, m, 5),
+            counterparty="Broker",
+            kind=Kind.TRANSFER,
+            category="Topup IBKR",
+            source_ref=f"b{m}",
+        )
+        for y, m in months
+    ]
+    rows = [
+        *broker,
+        *_monthly("Anna Meier", [(y, m, "-300") for y, m in months], "a"),
+        *_monthly("Landlord AG, Bern", [(y, m, "-1500") for y, m in months], "r"),
+    ]
+    conn = db.connect(tmp_path / "scrooge.db")
+    db.migrate(conn, BUILT)
+    close(conn, OWNER, SPAN, ("migros", rows), now=BUILT)
+    conn.commit()
+    conn.close()
+    with db.reading(tmp_path / "scrooge.db") as conn:
+        everyone = recurring.run(conn, owner=None, currency="CHF")
+        lukas = recurring.run(conn, owner=OWNER, currency="CHF")
+    assert [p.found.name for p in everyone.active] == ["Landlord AG"]
+    assert everyone.monthly == D(1500)
+    # In one person's view, what they pay the other is money spent, as cash flow counts it.
+    assert [p.found.name for p in lukas.active] == ["Landlord AG", "Anna Meier"]
+
+
 def test_a_currency_without_a_rate_leaves_its_cost_and_the_total_unknown(tmp_path: Path) -> None:
     with db.reading(build(tmp_path / "scrooge.db", rate=False)) as conn:
         found = recurring.run(conn, owner=OWNER, currency="EUR")
