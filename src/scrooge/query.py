@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from itertools import pairwise
 
 from scrooge.extractors.common import month_end
 from scrooge.models import CERTIFICATE_SOURCES, Kind
@@ -275,3 +276,80 @@ def _sums(rows: Iterable[Row], period: Callable[[Row], str]) -> tuple[Sum, ...]:
         Sum(key[0], key[1], len(amounts), sum(amounts, Decimal(0)))
         for key, amounts in sorted(groups.items())
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CategorySum:
+    """What the rows of one top-level category and one currency add up to."""
+
+    name: str  # the top-level category; `TRANSFERS` for the rows that have none
+    currency: str
+    count: int
+    total: Decimal
+
+
+TRANSFERS = "Transfers"  # what the rows of kind `internal`, which have no category, are summed as
+
+
+def by_category(rows: Iterable[Row]) -> tuple[CategorySum, ...]:
+    """What `rows` add up to by top-level category and currency, the largest first."""
+    sums: dict[tuple[str, str], tuple[int, Decimal]] = {}
+    for row in rows:
+        key = (row.category_parent or row.category or TRANSFERS, row.currency)
+        count, total = sums.get(key, (0, Decimal(0)))
+        sums[key] = (count + 1, total + row.amount)
+    return tuple(
+        sorted(
+            (CategorySum(name, currency, *sums[name, currency]) for name, currency in sums),
+            key=lambda found: (-abs(found.total), found.name, found.currency),
+        )
+    )
+
+
+_PAID = frozenset({Kind.INCOME, Kind.EXPENSE, Kind.TRANSFER})
+_MONTHLY = range(26, 36)  # days between two payments of a month apart, give or take
+_YEARLY = range(350, 381)
+
+
+def _paced(gaps: list[int], pace: range) -> bool:
+    """Whether three gaps in four are of `pace`: a payment skipped or made twice is allowed."""
+    return sum(gap in pace for gap in gaps) * 4 >= len(gaps) * 3
+
+
+def recurring(rows: Iterable[Row]) -> dict[str, str]:
+    """The rows that come back at a steady pace: row id -> "monthly" or "yearly".
+
+    Rows go together when they are of the same person and account, the same counterparty (or
+    description, without one) and the same direction; of those, the ones within a fifth of
+    their middle amount are its payments. Three or more with a month between them, as a rule
+    (three gaps in four), are monthly; two or more a year apart are yearly: a shop where some
+    purchases happen to cost about the same is not paid at a pace. Only money in
+    and out (`_PAID`) is a payment: trades, fees, dividends and moves between one's own
+    accounts are never recurring.
+    """
+    groups: dict[tuple[str, str, str, bool], list[Row]] = {}
+    for row in rows:
+        name = (row.counterparty or row.description).strip().casefold()
+        if name and row.kind in _PAID:
+            groups.setdefault((row.owner, row.account, name, row.amount > 0), []).append(row)
+    found: dict[str, str] = {}
+    for listed in groups.values():
+        sizes = sorted(abs(row.amount) for row in listed)
+        middle = sizes[len(sizes) // 2]
+        steady = sorted(
+            (row for row in listed if abs(abs(row.amount) - middle) * 5 <= middle),
+            key=lambda row: row.date,
+        )
+        gaps = [(b.date - a.date).days for a, b in pairwise(steady)]
+        if not gaps or not middle:
+            continue
+        every = (
+            "monthly"
+            if len(steady) >= 3 and _paced(gaps, _MONTHLY)
+            else "yearly"
+            if _paced(gaps, _YEARLY)
+            else None
+        )
+        if every:
+            found.update(dict.fromkeys((row.id for row in steady), every))
+    return found

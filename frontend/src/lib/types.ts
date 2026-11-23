@@ -19,6 +19,8 @@ export interface Session {
 	currency: string;
 	read_only: boolean;
 	signing: boolean;
+	/** Whether a category chosen can be remembered as a rule for the next import. */
+	rules: boolean;
 	token: string;
 }
 
@@ -268,5 +270,60 @@ export interface Statements {
 	covered: Day | null;
 	accounts: StatementsAccount[];
 	checks: Check[];
+	errors: string[];
+}
+
+/** A heading of the taxonomy and the categories under it. */
+export interface Headed {
+	heading: string;
+	names: string[];
+}
+
+export interface Transaction {
+	id: string;
+	owner: string;
+	account: string;
+	date: string;
+	booking_date: string;
+	amount: Amount;
+	currency: string;
+	description: string;
+	counterparty: string;
+	kind: string;
+	category: string | null;
+	category_parent: string | null;
+	file: string;
+	/** How often it comes back, when it does. */
+	recurring: 'monthly' | 'yearly' | null;
+	/** Whether its category can be changed here. */
+	changeable: boolean;
+}
+
+export interface Total {
+	currency: string;
+	count: number;
+	total: Amount;
+}
+
+/** What the rows of one top-level category add up to, in one currency. */
+export interface CategoryTotal extends Total {
+	name: string;
+}
+
+export interface Transactions {
+	/** How many rows match, of which `rows` are those from `offset` on. */
+	count: number;
+	offset: number;
+	totals: Total[];
+	by_category: CategoryTotal[];
+	rows: Transaction[];
+	choices: {
+		accounts: string[];
+		/** What the category filter can be set to: headings and the names under them. */
+		categories: Headed[];
+		/** What a row can be given. */
+		leaves: Headed[];
+	};
+	kinds: string[];
 	errors: string[];
 }

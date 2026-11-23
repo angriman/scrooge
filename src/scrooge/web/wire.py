@@ -324,3 +324,41 @@ def statements_account(
         ],
         "statements": list(files),
     }
+
+
+_CHANGEABLE = frozenset({"income", "expense", "transfer"})  # `store.CHANGEABLE`, for a row
+
+
+def transaction(row: query.Row, every: str | None) -> JSON:
+    """One committed row; `every` says how often it comes back ("monthly", "yearly"), when it
+    does; `changeable` whether its category can be changed."""
+    return {
+        "id": row.id,
+        "owner": row.owner,
+        "account": row.account,
+        "date": day(row.date),
+        "booking_date": day(row.booking_date),
+        "amount": number(row.amount),
+        "currency": row.currency,
+        "description": row.description,
+        "counterparty": row.counterparty,
+        "kind": row.kind.value,
+        "category": row.category,
+        "category_parent": row.category_parent,
+        "file": row.file,
+        "recurring": every,
+        "changeable": row.category is not None and row.kind.value in _CHANGEABLE,
+    }
+
+
+def _headed(groups: Sequence[tuple[str, tuple[str, ...]]]) -> list[JSON]:
+    return [{"heading": heading, "names": list(names)} for heading, names in groups]
+
+
+def choices(found: query.Choices) -> JSON:
+    """What the filters can be set to, and the categories a row can be given."""
+    return {
+        "accounts": list(found.accounts),
+        "categories": _headed(found.categories),
+        "leaves": _headed(found.leaves),
+    }

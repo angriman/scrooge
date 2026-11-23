@@ -38,6 +38,15 @@ export function dayOfYear(text: string): string {
 	return `${date} ${MONTHS[month - 1]}`;
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** `Tue 16 Sep`, and its year when it is not `thisYear`: a day in a list of days. */
+export function weekday(text: string, thisYear: number): string {
+	const [year, month, date] = parts(text);
+	const name = WEEKDAYS[new Date(Date.UTC(year, month - 1, date)).getUTCDay()];
+	return `${name} ${date} ${MONTHS[month - 1]}${year === thisYear ? '' : ` ${year}`}`;
+}
+
 /** `Sep 2026`. */
 export function month(text: string): string {
 	const [year, month] = parts(text);

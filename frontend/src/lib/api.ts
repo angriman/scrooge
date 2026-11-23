@@ -19,3 +19,24 @@ export async function get<T>(
 	}
 	return sent as T;
 }
+
+/** POST `body` as JSON to `path` of the API, with the token of these pages (`Session.token`)
+ * that a change needs. A change refused is an error with the API's sentences. */
+export async function post<T>(path: string, body: unknown, token: string): Promise<T> {
+	const response = await fetch(path, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json', 'x-token': token },
+		body: JSON.stringify(body)
+	});
+	if (response.status === 401) {
+		location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+	}
+	const sent = await response.json().catch(() => ({}));
+	if (!response.ok) {
+		throw new Error(
+			(sent.errors ?? []).join(' ') ||
+				'The change was refused. Reload the page and try again.'
+		);
+	}
+	return sent as T;
+}

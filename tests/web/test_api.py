@@ -313,3 +313,92 @@ def test_every_account_is_sent_with_its_statements_and_what_it_holds(client: Tes
     )
     assert client.get("/api/statements", params={"currency": "JPY"}).json()["errors"]
     assert client.get("/api/statements", params={"currency": "XYZ"}).status_code == 400
+
+
+def test_transactions_are_sent_newest_first_with_what_they_add_up_to(client: TestClient) -> None:
+    sent = client.get("/api/transactions").json()
+    dates = [row["date"] for row in sent["rows"]]
+    assert dates == sorted(dates, reverse=True)
+    assert sent["count"] == len(sent["rows"])
+    assert sum(t["count"] for t in sent["totals"]) == sent["count"]
+    assert sum(c["count"] for c in sent["by_category"]) == sent["count"]
+    assert sent["choices"]["leaves"]
+    assert "expense" in sent["kinds"]
+    assert {"recurring", "changeable", "category_parent"} <= set(sent["rows"][0])
+    page = client.get("/api/transactions", params={"offset": "1", "limit": "2"}).json()
+    assert (page["offset"], page["rows"]) == (1, sent["rows"][1:3])
+    assert page["count"] == sent["count"]
+
+
+def test_transactions_follow_the_filter_and_refuse_one_that_cannot_be_read(
+    client: TestClient,
+) -> None:
+    hers = client.get("/api/transactions", params={"owner": PARTNER}).json()
+    assert hers["rows"]
+    assert {row["owner"] for row in hers["rows"]} == {PARTNER}
+    refused = client.get("/api/transactions", params={"from": "yesterday"})
+    assert refused.status_code == 400
+    assert refused.json()["errors"]
+
+
+@pytest.fixture
+def writable(tmp_path: Path) -> TestClient:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    household(conn)
+    conn.close()
+    return TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+
+
+def _changeable(client: TestClient) -> dict[str, str]:
+    rows: list[dict[str, str]] = client.get("/api/transactions").json()["rows"]
+    return next(row for row in rows if row["changeable"])
+
+
+def test_a_category_is_changed_with_the_token_of_the_session(writable: TestClient) -> None:
+    row = _changeable(writable)
+    other = next(
+        name
+        for group in writable.get("/api/transactions").json()["choices"]["leaves"]
+        for name in group["names"]
+        if name != row["category"]
+    )
+    token = writable.get("/api/session").json()["token"]
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": other, "remember": False}
+    response = writable.post("/api/transactions/category", json=sent, headers={"X-Token": token})
+    assert response.json() == {"changed": 1, "errors": []}
+    rows = writable.get("/api/transactions").json()["rows"]
+    assert next(r for r in rows if r["id"] == row["id"])["category"] == other
+
+
+def test_a_change_without_the_token_or_from_another_site_is_refused(writable: TestClient) -> None:
+    row = _changeable(writable)
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Affitto"}
+    assert writable.post("/api/transactions/category", json=sent).status_code == 403
+    token = writable.get("/api/session").json()["token"]
+    elsewhere = {"X-Token": token, "Origin": "https://example.com"}
+    response = writable.post("/api/transactions/category", json=sent, headers=elsewhere)
+    assert response.status_code == 403
+    assert _changeable(writable)["category"] == row["category"]
+
+
+def test_a_change_that_cannot_be_made_says_why(writable: TestClient) -> None:
+    row = _changeable(writable)
+    token = {"X-Token": writable.get("/api/session").json()["token"]}
+    unknown = {"owner": row["owner"], "ids": [row["id"]], "category": "Nowhere"}
+    response = writable.post("/api/transactions/category", json=unknown, headers=token)
+    assert response.status_code == 409
+    assert response.json()["errors"]
+    garbled = writable.post("/api/transactions/category", content=b"[1, 2]", headers=token)
+    assert garbled.status_code == 400
+
+
+def test_a_copy_refuses_every_change(database: Path) -> None:
+    copy = TestClient(webapp.create_app(database, read_only=True), base_url=SITE)
+    session = copy.get("/api/session").json()
+    assert session["rules"] is False
+    row = _changeable(copy)
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Affitto"}
+    headers = {"X-Token": session["token"]}
+    assert copy.post("/api/transactions/category", json=sent, headers=headers).status_code == 403
