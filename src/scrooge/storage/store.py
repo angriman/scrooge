@@ -40,6 +40,11 @@ class Anchor:
     opening: bool  # only known as what the next statement started from: nothing covers `day`
 
 
+def marks(count: int) -> str:
+    """`?, ?, ?`: one parameter mark per value, for `IN (...)`; the values go as parameters."""
+    return ", ".join("?" * count)
+
+
 def ensure_owner(conn: sqlite3.Connection, name: str) -> int:
     conn.execute("INSERT OR IGNORE INTO owners (name) VALUES (?)", (name,))
     return int(conn.execute("SELECT id FROM owners WHERE name = ?", (name,)).fetchone()[0])
@@ -383,14 +388,14 @@ def delete_statement_rows(
     and holdings go with the earlier file of the same period. Returns the files those rows
     came from.
     """
-    marks = ", ".join("?" * len(accounts))
+    in_accounts = marks(len(accounts))
     first, last = period[0].isoformat(), period[1].isoformat()
     transactions = (
-        f"FROM transactions WHERE account_id IN ({marks}) AND booking_date BETWEEN ? AND ? "  # noqa: S608  # only "?" marks are interpolated
+        f"FROM transactions WHERE account_id IN ({in_accounts}) AND booking_date BETWEEN ? AND ? "  # noqa: S608  # only "?" marks are interpolated
         "AND statement_file_id IN (SELECT id FROM statement_files WHERE source = ?)"
     )
     balances = (
-        f"FROM balances WHERE account_id IN ({marks}) AND statement_file_id IN "  # noqa: S608  # only "?" marks are interpolated
+        f"FROM balances WHERE account_id IN ({in_accounts}) AND statement_file_id IN "  # noqa: S608  # only "?" marks are interpolated
         "(SELECT id FROM statement_files WHERE source = ? AND period_start = ? AND period_end = ?)"
     )
     touched: set[int] = set()
@@ -433,11 +438,10 @@ def statement_rows(
 ) -> dict[str, StoredRow]:
     """The rows statements of `source` gave these accounts, booked in the period, by id.
     Without the interest split off a bill, which no statement prints."""
-    marks = ", ".join("?" * len(accounts))
     found = conn.execute(
         "SELECT t.id, a.name, t.booking_date, t.description, t.date, t.currency, t.amount_nano "  # noqa: S608  # only "?" marks are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
-        f"WHERE t.account_id IN ({marks}) AND t.booking_date BETWEEN ? AND ? "
+        f"WHERE t.account_id IN ({marks(len(accounts))}) AND t.booking_date BETWEEN ? AND ? "
         "AND t.split_of IS NULL "
         "AND t.statement_file_id IN (SELECT id FROM statement_files WHERE source = ?) "
         "ORDER BY t.booking_date, t.id",
@@ -999,12 +1003,11 @@ def waiting(
 ) -> list[Waiting]:
     """Those of `ids` that are rows of the owner and still need a category; with `change`,
     those that have one which can be changed, staged or committed."""
-    marks = ", ".join("?" * len(ids))
     rows = conn.execute(
         "SELECT t.id, t.amount_nano, t.kind, t.description, t.counterparty "  # noqa: S608  # only "?" marks and the fixed text above are interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         f"WHERE a.owner_id = ? AND {CHANGEABLE if change else WAITING} "
-        f"AND t.id IN ({marks}) ORDER BY t.id",
+        f"AND t.id IN ({marks(len(ids))}) ORDER BY t.id",
         (owner, *ids),
     ).fetchall()
     return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]
