@@ -13,26 +13,21 @@ interest are those of the account they were charged on.
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from statistics import median
 
-from scrooge import analysis, cashflow
+from scrooge import analysis, cashflow, query
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
-from scrooge.extractors.common import month_end
-from scrooge.models import Kind
 from scrooge.networth import DEFAULT_CURRENCY
 
 SHOWN = 6  # the largest categories, each with its own colour in the chart
 OTHERS = "Others"  # the rest of the categories, together
 PAID_BACK = "Paid back"  # what the other person paid, in one person's view
 MERCHANTS = 20  # the merchants listed; the others are added up
-_FEES = frozenset({Kind.COMMISSION, Kind.TAX, Kind.INTEREST})
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,12 +107,8 @@ def paid_back(row: Counted) -> bool:
 
 
 def merchant(row: Counted) -> str:
-    """Who was paid: the counterparty up to its first comma, without digits or signs; the
-    account for a fee, a tax, interest, or a row that names nobody."""
-    if row.kind in _FEES:
-        return row.account
-    name = re.sub(r"[\W\d_]+", " ", row.counterparty.partition(",")[0])
-    return " ".join(name.split()) or row.account
+    """Who was paid, as `query.merchant` names them: the transactions page filters by it."""
+    return query.merchant(row.kind, row.account, row.counterparty)
 
 
 def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
@@ -217,16 +208,11 @@ def _categories(
 
 def _usual(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:
     """top -> the median of what was spent in each of the twelve months before the range."""
-    month = span.start.replace(day=1)
-    starts = [analysis.add_months(month, n) for n in range(-12, 0)]
-    if starts[0] < span.known:
-        return None
-    sums: dict[str, list[Decimal]] = defaultdict(lambda: [Decimal(0)] * 12)
-    for n, start in enumerate(starts):
-        for each in found.between(start, month_end(start)):
-            if not paid_back(each.row):
-                sums[each.row.top][n] -= each.amount
-    return {top: median(values).quantize(CENT) for top, values in sums.items()}
+    return analysis.usual(
+        found,
+        span.start,
+        lambda each: None if paid_back(each.row) else (each.row.top, -each.amount),
+    )
 
 
 def _year_before(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:

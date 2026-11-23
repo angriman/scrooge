@@ -6,6 +6,7 @@ own currency, so every total is per currency: nothing is converted here.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -33,7 +34,8 @@ class Filter:
     booking date when `booking` is set. `category` is a name at either level of the taxonomy:
     a top-level category stands for all its leaves. `at_least` and `at_most` bound the size of
     the amount, whatever its sign. `text` is looked for in the counterparty and the
-    description, ignoring case.
+    description, ignoring case. `merchant` is who was paid as the cash flow names them
+    (`merchant`), ignoring case.
     """
 
     first: date | None = None
@@ -46,6 +48,19 @@ class Filter:
     at_least: Decimal | None = None
     at_most: Decimal | None = None
     text: str = ""
+    merchant: str | None = None
+
+
+_FEES = frozenset({Kind.COMMISSION, Kind.TAX, Kind.INTEREST})
+
+
+def merchant(kind: Kind, account: str, counterparty: str) -> str:
+    """Who was paid: the counterparty up to its first comma, without digits or signs; the
+    account for a fee, a tax, interest, or a row that names nobody."""
+    if kind in _FEES:
+        return account
+    name = re.sub(r"[\W\d_]+", " ", counterparty.partition(",")[0])
+    return " ".join(name.split()) or account
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +229,13 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         for r in found
         if needle in r["counterparty"].casefold() or needle in r["description"].casefold()
     )
+    if wanted.merchant is not None:
+        paid = " ".join(wanted.merchant.split()).casefold()
+        rows = tuple(
+            row
+            for row in rows
+            if merchant(row.kind, row.account, row.counterparty).casefold() == paid
+        )
 
     def day(row: Row) -> date:
         return row.booking_date if wanted.booking else row.date
