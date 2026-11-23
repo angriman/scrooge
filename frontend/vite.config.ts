@@ -24,7 +24,7 @@ export default defineConfig({
 		})
 	],
 	server: {
-		proxy: Object.fromEntries(['/api', '/logos', '/login'].map((path) => [path, served]))
+		proxy: Object.fromEntries(['/api', '/logos', '/login', '/static'].map((path) => [path, served]))
 	},
 	test: {
 		include: ['src/**/*.test.ts']

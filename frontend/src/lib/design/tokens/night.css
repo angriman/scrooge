@@ -38,16 +38,21 @@
 	--caution-soft: color-mix(in srgb, var(--amber-400) 14%, transparent);
 
 	/* Data: the colours of the series of a chart, in the order they are handed out
-	 * (src/lib/design/data.ts says which series gets which), and the one of the rest. */
-	--data-1: var(--indigo-400);
-	--data-2: var(--teal-400);
-	--data-3: var(--amber-400);
-	--data-4: var(--sky-400);
+	 * (src/lib/design/data.ts says which series gets which), and the one of the rest. None is
+	 * the brand's indigo, which marks what can be clicked and what is chosen, nor the teal and
+	 * rose of gain and loss, which say which way a figure went. */
+	--data-1: var(--magenta-400);
+	--data-2: var(--amber-400);
+	--data-3: var(--sky-400);
+	--data-4: var(--lime-400);
 	--data-5: var(--violet-400);
-	--data-6: var(--rose-400);
-	--data-7: var(--lime-400);
-	--data-8: var(--sand-400);
+	--data-6: var(--sand-400);
+	--data-7: var(--slate-400);
+	--data-8: var(--coral-400);
 	--data-other: var(--navy-600);
+
+	/* The shadow of what floats over the page (menus, tooltips): nothing else casts one. */
+	--float-shadow: 0 8px 24px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.25);
 
 	/* The scaffolding of a chart: gridlines and the axis. */
 	--chart-grid: var(--navy-750);

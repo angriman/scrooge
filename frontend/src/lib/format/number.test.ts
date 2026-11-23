@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	approximate,
+	difference,
 	exact,
+	negate,
+	percentOf,
+	sum,
 	money,
 	percent,
 	short,
@@ -103,6 +107,46 @@ describe('percent', () => {
 	it('writes a change with its sign', () => {
 		expect(signedPercent('4.25')).toBe('+4.3%');
 		expect(signedPercent('-13.26')).toBe('−13.3%');
+	});
+});
+
+describe('sum', () => {
+	it('adds exactly, as decimal text', () => {
+		expect(sum(['0.1', '0.2'])).toBe('0.3');
+		expect(sum(['1850.00', '920', '-0.5'])).toBe('2769.50');
+		expect(sum([])).toBe('0');
+	});
+
+	it('turns a sign', () => {
+		expect(negate('150.00')).toBe('-150.00');
+		expect(negate('-150')).toBe('150');
+		expect(negate('+2')).toBe('-2');
+	});
+});
+
+describe('difference', () => {
+	it('subtracts exactly, as decimal text', () => {
+		expect(difference('1000.10', '999.9')).toBe('0.20');
+		expect(difference('0.1', '0.3')).toBe('-0.2');
+		expect(difference('-5', '7.25')).toBe('-12.25');
+		expect(difference('12345678901234567.89', '0.01')).toBe('12345678901234567.88');
+	});
+});
+
+describe('percentOf', () => {
+	it('divides exactly, to two decimals, a tie to the even neighbour', () => {
+		expect(percentOf('-127.50', '30975.00')).toBe('-0.41');
+		expect(percentOf('500.00', '1000.00')).toBe('50.00');
+		expect(percentOf('1', '3')).toBe('33.33');
+		expect(percentOf('2', '3')).toBe('66.67');
+		expect(percentOf('1', '8', 1)).toBe('12.5');
+		expect(percentOf('1', '16', 1)).toBe('6.2');
+		expect(percentOf('3', '16', 1)).toBe('18.8');
+	});
+
+	it('has no percent of what is not above zero', () => {
+		expect(percentOf('10', '0')).toBeNull();
+		expect(percentOf('10', '-5')).toBeNull();
 	});
 });
 

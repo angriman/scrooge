@@ -76,15 +76,77 @@ export interface Overview {
 	errors: string[];
 }
 
+/** What came into view on a day, by the index of the day: an account's worth on the day it
+ * first counts. Days without any are left out. */
+export type Arrived = Record<string, Amount>;
+
 export interface Series {
 	currency: string;
 	first: Day | null;
 	total: Amount[];
-	parts: { name: string; values: Amount[] }[];
+	arrived: Arrived;
+	parts: { name: string; values: Amount[]; arrived: Arrived }[];
 	notes: string[];
 }
 
 export interface NetWorth {
 	series: Series | null;
+	errors: string[];
+}
+
+/** An account a source feeds, and the last day committed of it. */
+export interface Account {
+	owner: string;
+	account: string;
+	label: string;
+	committed: Day | null;
+}
+
+export interface MonthCategory {
+	name: string;
+	spent: Amount;
+	usual: Amount | null;
+	/** More (less, when negative) than usual, in percent of the usual month. */
+	against_usual: Amount | null;
+}
+
+/** One month at a glance (src/scrooge/recap.py). Months are written `2026-10`. */
+export interface MonthRecap {
+	currency: string;
+	month: string;
+	first: Day;
+	/** Its last day, or the last day there is while it is not over. */
+	last: Day;
+	over: boolean;
+	before: Amount | null;
+	after: Amount;
+	moved: Amount | null;
+	income: Amount;
+	spent: Amount;
+	/** What accounts held on the day they first counted, within the month. */
+	arrived: Amount;
+	saved: Amount;
+	/** What moved net worth besides what was saved: markets, and what is not income or spending. */
+	other: Amount | null;
+	/** Saved, in percent of income: the month's, and the twelve months' ending with it. */
+	rate: Amount | null;
+	rate_year: Amount | null;
+	categories: MonthCategory[];
+	/** Monthly accounts whose statements end before `last`. */
+	missing: Account[];
+	earlier: string | null;
+	later: string | null;
+}
+
+export interface Month {
+	month: MonthRecap | null;
+	errors: string[];
+}
+
+export interface Attention {
+	staged: { owner: string; count: number }[];
+	behind: Account[];
+	/** Lines of statements whose figures differ from those worked out here. */
+	differ: number;
 	errors: string[];
 }
