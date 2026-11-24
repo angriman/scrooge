@@ -23,106 +23,186 @@ import yaml
 from scrooge import yamlfiles
 from scrooge.errors import ConfigError
 
+# Every name of the taxonomy is written once, here: code names a category by its constant,
+# never by its text, so a name changes in one place. A leaf and a top-level category of the
+# same text are two constants: `GROUP_` names the top-level one.
+
 # What `unmatched` in the config may give the expenses and income no rule matches, when
-# categories are not tracked: net worth needs none.
+# categories are not tracked: net worth needs none. A leaf of both sides and its own group.
 UNSORTED = "Uncategorized"
+
+# The top-level categories of the expenses.
+GROUP_HOME = "Home"
+GROUP_HEALTH = "Health"
+GROUP_FOOD = "Food"
+GROUP_TRANSPORT = "Transport"
+GROUP_PHONE = "Phone"
+GROUP_SUBSCRIPTIONS = "Subscriptions"
+GROUP_PERSONAL_CARE = "Personal care"
+GROUP_CLOTHING = "Clothing"
+GROUP_SHOPPING = "Shopping"
+GROUP_TRAVEL = "Travel and leisure"
+GROUP_EDUCATION = "Education"
+GROUP_TAXES = "Taxes and paperwork"
+GROUP_BANKING = "Banking"
+
+# The leaves of the expenses.
+RENT = "Rent"
+UTILITIES = "Utilities"
+HOUSEHOLD = "Household"
+HEALTH_INSURANCE = "Health insurance"
+DENTIST = "Dentist"
+DOCTOR = "Doctor/Pharmacy"
+GROCERIES = "Groceries"
+EATING_OUT = "Eating out"
+TRAINS = "Trains"
+FUEL = "Fuel"
+LOCAL_TRANSPORT = "Local transport"
+FLIGHTS = "Flights"
+PARKING = "Parking and tolls"
+SIM = "SIM"
+DIGITAL_SUBSCRIPTIONS = "Digital subscriptions"
+REVOLUT_METAL = "Revolut Metal"
+BARBER = "Barber"
+CLOTHES = "Clothes"
+ELECTRONICS = "Electronics"
+OTHER_SHOPPING = "Other shopping"
+ACCOMMODATION = "Accommodation"
+ACTIVITIES = "Activities"
+SPORT = "Sport"
+LANGUAGE_LESSONS = "Language lessons"
+BOOKS = "Books"
+GIFTS = "Gifts"
+DONATIONS = "Donations"
+TAXES = "Taxes"
+PAPERWORK = "Paperwork"
+WITHHOLDING_TAX = "Withholding tax"
+# Leaves of both sides: what was paid and what came back.
+FEES = "Fees"
+TRADING = "Trading"  # what trading won or lost
+INVESTMENTS = "Investments"  # securities bought and sold: principal, never income or spending
+
+# Top-level categories named like their leaf.
+GROUP_EATING_OUT = EATING_OUT
+GROUP_GIFTS = GIFTS
+GROUP_INVESTMENTS = INVESTMENTS  # of the leaves INVESTMENTS and TRADING
+
+# The leaves of the income, besides those of both sides.
+SALARY = "Salary"
+DIVIDENDS = "Dividends"
+INTEREST = "Interest"
+CASHBACK = "Cashback"
+REFUNDS = "Refunds"
+GIFTS_RECEIVED = "Gifts received"
+
+# The transfers.
+REVOLUT_TOP_UP = "Revolut top-up"
+IBKR_TOP_UP = "IBKR top-up"
+WITHDRAWALS = "Withdrawals"
+OWN_TRANSFER = "Own transfer"  # between my own accounts, when nothing else says it better
+BUY_CURRENCIES = ("EUR", "USD")  # the currencies an exchange into has a category of its own
+
+
+def buy(currency: str) -> str:
+    """The category of an exchange into `currency`, one of BUY_CURRENCIES."""
+    return f"Buy {currency}"
+
+
 USCITE: dict[str, tuple[str, ...]] = {
-    "Home": ("Rent", "Utilities", "Household"),
-    "Health": ("Health insurance", "Dentist", "Doctor/Pharmacy"),
-    "Food": ("Groceries",),
-    "Eating out": ("Eating out",),
-    "Transport": ("Trains", "Fuel", "Local transport", "Flights", "Parking and tolls"),
-    "Phone": ("SIM",),
-    "Subscriptions": ("Digital subscriptions", "Revolut Metal"),
-    "Personal care": ("Barber",),
-    "Clothing": ("Clothes",),
-    "Shopping": ("Electronics", "Other shopping"),
-    "Travel and leisure": ("Accommodation", "Activities", "Sport"),
-    "Education": ("Language lessons", "Books"),
-    "Gifts": ("Gifts", "Donations"),
-    "Taxes and paperwork": ("Taxes", "Paperwork"),
-    "Banking": ("Fees", "Withholding tax"),
-    "Investments": ("Trading", "Investments"),
+    GROUP_HOME: (RENT, UTILITIES, HOUSEHOLD),
+    GROUP_HEALTH: (HEALTH_INSURANCE, DENTIST, DOCTOR),
+    GROUP_FOOD: (GROCERIES,),
+    GROUP_EATING_OUT: (EATING_OUT,),
+    GROUP_TRANSPORT: (TRAINS, FUEL, LOCAL_TRANSPORT, FLIGHTS, PARKING),
+    GROUP_PHONE: (SIM,),
+    GROUP_SUBSCRIPTIONS: (DIGITAL_SUBSCRIPTIONS, REVOLUT_METAL),
+    GROUP_PERSONAL_CARE: (BARBER,),
+    GROUP_CLOTHING: (CLOTHES,),
+    GROUP_SHOPPING: (ELECTRONICS, OTHER_SHOPPING),
+    GROUP_TRAVEL: (ACCOMMODATION, ACTIVITIES, SPORT),
+    GROUP_EDUCATION: (LANGUAGE_LESSONS, BOOKS),
+    GROUP_GIFTS: (GIFTS, DONATIONS),
+    GROUP_TAXES: (TAXES, PAPERWORK),
+    GROUP_BANKING: (FEES, WITHHOLDING_TAX),
+    GROUP_INVESTMENTS: (TRADING, INVESTMENTS),
     UNSORTED: (UNSORTED,),
 }
 ENTRATE: tuple[str, ...] = (
-    "Salary",
-    "Dividends",
-    "Interest",
-    "Cashback",
-    "Refunds",
-    "Gifts received",
-    "Trading",
-    "Fees",
-    "Investments",
+    SALARY,
+    DIVIDENDS,
+    INTEREST,
+    CASHBACK,
+    REFUNDS,
+    GIFTS_RECEIVED,
+    TRADING,
+    FEES,
+    INVESTMENTS,
     UNSORTED,
 )
 TRANSFERS: tuple[str, ...] = (
-    "Revolut top-up",
-    "IBKR top-up",
-    "Buy EUR",
-    "Buy USD",
-    "Withdrawals",
-    "Own transfer",  # between my own accounts, when none of the above says it better
+    REVOLUT_TOP_UP,
+    IBKR_TOP_UP,
+    *map(buy, BUY_CURRENCIES),
+    WITHDRAWALS,
+    OWN_TRANSFER,
 )
 # The Italian names the taxonomy had until 2026-11-24 (migration 0010 renamed them in the
 # database). A rules file, `categories.yaml` or the config that still names one means the
 # English one: the user's files are never rewritten for it.
 ITALIAN: dict[str, str] = {
-    "Casa": "Home",
-    "Affitto": "Rent",
-    "Utenze": "Utilities",
-    "Arredamento e casa": "Household",
-    "Salute": "Health",
-    "Assicurazione sanitaria": "Health insurance",
-    "Dentista": "Dentist",
-    "Medico/Farmacia": "Doctor/Pharmacy",
-    "Alimentari": "Food",
-    "Spesa": "Groceries",
-    "Ristoranti e bar": "Eating out",
-    "Trasporti": "Transport",
-    "Treni": "Trains",
-    "Carburante": "Fuel",
-    "Trasporti locali": "Local transport",
-    "Voli": "Flights",
-    "Parcheggi e pedaggi": "Parking and tolls",
-    "Telefonia": "Phone",
-    "Abbonamenti": "Subscriptions",
-    "Abbonamenti digitali": "Digital subscriptions",
-    "Cura personale": "Personal care",
-    "Barbiere": "Barber",
-    "Abbigliamento": "Clothing",
-    "Vestiti": "Clothes",
-    "Acquisti": "Shopping",
-    "Elettronica": "Electronics",
-    "Acquisti vari": "Other shopping",
-    "Viaggi e svago": "Travel and leisure",
-    "Alloggi": "Accommodation",
-    "Attività/Svago": "Activities",
-    "Formazione": "Education",
-    "Lezioni di lingua": "Language lessons",
-    "Libri": "Books",
-    "Regali": "Gifts",
-    "Donazioni": "Donations",
-    "Tasse e burocrazia": "Taxes and paperwork",
-    "Tasse": "Taxes",
-    "Documenti e burocrazia": "Paperwork",
-    "Banca e broker": "Banking",
-    "Commissioni": "Fees",
-    "Ritenute": "Withholding tax",
-    "Investimenti": "Investments",
+    "Casa": GROUP_HOME,
+    "Affitto": RENT,
+    "Utenze": UTILITIES,
+    "Arredamento e casa": HOUSEHOLD,
+    "Salute": GROUP_HEALTH,
+    "Assicurazione sanitaria": HEALTH_INSURANCE,
+    "Dentista": DENTIST,
+    "Medico/Farmacia": DOCTOR,
+    "Alimentari": GROUP_FOOD,
+    "Spesa": GROCERIES,
+    "Ristoranti e bar": EATING_OUT,
+    "Trasporti": GROUP_TRANSPORT,
+    "Treni": TRAINS,
+    "Carburante": FUEL,
+    "Trasporti locali": LOCAL_TRANSPORT,
+    "Voli": FLIGHTS,
+    "Parcheggi e pedaggi": PARKING,
+    "Telefonia": GROUP_PHONE,
+    "Abbonamenti": GROUP_SUBSCRIPTIONS,
+    "Abbonamenti digitali": DIGITAL_SUBSCRIPTIONS,
+    "Cura personale": GROUP_PERSONAL_CARE,
+    "Barbiere": BARBER,
+    "Abbigliamento": GROUP_CLOTHING,
+    "Vestiti": CLOTHES,
+    "Acquisti": GROUP_SHOPPING,
+    "Elettronica": ELECTRONICS,
+    "Acquisti vari": OTHER_SHOPPING,
+    "Viaggi e svago": GROUP_TRAVEL,
+    "Alloggi": ACCOMMODATION,
+    "Attività/Svago": ACTIVITIES,
+    "Formazione": GROUP_EDUCATION,
+    "Lezioni di lingua": LANGUAGE_LESSONS,
+    "Libri": BOOKS,
+    "Regali": GIFTS,
+    "Donazioni": DONATIONS,
+    "Tasse e burocrazia": GROUP_TAXES,
+    "Tasse": TAXES,
+    "Documenti e burocrazia": PAPERWORK,
+    "Banca e broker": GROUP_BANKING,
+    "Commissioni": FEES,
+    "Ritenute": WITHHOLDING_TAX,
+    "Investimenti": INVESTMENTS,
     "Non classificato": UNSORTED,
-    "Stipendio": "Salary",
-    "Dividendi": "Dividends",
-    "Interessi": "Interest",
-    "Rimborsi": "Refunds",
-    "Regali ricevuti": "Gifts received",
-    "Topup Revolut": "Revolut top-up",
-    "Topup IBKR": "IBKR top-up",
-    "Acquisto EUR": "Buy EUR",
-    "Acquisto USD": "Buy USD",
-    "Prelievi": "Withdrawals",
-    "Giroconto": "Own transfer",
+    "Stipendio": SALARY,
+    "Dividendi": DIVIDENDS,
+    "Interessi": INTEREST,
+    "Rimborsi": REFUNDS,
+    "Regali ricevuti": GIFTS_RECEIVED,
+    "Topup Revolut": REVOLUT_TOP_UP,
+    "Topup IBKR": IBKR_TOP_UP,
+    **{f"Acquisto {currency}": buy(currency) for currency in BUY_CURRENCIES},
+    "Prelievi": WITHDRAWALS,
+    "Giroconto": OWN_TRANSFER,
 }
 
 
