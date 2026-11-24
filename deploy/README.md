@@ -121,6 +121,7 @@ sudo docker exec scrooge scrooge uncommit --owner Name 42
 sudo docker exec scrooge scrooge query --from 2026-09 --text rent
 sudo docker exec scrooge scrooge keep originals-to-add/
 sudo docker exec -it scrooge scrooge import --owner Name --review statements/
+sudo docker exec scrooge scrooge migrate-files          # then with --write
 ```
 
 A path given to a command is a path inside the container: under `/data`.
