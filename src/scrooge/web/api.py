@@ -82,7 +82,7 @@ def _session(request: Request) -> Response:
     state = request.app.state
     with db.reading(state.database) as conn:
         people = query.people(conn)
-        lines = months.coverage(conn)
+        lines = together.lines(conn)
     return JSONResponse(
         {
             "people": [
@@ -175,7 +175,7 @@ def _attention(request: Request) -> Response:
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
         people = [p for p in query.people(conn) if owner in (None, p.name)]
-        lines = months.coverage(conn, owner)
+        lines = together.lines(conn, owner)
         try:
             checks = networth.checks(conn, owner=owner)
         except networth.MissingRateError as exc:
@@ -236,17 +236,14 @@ def _statements(request: Request) -> Response:
     errors: list[str] = []
     with db.reading(state.database) as conn:
         query.check_names(conn, query.Filter(owner=asked.owner))
-        lines = months.coverage(conn, asked.owner)
-        tracks = {
-            (t.owner, t.account, t.source): t.spans for t in months.timeline(conn, asked.owner)
-        }
-        files = months.by_account(conn, asked.owner)
         try:
             held = holds.of(conn, networth.value(conn, asked.owner), asked.currency)
             checks = networth.checks(conn, owner=asked.owner)
         except networth.MissingRateError as exc:
             errors.append(wire.sentence(exc))
             held, checks = {}, ()
+        # A broker's currencies are one account here, and judged as one (`together`).
+        rows = together.rows(conn, asked.owner, held)
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
@@ -263,8 +260,6 @@ def _statements(request: Request) -> Response:
         )
         return {**shown, "holds": wire.account_holds(one.held), "parts": list(one.parts)}
 
-    # A broker's currencies are one account here, and judged as one (`together`).
-    rows = together.rows(lines, tracks, files, held)
     lines = tuple(one.line for one in rows)
     accounts = [row(one, late) for one, late in zip(rows, months.behind(lines), strict=True)]
     return JSONResponse(

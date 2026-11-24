@@ -386,6 +386,24 @@ def timeline(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Track,
     )
 
 
+def statement_ids(
+    conn: sqlite3.Connection, owner: str | None = None
+) -> dict[tuple[str, str, str], set[int]]:
+    """The statement files of every account a source feeds, of `owner` or of everyone, by the
+    person, account and source: which accounts one statement covers together."""
+    found = conn.execute(
+        "SELECT o.name, a.name, f.source, f.id "
+        "FROM statement_accounts s JOIN statement_files f ON f.id = s.statement_file_id "
+        "JOIN accounts a ON a.id = s.account_id JOIN owners o ON o.id = a.owner_id "
+        "WHERE o.name = coalesce(?, o.name)",
+        (owner,),
+    ).fetchall()
+    ids: dict[tuple[str, str, str], set[int]] = {}
+    for name, account, source, number in found:
+        ids.setdefault((name, account, source), set()).add(int(number))
+    return ids
+
+
 def by_account(
     conn: sqlite3.Connection, owner: str | None = None
 ) -> dict[tuple[str, str], tuple[Statement, ...]]:

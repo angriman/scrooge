@@ -88,7 +88,7 @@ HELD = {
 
 
 def test_a_brokers_currencies_are_one_account_and_other_accounts_stay_apart() -> None:
-    rows = together.rows(LINES, TRACKS, FILES, HELD)
+    rows = together.arranged(LINES, TRACKS, FILES, HELD)
     assert [(row.line.owner, row.line.account, row.parts) for row in rows] == [
         (PARTNER, "ACME USD", ("ACME USD",)),
         (OWNER, "ACME", ("ACME CHF", "ACME EUR", "ACME GBP", "ACME USD")),
@@ -125,7 +125,7 @@ def test_a_brokers_currencies_are_one_account_and_other_accounts_stay_apart() ->
 def test_a_currency_the_broker_stopped_listing_does_not_leave_it_behind() -> None:
     apart = months.behind(LINES)
     assert apart[2]  # the pounds alone end in August
-    rows = together.rows(LINES, TRACKS, FILES, HELD)
+    rows = together.arranged(LINES, TRACKS, FILES, HELD)
     shown = [row.line for row in rows]
     assert months.behind(shown) == (False, False, False, False)
     assert months.covered(shown) == SEP  # Migros EUR, a statement of its own, ends there
@@ -133,19 +133,25 @@ def test_a_currency_the_broker_stopped_listing_does_not_leave_it_behind() -> Non
 
 
 def test_accounts_named_by_a_currency_that_share_no_statement_stay_apart() -> None:
-    lines = (
+    lines: tuple[Coverage, ...] = (
         Coverage(OWNER, "ACME CHF", "ibkr", OCT, None),
         Coverage(OWNER, "ACME USD", "ibkr", OCT, None),
     )
     files = {(OWNER, "ACME CHF"): (file(1, OCT),), (OWNER, "ACME USD"): (file(2, OCT),)}
-    rows = together.rows(lines, {}, files, {})
+    rows = together.arranged(lines, {}, files, {})
     assert [row.line.account for row in rows] == ["ACME CHF", "ACME USD"]
     assert [(row.spans, row.held) for row in rows] == [((), None), ((), None)]
     # An account not named by a currency is never another's part, statement or not.
     lines = (Coverage(OWNER, "ACME", "ibkr", OCT, None), lines[1])
     files = {(OWNER, "ACME"): (file(2, OCT),), (OWNER, "ACME USD"): (file(2, OCT),)}
-    rows = together.rows(lines, {}, files, {})
+    rows = together.arranged(lines, {}, files, {})
     assert [row.parts for row in rows] == [("ACME",), ("ACME USD",)]
+    # Nor are accounts of a currency joined under a name another account has: no two rows
+    # would tell apart.
+    lines += (Coverage(OWNER, "ACME CHF", "ibkr", OCT, None),)
+    files[OWNER, "ACME CHF"] = (file(2, OCT),)
+    rows = together.arranged(lines, {}, files, {})
+    assert [row.parts for row in rows] == [("ACME",), ("ACME CHF",), ("ACME USD",)]
 
 
 def test_a_statement_that_joins_two_groups_makes_them_one() -> None:
@@ -157,7 +163,7 @@ def test_a_statement_that_joins_two_groups_makes_them_one() -> None:
         (OWNER, "ACME USD"): (file(2, OCT),),
         (OWNER, "ACME EUR"): (file(2, OCT), file(1, SEP)),
     }
-    (row,) = together.rows(lines, {}, files, {})
+    (row,) = together.arranged(lines, {}, files, {})
     assert (row.line.account, row.parts) == ("ACME", ("ACME CHF", "ACME EUR", "ACME USD"))
     assert [s.id for s in row.statements] == [2, 1]
 
@@ -166,3 +172,8 @@ def test_nothing_known_is_nothing_together() -> None:
     assert together.combined([]) is None
     one = HELD[OWNER, "Migros"]
     assert together.combined([one]) is one
+    # Part of it known is not all of it: no total that looks complete and is not.
+    assert together.combined([one, None]) is None
+    known = {key: found for key, found in HELD.items() if key != (OWNER, "ACME GBP")}
+    rows = together.arranged(LINES, TRACKS, FILES, known)
+    assert (rows[1].line.account, rows[1].held) == ("ACME", None)
