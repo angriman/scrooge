@@ -11,6 +11,7 @@
 	import Spending from '#lib/cashflow/Spending.svelte';
 	import Table from '#lib/cashflow/Table.svelte';
 	import { partColors, rangeName } from '#lib/cashflow/names.js';
+	import { anyRecurring } from '#lib/cashflow/recurring.js';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { here, oneOf, show } from '#lib/view.js';
@@ -56,11 +57,14 @@
 		for (const [name, value] of Object.entries(changes)) query.set(name, value);
 		return `${resolve('/transactions')}?${query}`;
 	};
-	// The transactions of a recurring payment: all of them, whenever they were.
+	// The transactions of a recurring payment: all of them, whenever they were, in the same
+	// currency, and of the same person unless the payment names its own.
 	const allTransactions = (changes: Record<string, string>) => {
 		const query = new URLSearchParams(changes);
-		const owner = page.url.searchParams.get('owner');
-		if (owner) query.set('owner', owner);
+		for (const name of ['owner', 'currency']) {
+			const value = page.url.searchParams.get(name);
+			if (value && !query.has(name)) query.set(name, value);
+		}
 		return `${resolve('/transactions')}?${query}`;
 	};
 </script>
@@ -134,9 +138,11 @@
 		<Income {report} {transactions} />
 	</div>
 
-	<div class="mt-6">
-		<Recurring recurring={data.recurring} transactions={allTransactions} />
-	</div>
+	{#if anyRecurring(data.recurring)}
+		<div class="mt-6">
+			<Recurring recurring={data.recurring} transactions={allTransactions} />
+		</div>
+	{/if}
 
 	<div class="mt-6">
 		<AsPaid {report} />

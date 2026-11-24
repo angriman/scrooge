@@ -631,6 +631,7 @@ def month_end(end: networth.MonthEnd) -> JSON:
 def recurring_payment(shown: recurring.Payment) -> JSON:
     found = shown.found
     return {
+        "id": found.id,
         "name": found.name,
         "owner": found.owner,
         "account": found.account,
@@ -643,16 +644,16 @@ def recurring_payment(shown: recurring.Payment) -> JSON:
         "last": day(found.last),
         "next": day(found.next),
         "monthly": number(shown.monthly),
+        "alone": shown.alone,
     }
 
 
 def recurring_payments(shown: recurring.Recurring) -> JSON:
     """The recurring payments, as amounts paid (positive), and what the active ones cost a
     month."""
-    through = next((each.found.through for each in shown.active + shown.ended), None)
     return {
         "currency": shown.currency,
-        "through": day(through),
+        "through": day(shown.through),
         "monthly": number(shown.monthly),
         "active": [recurring_payment(each) for each in shown.active],
         "ended": [recurring_payment(each) for each in shown.ended],

@@ -1,5 +1,10 @@
 import { difference } from '#lib/format/number.js';
-import type { RecurringPayment } from '#lib/types.js';
+import type { Recurring, RecurringPayment } from '#lib/types.js';
+
+/** Whether there is anything to list, active or stopped: the panel is left out otherwise. */
+export function anyRecurring(recurring: Recurring): boolean {
+	return recurring.through !== null && recurring.active.length + recurring.ended.length > 0;
+}
 
 /** Whether the price went up or down since the amount paid before; null when it did not
  * change. */
