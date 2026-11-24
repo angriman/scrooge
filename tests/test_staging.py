@@ -192,7 +192,7 @@ def test_staged_statements_are_invisible_until_committed(
         "SELECT owner, account, category, category_parent, category_side "
         "FROM committed_transactions WHERE description LIKE 'FRISCHMARKT%' LIMIT 1",
     )
-    assert sample == [(OWNER, "Swisscard", categories.GROCERIES, categories.GROUP_FOOD, "uscite")]
+    assert sample == [(OWNER, "Swisscard", categories.GROCERIES, categories.GROUP_FOOD, "expenses")]
 
 
 def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> None:
@@ -272,10 +272,10 @@ def test_categories_follow_the_sign_and_fall_back_to_the_other_side(
         )
     )
     assert sides == {
-        "expense": f"uscite/{categories.TRADING}",
-        "income": f"entrate/{categories.TRADING}",
-        "refund": f"uscite/{categories.GROCERIES}",
-        "clawback": f"entrate/{categories.SALARY}",
+        "expense": f"expenses/{categories.TRADING}",
+        "income": f"income/{categories.TRADING}",
+        "refund": f"expenses/{categories.GROCERIES}",
+        "clawback": f"income/{categories.SALARY}",
         "transfer": f"transfer/{categories.REVOLUT_TOP_UP}",
     }
     assert rows(conn, "SELECT DISTINCT category_source FROM transactions") == [("rule",)]
@@ -305,9 +305,9 @@ def test_the_taxonomy_is_seeded_once(conn: sqlite3.Connection) -> None:
 
 def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection) -> None:
     added = (
-        Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", categories.GROUP_HOME),
-        Extra("Prestiti", "entrate"),
+        Extra("Prestiti", "expenses", "Prestiti"),
+        Extra("Garden", "expenses", categories.GROUP_HOME),
+        Extra("Prestiti", "income"),
     )
     lent = batch(migros("0", "-1", category=added[0].key))  # a row carries the key
     staging.stage(conn, replace(lent, categories=added), NOW)
@@ -317,13 +317,15 @@ def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection)
         "ON p.id = c.parent_id WHERE c.key IN ('prestiti', 'garden') ORDER BY c.id",
     )
     assert tree == [
-        ("garden", "uscite", categories.GROUP_HOME),
-        ("prestiti", "uscite", None),
-        ("prestiti", "uscite", "prestiti"),
-        ("prestiti", "entrate", None),
+        ("garden", "expenses", categories.GROUP_HOME),
+        ("prestiti", "expenses", None),
+        ("prestiti", "expenses", "prestiti"),
+        ("prestiti", "income", None),
     ]
     used = "SELECT c.side, p.key FROM transactions t JOIN categories c ON c.id = t.category_id "
-    assert rows(conn, used + "JOIN categories p ON p.id = c.parent_id") == [("uscite", "prestiti")]
+    assert rows(conn, used + "JOIN categories p ON p.id = c.parent_id") == [
+        ("expenses", "prestiti")
+    ]
     names = rows(conn, "SELECT DISTINCT name FROM categories WHERE key IN ('prestiti', 'garden')")
     assert sorted(names) == [("Garden",), ("Prestiti",)]  # an added category's label
 
@@ -1632,8 +1634,8 @@ def test_a_choice_for_these_rows_alone_is_an_override_that_survives_an_import(
 ) -> None:
     ids = waiting_month(conn)
     assert choose(conn, [ids["KIOSK1"], ids["KIOSK3"]], categories.GIFTS) == 2
-    assert category_of(conn, ids["KIOSK1"]) == (categories.GIFTS, "uscite", "manual", "expense")
-    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "uscite", "manual", "income")
+    assert category_of(conn, ids["KIOSK1"]) == (categories.GIFTS, "expenses", "manual", "expense")
+    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "expenses", "manual", "income")
     assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
     # The kind was not chosen: it is not pinned, and a later import may give another.
     assert rows(conn, "SELECT count(*), min(created_at), max(kind) FROM overrides") == [
@@ -1641,7 +1643,7 @@ def test_a_choice_for_these_rows_alone_is_an_override_that_survives_an_import(
     ]
 
     assert waiting_month(conn) == ids  # imported again: the same rows, the choice put back
-    assert category_of(conn, ids["KIOSK1"]) == (categories.GIFTS, "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK1"]) == (categories.GIFTS, "expenses", "manual", "expense")
     assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
 
 
@@ -1654,7 +1656,7 @@ def test_a_choice_to_remember_becomes_a_rule_per_counterparty_and_direction(
     remember = staging.Remember(shared, own, everyone)
     chosen = [ids["KIOSK1"], ids["KIOSK2"], ids["KIOSK3"], ids["TWINT4"]]
     assert choose(conn, chosen, categories.GIFTS, remember) == 4
-    assert category_of(conn, ids["KIOSK2"]) == (categories.GIFTS, "uscite", "rule", "expense")
+    assert category_of(conn, ids["KIOSK2"]) == (categories.GIFTS, "expenses", "rule", "expense")
     assert rows(conn, "SELECT count(*) FROM overrides") == [(0,)]
     assert shared.read_text(encoding="utf-8") == (
         "rules:\n"
@@ -1798,14 +1800,14 @@ def test_choices_made_together_are_given_all_or_none(
     savings = staging.Choice((ids["TO SAVINGS5"],), categories.OWN_TRANSFER)
     changed = staging.Choice((ids["DONE7"],), categories.GIFTS, change=True)
     assert choose_all(conn, [kiosk, savings, changed], remember) == 4
-    assert category_of(conn, ids["KIOSK2"]) == (categories.GIFTS, "uscite", "rule", "expense")
+    assert category_of(conn, ids["KIOSK2"]) == (categories.GIFTS, "expenses", "rule", "expense")
     assert category_of(conn, ids["TO SAVINGS5"]) == (
         categories.OWN_TRANSFER,
         "transfer",
         "manual",
         "transfer",
     )
-    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "expenses", "manual", "expense")
     assert shared.read_text(encoding="utf-8") == (
         'rules:\n  - {match: "(?m)^KIOSK$", category: "Gifts", direction: out}\n'
     )
@@ -1813,7 +1815,7 @@ def test_choices_made_together_are_given_all_or_none(
     # Without a place for rules, a choice to remember is kept for its rows alone.
     choice = staging.Choice((ids["KIOSK3"],), categories.GIFTS, rule=True)
     assert choose_all(conn, [choice]) == 1
-    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "uscite", "manual", "income")
+    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "expenses", "manual", "income")
     assert choose_all(conn, []) == 0
 
 
@@ -1850,11 +1852,11 @@ def test_a_row_that_has_a_category_can_be_given_another_which_an_import_keeps(
     conn: sqlite3.Connection,
 ) -> None:
     ids = waiting_month(conn)
-    assert category_of(conn, ids["DONE7"]) == (categories.GROCERIES, "uscite", "rule", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GROCERIES, "expenses", "rule", "expense")
     assert change(conn, [ids["DONE7"]], categories.GIFTS) == 1
-    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "expenses", "manual", "expense")
     assert waiting_month(conn) == ids  # imported again, with the category the statement gave
-    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "expenses", "manual", "expense")
 
 
 def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
@@ -1872,7 +1874,7 @@ def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
     )
     # These rows keep it whatever the rules say on the next import.
     assert rows(conn, "SELECT transaction_id, kind FROM overrides") == [(ids["DONE7"], None)]
-    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "expenses", "manual", "expense")
 
 
 def test_a_transfer_given_an_expense_category_is_an_expense_again(
@@ -1884,11 +1886,11 @@ def test_a_transfer_given_an_expense_category_is_an_expense_again(
     assert change(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], categories.GIFTS) == 2
     assert category_of(conn, ids["TO SAVINGS5"]) == (
         categories.GIFTS,
-        "uscite",
+        "expenses",
         "manual",
         "expense",
     )
-    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "uscite", "manual", "income")
+    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "expenses", "manual", "income")
     assert rows(conn, "SELECT kind FROM overrides ORDER BY kind") == [("expense",), ("income",)]
 
 
@@ -1907,7 +1909,7 @@ def test_a_transfer_changed_twice_stays_the_kind_the_first_change_gave_after_an_
     change(conn, [txn_id], categories.GIFTS)
     change(conn, [txn_id], categories.GROCERIES)
     staging.stage(conn, month(), NOW)  # the rule makes it a transfer again
-    assert category_of(conn, txn_id) == (categories.GROCERIES, "uscite", "manual", "expense")
+    assert category_of(conn, txn_id) == (categories.GROCERIES, "expenses", "manual", "expense")
 
 
 def test_an_expense_changed_to_one_transfer_and_then_another_stays_a_transfer_after_an_import(
@@ -1960,35 +1962,38 @@ def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_inco
 ) -> None:
     waiting_month(conn)
     file = tmp_path / "categories.yaml"
-    staging.add_category(conn, file, name="  Prestiti ", side="uscite", group="")
-    staging.add_category(conn, file, name="Pets", side="uscite", group=categories.GROUP_HOME)
-    staging.add_category(conn, file, name="Prestiti", side="entrate", group="")
+    staging.add_category(conn, file, name="  Prestiti ", side="expenses", group="")
+    staging.add_category(conn, file, name="Pets", side="expenses", group=categories.GROUP_HOME)
+    staging.add_category(conn, file, name="Prestiti", side="income", group="")
     assert sorted(added(conn), key=str) == sorted(
         [
-            ("prestiti", "uscite", None),  # the group
-            ("prestiti", "uscite", "prestiti"),  # and its one leaf
-            ("pets", "uscite", categories.GROUP_HOME),
-            ("prestiti", "entrate", None),
+            ("prestiti", "expenses", None),  # the group
+            ("prestiti", "expenses", "prestiti"),  # and its one leaf
+            ("pets", "expenses", categories.GROUP_HOME),
+            ("prestiti", "income", None),
         ],
         key=str,
     )
     assert categories.load(file) == (
-        categories.Extra("Prestiti", "uscite", "Prestiti"),
-        categories.Extra("Pets", "uscite", "Home"),  # the group by its label, posted by its key
-        categories.Extra("Prestiti", "entrate"),
+        categories.Extra("Prestiti", "expenses", "Prestiti"),
+        categories.Extra("Pets", "expenses", "Home"),  # the group by its label, posted by its key
+        categories.Extra("Prestiti", "income"),
     )
 
 
 @pytest.mark.parametrize(
     ("wanted", "message"),
     [
-        ((" ", "uscite", ""), "a category needs a name"),
-        (("Groceries", "uscite", categories.GROUP_HOME), "there is already a category 'Groceries'"),
-        (("Spesa", "uscite", ""), "there is already a category 'Spesa'"),  # its Italian name
-        ((categories.SALARY, "entrate", ""), "there is already a category 'salary'"),
-        (("Own transfer", "uscite", ""), "there is already a category 'Own transfer'"),
-        (("?!", "uscite", ""), "a category needs a name, with a letter or a digit"),
-        (("Pets", "uscite", "Zoo"), "no group of categories named 'Zoo'"),
+        ((" ", "expenses", ""), "a category needs a name"),
+        (
+            ("Groceries", "expenses", categories.GROUP_HOME),
+            "there is already a category 'Groceries'",
+        ),
+        (("Spesa", "expenses", ""), "there is already a category 'Spesa'"),  # its Italian name
+        ((categories.SALARY, "income", ""), "there is already a category 'salary'"),
+        (("Own transfer", "expenses", ""), "there is already a category 'Own transfer'"),
+        (("?!", "expenses", ""), "a category needs a name, with a letter or a digit"),
+        (("Pets", "expenses", "Zoo"), "no group of categories named 'Zoo'"),
         (("Pets", "transfer", ""), "a category is added to the expenses or to the income"),
     ],
 )
@@ -2017,7 +2022,7 @@ def test_a_category_the_database_refuses_is_not_left_in_the_file(
 
     monkeypatch.setattr(store, "seed_categories", broken)
     with pytest.raises(sqlite3.OperationalError):
-        staging.add_category(conn, file, name="Pets", side="uscite", group=categories.GROUP_HOME)
+        staging.add_category(conn, file, name="Pets", side="expenses", group=categories.GROUP_HOME)
     assert file.read_text(encoding="utf-8") == "# ours\ncategories:\n  entrate: [Prestiti]\n"
 
 

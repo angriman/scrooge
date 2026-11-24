@@ -1,7 +1,7 @@
 """Income against expenses, period by period: what the cash-flow page shows.
 
 Only committed months are read. A row counts on the day it really happened, on the side of
-its category: `entrate` is income, `uscite` an expense, so a refund lowers the expenses of its
+its category: `income` is income, `expenses` an expense, so a refund lowers the expenses of its
 category. Buying and selling securities and the results of trading are neither: they are
 investing, kept apart so that a bill bought and repaid does not swamp the rest (decided
 2026-10-08). Moves between a person's own accounts and currency exchanges are never counted;
@@ -23,7 +23,8 @@ from scrooge.models import Kind
 from scrooge.storage import store
 from scrooge.storage.money import from_nano
 
-INCOME, EXPENSES, INVESTING = "entrate", "uscite", "investing"
+INCOME, EXPENSES, INVESTING = "income", "expenses", "investing"
+_SHOWN = (INCOME, INVESTING, EXPENSES)  # the order the sides are shown in
 # The top-level categories, on either side of the taxonomy, that are investing: an income
 # leaf is its own top-level category.
 _INVESTING = frozenset({categories.GROUP_INVESTMENTS, categories.INVESTMENTS, categories.TRADING})
@@ -155,8 +156,7 @@ def run(
     for row in counted(conn, owner):
         if (first and row.day < first) or (last and row.day > last):
             continue
-        # The sides sort as they are shown: "entrate" < "investing" < "uscite". Investing is
-        # named by the leaf, which is the same whether money went in or came out.
+        # Investing is named by the leaf, which is the same whether money went in or came out.
         where, category = (INVESTING, row.leaf) if row.investing else (row.side, row.top)
         for name in (period(row.day, grouping), ""):
             key = (name, row.currency, where, category)
@@ -164,11 +164,11 @@ def run(
             sums[key] = (count + 1, total + row.amount_nano)
     ranks = store.category_ranks(conn)
 
-    def placed(key: tuple[str, str, str, str]) -> tuple[str, str, str, int]:
+    def placed(key: tuple[str, str, str, str]) -> tuple[str, str, int, int]:
         name, currency, where, category = key
         if where == INVESTING:  # a leaf, of the expenses first: where the taxonomy puts it
-            return name, currency, where, ranks.leaf(category, EXPENSES, INCOME)
-        return name, currency, where, ranks.top(category, where)
+            return name, currency, _SHOWN.index(where), ranks.leaf(category, EXPENSES, INCOME)
+        return name, currency, _SHOWN.index(where), ranks.top(category, where)
 
     every = [Line(*key, sums[key][0], from_nano(sums[key][1])) for key in sorted(sums, key=placed)]
     lines = tuple(line for line in every if line.period)

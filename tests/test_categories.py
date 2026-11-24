@@ -39,9 +39,9 @@ def test_added_categories_are_saved_under_the_comments_and_read_back(tmp_path: P
     path = tmp_path / "categories.yaml"
     path.write_text(HEADER, encoding="utf-8")
     added = (
-        Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", "Home"),
-        Extra("Prestiti", "entrate"),
+        Extra("Prestiti", "expenses", "Prestiti"),
+        Extra("Garden", "expenses", "Home"),
+        Extra("Prestiti", "income"),
     )
     for extra in (*added, added[0]):  # saving one twice changes nothing
         categories.add(path, extra)
@@ -58,7 +58,7 @@ def test_a_rule_may_name_an_added_category(tmp_path: Path) -> None:
     rules.write_text("rules:\n  - {match: Jonas, category: Prestiti}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="unknown category 'Prestiti'"):
         load_rules([rules])
-    known = categories.names((Extra("Prestiti", "entrate"),))
+    known = categories.names((Extra("Prestiti", "income"),))
     assert load_rules([rules], known)[0].category == "prestiti"
 
 
@@ -104,13 +104,13 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     assert "unknown category '+'" in asked[1]
     assert "unknown category '+ home:'" in asked[2]
     number = len(categories.ORDER) + 1
-    assert f"new category {number}=Prestiti (uscite under Prestiti) in {added}" in text
-    assert f"new category {number}=Prestiti (entrate) in {added}" in text  # a group means nothing
-    assert f"new category {number + 1}=Garden (uscite under Home) in {added}" in text
+    assert f"new category {number}=Prestiti (expenses under Prestiti) in {added}" in text
+    assert f"new category {number}=Prestiti (income) in {added}" in text  # a group means nothing
+    assert f"new category {number + 1}=Garden (expenses under Home) in {added}" in text
     assert categories.load(added) == (
-        Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", "Home"),
-        Extra("Prestiti", "entrate"),
+        Extra("Prestiti", "expenses", "Prestiti"),
+        Extra("Garden", "expenses", "Home"),
+        Extra("Prestiti", "income"),
     )
     saved = [line.partition("category: ")[2] for line in rules.read_text("utf-8").splitlines()[1:]]
     assert saved == [
@@ -263,13 +263,13 @@ def test_a_file_of_before_is_read_and_written_again_with_the_new_side_names(tmp_
         encoding="utf-8",
     )
     assert categories.load(path) == (
-        Extra("Spedizioni", "uscite", "Trasporti"),
-        Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Prestiti", "entrate"),
+        Extra("Spedizioni", "expenses", "Trasporti"),
+        Extra("Prestiti", "expenses", "Prestiti"),
+        Extra("Prestiti", "income"),
     )
     assert categories.load(path)[0].group_key == categories.GROUP_TRANSPORT
-    categories.add(path, Extra("Pets", "uscite", "Home"))
-    categories.add(path, Extra("Couriers", "uscite", "Transport"))  # under the one of its key
+    categories.add(path, Extra("Pets", "expenses", "Home"))
+    categories.add(path, Extra("Couriers", "expenses", "Transport"))  # under the one of its key
     assert path.read_text(encoding="utf-8") == HEADER + (  # the names stay as written
         "categories:\n  expenses:\n    Trasporti:\n    - Spedizioni\n    - Couriers\n"
         "    Prestiti:\n    - Prestiti\n    Home:\n    - Pets\n  income:\n  - Prestiti\n"
@@ -279,7 +279,7 @@ def test_a_file_of_before_is_read_and_written_again_with_the_new_side_names(tmp_
 def test_both_names_of_one_side_are_refused_unless_one_is_empty(tmp_path: Path) -> None:
     path = tmp_path / "categories.yaml"
     path.write_text("categories: {expenses: {}, uscite: {Casa: [Pets]}}\n", encoding="utf-8")
-    assert categories.load(path) == (Extra("Pets", "uscite", "Casa"),)
+    assert categories.load(path) == (Extra("Pets", "expenses", "Casa"),)
     path.write_text("categories: {income: [A], entrate: [B]}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="'entrate' and the other name of that side"):
         categories.load(path)

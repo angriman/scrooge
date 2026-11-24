@@ -40,7 +40,7 @@ def test_a_write_that_fails_leaves_the_file_as_it_was(
             folder / "rules.yaml", "ACME", "in", categories.SALARY
         ),
         lambda folder: categories.add(
-            folder / categories.FILE, categories.Extra("Mance", "entrate")
+            folder / categories.FILE, categories.Extra("Mance", "income")
         ),
     ],
 )

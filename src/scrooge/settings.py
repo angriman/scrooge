@@ -75,7 +75,7 @@ class ListedRule:
 class ListedCategory:
     key: str
     name: str  # its label
-    side: str  # uscite | entrate | transfer
+    side: str  # expenses | income | transfer
     parent: str | None  # the label of the top-level category of an expense
     built_in: bool
     rows: int  # committed rows that carry it
@@ -347,12 +347,12 @@ def move_rule(seen: Seen, by: int, categories_file: Path | None) -> None:
 
 def _taxonomy(extras: Sequence[categories.Extra]) -> list[tuple[str, str, str | None, bool]]:
     """Key, side, the key of its parent and whether it is built in, of every leaf category."""
-    uscite = categories.EXPENSE_GROUPS.items()
+    expenses = categories.EXPENSE_GROUPS.items()
     built = [
-        *((leaf, "uscite", group, True) for group, leaves in uscite for leaf in leaves),
-        *((e.key, "uscite", e.group_key, False) for e in extras if e.side == "uscite"),
-        *((name, "entrate", None, True) for name in categories.INCOME_LEAVES),
-        *((e.key, "entrate", None, False) for e in extras if e.side == "entrate"),
+        *((leaf, "expenses", group, True) for group, leaves in expenses for leaf in leaves),
+        *((e.key, "expenses", e.group_key, False) for e in extras if e.side == "expenses"),
+        *((name, "income", None, True) for name in categories.INCOME_LEAVES),
+        *((e.key, "income", None, False) for e in extras if e.side == "income"),
         *((name, "transfer", None, True) for name in categories.TRANSFERS),
     ]
     return list(dict.fromkeys(built))
@@ -508,7 +508,7 @@ def merge_category(
             msg = "a category is merged into another one"
             raise SettingsError(msg)
         if not source <= target:
-            words = {"uscite": "an expense", "entrate": "income", "transfer": "a transfer"}
+            words = {"expenses": "an expense", "income": "income", "transfer": "a transfer"}
             missing = ", ".join(words[side] for side in sorted(source - target))
             msg = f"{label(name)} is {missing} and {label(into)} is not: they cannot be merged"
             raise SettingsError(msg)
@@ -534,7 +534,7 @@ def move_category(
     with yamlfiles.LOCK:
         extra = _added(places, name)
         name = extra.key
-        if extra.side != "uscite":
+        if extra.side != "expenses":
             msg = f"{extra.name} is income: only an expense sits under a top-level category"
             raise SettingsError(msg)
         group = " ".join(under.split())

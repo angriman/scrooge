@@ -55,16 +55,16 @@ def _january_lines(conn: sqlite3.Connection) -> list[tuple[str, str]]:
 
 def test_cash_flow_lines_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
     assert _january_lines(conn) == [
-        ("entrate", categories.SALARY),
-        ("entrate", categories.REFUNDS),
-        ("entrate", categories.GIFTS_RECEIVED),
+        ("income", categories.SALARY),
+        ("income", categories.REFUNDS),
+        ("income", categories.GIFTS_RECEIVED),
         ("investing", categories.TRADING),
         ("investing", categories.INVESTMENTS),
-        ("uscite", categories.GROUP_HOME),
-        ("uscite", categories.GROUP_FOOD),
-        ("uscite", categories.GROUP_EATING_OUT),
+        ("expenses", categories.GROUP_HOME),
+        ("expenses", categories.GROUP_FOOD),
+        ("expenses", categories.GROUP_EATING_OUT),
     ]
-    expenses = [name for side, name in _january_lines(conn) if side == "uscite"]
+    expenses = [name for side, name in _january_lines(conn) if side == "expenses"]
     assert expenses == [name for name in categories.EXPENSE_GROUPS if name in expenses]
 
 

@@ -95,7 +95,7 @@ def july(conn: sqlite3.Connection, owner: str | None) -> cashflow.CashFlow:
 
 
 def line(where: str, category: str, count: int, total: str) -> Line:
-    """`where` is the period, the currency and the side: `2025-05 CHF entrate`."""
+    """`where` is the period, the currency and the side: `2025-05 CHF income`."""
     period, currency, side = where.rpartition(" ")[0].rpartition(" ")[0], *where.split()[-2:]
     return Line(period, currency, side, category, count, Decimal(total))
 
@@ -107,10 +107,10 @@ def balance(period: str, currency: str, income: str, expenses: str) -> Balance:
 def test_a_month_is_income_and_expenses_by_top_level_category(conn: sqlite3.Connection) -> None:
     may = cashflow.run(conn, first=date(2025, 5, 1), last=date(2025, 5, 31), owner=OWNER)
     assert may.lines == (
-        line("2025-05 CHF entrate", categories.SALARY, 1, "6000"),
-        line("2025-05 CHF uscite", categories.GROUP_FOOD, 2, "-25.2"),  # the refund lowers it
+        line("2025-05 CHF income", categories.SALARY, 1, "6000"),
+        line("2025-05 CHF expenses", categories.GROUP_FOOD, 2, "-25.2"),  # the refund lowers it
         line(
-            "2025-05 CHF uscite", categories.GROUP_EATING_OUT, 1, "-80"
+            "2025-05 CHF expenses", categories.GROUP_EATING_OUT, 1, "-80"
         ),  # the taxonomy's order, not by name
     )
     assert may.balances == (balance("2025-05", "CHF", "6000", "-105.2"),)
@@ -120,9 +120,9 @@ def test_a_month_is_income_and_expenses_by_top_level_category(conn: sqlite3.Conn
 def test_transfers_exchanges_and_internal_rows_are_never_counted(conn: sqlite3.Connection) -> None:
     his = july(conn, OWNER)
     assert his.lines == (
-        line("2026-07 CHF entrate", categories.SALARY, 1, "6100"),
-        line("2026-07 CHF uscite", categories.GROUP_GIFTS, 1, "-200"),
-        line("2026-07 EUR uscite", categories.GROUP_EATING_OUT, 1, "-30"),
+        line("2026-07 CHF income", categories.SALARY, 1, "6100"),
+        line("2026-07 CHF expenses", categories.GROUP_GIFTS, 1, "-200"),
+        line("2026-07 EUR expenses", categories.GROUP_EATING_OUT, 1, "-30"),
     )
     assert his.balances == (
         balance("2026-07", "CHF", "6100", "-200"),
@@ -137,9 +137,9 @@ def test_what_the_two_pay_each_other_counts_for_one_and_not_for_both(
     assert hers.balances == (balance("2026-07", "CHF", "200", "-60"),)
     both = july(conn, None)
     assert both.lines == (
-        line("2026-07 CHF entrate", categories.SALARY, 1, "6100"),
-        line("2026-07 CHF uscite", categories.GROUP_FOOD, 1, "-60"),
-        line("2026-07 EUR uscite", categories.GROUP_EATING_OUT, 1, "-30"),
+        line("2026-07 CHF income", categories.SALARY, 1, "6100"),
+        line("2026-07 CHF expenses", categories.GROUP_FOOD, 1, "-60"),
+        line("2026-07 EUR expenses", categories.GROUP_EATING_OUT, 1, "-30"),
     )
 
 
@@ -148,7 +148,7 @@ def test_securities_and_trading_are_investing_not_income_or_expenses(
 ) -> None:
     august = cashflow.run(conn, first=date(2026, 8, 1), last=END)
     assert august.lines == (
-        line("2026-08 CHF entrate", categories.INTEREST, 1, "80"),
+        line("2026-08 CHF income", categories.INTEREST, 1, "80"),
         line("2026-08 CHF investing", categories.TRADING, 1, "-35"),
         line("2026-08 CHF investing", categories.INVESTMENTS, 2, "0"),
     )
@@ -160,16 +160,16 @@ def test_securities_and_trading_are_investing_not_income_or_expenses(
 def test_the_whole_range_is_added_up_per_category(conn: sqlite3.Connection) -> None:
     result = cashflow.run(conn, first=date(2025, 1, 1), last=date(2025, 12, 31), owner=OWNER)
     assert result.totals == (
-        line(" CHF entrate", categories.SALARY, 1, "6000"),
-        line(" CHF uscite", categories.GROUP_HOME, 1, "-1850"),
-        line(" CHF uscite", categories.GROUP_FOOD, 2, "-25.2"),
-        line(" CHF uscite", categories.GROUP_EATING_OUT, 1, "-80"),
+        line(" CHF income", categories.SALARY, 1, "6000"),
+        line(" CHF expenses", categories.GROUP_HOME, 1, "-1850"),
+        line(" CHF expenses", categories.GROUP_FOOD, 2, "-25.2"),
+        line(" CHF expenses", categories.GROUP_EATING_OUT, 1, "-80"),
     )
 
 
 def test_a_row_counts_on_the_day_it_really_happened(conn: sqlite3.Connection) -> None:
     june = cashflow.run(conn, first=date(2026, 6, 1), last=date(2026, 6, 30))
-    assert june.lines == (line("2026-06 CHF uscite", categories.GROUP_FOOD, 1, "-15"),)
+    assert june.lines == (line("2026-06 CHF expenses", categories.GROUP_FOOD, 1, "-15"),)
 
 
 def test_both_ends_of_the_range_are_included(conn: sqlite3.Connection) -> None:

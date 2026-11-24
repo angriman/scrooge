@@ -347,7 +347,7 @@
   <table class="narrow">
     <thead><tr><th>{{ currency }} {{ title|lower }}</th><th class="number">Total</th><th class="number">Rows</th></tr></thead>
     <tbody>
-      {%- for line in lines|sort(attribute="total", reverse=(side == "entrate")) %}
+      {%- for line in lines|sort(attribute="total", reverse=(side == "income")) %}
       <tr>
         <td><a href="{{ spanned(shown.savings.first or '', shown.savings.last or '', line.category) }}">{{ label(line.category) }}</a></td>
         <td class="number">{{ line.total|money }}</td>

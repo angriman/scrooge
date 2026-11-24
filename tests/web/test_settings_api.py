@@ -24,7 +24,7 @@ def site(folder: Path) -> Site:
     made = Site(folder)
     (folder / "rules.lukas.yaml").write_text(OWN, encoding="utf-8")
     conn = db.connect(made.database)
-    staging.add_category(conn, folder / categories.FILE, name="Prestiti", side="uscite", group="")
+    staging.add_category(conn, folder / categories.FILE, name="Prestiti", side="expenses", group="")
     day = date(2026, 8, 10)
     rows = [
         txn("-45", date=day, source_ref="1"),
@@ -220,6 +220,10 @@ def test_the_categories_are_listed_with_their_rows(site: Site) -> None:
 def test_categories_are_added_renamed_merged_and_removed(site: Site) -> None:
     added = _post(site, "categories/add", {"name": "Mance", "side": "entrate", "group": ""})
     assert added.json() == {"name": "Mance", "errors": []}
+    conn = sqlite3.connect(site.database)
+    stored = conn.execute("SELECT side FROM categories WHERE name = 'Mance'").fetchall()
+    conn.close()
+    assert stored == [("income",)]  # the side as the server names it
     assert _post(site, "categories/add", {"name": "Mance", "side": "entrate"}).status_code == 409
     renamed = _post(site, "categories/rename", {"name": "Prestiti", "to": "Mutuo"})
     assert renamed.json() == {"rows": 1, "errors": []}
@@ -237,7 +241,7 @@ def test_a_rename_the_database_cannot_take_is_refused(site: Site) -> None:
     conn = sqlite3.connect(site.database)
     conn.execute(
         "INSERT INTO categories (key, name, parent_id, side, sort_order) SELECT 'mutuo', "
-        "'Mutuo', id, 'uscite', 999 FROM categories WHERE key = 'prestiti' AND parent_id IS NULL"
+        "'Mutuo', id, 'expenses', 999 FROM categories WHERE key = 'prestiti' AND parent_id IS NULL"
     )
     conn.commit()
     conn.close()

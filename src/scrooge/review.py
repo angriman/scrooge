@@ -81,18 +81,18 @@ def menu(extras: tuple[Extra, ...]) -> str:
     """Every category with its number, one line per top-level category of the expenses."""
     label = categories.Labels.of(extras)
     number = {name: n for n, name in enumerate(categories.names(extras), start=1)}
-    uscite = {group: list(leaves) for group, leaves in categories.EXPENSE_GROUPS.items()}
+    expenses = {group: list(leaves) for group, leaves in categories.EXPENSE_GROUPS.items()}
     for extra in extras:
-        if extra.side == "uscite" and extra.key not in uscite.setdefault(extra.group_key, []):
-            uscite[extra.group_key].append(extra.key)
-    entrate = (*categories.INCOME_LEAVES, *(e.key for e in extras if e.side == "entrate"))
-    margin = max(len(label(group)) for group in uscite) + 4
+        if extra.side == "expenses" and extra.key not in expenses.setdefault(extra.group_key, []):
+            expenses[extra.group_key].append(extra.key)
+    income = (*categories.INCOME_LEAVES, *(e.key for e in extras if e.side == "income"))
+    margin = max(len(label(group)) for group in expenses) + 4
     lines = ["Expenses"]
     lines += [
         _line(f"  {label(group)}", leaves, number, margin, label)
-        for group, leaves in uscite.items()
+        for group, leaves in expenses.items()
     ]
-    lines += ["Income", _line("", entrate, number, 2, label)]
+    lines += ["Income", _line("", income, number, 2, label)]
     lines += ["Transfers", _line("", categories.TRANSFERS, number, 2, label)]
     return "\n".join(lines)
 
@@ -162,8 +162,8 @@ def _new(answer: str, flow: str, extras: tuple[Extra, ...]) -> Extra:
     """`+Group:Name` for a row going `flow`: money received is income, which has no groups."""
     group, _, name = (part.strip() for part in answer[1:].rpartition(":"))
     if flow == "in":
-        return Extra(name, "entrate")
+        return Extra(name, "income")
     group = group or name  # a category on its own is its own group, like Gifts
     label = categories.Labels.of(extras)
     same = [label(known) for known in categories.groups(extras) if known == categories.key(group)]
-    return Extra(name, "uscite", same[0] if same else group)
+    return Extra(name, "expenses", same[0] if same else group)

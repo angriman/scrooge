@@ -122,7 +122,7 @@ def test_a_draft_lists_the_staged_statements_and_what_needs_a_category(
     assert first.id != second.id
     assert len(draft.rows) == 3  # not the leg of the card bill, which no category is asked for
     assert draft.totals == (
-        months.CategoryTotal("uscite", categories.GROCERIES, "CHF", 1, Decimal(-15)),
+        months.CategoryTotal("expenses", categories.GROCERIES, "CHF", 1, Decimal(-15)),
         months.CategoryTotal("", "", "CHF", 2, Decimal(-100)),  # the waiting rows last
     )
     assert draft.gaps == ()
@@ -201,9 +201,9 @@ def test_a_month_adds_up_what_is_committed_by_booking_date(conn: sqlite3.Connect
         months.File(2, "revolut", "revolut.tsv", AUGUST, date(2026, 8, 31), True, 1),
     )
     assert august.totals == (
-        months.CategoryTotal("uscite", categories.GROCERIES, "CHF", 1, Decimal("-45.2")),
-        months.CategoryTotal("uscite", categories.EATING_OUT, "EUR", 1, Decimal(-30)),
-        months.CategoryTotal("entrate", categories.SALARY, "CHF", 1, Decimal(6000)),
+        months.CategoryTotal("expenses", categories.GROCERIES, "CHF", 1, Decimal("-45.2")),
+        months.CategoryTotal("expenses", categories.EATING_OUT, "EUR", 1, Decimal(-30)),
+        months.CategoryTotal("income", categories.SALARY, "CHF", 1, Decimal(6000)),
     )
     assert [row.category for row in august.categorized] == [
         categories.GROCERIES,

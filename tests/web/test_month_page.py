@@ -195,7 +195,7 @@ def test_the_form_offers_leaf_categories_and_only_these_rows_without_rules(
         'required aria-label="Category for SAVINGS TOPUP AUG">'
     ) in page
     assert page.count('<datalist id="categories">') == 1
-    assert '<option value="Rent" label="Home" data-side="uscite">' in page
+    assert '<option value="Rent" label="Home" data-side="expenses">' in page
     assert '<option value="Home"' not in page
     assert re.findall(r"<script[^>]*>", page) == [
         f'<script src="{SITE}/static/choose.js" defer>',
@@ -272,14 +272,14 @@ def test_a_category_is_added_from_the_page_and_can_then_be_chosen(
     client = TestClient(app, base_url=SITE, follow_redirects=False)
     page = client.get("/months/Lukas/2026-08").text
     assert "<h2>Add a category</h2>" in page
-    assert '<option value="uscite:Home">Expenses, Home</option>' in page
+    assert '<option value="expenses:Home">Expenses, Home</option>' in page
     assert '<option value="Pets"' not in page
-    form = sent(client, name="Pets", under="uscite:Home", owner="Lukas")
+    form = sent(client, name="Pets", under="expenses:Home", owner="Lukas")
     response = client.post("/months/Lukas/2026-08/category", data=form)
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/months/Lukas/2026-08"
     assert (
-        '<option value="Pets" label="Home" data-side="uscite">'
+        '<option value="Pets" label="Home" data-side="expenses">'
         in client.get("/months/Lukas/2026-08").text
     )
     added = (tmp_path / "categories.yaml").read_text(encoding="utf-8")
@@ -292,7 +292,7 @@ def test_a_category_is_added_from_the_page_and_can_then_be_chosen(
 def test_without_a_rules_file_no_category_can_be_added(client: TestClient) -> None:
     page = client.get("/months/Lukas/2026-08").text
     assert "Add a category" not in page
-    form = sent(client, name="Pets", under="entrate:")
+    form = sent(client, name="Pets", under="income:")
     assert client.post("/months/Lukas/2026-08/category", data=form).status_code == 404
 
 

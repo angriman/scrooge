@@ -50,7 +50,7 @@
   function sideOf(name, amount) {
     const on = sides.get(name);
     if (on.has("transfer")) return "transfer";
-    const order = amount < 0n ? ["uscite", "entrate"] : ["entrate", "uscite"];
+    const order = amount < 0n ? ["expenses", "income"] : ["income", "expenses"];
     return order.find((side) => on.has(side)) || "";
   }
 
