@@ -16,6 +16,7 @@ from typing import TypeVar
 
 from scrooge import (
     attention,
+    holds,
     importing,
     months,
     networth,
@@ -347,6 +348,27 @@ def statements_account(
             for span in spans
         ],
         "statements": list(files),
+    }
+
+
+def account_holds(held: holds.Holds | None) -> JSON | None:
+    """What an account holds by part, beside its balance (`statements_account`): its cash in
+    each currency, as it is and converted, its securities together, and its balance at the last
+    month-ends. None when its balance is not known."""
+    if held is None:
+        return None
+    return {
+        "cash": [
+            {
+                "asset": c.asset,
+                "currency": c.currency,
+                "amount": number(c.amount),
+                "converted": number(c.converted),
+            }
+            for c in held.cash
+        ],
+        "securities": number(held.securities),
+        "months": [{"day": day(m.day), "balance": number(m.balance)} for m in held.months],
     }
 
 
