@@ -30,6 +30,7 @@ from scrooge import (
     categories,
     classification,
     context,
+    holds,
     marketdata,
     months,
     networth,
@@ -200,7 +201,8 @@ def _holdings(request: Request) -> Response:
 
 def _statements(request: Request) -> Response:
     """Every account a source feeds, of `owner` or of everyone: how far its statements go, what
-    it holds now in `currency`, the runs of days they cover and the statements themselves; the
+    it holds now in `currency` (its cash by currency, its securities, its last month-ends:
+    `holds`), the runs of days they cover and the statements themselves; the
     day every monthly account is covered to; and the statements' own balances against those
     worked out here."""
     asked = forms.holdings_view(_asked(request))
@@ -217,11 +219,13 @@ def _statements(request: Request) -> Response:
         }
         files = months.by_account(conn, asked.owner)
         try:
-            balances = networth.balances(conn, networth.value(conn, asked.owner), asked.currency)
+            valued = networth.value(conn, asked.owner)
+            balances = networth.balances(conn, valued, asked.currency)
+            held = holds.of(conn, valued, asked.currency)
             checks = networth.checks(conn, owner=asked.owner)
         except networth.MissingRateError as exc:
             errors.append(wire.sentence(exc))
-            balances, checks = {}, ()
+            balances, held, checks = {}, {}, ()
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
@@ -229,17 +233,20 @@ def _statements(request: Request) -> Response:
         return wire.statement(statement, address)
 
     accounts = [
-        wire.statements_account(
-            line,
-            late,
-            balances.get((line.owner, line.account)),
-            tracks.get((line.owner, line.account, line.source), ()),
-            [
-                listed(s)
-                for s in files.get((line.owner, line.account), ())
-                if s.source == line.source
-            ],
-        )
+        {
+            **wire.statements_account(
+                line,
+                late,
+                balances.get((line.owner, line.account)),
+                tracks.get((line.owner, line.account, line.source), ()),
+                [
+                    listed(s)
+                    for s in files.get((line.owner, line.account), ())
+                    if s.source == line.source
+                ],
+            ),
+            "holds": wire.account_holds(held.get((line.owner, line.account))),
+        }
         for line, late in zip(lines, months.behind(lines), strict=True)
     ]
     return JSONResponse(
