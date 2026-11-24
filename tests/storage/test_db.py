@@ -13,10 +13,23 @@ from scrooge.storage.ids import transaction_ids
 from tests.storage.conftest import NOW
 from tests.storage.helpers import CLOSED_AT, OWNER, batch, dump, migros, statement, txn
 
+_EVERY = db.migrations  # every migration, whatever a test puts in its place
+
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     return {row["name"] for row in rows}
+
+
+def _migrate_up_to(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, last: int
+) -> list[int]:
+    """Migrate as the code whose newest migration is `last` did: no later one ever runs.
+
+    A migration's test stays as it was written when migrations are added after it.
+    """
+    monkeypatch.setattr(db, "migrations", lambda: [m for m in _EVERY() if m[0] <= last])
+    return db.migrate(conn, NOW)
 
 
 def test_a_new_database_gets_the_whole_schema(conn: sqlite3.Connection) -> None:
@@ -192,10 +205,7 @@ def test_migration_0003_commits_the_statements_of_committed_months(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:2])
-    assert db.migrate(conn, NOW) == [1, 2]
-    monkeypatch.setattr(db, "migrations", lambda: every[:3])
+    assert _migrate_up_to(conn, monkeypatch, 2) == [1, 2]
 
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
     conn.execute("INSERT INTO currencies VALUES ('CHF', 2)")
@@ -223,7 +233,7 @@ def test_migration_0003_commits_the_statements_of_committed_months(
         """
     )
 
-    assert db.migrate(conn, NOW) == [3]
+    assert _migrate_up_to(conn, monkeypatch, 3) == [3]
     stored = conn.execute("SELECT filename, committed_at FROM statement_files ORDER BY id")
     assert [tuple(row) for row in stored] == [
         ("august", "2026-09-02T08:00:00+00:00"),
@@ -243,10 +253,7 @@ def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:3])
-    assert db.migrate(conn, NOW) == [1, 2, 3]
-    monkeypatch.setattr(db, "migrations", lambda: every[:4])
+    assert _migrate_up_to(conn, monkeypatch, 3) == [1, 2, 3]
 
     conn.executescript(
         """
@@ -259,7 +266,7 @@ def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
         """
     )
 
-    assert db.migrate(conn, NOW) == [4]
+    assert _migrate_up_to(conn, monkeypatch, 4) == [4]
     names = conn.execute("SELECT id, name FROM categories ORDER BY id")
     assert [tuple(row) for row in names] == [
         (1, "Ristoranti e bar"),
@@ -285,9 +292,7 @@ def _revolut_rows() -> list[Transaction]:
 
 def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:4])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4]
+    assert _migrate_up_to(conn, monkeypatch, 4) == [1, 2, 3, 4]
     monkeypatch.undo()
     # pairing is of the schema of today (migration 0007) and nothing here is paired
     monkeypatch.setattr(pairs, "mark", lambda conn: 0)
@@ -307,7 +312,7 @@ def test_migration_0005_reads_revolut_accents_as_the_extractor_now_does(
     before = transaction_ids(OWNER, [("revolut", row) for row in _revolut_rows()])
     conn.execute("INSERT INTO overrides VALUES (?, NULL, 'expense', '', 'x')", (before[1],))
 
-    assert db.migrate(conn, NOW)[0] == 5
+    assert _migrate_up_to(conn, monkeypatch, 5) == [5]
     meant = [
         replace(row, description="Caffè Ölberg", counterparty="Caffè Ölberg")
         if row.description == TWICE
@@ -340,7 +345,7 @@ def test_migration_0005_stops_at_a_row_whose_id_does_not_follow_from_it(
     conn.execute("UPDATE transactions SET id = 'typed' WHERE id = ?", (first,))
     was = dump(conn)
     with pytest.raises(db.MigrationError, match="transaction typed: its id does not follow"):
-        db.migrate(conn, NOW)
+        _migrate_up_to(conn, monkeypatch, 5)
     assert dump(conn) == was
     assert db.version(conn) == 4
     conn.close()
@@ -348,9 +353,7 @@ def test_migration_0005_stops_at_a_row_whose_id_does_not_follow_from_it(
 
 def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:6])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6]
+    assert _migrate_up_to(conn, monkeypatch, 6) == [1, 2, 3, 4, 5, 6]
     conn.executescript(
         """
         INSERT INTO owners (id, name) VALUES (1, 'Lukas'), (2, 'Anna');
@@ -362,8 +365,7 @@ def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.Mon
             VALUES ('t1', 1, '2026-09-07', '2026-09-07', -1000000000, 'EUR', 'x', 'expense', 2);
         """
     )
-    monkeypatch.setattr(db, "migrations", lambda: every[:7])
-    assert db.migrate(conn, NOW) == [7]
+    assert _migrate_up_to(conn, monkeypatch, 7) == [7]
     row = conn.execute("SELECT counterparty_owner_id, counterparty_paired FROM transactions")
     assert tuple(row.fetchone()) == (2, 0)  # a mark made before is kept as the statement's own
     with pytest.raises(sqlite3.IntegrityError):
@@ -375,9 +377,7 @@ def test_migration_0008_takes_stored_closes_as_asked_for_as_the_old_rule_did(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:7])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7]
+    assert _migrate_up_to(conn, monkeypatch, 7) == [1, 2, 3, 4, 5, 6, 7]
     monkeypatch.undo()
     conn.executescript(
         """
@@ -391,8 +391,7 @@ def test_migration_0008_takes_stored_closes_as_asked_for_as_the_old_rule_did(
         INSERT INTO fx_rates VALUES ('2026-09-05', 'USD', '0.8', 'manual', NULL);
         """
     )
-    monkeypatch.setattr(db, "migrations", lambda: every[:8])
-    assert db.migrate(conn, NOW) == [8]
+    assert _migrate_up_to(conn, monkeypatch, 8) == [8]
     stored = conn.execute("SELECT series, source, first_day FROM asked_from ORDER BY 1")
     assert [tuple(row) for row in stored] == [
         ("close:1", "fetched:fake", "2026-09-08"),  # 20 days before the first close
@@ -405,10 +404,7 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:8])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7, 8]
-    monkeypatch.setattr(db, "migrations", lambda: every[:9])
+    assert _migrate_up_to(conn, monkeypatch, 8) == [1, 2, 3, 4, 5, 6, 7, 8]
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
     conn.execute("INSERT OR IGNORE INTO currencies (code, decimals) VALUES ('USD', 2)")
     for source, name, end in (("ibkr", "i", "2026-09-30"), ("migros", "m", "2026-09-30")):
@@ -427,7 +423,7 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     for source in ("statement", "manual"):
         conn.execute("INSERT INTO prices VALUES (1, '2026-09-30', '50', ?, NULL)", (source,))
 
-    assert db.migrate(conn, NOW) == [9]
+    assert _migrate_up_to(conn, monkeypatch, 9) == [9]
     kept = conn.execute(
         "SELECT f.source, r.currency, r.date, r.rate_to_chf FROM statement_rates r "
         "JOIN statement_files f ON f.id = r.statement_file_id"
@@ -445,9 +441,7 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:9])
-    assert db.migrate(conn, NOW) == list(range(1, 10))
+    assert _migrate_up_to(conn, monkeypatch, 9) == list(range(1, 10))
     monkeypatch.undo()
     italian = {new: old for old, new in categories.ITALIAN.items()}
     insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
@@ -476,12 +470,16 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
         ("uscite", "Affitto", "Prestiti"),  # not the taxonomy's Affitto: left alone
     ]
 
-    assert db.migrate(conn, NOW) == [10]
+    assert _migrate_up_to(conn, monkeypatch, 10) == [10]
     tree = conn.execute(
         "SELECT c.side, c.name, p.name FROM categories c "
         "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.id"
     )
     assert [tuple(row) for row in tree] == expected
-    store.seed_categories(conn)
-    assert conn.execute("SELECT count(*) FROM categories").fetchone()[0] == len(expected)
+    monkeypatch.undo()
+    db.migrate(conn, NOW)
+    count = "SELECT count(*) FROM categories"
+    before = conn.execute(count).fetchone()[0]
+    store.seed_categories(conn)  # the taxonomy of today finds every name it has
+    assert conn.execute(count).fetchone()[0] == before
     conn.close()

@@ -1,6 +1,7 @@
 import getpass
 import hashlib
 import io
+import re
 import shutil
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -921,16 +922,24 @@ def test_shares_typed_before_the_export_is_imported_are_removed_first(run: Run) 
     assert run.load(folder=export) == dbcli.OK
 
 
+def cells(line: str) -> list[str]:
+    """A row of a table printed in columns: its cells, without an empty one."""
+    return re.split(r" {2,}", line.strip())
+
+
 def test_query_lists_the_matching_rows_and_their_total(closed: Run) -> None:
     assert closed("query", "--category", "Groceries") == dbcli.OK
-    assert closed.output == (
-        "2026-08-07  Lukas  Swisscard    -41.85  CHF  Groceries  FRISCHMARKT ZENTRUM\n"
-        "2026-08-30  Lukas  Migros       -25.40  CHF  Groceries  KONSUM-1234 ZUERICH\n"
-        "2026-08-31  Lukas  Revolut CHF  -20.00  CHF  Groceries  Konsum\n"
-        "3 transactions\n"
-        "Total:\n"
-        "  -87.25 CHF  (3)\n"
-    )
+    lines = closed.output.splitlines()
+    table, rest = lines[:3], lines[3:]
+    assert [cells(line) for line in table] == [
+        ["2026-08-07", "Lukas", "Swisscard", "-41.85", "CHF", "Groceries", "FRISCHMARKT ZENTRUM"],
+        ["2026-08-30", "Lukas", "Migros", "-25.40", "CHF", "Groceries", "KONSUM-1234 ZUERICH"],
+        ["2026-08-31", "Lukas", "Revolut CHF", "-20.00", "CHF", "Groceries", "Konsum"],
+    ]
+    assert rest == ["3 transactions", "Total:", "  -87.25 CHF  (3)"]
+    # in columns: each cell starts where the one above it does, whatever the names are
+    starts = {tuple(m.start() for m in re.finditer(r"\S+(?: \S+)*", line)) for line in table}
+    assert len(starts) == 1
 
 
 def test_query_can_print_the_totals_alone_with_a_line_per_period(closed: Run) -> None:
@@ -962,22 +971,42 @@ def test_query_takes_a_day_a_month_or_a_year_as_either_end(closed: Run) -> None:
 
 def test_query_by_booking_date_shows_that_date(closed: Run) -> None:
     assert closed("query", "--text", "frischmarkt", "--booking", "--from", "2026-09") == dbcli.OK
-    assert closed.output == (
-        "2026-09-04  Lukas  Swisscard  -41.85  CHF  Groceries  FRISCHMARKT ZENTRUM\n"
-        "1 transaction\n"
-        "Total:\n"
-        "  -41.85 CHF  (1)\n"
-    )
+    row, *rest = closed.output.splitlines()
+    assert cells(row) == [
+        "2026-09-04",
+        "Lukas",
+        "Swisscard",
+        "-41.85",
+        "CHF",
+        "Groceries",
+        "FRISCHMARKT ZENTRUM",
+    ]
+    assert rest == ["1 transaction", "Total:", "  -41.85 CHF  (1)"]
 
 
 def test_query_combines_account_amount_and_owner(closed: Run) -> None:
     migros = ("query", "--account", "Migros", "--min", "1000", "--max", "2000")
     assert closed(*migros, "--owner", "Lukas") == dbcli.OK
-    assert closed.output.startswith(
-        "2026-09-01  Lukas  Migros  -1,850.00  CHF  Rent  Hans Muster\n"
-        "2026-09-08  Lukas  Migros  -1,288.18  CHF        Swisscard AECS GmbH\n"
-        "2 transactions\n"
-    )
+    rent, card, count, *_ = closed.output.splitlines()
+    assert cells(rent) == [
+        "2026-09-01",
+        "Lukas",
+        "Migros",
+        "-1,850.00",
+        "CHF",
+        "Rent",
+        "Hans Muster",
+    ]
+    assert cells(card) == [
+        "2026-09-08",
+        "Lukas",
+        "Migros",
+        "-1,288.18",
+        "CHF",
+        "Swisscard AECS GmbH",
+    ]
+    assert card.index("Swisscard") == rent.index("Hans")  # no category: its column is left blank
+    assert count == "2 transactions"
     assert closed("query", "--owner", "Anna") == dbcli.OK
     assert closed.output == "0 transactions\n"
 
