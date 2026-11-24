@@ -2,8 +2,9 @@
 @component
 How the investments did, in short: the time-weighted return over the range the net worth chart
 is looked at over, with what they gained; and what they paid in the last twelve months, after
-the tax withheld. Each links to the investments page, which tells it in full. Either can be
-missing, when the app could not answer for it: the other stays, with a sentence saying why.
+the tax withheld. Each links to the investments page, which tells it in full. Each comes on its
+own, after the rest of the page, and either can be missing when the app could not answer for
+it: the other stays, with a sentence saying why.
 -->
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -14,13 +15,22 @@ missing, when the app could not answer for it: the other stays, with a sentence 
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { returnSpan, taxWithheld, type Loaded } from './investments.js';
+	import {
+		incomeShown,
+		PAID,
+		refusal,
+		RETURNED,
+		returnShown,
+		type Loaded
+	} from './investments.js';
 	import type { Range } from './range.js';
 
+	type Maybe<T> = Loaded<T> | Promise<Loaded<T>>;
+
 	interface Props {
-		/** What they returned over `range`: still on its way when the range was just chosen. */
-		returned: Loaded<InvestmentPerformance> | Promise<Loaded<InvestmentPerformance>>;
-		paid: Loaded<InvestmentIncome>;
+		/** What they returned over `range`, and what they paid: each still on its way at first. */
+		returned: Maybe<InvestmentPerformance>;
+		paid: Maybe<InvestmentIncome>;
 		range: Range;
 		/** Where the returns and the income are told in full. */
 		returnsHref: string;
@@ -29,24 +39,31 @@ missing, when the app could not answer for it: the other stays, with a sentence 
 
 	let { returned, paid, range, returnsHref, incomeHref }: Props = $props();
 
-	const income = $derived(paid.sent?.income ?? null);
-	const tax = $derived(income ? taxWithheld(income.trailing) : null);
-
 	const tone = (value: string | null, places: number) =>
 		({ up: 'text-gain', down: 'text-loss', flat: 'text-ink' })[direction(value, places)];
 </script>
 
-{#snippet more(href: string, label: string)}
-	<a
-		{href}
-		class="inline-flex items-center gap-0.5 text-small font-medium whitespace-nowrap text-brand hover:text-brand-hover"
-	>
-		{label}<ChevronRight class="size-3.5" aria-hidden="true" />
-	</a>
+{#snippet heading(label: string, href: string, link: string)}
+	<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+		<p class="text-small text-ink-secondary">{label}</p>
+		<a
+			{href}
+			class={cn(
+				'inline-flex items-center gap-0.5 whitespace-nowrap',
+				'text-small font-medium text-brand hover:text-brand-hover'
+			)}
+		>
+			{link}<ChevronRight class="size-3.5" aria-hidden="true" />
+		</a>
+	</div>
+{/snippet}
+
+{#snippet waiting()}
+	<p class="mt-1 text-figure text-ink-muted" aria-busy="true">…</p>
 {/snippet}
 
 {#snippet problems(errors: string[])}
-	{#each new Set(errors) as error (error)}
+	{#each errors as error (error)}
 		<p class="mt-2 flex items-start gap-1.5 text-small text-ink-secondary" role="status">
 			<CircleAlert class="mt-0.5 size-3.5 shrink-0 text-caution" aria-hidden="true" />
 			{error}
@@ -56,57 +73,62 @@ missing, when the app could not answer for it: the other stays, with a sentence 
 
 <Panel title="Investments">
 	<div class="grid gap-4">
-		<section aria-label="What the investments returned">
+		<section aria-label={RETURNED}>
 			{#await returned}
-				<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-					<p class="text-small text-ink-secondary">Time-weighted return</p>
-					{@render more(returnsHref, 'Performance')}
-				</div>
-				<p class="mt-1 text-figure text-ink-muted" aria-busy="true">…</p>
-			{:then shown}
-				{@const report = shown.sent?.performance ?? null}
-				{@const totals = report?.totals ?? null}
-				{@const span = report ? returnSpan(range, report) : ''}
-				<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-					<p class="text-small text-ink-secondary">
-						Time-weighted return{span ? `, ${span}` : ''}
-					</p>
-					{@render more(returnsHref, 'Performance')}
-				</div>
-				{#if report && !totals}
+				{@render heading('Time-weighted return', returnsHref, 'Performance')}
+				{@render waiting()}
+			{:then loaded}
+				{@const shown = returnShown(loaded, range)}
+				{@render heading(
+					shown.span ? `Time-weighted return, ${shown.span}` : 'Time-weighted return',
+					returnsHref,
+					'Performance'
+				)}
+				{#if shown.state === 'none'}
 					<p class="mt-1 text-body text-ink-muted">No investment account yet.</p>
-				{:else if totals}
-					{#if totals.twr === null}
-						<p class="mt-1 text-body text-ink-muted">Not known: nothing was invested.</p>
-					{:else}
-						<p class={cn('mt-1 text-figure font-medium tabular-nums', tone(totals.twr, 1))}>
-							{signedPercent(totals.twr)}
-						</p>
-					{/if}
+				{:else if shown.state === 'uninvested'}
+					<p class="mt-1 text-body text-ink-muted">Not known: nothing was invested.</p>
+				{:else if shown.state === 'measured'}
+					<p class={cn('mt-1 text-figure font-medium tabular-nums', tone(shown.twr, 1))}>
+						{signedPercent(shown.twr!)}
+					</p>
+				{/if}
+				{#if shown.gain !== null}
 					<p class="mt-1 text-small text-ink-secondary">
 						Gain
-						<span class={cn('font-medium tabular-nums', tone(totals.gain, 0))}>{signed(totals.gain, 0)}</span>
-						<span class="text-ink-muted">{report!.currency}</span>
+						<span class={cn('font-medium tabular-nums', tone(shown.gain, 0))}>
+							{signed(shown.gain, 0)}
+						</span>
+						<span class="text-ink-muted">{shown.currency}</span>
 					</p>
 				{/if}
 				{@render problems(shown.errors)}
+			{:catch failure}
+				{@render heading('Time-weighted return', returnsHref, 'Performance')}
+				{@render problems([refusal(failure, RETURNED)])}
 			{/await}
 		</section>
 
-		<section class="border-t border-line pt-4" aria-label="What the investments paid">
-			<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<p class="text-small text-ink-secondary">Paid in the last 12 months</p>
-				{@render more(incomeHref, 'Income')}
-			</div>
-			{#if income}
-				<p class="mt-1 text-figure font-medium text-ink">
-					<Amount value={income.trailing.net} currency={income.currency} places={0} />
-				</p>
-				<p class="mt-1 text-small text-ink-secondary">
-					Dividends and interest{#if tax}, after <Amount value={tax} currency={income.currency} places={0} /> tax withheld{/if}
-				</p>
-			{/if}
-			{@render problems(paid.errors)}
+		<section class="border-t border-line pt-4" aria-label={PAID}>
+			{@render heading('Paid in the last 12 months', incomeHref, 'Income')}
+			{#await paid}
+				{@render waiting()}
+			{:then loaded}
+				{@const shown = incomeShown(loaded)}
+				{#if shown.paid}
+					{@const { net, tax, currency } = shown.paid}
+					<p class="mt-1 text-figure font-medium text-ink">
+						<Amount value={net} {currency} places={0} />
+					</p>
+					<p class="mt-1 text-small text-ink-secondary">
+						Dividends and interest{#if tax}, after
+							<Amount value={tax} {currency} places={0} /> tax withheld{/if}
+					</p>
+				{/if}
+				{@render problems(shown.errors)}
+			{:catch failure}
+				{@render problems([refusal(failure, PAID)])}
+			{/await}
 		</section>
 	</div>
 </Panel>

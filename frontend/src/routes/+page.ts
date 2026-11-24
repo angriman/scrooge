@@ -1,5 +1,5 @@
 import { get } from '#lib/api.js';
-import { loaded, type Loaded } from '#lib/overview/investments.js';
+import { loaded, PAID, RETURNED, type Loaded } from '#lib/overview/investments.js';
 import { DEFAULT_RANGE, RANGES, type Range } from '#lib/overview/range.js';
 import type {
 	Attention,
@@ -24,7 +24,8 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		get<NetWorth>(fetch, '/api/networth', new URLSearchParams([...whose, ['by', cut]]));
 	// What the investments returned over a range, asked once a range is first looked at: the
 	// range changes only the address, so another is asked when it is chosen. Neither that nor
-	// what they paid stops the page when the app cannot answer for it.
+	// what they paid is waited for: the card shows each when it comes, and what the app cannot
+	// answer for as a sentence, so neither holds up nor stops the page.
 	const range = oneOf(
 		url,
 		'range',
@@ -38,14 +39,16 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 			const query = new URLSearchParams([...whose, ['range', over]]);
 			asked = loaded(
 				get<InvestmentPerformance>(fetch, '/api/performance', query),
-				'What the investments returned'
+				RETURNED
 			);
 			returns.set(over, asked);
 		}
 		return asked;
 	};
+	returnsOver(range);
+	const paid = loaded(get<InvestmentIncome>(fetch, '/api/income', whose), PAID);
 	// The allocation sets each type against the range: the chart's own series, when cut by type.
-	const [shown, assets, cut, month, attention, returned, paid] = await Promise.all([
+	const [shown, assets, cut, month, attention] = await Promise.all([
 		get<Overview>(fetch, '/api/overview', whose),
 		series('asset'),
 		by === 'asset' ? null : series(by),
@@ -54,9 +57,7 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 			fetch,
 			'/api/attention',
 			new URLSearchParams([...pick(url, ['owner', 'currency']), ['recurring', '1']])
-		),
-		returnsOver(range),
-		loaded(get<InvestmentIncome>(fetch, '/api/income', whose), 'What the investments paid')
+		)
 	]);
 	// The month-end table values everything once more, in each of its currencies: it is asked
 	// for only once it is shown (`view=table`, a view of the page that loads nothing else), and
@@ -72,8 +73,6 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		month,
 		attention,
 		monthEnds,
-		range,
-		returned,
 		returnsOver,
 		paid
 	};

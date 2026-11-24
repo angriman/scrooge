@@ -8,7 +8,13 @@ import { day } from '#lib/format/date.js';
 import { approximate } from '#lib/format/number.js';
 import { withheld } from '#lib/investments/income.js';
 import { DEFAULT_RANGE as RETURNS_RANGE, over } from '#lib/investments/performance.js';
-import type { Amount, Payout, PerformanceReport } from '#lib/types.js';
+import type {
+	Amount,
+	InvestmentIncome,
+	InvestmentPerformance,
+	Payout,
+	PerformanceReport
+} from '#lib/types.js';
 import { pick, type Address } from '#lib/view.js';
 import type { Range } from './range.js';
 
@@ -18,7 +24,18 @@ export interface Loaded<T> {
 	errors: string[];
 }
 
+export const RETURNED = 'What the investments returned';
+export const PAID = 'What the investments paid';
+
 const UNREACHABLE = 'The app could not be reached: check that it is running, and try again.';
+const SIGNED_OUT = 'The app asks to sign in again.';
+
+/** Why `what` is not known, after `failure`: the app's own sentences when it refused. */
+export function refusal(failure: unknown, what: string): string {
+	if (isRedirect(failure)) return `${what} is not known: ${SIGNED_OUT}`;
+	const why = isHttpError(failure) ? failure.body.message : UNREACHABLE;
+	return `${what} is not known: ${why}`;
+}
 
 /** `asked`, kept from failing: what the app could not answer is `what` and the reason it gave.
  * Not being signed in still leaves the page for the password page. */
@@ -31,8 +48,7 @@ export async function loaded<T extends { errors: string[] }>(
 		return { sent, errors: sent.errors };
 	} catch (failure) {
 		if (isRedirect(failure)) throw failure;
-		const why = isHttpError(failure) ? failure.body.message : UNREACHABLE;
-		return { sent: null, errors: [`${what} is not known: ${why}`] };
+		return { sent: null, errors: [refusal(failure, what)] };
 	}
 }
 
@@ -42,6 +58,49 @@ export function returnSpan(range: Range, report: PerformanceReport): string {
 	const since = report.totals?.twr_since;
 	if (since) return `since ${day(since)}`;
 	return report.first && report.last ? over(range, report.first, report.last) : '';
+}
+
+/** The return half of the card: `measured` with its figures, `uninvested` when nothing was
+ * invested over the range (no rate to give), `none` without any investment account, and
+ * `unknown` when the app could not answer; with the sentences to show, each once. */
+export interface ReturnShown {
+	state: 'measured' | 'uninvested' | 'none' | 'unknown';
+	span: string;
+	twr: Amount | null;
+	gain: Amount | null;
+	currency: string;
+	errors: string[];
+}
+
+export function returnShown(shown: Loaded<InvestmentPerformance>, range: Range): ReturnShown {
+	const report = shown.sent?.performance ?? null;
+	const totals = report?.totals ?? null;
+	const errors = [...new Set(shown.errors)];
+	if (!report) return { state: 'unknown', span: '', twr: null, gain: null, currency: '', errors };
+	const state = !totals ? 'none' : totals.twr === null ? 'uninvested' : 'measured';
+	return {
+		state,
+		span: returnSpan(range, report),
+		twr: totals?.twr ?? null,
+		gain: totals?.gain ?? null,
+		currency: report.currency,
+		errors
+	};
+}
+
+/** The income half of the card: what was paid over the last twelve months after the tax
+ * withheld, and that tax; null when the app could not answer. */
+export interface IncomeShown {
+	paid: { net: Amount; tax: Amount | null; currency: string } | null;
+	errors: string[];
+}
+
+export function incomeShown(shown: Loaded<InvestmentIncome>): IncomeShown {
+	const income = shown.sent?.income ?? null;
+	const errors = [...new Set(shown.errors)];
+	if (!income) return { paid: null, errors };
+	const { trailing, currency } = income;
+	return { paid: { net: trailing.net, tax: taxWithheld(trailing), currency }, errors };
 }
 
 /** The query of the investments page's returns over `range`, for whom and in what currency

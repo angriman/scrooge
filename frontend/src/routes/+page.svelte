@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isRedirect } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { page } from '$app/state';
@@ -50,9 +51,14 @@
 	);
 	const back = $derived(lastDay ? daysBack(range, lastDay) : null);
 
-	// The investments card follows the range: the one the page loaded with is in hand, another
-	// is asked when chosen.
-	const returned = $derived(range === data.range ? data.returned : data.returnsOver(range));
+	// The investments card follows the range: each is asked once, when first chosen. Signed out
+	// meanwhile, the card says so and the page goes to sign in, as a load of the page would.
+	const returned = $derived(data.returnsOver(range));
+	$effect(() => {
+		returned.catch((failure) => {
+			if (isRedirect(failure)) location.assign(failure.location);
+		});
+	});
 	const investments = (query: URLSearchParams) =>
 		resolve('/investments') + (query.size ? `?${query}` : '');
 	const returnsHref = $derived(investments(returnsQuery(here(), range)));

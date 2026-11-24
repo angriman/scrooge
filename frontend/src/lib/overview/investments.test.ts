@@ -1,7 +1,21 @@
 import { error, redirect } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
-import type { Measured, PerformanceReport } from '#lib/types.js';
-import { incomeQuery, loaded, returnSpan, returnsQuery, taxWithheld } from './investments.js';
+import type {
+	InvestmentIncome,
+	InvestmentPerformance,
+	Measured,
+	PerformanceReport
+} from '#lib/types.js';
+import {
+	incomeQuery,
+	incomeShown,
+	loaded,
+	refusal,
+	returnShown,
+	returnSpan,
+	returnsQuery,
+	taxWithheld
+} from './investments.js';
 
 const address = (search: string) => {
 	const url = new URL(`http://scrooge.test/${search}`);
@@ -88,6 +102,93 @@ describe('the links to the investments page', () => {
 		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe(
 			'owner=Anna&view=income'
 		);
+	});
+});
+
+const performance = (changes: Partial<PerformanceReport> = {}): InvestmentPerformance => ({
+	performance: report(changes),
+	errors: []
+});
+
+const paidOut = { dividends: '120', interest: '30', tax: '-20', net: '130' };
+const income: InvestmentIncome = {
+	income: {
+		currency: 'CHF',
+		first: '2025-10-01',
+		last: '2026-09-30',
+		through: '2026-09-30',
+		totals: paidOut,
+		year_before: null,
+		trailing: paidOut,
+		months: [],
+		holdings: []
+	},
+	logos: {},
+	ranges: [],
+	errors: []
+};
+
+describe('the card', () => {
+	it('shows the return and what was paid when both are known', () => {
+		expect(returnShown({ sent: performance(), errors: [] }, '1y')).toEqual({
+			state: 'measured',
+			span: 'over the past year',
+			twr: '9.5',
+			gain: '100',
+			currency: 'CHF',
+			errors: []
+		});
+		expect(incomeShown({ sent: income, errors: [] })).toEqual({
+			paid: { net: '130', tax: '20', currency: 'CHF' },
+			errors: []
+		});
+	});
+
+	it('keeps what was paid when the return is not known, and says why once', () => {
+		const why = 'What the investments returned is not known: The prices could not be read.';
+		const shown = returnShown({ sent: null, errors: [why, why] }, '1y');
+		expect(shown).toMatchObject({ state: 'unknown', twr: null, gain: null, errors: [why] });
+		expect(incomeShown({ sent: income, errors: [] }).paid).not.toBeNull();
+	});
+
+	it('keeps the return when what was paid is not known', () => {
+		const why = 'What the investments paid is not known: No rate for JPY.';
+		expect(incomeShown({ sent: null, errors: [why] })).toEqual({ paid: null, errors: [why] });
+		expect(returnShown({ sent: performance(), errors: [] }, '1y').state).toBe('measured');
+	});
+
+	it('says so when there is no investment account, or nothing was invested', () => {
+		const none = performance({ first: null, last: null, totals: null });
+		expect(returnShown({ sent: none, errors: [] }, '1y')).toMatchObject({
+			state: 'none',
+			gain: null
+		});
+		const idle = performance({ totals: { ...measured, twr: null, gain: '0' } });
+		expect(returnShown({ sent: idle, errors: [] }, '1y')).toMatchObject({
+			state: 'uninvested',
+			gain: '0'
+		});
+	});
+
+	it('says why a range chosen later is not known, signed out included', () => {
+		const refused = (() => {
+			try {
+				error(500, 'Internal Error');
+			} catch (failure) {
+				return failure;
+			}
+		})();
+		expect(refusal(refused, 'What they returned')).toBe(
+			'What they returned is not known: Internal Error'
+		);
+		const away = (() => {
+			try {
+				redirect(303, '/login');
+			} catch (failure) {
+				return failure;
+			}
+		})();
+		expect(refusal(away, 'What they returned')).toMatch(/sign in again/);
 	});
 });
 
