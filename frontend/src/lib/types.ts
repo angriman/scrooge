@@ -298,6 +298,9 @@ export interface StatementsAccount extends Account {
 	statements: StatementFile[];
 	/** What it holds by part; null when its balance is not known. */
 	holds: AccountHolds | null;
+	/** The accounts it is booked as elsewhere: a broker's one per currency, whose statements
+	 * it lists together; its own name alone otherwise. */
+	parts: string[];
 }
 
 /** What an account holds now by part, and its balance at the last month-ends. */
