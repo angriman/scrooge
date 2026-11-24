@@ -6,6 +6,9 @@
 #
 #   deploy/smoke-test.sh [image]    default scrooge:test, as `docker build -t scrooge:test .`
 #
+# DOCKER is the command that runs docker, where it is another: on a Synology NAS,
+# DOCKER="sudo /usr/local/bin/docker".
+#
 # Run from a copy of the repository: it needs deploy/compose.yaml and a fixture of tests/.
 # CI runs it on x86-64 and on ARM (.github/workflows/container.yml).
 set -euo pipefail
@@ -22,7 +25,8 @@ mkdir -p "$repo/output"
 work=$(mktemp -d "$repo/output/smoke.XXXXXX")
 project="scrooge-smoke-$$"
 
-compose() { docker compose --project-directory "$work" -p "$project" "$@"; }
+read -ra docker <<<"${DOCKER:-docker}"
+compose() { "${docker[@]}" compose --project-directory "$work" -p "$project" "$@"; }
 cleanup() {
     compose down --volumes --timeout 5 >/dev/null 2>&1 || true
     rm -rf "$work"
@@ -56,7 +60,15 @@ grep -q 'docker compose up -d' "$work/init.log" || fail "init printed no next st
 grep -q '^  host: 0.0.0.0$' "$work/data/users/test/scrooge.yaml" || fail "no serve in the config"
 
 step "docker compose up"
-compose up -d --wait --wait-timeout 120 || fail "the services did not start"
+compose up -d || fail "the services did not start"
+# Not `up --wait`: some versions of Compose refuse it for prices, which has no health check.
+health=starting
+for _ in $(seq 60); do
+    health=$("${docker[@]}" inspect -f '{{.State.Health.Status}}' "$(compose ps -q scrooge)")
+    [ "$health" = healthy ] && break
+    sleep 2
+done
+[ "$health" = healthy ] || fail "the pages are $health, not healthy"
 [ "$(compose ps prices --format '{{.State}}')" = running ] || fail "prices is not running"
 
 step "the container"
@@ -86,4 +98,4 @@ compose exec -T scrooge scrooge import users/test/statements || fail "import"
 compose exec -T scrooge scrooge commit || fail "commit"
 curl -fsS -b "$jar" "$base/statements/1" | grep -q migros.csv || fail "the statement's page"
 
-echo "smoke test: passed on $(docker info --format '{{.Architecture}}') with $image"
+echo "smoke test: passed on $("${docker[@]}" info --format '{{.Architecture}}') with $image"
