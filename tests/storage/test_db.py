@@ -130,6 +130,53 @@ def test_a_python_migration_runs_in_its_own_transaction(monkeypatch: pytest.Monk
     assert db.version(conn) == 2
 
 
+_PARENT_AND_CHILD = """
+CREATE TABLE parent (id INTEGER PRIMARY KEY, side TEXT NOT NULL CHECK (side IN ('a'))) STRICT;
+CREATE TABLE child (parent_id INTEGER REFERENCES parent (id)) STRICT;
+INSERT INTO parent VALUES (1, 'a');
+INSERT INTO child VALUES (1);
+"""
+
+
+def _rebuild_parent(conn: sqlite3.Connection, *, keep: bool = True) -> None:
+    """Build `parent` again with another CHECK, as a table others refer to is changed."""
+    conn.execute("CREATE TABLE new (id INTEGER PRIMARY KEY, side TEXT NOT NULL) STRICT")
+    if keep:
+        conn.execute("INSERT INTO new SELECT id, 'b' FROM parent")
+    conn.execute("DROP TABLE parent")
+    conn.execute("ALTER TABLE new RENAME TO parent")
+
+
+def test_a_rebuild_runs_with_foreign_keys_off_and_turns_them_back_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    steps: list[tuple[int, db.Migration]] = [
+        (1, _PARENT_AND_CHILD),
+        (2, db.Rebuild(_rebuild_parent)),
+    ]
+    monkeypatch.setattr(db, "migrations", lambda: steps)
+    conn = db.connect(":memory:")
+    assert db.migrate(conn, NOW) == [1, 2]
+    assert conn.execute("SELECT side FROM parent").fetchone()[0] == "b"
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        conn.execute("INSERT INTO child VALUES (9)")
+
+
+def test_a_rebuild_that_breaks_a_reference_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    def losing(conn: sqlite3.Connection) -> None:
+        _rebuild_parent(conn, keep=False)
+
+    steps: list[tuple[int, db.Migration]] = [(1, _PARENT_AND_CHILD), (2, db.Rebuild(losing))]
+    monkeypatch.setattr(db, "migrations", lambda: steps)
+    conn = sqlite3.connect(":memory:", isolation_level=None)  # foreign keys left off
+    with pytest.raises(db.MigrationError, match="rows of child without their parent"):
+        db.migrate(conn, NOW)
+    assert conn.execute("SELECT side FROM parent").fetchone()[0] == "a"
+    assert db.version(conn) == 1
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 0  # as it was
+
+
 def test_a_transaction_is_all_or_nothing(conn: sqlite3.Connection) -> None:
     def failing() -> None:
         with db.transaction(conn):
