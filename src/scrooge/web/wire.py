@@ -576,13 +576,20 @@ def cashflow_report(shown: report.Report) -> JSON:
 
 
 def _paid_by(shown: paidby.PaidBy | None) -> JSON | None:
-    """Who paid what the household spent: each person, and each category split between them."""
+    """Who paid what the household spent: each person, before and after settling up, each
+    category split between them, and the net of what they paid each other."""
     if shown is None:
         return None
     return {
         "spent": number(shown.spent),
         "people": [
-            {"name": payer.name, "spent": number(payer.spent), "share": _percent(payer.share)}
+            {
+                "name": payer.name,
+                "spent": number(payer.spent),
+                "share": _percent(payer.share),
+                "settled": number(payer.settled),
+                "settled_share": _percent(payer.settled_share),
+            }
             for payer in shown.people
         ],
         "categories": [
@@ -592,6 +599,10 @@ def _paid_by(shown: paidby.PaidBy | None) -> JSON | None:
                 "by": {name: number(amount) for name, amount in split.by.items()},
             }
             for split in shown.categories
+        ],
+        "moves": [
+            {"sender": move.sender, "receiver": move.receiver, "amount": number(move.amount)}
+            for move in shown.moves
         ],
     }
 

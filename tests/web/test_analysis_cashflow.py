@@ -213,9 +213,23 @@ def test_the_household_is_sent_who_paid(client: TestClient) -> None:
     paid = sent["report"]["paid_by"]
     assert paid["spent"] == sent["report"]["totals"]["spent"] == "1983.70"
     assert paid["people"] == [
-        {"name": "Anna", "spent": "60.00", "share": "3.000"},
-        {"name": "Lukas", "spent": "1923.70", "share": "97.000"},
+        {
+            "name": "Anna",
+            "spent": "60.00",
+            "share": "3.000",
+            "settled": "-140.00",
+            "settled_share": "-7.100",
+        },
+        {
+            "name": "Lukas",
+            "spent": "1923.70",
+            "share": "97.000",
+            "settled": "2123.70",
+            "settled_share": "107.100",
+        },
     ]
+    # His gift to her, as his statements have it.
+    assert paid["moves"] == [{"sender": "Lukas", "receiver": "Anna", "amount": "200.00"}]
     assert paid["categories"][0] == {
         "name": "Casa",
         "spent": "1850.00",
