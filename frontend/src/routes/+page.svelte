@@ -5,7 +5,8 @@
 	import { assetColor, inOrder, liquidityColor } from '#lib/design/data.js';
 	import { addDays } from '#lib/format/date.js';
 	import Allocation from '#lib/overview/Allocation.svelte';
-	import Holdings from '#lib/overview/Holdings.svelte';
+	import Investments from '#lib/overview/Investments.svelte';
+	import { incomeQuery, returnsQuery } from '#lib/overview/investments.js';
 	import MonthSection from '#lib/overview/MonthSection.svelte';
 	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
@@ -48,6 +49,14 @@
 		series?.first ? addDays(series.first, series.total.length - 1) : null
 	);
 	const back = $derived(lastDay ? daysBack(range, lastDay) : null);
+
+	// The investments card follows the range: the one the page loaded with is in hand, another
+	// is asked when chosen.
+	const returned = $derived(range === data.range ? data.returned : data.returnsOver(range));
+	const investments = (query: URLSearchParams) =>
+		resolve('/investments') + (query.size ? `?${query}` : '');
+	const returnsHref = $derived(investments(returnsQuery(here(), range)));
+	const incomeHref = $derived(investments(incomeQuery(here())));
 
 	const breakdowns = $derived([
 		{ value: 'asset', label: 'By type' },
@@ -122,7 +131,7 @@
 			<MonthSection recap={data.month.month} />
 		{/if}
 
-		<div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+		<div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
 			<Allocation
 				assets={figures.assets}
 				held={figures.held}
@@ -131,7 +140,7 @@
 				label={rangeLabel(range, series.first)}
 				{currency}
 			/>
-			<Holdings top={figures.top} rest={figures.rest} logos={data.shown.logos} {currency} />
+			<Investments {returned} paid={data.paid} {range} {returnsHref} {incomeHref} />
 		</div>
 	</div>
 

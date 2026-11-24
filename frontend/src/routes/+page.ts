@@ -1,5 +1,15 @@
 import { get } from '#lib/api.js';
-import type { Attention, Month, NetWorth, NetWorthMonths, Overview } from '#lib/types.js';
+import { loaded, type Loaded } from '#lib/overview/investments.js';
+import { DEFAULT_RANGE, RANGES, type Range } from '#lib/overview/range.js';
+import type {
+	Attention,
+	InvestmentIncome,
+	InvestmentPerformance,
+	Month,
+	NetWorth,
+	NetWorthMonths,
+	Overview
+} from '#lib/types.js';
 import { oneOf, pick } from '#lib/view.js';
 import type { PageLoad } from './$types';
 
@@ -12,8 +22,30 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 	const whose = pick(url, ['owner', 'currency']);
 	const series = (cut: string) =>
 		get<NetWorth>(fetch, '/api/networth', new URLSearchParams([...whose, ['by', cut]]));
+	// What the investments returned over a range, asked once a range is first looked at: the
+	// range changes only the address, so another is asked when it is chosen. Neither that nor
+	// what they paid stops the page when the app cannot answer for it.
+	const range = oneOf(
+		url,
+		'range',
+		RANGES.map((option) => option.value),
+		DEFAULT_RANGE
+	);
+	const returns = new Map<Range, Promise<Loaded<InvestmentPerformance>>>();
+	const returnsOver = (over: Range) => {
+		let asked = returns.get(over);
+		if (!asked) {
+			const query = new URLSearchParams([...whose, ['range', over]]);
+			asked = loaded(
+				get<InvestmentPerformance>(fetch, '/api/performance', query),
+				'What the investments returned'
+			);
+			returns.set(over, asked);
+		}
+		return asked;
+	};
 	// The allocation sets each type against the range: the chart's own series, when cut by type.
-	const [shown, assets, cut, month, attention] = await Promise.all([
+	const [shown, assets, cut, month, attention, returned, paid] = await Promise.all([
 		get<Overview>(fetch, '/api/overview', whose),
 		series('asset'),
 		by === 'asset' ? null : series(by),
@@ -22,12 +54,27 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 			fetch,
 			'/api/attention',
 			new URLSearchParams([...pick(url, ['owner', 'currency']), ['recurring', '1']])
-		)
+		),
+		returnsOver(range),
+		loaded(get<InvestmentIncome>(fetch, '/api/income', whose), 'What the investments paid')
 	]);
 	// The month-end table values everything once more, in each of its currencies: it is asked
 	// for only once it is shown (`view=table`, a view of the page that loads nothing else), and
 	// kept until the page loads again.
 	let ends: Promise<NetWorthMonths> | undefined;
 	const monthEnds = () => (ends ??= get<NetWorthMonths>(fetch, '/api/networth/months', whose));
-	return { shown, assets, worth: cut ?? assets, by, people, month, attention, monthEnds };
+	return {
+		shown,
+		assets,
+		worth: cut ?? assets,
+		by,
+		people,
+		month,
+		attention,
+		monthEnds,
+		range,
+		returned,
+		returnsOver,
+		paid
+	};
 };
