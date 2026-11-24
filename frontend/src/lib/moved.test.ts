@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { movedTo, withBarHash } from './moved.js';
+import { asked, barHash, movedTo, stepTo, type Step, type Tagged } from './moved.js';
 
 const moves = new Map([
 	['/app/statements', '/app/accounts'],
@@ -36,21 +36,75 @@ describe('a page that moved', () => {
 	});
 });
 
+describe('a step to an old address', () => {
+	const ours = 'http://127.0.0.1:8765';
+	const step = (fields: Partial<Step> = {}, origin = ours): Step => ({
+		type: 'link',
+		willUnload: false,
+		to: { url: { origin, pathname: '/app/statements', search: '', hash: '#checks' } },
+		...fields
+	});
+
+	it('goes to the new address inside the app, by a link, a form or a goto', () => {
+		for (const type of ['link', 'form', 'goto']) {
+			expect(stepTo(step({ type }), ours, moves)).toBe('/app/accounts#checks');
+		}
+	});
+
+	it('is left alone when it goes to another site', () => {
+		expect(stepTo(step({}, 'https://other.example'), ours, moves)).toBeNull();
+	});
+
+	it('is left alone when it loads the document again', () => {
+		expect(stepTo(step({ willUnload: true }), ours, moves)).toBeNull();
+		expect(stepTo(step({ type: 'leave', to: null }), ours, moves)).toBeNull();
+	});
+
+	it('is left alone on Back and Forward', () => {
+		expect(stepTo(step({ type: 'popstate' }), ours, moves)).toBeNull();
+	});
+
+	it('is left alone when the address did not move', () => {
+		const to = { url: { origin: ours, pathname: '/app/cashflow', search: '', hash: '' } };
+		expect(stepTo(step({ to }), ours, moves)).toBeNull();
+	});
+});
+
+describe('what a link or form asks of a step', () => {
+	const element = (attributes: Record<string, string>, parentElement: Tagged | null = null) => ({
+		getAttribute: (name: string) => attributes[name] ?? null,
+		parentElement
+	});
+
+	it('is nothing when nothing says, or there is no element', () => {
+		expect(asked(element({}, element({})))).toEqual({});
+		expect(asked(null)).toEqual({});
+	});
+
+	it('is what the element says, or the nearest one around it', () => {
+		const around = element({ 'data-sveltekit-reset': 'false' });
+		const link = element({ 'data-sveltekit-replacestate': '' }, around);
+		expect(asked(link)).toEqual({ replace: true, reset: false });
+	});
+
+	it('is the nearest that says, not one further out', () => {
+		const around = element({ 'data-sveltekit-replacestate': 'true' });
+		const link = element({ 'data-sveltekit-replacestate': 'false' }, around);
+		expect(asked(link)).toEqual({ replace: false });
+	});
+});
+
 describe('the hash of a visit straight to an old address', () => {
-	const url = { pathname: '/app/statements', search: '?owner=Anna' };
+	const url = { pathname: '/app/statements' };
 
 	it('is the one the address bar shows', () => {
-		expect(withBarHash(url, { pathname: '/app/statements', search: '', hash: '#checks' })).toEqual({
-			...url,
-			hash: '#checks'
-		});
+		expect(barHash(url, { pathname: '/app/statements', search: '', hash: '#checks' })).toBe(
+			'#checks'
+		);
 	});
 
 	it('is not taken from the page it was reached from', () => {
-		expect(withBarHash(url, { pathname: '/app/cashflow', search: '', hash: '#month' })).toEqual({
-			...url,
-			hash: ''
-		});
-		expect(withBarHash(url, null)).toEqual({ ...url, hash: '' });
+		expect(barHash(url, { pathname: '/app/cashflow', search: '', hash: '#month' })).toBe('');
+		expect(barHash(url, null)).toBe('');
 	});
 });

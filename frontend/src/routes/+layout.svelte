@@ -16,19 +16,22 @@
 	import { here, pick, show } from '#lib/view.js';
 	import type { LayoutProps } from './$types';
 	import { beforeNavigate, goto } from '$app/navigation';
-	import { movedTo } from '#lib/moved.js';
+	import { asked, stepTo } from '#lib/moved.js';
 	import { renamed } from '#lib/renamed.js';
 
 	let { data, children }: LayoutProps = $props();
 
 	// A step inside the app to a renamed page's old address goes to the new one before anything
-	// loads, with the hash (`#checks`), which the old address's load cannot read.
-	beforeNavigate(({ to, type, cancel }) => {
-		const moved = to && type !== 'popstate' && type !== 'leave' ? movedTo(to.url, renamed) : null;
-		if (moved) {
-			cancel();
-			void goto(moved);
-		}
+	// loads, with the hash (`#checks`), which the old address's load cannot read. A link or form
+	// keeps what it asks (replace, reset); what a `goto` asked is not told to `beforeNavigate`,
+	// so that step to an old address is taken with goto's defaults.
+	beforeNavigate((step) => {
+		const moved = stepTo(step, location.origin, renamed);
+		if (!moved) return;
+		step.cancel();
+		const from = step.type === 'link' || step.type === 'form' ? step.event.target : null;
+		const element = from instanceof Element ? (from.closest('a') ?? from) : null;
+		void goto(moved, asked(element));
 	});
 
 	const EVERYONE = '';
