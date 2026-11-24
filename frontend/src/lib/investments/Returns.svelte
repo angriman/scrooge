@@ -81,7 +81,8 @@ and the same figures account by account.
 					The money-weighted return has no rate to give over these days.
 				{/if}
 				{#if totals.twr_since}
-					The time-weighted return counts from {day(totals.twr_since)}, when money was first put in.
+					The time-weighted return counts from {day(totals.twr_since)}: before it, next to nothing
+					was invested.
 				{/if}
 			</p>
 		</div>
@@ -191,7 +192,7 @@ and the same figures account by account.
 	</div>
 	<ul class="rounded-panel bg-panel">
 		{#each performance.accounts as row (`${row.owner}|${row.name}`)}
-			{@const about = described(row, people)}
+			{@const about = described(row, people, totals.twr_since ?? performance.first)}
 			<li
 				class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-line px-4 py-3 first:border-t-0 sm:grid-cols-[minmax(0,1fr)_8rem_7rem_7rem_6rem_6rem]"
 			>

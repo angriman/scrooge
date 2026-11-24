@@ -38,10 +38,15 @@ export function over(range: Range, first: Day, last: Day): string {
 	return `since ${day(first)}`;
 }
 
-/** What is said under an account's name: whose it is, when both people's are listed, and the
- * accounts it is made of, when it is several. */
-export function described(row: MeasuredAccount, people: boolean): string {
-	const parts = [people ? row.owner : '', row.accounts.length > 1 ? row.accounts.join(', ') : ''];
+/** What is said under an account's name: whose it is, when both people's are listed; the
+ * accounts it is made of, when it is several; and the day its time-weighted return counts from,
+ * when that is not the one of the whole (`since`). */
+export function described(row: MeasuredAccount, people: boolean, since: Day | null = null): string {
+	const parts = [
+		people ? row.owner : '',
+		row.accounts.length > 1 ? row.accounts.join(', ') : '',
+		row.twr_since && row.twr_since !== since ? `return from ${day(row.twr_since)}` : ''
+	];
 	return parts.filter(Boolean).join(' · ');
 }
 

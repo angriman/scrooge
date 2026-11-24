@@ -90,6 +90,12 @@ describe('an account', () => {
 		expect(described({ ...ibkr, accounts: ['IBKR USD'] }, true)).toBe('Lukas');
 		expect(described({ ...ibkr, accounts: ['IBKR USD'] }, false)).toBe('');
 	});
+
+	it('says the day its return counts from when that is not the one of the whole', () => {
+		const later = { ...ibkr, accounts: ['IBKR USD'], twr_since: '2026-09-15' };
+		expect(described(later, false)).toBe('return from 15 Sep 2026');
+		expect(described(later, true, '2026-09-15')).toBe('Lukas');
+	});
 });
 
 describe('the money-weighted return', () => {

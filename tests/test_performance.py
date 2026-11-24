@@ -2,6 +2,7 @@
 
 import sqlite3
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from itertools import pairwise
@@ -9,7 +10,7 @@ from itertools import pairwise
 import pytest
 
 from scrooge import performance
-from scrooge.models import Kind, Transaction
+from scrooge.models import Holding, Kind, Transaction
 from scrooge.performance import Point, base_day, measure, money_weighted, sampled, time_weighted
 from scrooge.storage import db
 from tests.storage.helpers import AUGUST, OWNER, PARTNER
@@ -85,8 +86,8 @@ def test_a_range_that_starts_with_nothing_counts_from_the_first_money_put_in() -
 
 
 def test_a_day_that_starts_with_less_than_nothing_is_no_day_of_return() -> None:
-    # 100 owed, 150 put in: the 50 left grows by 10%.
-    assert time_weighted(values(-100, 50, 55), values(0, 150, 0)) == (D("0.1"), 1)
+    # 1000 owed, 1500 put in: the 500 left grows by 10%.
+    assert time_weighted(values(-1000, 500, 550), values(0, 1500, 0)) == (D("0.1"), 1)
 
 
 def test_what_is_made_before_any_money_is_put_in_is_no_return() -> None:
@@ -99,12 +100,29 @@ def test_what_is_made_before_any_money_is_put_in_is_no_return() -> None:
     assert found.gain == D("54.10")
 
 
-def test_a_day_on_less_than_a_unit_or_ending_below_nothing_is_no_day_of_return() -> None:
-    # All but 50 cents taken out on a day nothing moves; then those cents gain 80%.
-    worth = [D(1000), D(1100), D("0.50"), D("0.90")]
-    assert time_weighted(worth, [D(0), D(0), D("-1099.50"), D(0)]) == (D("0.1"), 1)
+def test_a_day_on_next_to_nothing_or_ending_below_nothing_is_no_day_of_return() -> None:
+    # All but 5 taken out on a day nothing moves; then a late dividend of 50 lands on them:
+    # +1000% on 5 francs says nothing of the investments.
+    found = measured(values(1000, 1100, 5, 55), values(0, 0, -1095, 0))
+    assert (found.twr, found.gain) == (D("10.00"), D(150))
+    # Below the floor of the day, which the currency asked for sets: with a floor of 1 the
+    # dividend's day counts, 1.1 x 11.
+    assert time_weighted(
+        values(1000, 1100, 5, 55), values(0, 0, -1095, 0), floor=values(0, 1, 1, 1)
+    ) == (D("11.1"), 1)
     # Losing more than there was: money put in is missing, not a return of -300%.
     assert time_weighted(values(1000, 1100, -2200), values(0, 0, 0)) == (D("0.1"), 1)
+
+
+def test_what_comes_in_at_the_close_comes_at_the_end_of_its_day() -> None:
+    # 1000 of shares gain 5% on the day 50,000 of shares come in, valued at that day's close.
+    worth, flows = values(1000, 51050), values(0, 50000)
+    found = measure(worth, flows, FIRST, late=flows)
+    assert (found.twr, found.gain) == (D("5.00"), D(50))
+    # The same 50,000 in cash, at the start of the day, would have earned the day as well.
+    assert measured(worth, flows).twr == D("0.10")
+    # 5% in a day, over the day: the money-weighted return agrees.
+    assert found.mwr == D("5.00")
 
 
 def test_the_money_weighted_return_is_over_the_range_until_it_lasts_a_year() -> None:
@@ -274,6 +292,58 @@ def test_shares_moved_in_kind_are_money_put_in_at_the_close_of_their_day(
     assert shown.totals is not None
     assert (shown.totals.net_flows, shown.totals.gain) == (D(520), D(52))
     assert shown.totals.twr == D("10.00")
+
+
+def test_shares_moved_in_on_a_day_they_rise_do_not_hide_what_the_others_made(
+    conn: sqlite3.Connection,
+) -> None:
+    # 10 WIDG held from the 10th; 1000 more moved in on the 20th, when WIDG rises 5%.
+    rows = (
+        bought("WIDG", "10", "-1000", day(10)),
+        bought("WIDG", "1000", "0", day(20), kind=Kind.TRANSFER, category="Giroconto"),
+    )
+    close(conn, ibkr(*rows, opening="1000"))
+    price(conn, "WIDG", day(10), "100")
+    price(conn, "WIDG", day(20), "105")
+    shown = performance.run(conn, currency="USD", range_="all")
+    assert shown.totals is not None
+    assert (shown.totals.net_flows, shown.totals.gain) == (D(106000), D(50))
+    assert shown.totals.twr == D("5.00")
+
+
+def test_the_shares_an_account_comes_into_view_with_come_at_the_close(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("revolut", "Revolut USD", "USD", "100", month=AUGUST), month=AUGUST)
+    base = ibkr()
+    held = (Holding("IBKR USD", "WIDG", "USD", D(10), D(55), D(550), "ETFs"),)
+    close(conn, replace(base, extraction=replace(base.extraction, holdings=held)))
+    price(conn, "WIDG", day(1), "55")
+    price(conn, "WIDG", day(2), "60.5")
+    shown = performance.run(conn, currency="USD", range_="all")
+    assert shown.totals is not None
+    # The cash on the eve of the statement, the shares at the close of its first day; the
+    # statement's own close of 55 on its last day takes back the rise between.
+    assert (shown.totals.net_flows, shown.totals.gain) == (D(10550), D(0))
+    assert shown.totals.twr == D("0.00")
+    points = {point.day: point for point in shown.points}
+    assert points[day(2)].value - points[day(2)].invested == D(55)
+
+
+def test_every_currency_leaves_out_the_same_days(conn: sqlite3.Connection) -> None:
+    # An account emptied but for 5 francs, on which a late dividend of 50 lands.
+    plan = {"account": "Tastytrade", "currency": "CHF"}
+    rows = (
+        deposit("-995", day(10), **plan),
+        spent("50", day(20), kind=Kind.DIVIDEND, category="Dividendi", **plan),
+    )
+    close(conn, account("tastytrade", "Tastytrade", "CHF", "1000", *rows))
+    rate(conn, "JPY", day(1), "0.0055")  # 5 francs are 909 yen
+    francs = performance.run(conn, currency="CHF", range_="all").totals
+    yen = performance.run(conn, currency="JPY", range_="all").totals
+    assert francs is not None
+    assert yen is not None
+    assert (francs.twr, yen.twr) == (D("0.00"), D("0.00"))
 
 
 def test_a_broker_s_accounts_in_each_currency_are_one_and_an_exchange_moves_nothing(
