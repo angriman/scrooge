@@ -23,6 +23,7 @@ from scrooge import analysis, cashflow
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY
+from scrooge.storage import store
 
 WORK, INVESTMENTS, OTHER = "Work", "Investments", "Other"
 GROUPS = (WORK, INVESTMENTS, OTHER)  # as they are stacked and listed
@@ -111,6 +112,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
                 _employer(found, span, days),
             )
         )
+    ranks = store.category_ranks(conn)
     sums: dict[tuple[str, str], tuple[int, Decimal]] = {}
     for each in found.between(start, end):
         key = (group(each.row), each.row.leaf)
@@ -121,7 +123,11 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
             Source(name, leaf, count, total.quantize(CENT))
             for (name, leaf), (count, total) in sums.items()
         ),
-        key=lambda source: (GROUPS.index(source.group), -source.total, source.leaf),
+        key=lambda source: (
+            GROUPS.index(source.group),
+            -source.total,
+            ranks.leaf(source.leaf, cashflow.INCOME),
+        ),
     )
     return Income(currency, tuple(periods), tuple(sources), found.through)
 

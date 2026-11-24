@@ -21,10 +21,11 @@ from datetime import date
 from decimal import Decimal
 from itertools import combinations
 
-from scrooge import analysis, query, spending
+from scrooge import analysis, cashflow, query, spending
 from scrooge.analysis import CENT
 from scrooge.cashflow import Counted
 from scrooge.networth import DEFAULT_CURRENCY
+from scrooge.storage import store
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,7 @@ def run(
         )
         for top, amounts in by_top.items()
     ]
+    ranks = store.category_ranks(conn)
     return PaidBy(
         currency,
         total.quantize(CENT),
@@ -112,7 +114,12 @@ def run(
             )
             for name, amount in by_person.items()
         ),
-        tuple(sorted(categories, key=lambda split: (-split.spent, split.name))),
+        tuple(
+            sorted(
+                categories,
+                key=lambda split: (-split.spent, ranks.top(split.name, cashflow.EXPENSES)),
+            )
+        ),
         _moves(names, sent),
     )
 

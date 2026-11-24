@@ -146,6 +146,55 @@ def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra]
             conn.execute(insert, (name, None, side, order))
 
 
+# The taxonomy's own order, never the names (which change with the language): expenses, then
+# income, then transfers; each top-level category by its sort_order, its leaves right after
+# it by theirs; the id breaks a tie. For `categories c LEFT JOIN categories p` (the parent).
+TAXONOMY_ORDER = (
+    "CASE c.side WHEN 'uscite' THEN 0 WHEN 'entrate' THEN 1 ELSE 2 END, "
+    "coalesce(p.sort_order, c.sort_order), coalesce(p.id, c.id), c.parent_id IS NOT NULL, "
+    "c.sort_order, c.id"
+)
+_ALL_SIDES = (*_SIDES, "transfer")
+
+
+@dataclass(frozen=True, slots=True)
+class Ranks:
+    """Where each category stands in `TAXONOMY_ORDER`: what lists of categories sort by."""
+
+    tops: Mapping[tuple[str, str], int]  # (side, name) of each top-level category
+    leaves: Mapping[tuple[str, str], int]  # (side, name) of each category a row can carry
+
+    def top(self, name: str, *sides: str) -> int:
+        """The place of the top-level category `name`, on the first of `sides` (of all sides,
+        expenses first) that has one; after every category when none has."""
+        return _rank(self.tops, name, sides)
+
+    def leaf(self, name: str, *sides: str) -> int:
+        """The place of the category `name` a row carries, as `top` finds it."""
+        return _rank(self.leaves, name, sides)
+
+
+def _rank(ranks: Mapping[tuple[str, str], int], name: str, sides: Sequence[str]) -> int:
+    found = (ranks[side, name] for side in sides or _ALL_SIDES if (side, name) in ranks)
+    return next(found, len(ranks))
+
+
+def category_ranks(conn: sqlite3.Connection) -> Ranks:
+    """The place in the taxonomy of every category the database holds."""
+    tops: dict[tuple[str, str], int] = {}
+    leaves: dict[tuple[str, str], int] = {}
+    found = conn.execute(
+        "SELECT c.side, c.name, c.parent_id IS NULL, c.side = 'uscite' AND c.parent_id IS NULL "  # noqa: S608  # only fixed text is interpolated
+        f"FROM categories c LEFT JOIN categories p ON p.id = c.parent_id ORDER BY {TAXONOMY_ORDER}"
+    )
+    for side, name, top, group in found:
+        if top:
+            tops[side, name] = len(tops)
+        if not group:
+            leaves[side, name] = len(leaves)
+    return Ranks(tops, leaves)
+
+
 def leaf_categories(conn: sqlite3.Connection) -> dict[tuple[str, str], int]:
     """(side, name) -> id of every category a transaction can carry."""
     rows = conn.execute(
