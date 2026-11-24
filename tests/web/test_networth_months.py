@@ -57,6 +57,7 @@ def test_every_month_end_is_sent_newest_first_in_each_currency_of_the_config(
         "percent": None if october.percent is None else format(october.percent, "f"),
         "liquid": format(october.liquid, "f"),
         "frozen": "0.00",  # nothing in a pension or an account named frozen
+        "arrived": "0.00",
     }
     assert list(sent["months"][0]["values"]) == list(networth.DEFAULT_COLUMNS)
     assert sent["months"][-1]["values"]["CHF"]["change"] is None
@@ -159,7 +160,12 @@ def test_each_month_end_says_what_is_liquid_and_what_frozen_in_each_currency(
         "percent": "0.03",
         "liquid": "1789.80",
         "frozen": "23500.00",
+        "arrived": "20000.00",  # the second pillar, first counted on 10 September
     }
+    # A month's change and what came into view in it add up to the difference of the totals.
+    total = Decimal(september["values"]["CHF"]["total"])
+    before = Decimal(sent["months"][2]["values"]["CHF"]["total"])
+    assert Decimal("1.80") + Decimal("20000.00") == total - before
     assert october["values"]["USD"]["frozen"] == "26111.11"  # 23500 francs at 0.90
     for month in sent["months"]:
         for figure in month["values"].values():

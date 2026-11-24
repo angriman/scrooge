@@ -674,7 +674,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
 
 def month_end(end: networth.MonthEnd) -> JSON:
     """Net worth at a month's end, by currency: its total, how it moved since the month
-    before (`networth.by_month`), and what of it is liquid and what frozen."""
+    before (`networth.by_month`) and what came into view besides, and what of it is liquid and
+    what frozen."""
     return {
         "month": f"{end.month:%Y-%m}",
         "day": day(end.day),
@@ -686,6 +687,7 @@ def month_end(end: networth.MonthEnd) -> JSON:
                 "percent": number(figure.percent),
                 "liquid": number(figure.liquid),
                 "frozen": number(figure.frozen),
+                "arrived": number(figure.arrived),
             }
             for currency, figure in end.values.items()
         },
