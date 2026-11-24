@@ -19,6 +19,7 @@ const ACME: PayingHolding = {
 	name: 'ACME Corp',
 	symbol: 'ACME',
 	account: null,
+	owner: null,
 	dividends: '180.00',
 	interest: '0.00',
 	tax: '-13.50',
@@ -31,6 +32,7 @@ const CASH: PayingHolding = {
 	name: 'IBKR USD',
 	symbol: null,
 	account: 'IBKR USD',
+	owner: 'Lukas',
 	dividends: '0.00',
 	interest: '18.00',
 	tax: '0.00'
@@ -67,8 +69,13 @@ describe('what investments paid', () => {
 		expect(transactionsOf(ACME, range, 'Anna').toString()).toBe(
 			'owner=Anna&from=2025-09-01&to=2026-08-31&kind=dividend%2Ctax&text=ACME'
 		);
+		// An account's lines are its owner's, also when everyone's figures are shown.
 		expect(transactionsOf(CASH, { first: null, last: null }, null).toString()).toBe(
-			'kind=interest&account=IBKR+USD'
+			'owner=Lukas&kind=interest&account=IBKR+USD'
+		);
+		const hers = { ...CASH, name: 'IBKR USD (Anna)', owner: 'Anna' };
+		expect(transactionsOf(hers, range, null).toString()).toBe(
+			'owner=Anna&from=2025-09-01&to=2026-08-31&kind=interest&account=IBKR+USD'
 		);
 		expect(kindsOf({ ...CASH, interest: '0', tax: '-4.50' })).toEqual(['tax']);
 		expect(kindsOf({ ...CASH, interest: '0' })).toEqual(['dividend', 'interest', 'tax']);

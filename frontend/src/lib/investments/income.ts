@@ -66,14 +66,16 @@ export function kindsOf(holding: PayingHolding): ('dividend' | 'interest' | 'tax
 
 /** The filter of the transactions behind a holding over the range: its kinds, so the tax
  * withheld shows beside what was paid, and the name its rows give, or the account of those
- * that name nothing. */
+ * that name nothing and the person whose account it is, since two people may each have an
+ * account of that name. */
 export function transactionsOf(
 	holding: PayingHolding,
 	range: { first: string | null; last: string | null },
 	owner: string | null
 ): URLSearchParams {
 	const query = new URLSearchParams();
-	if (owner) query.set('owner', owner);
+	const whose = holding.owner ?? owner;
+	if (whose) query.set('owner', whose);
 	if (range.first) query.set('from', range.first);
 	if (range.last) query.set('to', range.last);
 	query.set('kind', kindsOf(holding).join(','));

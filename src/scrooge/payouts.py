@@ -17,9 +17,10 @@ ISIN in brackets after the symbol, as IBKR's descriptions do (`ACME(US0000000001
 brackets are dropped, and the holding is the symbol when an instrument has it, else the ISIN
 when one has that, else the symbol, so the tax withheld meets its dividend. A row that names
 nothing (a dividend at Morgan Stanley, interest on cash) is put under the account it was paid
-into. So the grouping is only as good as the statements' counterparties: a ticker the broker
-renamed shows under each of its names, and tax withheld under another name than its dividend
-is a holding of its own.
+into, and the person whose account it is: for everyone, two people's accounts of the same name
+are two lines, named after each person, while a holding both have is one. So the grouping is
+only as good as the statements' counterparties: a ticker the broker renamed shows under each of
+its names, and tax withheld under another name than its dividend is a holding of its own.
 """
 
 from __future__ import annotations
@@ -73,6 +74,7 @@ class Holding:
     name: str  # the instrument's name, else its symbol, else the key
     symbol: str | None  # as `instruments` has it; None when no instrument has it
     account: str | None  # the account, for rows that name nothing; else None
+    owner: str | None  # whose the account is, for rows that name nothing; else None
     paid: Paid
     count: int  # rows, tax withheld included
     last: date  # the last day it paid; the last day tax was withheld when it only had that
@@ -193,17 +195,25 @@ def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Hold
     for symbol, name in conn.execute("SELECT symbol, name FROM instruments ORDER BY id"):
         if not named.get(symbol.upper(), ("", ""))[1]:
             named[symbol.upper()] = (symbol, name)
-    groups: dict[tuple[str, str | None], _Sums] = {}
+    groups: dict[tuple[str, str | None, str | None], _Sums] = {}
     for each in rows:
         key = _holding(each.row.counterparty, named)
-        where = (key, None) if key else (each.row.account, each.row.account)
+        where = (key, None, None) if key else (each.row.account, each.row.account, each.row.owner)
         groups.setdefault(where, _Sums()).add(each)
+    owners: dict[str, set[str | None]] = {}  # an account's name -> the people who have one
+    for _, account, owner in groups:
+        if account is not None:
+            owners.setdefault(account, set()).add(owner)
     holdings = []
-    for (key, account), sums in groups.items():
+    for (key, account, owner), sums in groups.items():
         symbol, name = named.get(key, (None, "")) if account is None else (None, "")
+        if account is not None and len(owners[account]) > 1:
+            name = f"{account} ({owner})"
         last = sums.paid_last or sums.any_last
         holdings.append(
-            Holding(key, name or symbol or key, symbol, account, sums.paid(), sums.count, last)
+            Holding(
+                key, name or symbol or key, symbol, account, owner, sums.paid(), sums.count, last
+            )
         )
     holdings.sort(key=lambda holding: (-holding.paid.paid, holding.name))
     return tuple(holdings)

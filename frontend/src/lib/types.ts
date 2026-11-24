@@ -529,6 +529,8 @@ export interface PayingHolding extends Payout {
 	symbol: string | null;
 	/** The account, for rows that name nothing; else null. */
 	account: string | null;
+	/** Whose the account is, for rows that name nothing; else null. */
+	owner: string | null;
 	count: number;
 	last: Day;
 }

@@ -602,6 +602,7 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
                 "name": holding.name,
                 "symbol": holding.symbol,
                 "account": holding.account,
+                "owner": holding.owner,
                 **_paid(holding.paid),
                 "count": holding.count,
                 "last": day(holding.last),
