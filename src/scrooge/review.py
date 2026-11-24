@@ -31,7 +31,8 @@ def ask_categories(
     ask: Callable[[str], str],
     personal: tuple[Path, Patterns] | None = None,
 ) -> None:
-    """Ask once per counterparty and direction; each answer becomes a rule in `rules_file`.
+    """Ask once per counterparty and direction; each answer becomes a rule in `rules_file`,
+    naming the category by its label.
 
     An answer like `+Prestiti` adds the category to `categories.yaml`, next to it, first.
     `personal` is the file of the owner's own rules and what recognises a person, anybody: the
@@ -65,42 +66,54 @@ def ask_categories(
         if answer.startswith("+"):
             new = _new(answer, flow, extras)
             categories.add(categories_file, new)
-            chosen = new.name
+            chosen = new.key
             number = categories.names(categories.load(categories_file)).index(chosen) + 1
             under = f" under {new.group}" if new.group else ""
             side = f"{new.side}{under}"
-            out.write(f"  new category {number}={chosen} ({side}) in {categories_file}\n")
+            out.write(f"  new category {number}={new.name} ({side}) in {categories_file}\n")
+        written = categories.Labels.of(categories.load(categories_file)).written(chosen)
         where = own_file if classification.names(rows[0], people) else rules_file
-        classification.append_rule(where, counterparty, flow, chosen)
-        out.write(f"  saved to {where}: {counterparty} -> {chosen}\n")
+        classification.append_rule(where, counterparty, flow, written)
+        out.write(f"  saved to {where}: {counterparty} -> {written}\n")
 
 
 def menu(extras: tuple[Extra, ...]) -> str:
     """Every category with its number, one line per top-level category of the expenses."""
+    label = categories.Labels.of(extras)
     number = {name: n for n, name in enumerate(categories.names(extras), start=1)}
     uscite = {group: list(leaves) for group, leaves in categories.USCITE.items()}
     for extra in extras:
-        if extra.side == "uscite":
-            uscite.setdefault(extra.group, []).append(extra.name)
-    entrate = (*categories.ENTRATE, *(e.name for e in extras if e.side == "entrate"))
-    margin = max(map(len, uscite)) + 4
+        if extra.side == "uscite" and extra.key not in uscite.setdefault(extra.group_key, []):
+            uscite[extra.group_key].append(extra.key)
+    entrate = (*categories.ENTRATE, *(e.key for e in extras if e.side == "entrate"))
+    margin = max(len(label(group)) for group in uscite) + 4
     lines = ["Expenses"]
-    lines += [_line(f"  {group}", leaves, number, margin) for group, leaves in uscite.items()]
-    lines += ["Income", _line("", entrate, number, 2)]
-    lines += ["Transfers", _line("", categories.TRANSFERS, number, 2)]
+    lines += [
+        _line(f"  {label(group)}", leaves, number, margin, label)
+        for group, leaves in uscite.items()
+    ]
+    lines += ["Income", _line("", entrate, number, 2, label)]
+    lines += ["Transfers", _line("", categories.TRANSFERS, number, 2, label)]
     return "\n".join(lines)
 
 
-def _line(label: str, names: Sequence[str], number: dict[str, int], margin: int) -> str:
-    text = "   ".join(f"{number[name]} {name}".replace(" ", "\xa0") for name in names)
+def _line(
+    heading: str,
+    names: Sequence[str],
+    number: dict[str, int],
+    margin: int,
+    label: categories.Labels,
+) -> str:
+    text = "   ".join(f"{number[name]} {label(name)}".replace(" ", "\xa0") for name in names)
     wrapped = textwrap.fill(
-        text, _WIDTH, initial_indent=label.ljust(margin), subsequent_indent=" " * margin
+        text, _WIDTH, initial_indent=heading.ljust(margin), subsequent_indent=" " * margin
     )
     return wrapped.replace("\xa0", " ")
 
 
 def _answer(question: str, categories_file: Path, out: TextIO, ask: Callable[[str], str]) -> str:
-    """A category that exists, `+...` for a new one, nothing to skip or `q` to stop."""
+    """The key of a category that exists, `+...` for a new one, nothing to skip or `q` to
+    stop."""
     while True:
         answer = ask(question).strip()
         extras = categories.load(categories_file)
@@ -114,25 +127,29 @@ def _answer(question: str, categories_file: Path, out: TextIO, ask: Callable[[st
                 return answer
             found: list[str] = []
         else:
-            found = _find(answer, categories.names(extras))
+            found = _find(answer, categories.names(extras), categories.Labels.of(extras))
             if len(found) == 1:
                 return found[0]
         if found:
             known = categories.names(extras)
-            choices = "   ".join(f"{known.index(name) + 1} {name}" for name in found)
+            label = categories.Labels.of(extras)
+            choices = "   ".join(f"{known.index(name) + 1} {label(name)}" for name in found)
             out.write(f"  {answer!r} could be: {choices}\n")
             question = "  which one -> "
         else:
             question = f"  unknown category {answer!r}, try again (? lists them) -> "
 
 
-def _find(answer: str, known: Sequence[str]) -> list[str]:
-    """The categories `answer` can mean: its number, its name, else every name containing it."""
+def _find(answer: str, known: Sequence[str], label: categories.Labels) -> list[str]:
+    """The keys `answer` can mean: its number, its key, label or old Italian name, else every
+    category whose label contains it."""
     if answer.isdigit():
         return [known[int(answer) - 1]] if 1 <= int(answer) <= len(known) else []
+    if categories.key(answer) in known:
+        return [categories.key(answer)]
     wanted = _plain(answer)
-    exact = [name for name in known if _plain(name) == wanted]
-    return exact or [name for name in known if wanted in _plain(name)]
+    exact = [name for name in known if _plain(label(name)) == wanted]
+    return exact or [name for name in known if wanted in _plain(label(name))]
 
 
 def _plain(text: str) -> str:
@@ -147,5 +164,6 @@ def _new(answer: str, flow: str, extras: tuple[Extra, ...]) -> Extra:
     if flow == "in":
         return Extra(name, "entrate")
     group = group or name  # a category on its own is its own group, like Gifts
-    same = [known for known in categories.groups(extras) if known.lower() == group.lower()]
+    label = categories.Labels.of(extras)
+    same = [label(known) for known in categories.groups(extras) if known == categories.key(group)]
     return Extra(name, "uscite", same[0] if same else group)

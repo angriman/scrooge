@@ -12,7 +12,7 @@ import pytest
 
 from scrooge import categories, query, rulesfile, settings, staging
 from scrooge.models import Kind
-from scrooge.storage import db
+from scrooge.storage import db, store
 from tests.storage import helpers
 from tests.storage.helpers import OWNER, PARTNER, txn
 
@@ -58,8 +58,8 @@ def conn(places: settings.Places) -> Iterator[sqlite3.Connection]:
     day = date(2026, 8, 10)
     lukas = [
         txn("-45", date=day, source_ref="1", description="KONSUM"),
-        txn("-10", date=day, source_ref="2", description="POSTA", category="Shipping"),
-        txn("-200", date=day, source_ref="3", description="Anna Meier", category="Prestiti"),
+        txn("-10", date=day, source_ref="2", description="POSTA", category="shipping"),
+        txn("-200", date=day, source_ref="3", description="Anna Meier", category="prestiti"),
         txn(
             "6000",
             date=day,
@@ -85,8 +85,10 @@ def _own(places: settings.Places) -> Path:
 
 
 def _categories_of(conn: sqlite3.Connection) -> list[tuple[str, str | None]]:
+    """Each row of Lukas and its category's label."""
     rows = query.run(conn, query.Filter(owner=OWNER)).rows
-    return [(row.description, row.category) for row in rows]
+    label = store.category_labels(conn)
+    return [(row.description, label(row.category)) for row in rows]
 
 
 def test_rule_files_go_in_the_order_an_import_tries_them(tmp_path: Path) -> None:
@@ -330,13 +332,14 @@ def test_a_rule_moves_one_place_within_its_file(
 def test_categories_list_the_taxonomy_then_what_is_added(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
-    listed = {(c.name, c.side): c for c in settings.listed_categories(conn, places.categories_file)}
+    listed = {(c.key, c.side): c for c in settings.listed_categories(conn, places.categories_file)}
     assert listed[categories.GROCERIES, "uscite"].rows == 2
     assert listed[categories.GROCERIES, "uscite"].built_in
-    assert listed["Shipping", "uscite"] == settings.ListedCategory(
-        "Shipping", "uscite", categories.GROUP_TRANSPORT, False, 1
+    assert listed[categories.GROCERIES, "uscite"].name == "Groceries"  # its label
+    assert listed["shipping", "uscite"] == settings.ListedCategory(
+        "shipping", "Shipping", "uscite", "Transport", False, 1
     )
-    assert listed["Prestiti", "uscite"].parent == "Prestiti"
+    assert listed["prestiti", "uscite"].parent == "Prestiti"
     assert listed[categories.SALARY, "entrate"].rows == 1
     assert listed[categories.OWN_TRANSFER, "transfer"].rows == 0
     assert len(settings.listed_categories(conn, None)) == len(listed) - 2
@@ -393,7 +396,7 @@ def test_a_category_merged_gives_its_rows_and_rules_the_other(
         conn, places, name="Shipping", into=categories.OTHER_SHOPPING, now=NOW
     )
     assert rows == 1
-    assert ("POSTA", categories.OTHER_SHOPPING) in _categories_of(conn)
+    assert ("POSTA", "Other shopping") in _categories_of(conn)
     assert "Shipping" not in [e.name for e in categories.load(places.categories_file)]
     assert 'category: "Other shopping"}' in _shared(places).read_text(encoding="utf-8")
     assert "# --- Shops" in _shared(places).read_text(encoding="utf-8")
@@ -409,7 +412,7 @@ def test_a_built_in_category_merged_stays_empty(
     )
     assert [c for d, c in _categories_of(conn) if d == "KONSUM"] == ["Prestiti"]
     listed = settings.listed_categories(conn, places.categories_file)
-    assert (categories.GROCERIES, 0) in [(c.name, c.rows) for c in listed]
+    assert (categories.GROCERIES, 0) in [(c.key, c.rows) for c in listed]
 
 
 @pytest.mark.parametrize(
@@ -502,11 +505,11 @@ def test_a_category_moved_under_another_keeps_its_rows(
         == 1
     )
     added = categories.load(places.categories_file)
-    assert categories.Extra("Prestiti", "uscite", categories.GROUP_HOME) in added
-    assert "Prestiti" not in categories.groups(added)  # the group of its own went
+    assert categories.Extra("Prestiti", "uscite", "Home") in added  # by its label
+    assert "prestiti" not in categories.groups(added)  # the group of its own went
     listed = settings.listed_categories(conn, places.categories_file)
-    assert ("Prestiti", categories.GROUP_HOME, 1) in [(c.name, c.parent, c.rows) for c in listed]
-    found = conn.execute("SELECT count(*) FROM categories WHERE name = 'Prestiti'").fetchone()
+    assert ("Prestiti", "Home", 1) in [(c.name, c.parent, c.rows) for c in listed]
+    found = conn.execute("SELECT count(*) FROM categories WHERE key = 'prestiti'").fetchone()
     assert found[0] == 1  # the leaf, and no empty group
     settings.move_category(conn, places, name="Prestiti", under=" Debiti ", now=NOW)
     assert categories.Extra("Prestiti", "uscite", "Debiti") in categories.load(

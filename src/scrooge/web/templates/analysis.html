@@ -16,11 +16,12 @@
 <span{% if mood %} class="{{ mood }}"{% endif %}>{{ "%+.0f"|format(by) }}%</span>
 {%- endif %}
 {%- endmacro %}
+{#- A category is named in an address by its label, as people read it (`Labels.written`). #}
 {% macro listed(category) -%}
-{{ url_for('transactions').include_query_params(**{"from": shown.savings.first or "", "to": shown.savings.last or "", "category": category}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}
+{{ url_for('transactions').include_query_params(**{"from": shown.savings.first or "", "to": shown.savings.last or "", "category": label.written(category)}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}
 {%- endmacro %}
 {% macro spanned(first, last, category=None) -%}
-{{ url_for('transactions').include_query_params(**{"from": first, "to": last}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}{% if category %}&amp;category={{ category|urlencode }}{% endif %}
+{{ url_for('transactions').include_query_params(**{"from": first, "to": last}) }}{% if owner %}&amp;owner={{ owner|urlencode }}{% endif %}{% if category %}&amp;category={{ label.written(category)|urlencode }}{% endif %}
 {%- endmacro %}
 {% macro range(shortcut) -%}
 {%- set wanted = {"from": shortcut.first, "to": shortcut.last, "by": given.get("by", ""), "owner": owner or "", "currency": given.get("currency", "")} -%}
@@ -34,7 +35,7 @@
   <line class="grid" x1="0" x2="{{ plot.width }}" y1="0" y2="0"/>
   <line class="axis" x1="0" x2="{{ plot.width }}" y1="{{ bars.zero }}" y2="{{ bars.zero }}"/>
   {%- for column in bars.columns %}
-  <g><title>{{ column.name }}: {{ column.total|money }} {{ currency }}{% for block in column.blocks if block.value %}, {{ block.part }} {{ block.value|money }}{% endfor %}{% if column.share is not none %}; {{ percent(column.share) }} {{ line }}{% endif %}</title>
+  <g><title>{{ column.name }}: {{ column.total|money }} {{ currency }}{% for block in column.blocks if block.value %}, {{ label(block.part) }} {{ block.value|money }}{% endfor %}{% if column.share is not none %}; {{ percent(column.share) }} {{ line }}{% endif %}</title>
     {%- for block in column.blocks if block.height %}
     <rect class="slot-{{ block.slot }}" x="{{ column.x }}" y="{{ block.y }}" width="{{ column.width }}" height="{{ block.height }}"/>
     {%- endfor %}
@@ -55,21 +56,21 @@
 </svg>
 {%- endmacro %}
 {#- A ring of the parts above zero, as on the overview; what is below zero is a line under it. #}
-{% macro ring(id, label, arcs, out, currency) -%}
+{% macro ring(id, what, arcs, out, currency) -%}
 <figure class="chart donut">
   <svg viewBox="0 0 200 200" role="img" aria-labelledby="{{ id }}">
-    <title id="{{ id }}">{{ label }}: {% for arc in arcs %}{{ arc.part.name }} {{ arc.part.share }}%{{ ", " if not loop.last }}{% endfor %}</title>
+    <title id="{{ id }}">{{ what }}: {% for arc in arcs %}{{ label(arc.part.name) }} {{ arc.part.share }}%{{ ", " if not loop.last }}{% endfor %}</title>
     <g transform="rotate(-90 100 100)">
       {%- for arc in arcs %}
-      <circle class="slice slot-{{ arc.slot }}" cx="100" cy="100" r="78" fill="none" pathLength="100" stroke-dasharray="{{ arc.dash }} {{ arc.gap }}" stroke-dashoffset="{{ arc.offset }}" data-slot="{{ arc.slot }}" data-name="{{ arc.part.name }}" data-value="{{ arc.part.value|short }}" data-share="{{ arc.part.share }}%"><title>{{ arc.part.name }}: {{ arc.part.value|money }} {{ currency }}, {{ arc.part.share }}%</title></circle>
+      <circle class="slice slot-{{ arc.slot }}" cx="100" cy="100" r="78" fill="none" pathLength="100" stroke-dasharray="{{ arc.dash }} {{ arc.gap }}" stroke-dashoffset="{{ arc.offset }}" data-slot="{{ arc.slot }}" data-name="{{ label(arc.part.name) }}" data-value="{{ arc.part.value|short }}" data-share="{{ arc.part.share }}%"><title>{{ label(arc.part.name) }}: {{ arc.part.value|money }} {{ currency }}, {{ arc.part.share }}%</title></circle>
       {%- endfor %}
     </g>
-    <text class="what" x="100" y="80">{{ label }}</text>
+    <text class="what" x="100" y="80">{{ what }}</text>
     <text class="amount" x="100" y="106">{{ arcs|map(attribute="part.value")|sum|short }}</text>
     <text class="share" x="100" y="128">{{ currency }}</text>
   </svg>
   {%- if out %}
-  <figcaption>Not in the ring: {% for part in out %}{{ part.name }} {{ part.value|money }}{{ ", " if not loop.last }}{% endfor %} {{ currency }}.</figcaption>
+  <figcaption>Not in the ring: {% for part in out %}{{ label(part.name) }} {{ part.value|money }}{{ ", " if not loop.last }}{% endfor %} {{ currency }}.</figcaption>
   {%- endif %}
 </figure>
 {%- endmacro %}
@@ -139,7 +140,7 @@
       {%- for arc in spent_ring %}
       {%- set category = categories.get(arc.part.name) %}
       <tr data-slot="{{ arc.slot }}">
-        <td><span class="key slot-{{ arc.slot }}"></span>{% if category %}<a href="{{ listed(category.name) }}">{{ category.name }}</a>{% else %}{{ arc.part.name }}{% endif %}</td>
+        <td><span class="key slot-{{ arc.slot }}"></span>{% if category %}<a href="{{ listed(category.name) }}">{{ label(category.name) }}</a>{% else %}{{ label(arc.part.name) }}{% endif %}</td>
         <td class="number">{{ arc.part.value|money }}</td>
         <td class="number">{{ arc.part.share }}%</td>
         <td class="number">{% if category %}{{ change(category.monthly, category.usual, "less") }}{% else %}–{% endif %}</td>
@@ -152,7 +153,7 @@
   {{ chart("spent-title", "Spending per period by category", spent_bars, spent.currency) }}
   <figcaption class="legend">
     {%- for part in spent.parts %}
-    <span><span class="key slot-{{ spent_slots[part] }}"></span>{{ part }}</span>
+    <span><span class="key slot-{{ spent_slots[part] }}"></span>{{ label(part) }}</span>
     {%- endfor %}
   </figcaption>
 </figure>
@@ -171,7 +172,7 @@
     <tbody>
       {%- for category in spent.categories %}
       <tr>
-        <td class="lead"><a href="{{ listed(category.name) }}">{{ category.name }}</a></td>
+        <td class="lead"><a href="{{ listed(category.name) }}">{{ label(category.name) }}</a></td>
         <td class="number total" data-label="Spent">{{ category.spent|money }}</td>
         <td class="number" data-label="Share">{{ percent(category.share) }}</td>
         <td class="number" data-label="A month">{{ category.monthly|money }}</td>
@@ -183,7 +184,7 @@
       {%- if category.leaves|length > 1 %}
       {%- for leaf in category.leaves %}
       <tr class="leaf">
-        <td class="lead"><a href="{{ listed(leaf.name) }}">{{ leaf.name }}</a></td>
+        <td class="lead"><a href="{{ listed(leaf.name) }}">{{ label(leaf.name) }}</a></td>
         <td class="number total" data-label="Spent">{{ leaf.spent|money }}</td>
         <td class="wide" colspan="6"></td>
       </tr>
@@ -204,7 +205,7 @@
       {%- for merchant in spent.merchants %}
       <tr>
         <td class="lead">{{ merchant.name }}</td>
-        <td data-label="Category">{{ merchant.category }}</td>
+        <td data-label="Category">{{ label(merchant.category) }}</td>
         <td class="number total" data-label="Spent">{{ merchant.spent|money }}</td>
         <td class="number" data-label="Times">{{ merchant.count }}</td>
         <td class="number" data-label="Average">{{ merchant.average|money }}</td>
@@ -283,7 +284,7 @@
     <tbody>
       {%- for source in result.sources %}
       <tr>
-        <td><span class="key slot-{{ slots[source.group] }}" title="{{ source.group }}"></span><a href="{{ listed(source.leaf) }}">{{ source.leaf }}</a></td>
+        <td><span class="key slot-{{ slots[source.group] }}" title="{{ source.group }}"></span><a href="{{ listed(source.leaf) }}">{{ label(source.leaf) }}</a></td>
         <td class="number">{{ source.total|money }}</td>
         <td class="number">{{ percent(source.total / total if total > 0 else none) }}</td>
         <td class="number">{{ source.count }}</td>
@@ -348,7 +349,7 @@
     <tbody>
       {%- for line in lines|sort(attribute="total", reverse=(side == "entrate")) %}
       <tr>
-        <td><a href="{{ spanned(shown.savings.first or '', shown.savings.last or '', line.category) }}">{{ line.category }}</a></td>
+        <td><a href="{{ spanned(shown.savings.first or '', shown.savings.last or '', line.category) }}">{{ label(line.category) }}</a></td>
         <td class="number">{{ line.total|money }}</td>
         <td class="number">{{ line.count }}</td>
       </tr>

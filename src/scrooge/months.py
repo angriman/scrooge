@@ -215,7 +215,7 @@ class Checklist:
 # A row of `transactions t` joined with its account `a`, category `c` and file `f`, as a Pending.
 _PENDING = (
     "SELECT t.id, t.date, a.name, t.amount_nano, t.currency, t.counterparty, t.description, "  # noqa: S608  # only fixed text of `store` is interpolated
-    f"coalesce(c.name, ''), coalesce(c.side, ''), {store.CHANGEABLE}, t.statement_file_id "
+    f"coalesce(c.key, ''), coalesce(c.side, ''), {store.CHANGEABLE}, t.statement_file_id "
     "FROM transactions t JOIN accounts a ON a.id = t.account_id "
     "LEFT JOIN categories c ON c.id = t.category_id "
     "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
@@ -486,7 +486,7 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
         (owner_id, *span),
     ).fetchall()
     totals = conn.execute(
-        "SELECT c.side, c.name, t.currency, count(*), sum(t.amount_nano) "  # noqa: S608  # only fixed text is interpolated
+        "SELECT c.side, c.key, t.currency, count(*), sum(t.amount_nano) "  # noqa: S608  # only fixed text is interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "JOIN categories c ON c.id = t.category_id "
         "LEFT JOIN categories p ON p.id = c.parent_id "

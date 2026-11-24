@@ -679,7 +679,8 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     remember: Remember | None,
     change: bool = False,
 ) -> int:
-    """Give `category` to staged rows of `owner` that have none. Returns how many.
+    """Give `category` to staged rows of `owner` that have none. Returns how many. It is named
+    by its key or its label (`store.category_key`); a rule names it by its label.
 
     With `remember` the choice also becomes a rule for each counterparty and direction among
     the rows, so the next import makes it again. Without, it is kept as an override of these
@@ -731,7 +732,8 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
     now: datetime,
     remember: Remember | None,
 ) -> int:
-    ids, category, change = choice.ids, choice.category, choice.change
+    ids, change = choice.ids, choice.change
+    category = store.category_key(conn, choice.category)
     owner_id = store.owner_id(conn, owner)
     rows = [] if owner_id is None else store.waiting(conn, owner_id, ids, change=change)
     if not rows or len(rows) != len(set(ids)):
@@ -742,7 +744,7 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
     flows = {kind.value for kind in _BETWEEN_OWNERS}
     rules: dict[tuple[str, str], Path] = {}
     for row in rows:
-        chosen = store.category_for(leaves, category, from_nano(row.amount_nano))
+        chosen = store.category_for(leaves, category, from_nano(row.amount_nano), choice.category)
         if chosen is None:
             msg = "no category was chosen"
             raise StagingError(msg)
@@ -773,10 +775,11 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
         named = any(pattern.search(text) for pattern in remember.people)
         flow = "in" if row.amount_nano > 0 else "out"
         rules[name, flow] = remember.own if named else remember.shared
+    written = store.category_labels(conn).written(category)
     for (name, flow), where in rules.items():
         if where not in before:
             before[where] = where.read_text(encoding="utf-8") if where.exists() else None
-        classification.append_rule(where, name, flow, category, first=change)
+        classification.append_rule(where, name, flow, written, first=change)
     return len(rows)
 
 
@@ -790,8 +793,8 @@ def add_category(
     categories there are, or under a new one named like itself when no group is given.
     """
     name = " ".join(name.split())
-    if not name:
-        msg = "a category needs a name"
+    if not categories.key(name):
+        msg = "a category needs a name, with a letter or a digit"
         raise StagingError(msg)
     if side not in categories.SIDES:
         msg = "a category is added to the expenses or to the income"
@@ -800,12 +803,15 @@ def add_category(
         extras = categories.load(file)
         store.seed_categories(conn, extras)
         leaves = store.leaf_categories(conn)
-        if (side, name) in leaves or ("transfer", name) in leaves:
+        new = categories.key(name)
+        if (side, new) in leaves or ("transfer", new) in leaves:
             msg = f"there is already a category {name!r}"
             raise StagingError(msg)
-        if side == "uscite" and group and group not in categories.groups(extras):
+        if side == "uscite" and group and categories.key(group) not in categories.groups(extras):
             msg = f"no group of categories named {group!r}"
             raise StagingError(msg)
+        if side == "uscite" and group:  # written by its label, which people read
+            group = categories.Labels.of(extras).written(categories.key(group))
         extra = Extra(name, side, (group or name) if side == "uscite" else "")
         before[file] = file.read_text(encoding="utf-8") if file.exists() else None
         categories.add(file, extra)

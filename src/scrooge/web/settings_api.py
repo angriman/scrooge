@@ -25,7 +25,7 @@ from starlette.routing import Route
 
 from scrooge import categories, query, settings, staging
 from scrooge.errors import ConfigError
-from scrooge.storage import db
+from scrooge.storage import db, store
 from scrooge.web import wire
 from scrooge.web.api import _refused, _sent
 
@@ -73,7 +73,7 @@ def _rules(request: Request) -> Response:
         {
             "people": people,
             "files": [{"key": file.key, "owner": file.owner} for file in files],
-            "rules": [wire.listed_rule(rule) for rule in listed],
+            "rules": [wire.listed_rule(rule, found.label) for rule in listed],
             "leaves": wire.choices(found)["leaves"],
             "editable": _editable(request),
             "errors": [wire.sentence(ConfigError(problem)) for problem in problems],
@@ -112,11 +112,12 @@ def _test(request: Request) -> Response:
             )
         except settings.SettingsError as exc:
             return _refused((wire.sentence(exc),))
+        label = store.category_labels(conn)
     cut = f"It took too long: only the {tried.tried} newest rows were tried."
     return JSONResponse(
         {
             "count": tried.count,
-            "rows": [wire.transaction(row, None) for row in tried.rows],
+            "rows": [wire.transaction(row, None, label) for row in tried.rows],
             "errors": [] if tried.complete else [cut],
         }
     )
@@ -207,13 +208,16 @@ def _listed_categories(request: Request) -> Response:
     """The taxonomy and what `categories.yaml` adds, with the committed rows of each, and the
     top-level expense categories a new one can go under."""
     file = _categories_file(request)
+    extras = categories.load(file) if file else ()
+    label = categories.Labels.of(extras)
     with db.reading(request.app.state.database) as conn:
         listed = settings.listed_categories(conn, file)
+    unmatched: str = request.app.state.unmatched
     return JSONResponse(
         {
             "categories": [wire.listed_category(category) for category in listed],
-            "groups": list(categories.groups(categories.load(file) if file else ())),
-            "unmatched": request.app.state.unmatched or None,
+            "groups": [label(group) for group in categories.groups(extras)],
+            "unmatched": label(categories.key(unmatched)) if unmatched else None,
             "editable": _editable(request),
             "errors": [],
         }

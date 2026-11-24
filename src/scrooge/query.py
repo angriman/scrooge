@@ -10,11 +10,13 @@ import json
 import re
 import sqlite3
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from itertools import pairwise
 
+from scrooge import categories
+from scrooge.categories import Labels  # by its name: `Choices.categories` hides the module
 from scrooge.extractors.common import month_end
 from scrooge.models import CERTIFICATE_SOURCES, Kind
 from scrooge.storage import store
@@ -146,41 +148,46 @@ def people(conn: sqlite3.Connection) -> tuple[Person, ...]:
     )
 
 
+_BUILT_IN = categories.Labels()  # the labels of the taxonomy alone
+
+
 @dataclass(frozen=True, slots=True)
 class Choices:
     """What the account and category filters can be set to."""
 
     accounts: tuple[str, ...]
-    # A heading and the names under it: each top-level expense category followed by its
-    # leaves, then income, then transfers.
+    # A heading and the keys under it: each top-level expense category followed by its
+    # leaves, then income, then transfers (`HEADINGS`, headings of their own).
     categories: tuple[tuple[str, tuple[str, ...]], ...]
-    # The same without the top-level names: what a transaction can be given.
+    # The same without the top-level keys: what a transaction can be given.
     leaves: tuple[tuple[str, tuple[str, ...]], ...]
     # The top-level categories of the expenses: what a new expense category can go under.
     groups: tuple[str, ...] = ()
+    # The label of each key, and of each heading.
+    label: Labels = _BUILT_IN
 
 
-_HEADINGS = {"entrate": "Income", "transfer": "Transfer"}  # the sides without groups
+HEADINGS = {"entrate": "Income", "transfer": "Transfer"}  # the sides without groups
 
 
 def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
-    """The accounts of `owner` (of everyone without one) and the whole taxonomy."""
+    """The accounts of `owner` (of everyone without one) and the whole taxonomy, by key."""
     accounts = conn.execute(
         "SELECT DISTINCT a.name FROM accounts a JOIN owners o ON o.id = a.owner_id "
         "WHERE o.name = coalesce(?, o.name) ORDER BY a.name",
         (owner,),
     ).fetchall()
     found = conn.execute(
-        "SELECT c.name, c.side, p.name AS parent FROM categories c "  # noqa: S608  # only fixed text is interpolated
+        "SELECT c.key AS name, c.side, p.key AS parent FROM categories c "  # noqa: S608  # only fixed text is interpolated
         f"LEFT JOIN categories p ON p.id = c.parent_id ORDER BY {store.TAXONOMY_ORDER}"
     ).fetchall()
     groups: dict[str, list[str]] = {}
     leaves: dict[str, list[str]] = {}
     for r in found:
         top = r["side"] == "uscite" and r["parent"] is None
-        heading = r["parent"] or (r["name"] if top else _HEADINGS[r["side"]])
+        heading = r["parent"] or (r["name"] if top else HEADINGS[r["side"]])
         names = groups.setdefault(heading, [])
-        if r["name"] not in names:  # a leaf named like its parent is one choice
+        if r["name"] not in names:  # a leaf of the key of its parent is one choice
             names.append(r["name"])
         if not top:
             leaves.setdefault(heading, []).append(r["name"])
@@ -189,6 +196,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         tuple((heading, tuple(names)) for heading, names in groups.items()),
         tuple((heading, tuple(names)) for heading, names in leaves.items()),
         tuple(r["name"] for r in found if r["side"] == "uscite" and r["parent"] is None),
+        store.category_labels(conn),
     )
 
 
@@ -207,7 +215,10 @@ def span(text: str) -> tuple[date, date]:
 
 
 def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
-    """The committed transactions that match `wanted`, with what they add up to."""
+    """The committed transactions that match `wanted`, with what they add up to. Its category
+    may be named by its key or its label (`store.category_key`)."""
+    if wanted.category is not None:
+        wanted = replace(wanted, category=store.category_key(conn, wanted.category))
     check_names(conn, wanted)
     column = "booking_date" if wanted.booking else "date"
     conditions: list[tuple[str, object]] = [
@@ -256,7 +267,9 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
 
 
 def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
-    """Refuse a name nothing can match: a typo would otherwise read as "no transactions"."""
+    """Refuse a name nothing can match: a typo would otherwise read as "no transactions". A
+    category may be named by its key or its label."""
+    category = wanted.category and store.category_key(conn, wanted.category)
     checks = (
         ("owner", wanted.owner, "SELECT 1 FROM owners WHERE name = ?"),
         (
@@ -265,12 +278,12 @@ def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
             "SELECT 1 FROM accounts a JOIN owners o ON o.id = a.owner_id "
             "WHERE a.name = ?1 AND o.name = coalesce(?2, o.name)",
         ),
-        ("category", wanted.category, "SELECT 1 FROM categories WHERE name = ?"),
+        ("category", wanted.category, "SELECT 1 FROM categories WHERE key = ?"),
     )
     for what, name, sql in checks:
         if name is None:
             continue
-        args = (name, wanted.owner) if what == "account" else (name,)
+        args = {"account": (name, wanted.owner), "category": (category,)}.get(what, (name,))
         if conn.execute(sql, args).fetchone() is None:
             whose = f" of {wanted.owner}" if what == "account" and wanted.owner else ""
             msg = f"no {what} named {name!r}{whose}"
@@ -324,7 +337,7 @@ def _sums(rows: Iterable[Row], period: Callable[[Row], str]) -> tuple[Sum, ...]:
 class CategorySum:
     """What the rows of one top-level category and one currency add up to."""
 
-    name: str  # the top-level category; `TRANSFERS` for the rows that have none
+    name: str  # the key of the top-level category; `TRANSFERS` for the rows that have none
     currency: str
     count: int
     total: Decimal

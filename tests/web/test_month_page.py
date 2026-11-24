@@ -226,7 +226,13 @@ def test_a_choice_for_committed_rows_that_cannot_be_made_is_said(
     client: TestClient, database: Path
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category=categories.GROUP_HOME, remember="rows", change="1")
+    form = sent(
+        client,
+        id=row,
+        category=categories.label(categories.GROUP_HOME),
+        remember="rows",
+        change="1",
+    )
     response = client.post("/months/Lukas/2026-08/categorize", data=form)
     assert response.status_code == 409
     assert "No category was set: unknown category &#39;Home&#39;." in response.text

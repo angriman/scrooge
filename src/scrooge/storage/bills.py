@@ -74,7 +74,7 @@ def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
     """Redo the interest split of every bill disposal of `owner`; returns those it could not do."""
     _undo(conn, owner)
     interest = conn.execute(
-        "SELECT id FROM categories WHERE side = 'entrate' AND name = ?", (INTEREST,)
+        "SELECT id FROM categories WHERE side = 'entrate' AND key = ?", (INTEREST,)
     ).fetchone()[0]
     missing: list[MissingLotsError] = []
     for row, cost in _disposals(conn, owner):

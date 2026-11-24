@@ -9,7 +9,7 @@
     "source_file": "savings.tsv",
     "source_ref": "1",
     "counterparty": "",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-30"
   },
@@ -23,7 +23,7 @@
     "source_file": "savings.tsv",
     "source_ref": "2",
     "counterparty": "",
-    "category": "Interest",
+    "category": "interest",
     "confidence": "1",
     "booking_date": "2026-09-30"
   },
@@ -37,7 +37,7 @@
     "source_file": "savings.tsv",
     "source_ref": "4",
     "counterparty": "",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-29"
   },
@@ -51,7 +51,7 @@
     "source_file": "savings.tsv",
     "source_ref": "5",
     "counterparty": "",
-    "category": "Interest",
+    "category": "interest",
     "confidence": "1",
     "booking_date": "2026-09-29"
   },
@@ -65,7 +65,7 @@
     "source_file": "savings.tsv",
     "source_ref": "6",
     "counterparty": "",
-    "category": "Interest",
+    "category": "interest",
     "confidence": "1",
     "booking_date": "2026-09-19"
   },
@@ -79,7 +79,7 @@
     "source_file": "savings.tsv",
     "source_ref": "9",
     "counterparty": "",
-    "category": "Interest",
+    "category": "interest",
     "confidence": "1",
     "booking_date": "2026-09-02"
   }

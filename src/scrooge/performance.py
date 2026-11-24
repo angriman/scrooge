@@ -367,7 +367,7 @@ def _flows(conn: sqlite3.Connection, ids: set[int], days: Sequence[date]) -> dic
         "LEFT JOIN categories p ON p.id = c.parent_id "
         f"WHERE {accounts} AND {committed_or_typed('t.statement_file_id')} "
         "AND t.amount_nano <> 0 AND (t.kind = 'transfer' OR (t.kind IN ('income', 'expense') "
-        f"AND coalesce(p.name, c.name, '') NOT IN ({marks(len(_INVESTING))})))",
+        f"AND coalesce(p.key, c.key, '') NOT IN ({marks(len(_INVESTING))})))",
         (*within, *sorted(_INVESTING)),
     )
     for account, day, currency, nano in rows:
