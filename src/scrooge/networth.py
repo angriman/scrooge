@@ -34,7 +34,7 @@ from __future__ import annotations
 import sqlite3
 from bisect import bisect_right
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -830,15 +830,28 @@ class MonthEnd:
 
 
 def month_ends(
-    conn: sqlite3.Connection, valued: Valued | None, currencies: Sequence[str]
+    conn: sqlite3.Connection,
+    valued: Valued | None,
+    currencies: Sequence[str],
+    unconverted: Callable[[MissingRateError], object] | None = None,
 ) -> tuple[MonthEnd, ...]:
     """Net worth at the end of every month of `valued.days` in each of `currencies`, newest
     first (see `by_month`). Everything is valued once and the rates are read once: only the
-    conversion is done for each currency."""
+    conversion is done for each currency. With `unconverted`, a currency without rates is
+    left out of every month and its error handed there, so the others are still worked
+    out; without it, the error is raised."""
     if valued is None:
         return ()
     rates = rates_on(conn, valued.days)
-    return by_month([worth_of(conn, valued, currency, rates) for currency in currencies])
+    worths: list[NetWorth] = []
+    for currency in currencies:
+        try:
+            worths.append(worth_of(conn, valued, currency, rates))
+        except MissingRateError as exc:
+            if unconverted is None:
+                raise
+            unconverted(exc)
+    return by_month(worths)
 
 
 def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
@@ -869,7 +882,8 @@ def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
                 values[worth.currency] = Figure(total, None, None)
                 continue
             was = worth.total[before]
-            change = total - was - sum(worth.arrived[before + 1 : index + 1], Decimal(0))
+            arrived = sum(worth.arrived[before + 1 : index + 1], Decimal(0))
+            change = (total - was - arrived).quantize(_CENT)
             percent = (change * 100 / was).quantize(_CENT) if was > 0 else None
             values[worth.currency] = Figure(total, change, percent)
         found.append(MonthEnd(days[index].replace(day=1), days[index], values))

@@ -739,8 +739,9 @@ def _networth_months(request: Request) -> Response:
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
         valued = networth.value(conn, asked.owner)
-        ends = wire.unless_rate_missing(
-            errors, lambda: networth.month_ends(conn, valued, currencies), ()
+        # A currency without rates is said and left out; the others are still sent.
+        ends = networth.month_ends(
+            conn, valued, currencies, lambda exc: errors.append(wire.sentence(exc))
         )
     return JSONResponse(
         {

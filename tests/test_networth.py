@@ -849,6 +849,21 @@ def test_each_month_ends_on_its_last_day_in_every_currency_newest_first(
     assert networth.month_ends(conn, None, ["CHF"]) == ()
 
 
+def test_a_currency_without_rates_is_left_out_of_the_month_ends_or_raised(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, account("migros", "Migros", "CHF", "900"))
+    valued = networth.value(conn, None)
+    missing: list[networth.MissingRateError] = []
+    ends = networth.month_ends(conn, valued, ["JPY", "CHF"], missing.append)
+    assert ends
+    assert all(list(end.values) == ["CHF"] for end in ends)
+    [exc] = missing
+    assert str(exc).startswith("no exchange rate is stored for JPY")
+    with pytest.raises(networth.MissingRateError):
+        networth.month_ends(conn, valued, ["JPY", "CHF"])
+
+
 def test_a_month_ends_with_the_last_day_there_is_even_when_the_history_begins_within_it() -> None:
     [only] = networth.by_month([worth_from(day(20), [100] * 5)])
     assert (only.month, only.day, only.partial) == (day(1), day(24), True)

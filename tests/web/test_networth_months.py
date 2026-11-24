@@ -76,11 +76,26 @@ def test_one_person_is_their_month_ends_alone(database: Path) -> None:
     assert anna["months"][0]["values"]["CHF"]["total"] != everyone["total"]
 
 
-def test_a_currency_without_rates_is_said_and_no_month_is_sent(database: Path) -> None:
+def test_a_currency_without_rates_is_said_and_left_out_the_others_still_sent(
+    database: Path,
+) -> None:
     sent = months(database, currencies=("CHF", "JPY")).get("/api/networth/months").json()
     assert sent["currencies"] == ["CHF", "JPY", "EUR"]
+    [error] = sent["errors"]
+    assert error.startswith("No exchange rate is stored for JPY")
+    assert len(sent["months"]) == 3
+    assert all(list(month["values"]) == ["CHF", "EUR"] for month in sent["months"])
+
+
+def test_when_no_currency_has_rates_each_is_said_and_no_month_is_sent(database: Path) -> None:
+    client = months(database, currency="JPY", currencies=("JPY", "GBP"))
+    sent = client.get("/api/networth/months").json()
+    assert sent["currencies"] == ["JPY", "GBP"]
     assert sent["months"] == []
-    assert sent["errors"][0].startswith("No exchange rate is stored for JPY")
+    assert [error.split(":")[0] for error in sent["errors"]] == [
+        "No exchange rate is stored for JPY",
+        "No exchange rate is stored for GBP",
+    ]
 
 
 def test_an_unreadable_currency_is_refused(database: Path) -> None:
