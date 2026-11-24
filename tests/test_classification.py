@@ -423,7 +423,7 @@ def test_a_rule_can_be_put_before_the_ones_already_there(
     path = tmp_path / "rules.yaml"
     if existing is not None:
         path.write_text(existing, encoding="utf-8")
-    append_rule(path, "KIOSK", "out", categories.GIFTS, first=True)
+    append_rule(path, "KIOSK", "out", "Gifts", first=True)  # as the app writes it
     assert path.read_text(encoding="utf-8") == expected
     assert load_rules([path])[0].category == categories.GIFTS  # the first to match wins
 
@@ -451,3 +451,11 @@ def test_unmatched_takes_only_expenses_and_income_no_rule_matched() -> None:
 def test_unsorted_is_a_built_in_category_for_expenses_and_income() -> None:
     assert categories.UNSORTED in categories.USCITE[categories.UNSORTED]
     assert categories.UNSORTED in categories.ENTRATE
+
+
+@pytest.mark.parametrize("named", ["Spesa", "Groceries", categories.GROCERIES])
+def test_a_rule_names_its_category_by_italian_name_english_label_or_key(
+    tmp_path: Path, named: str
+) -> None:
+    rules = load_rules([_rules(tmp_path, f"rules:\n  - {{match: konsum, category: {named}}}\n")])
+    assert classify([_txn("KONSUM 12")], rules)[0].category == categories.GROCERIES
