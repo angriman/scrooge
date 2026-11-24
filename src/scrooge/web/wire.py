@@ -29,6 +29,7 @@ from scrooge import (
     recurring,
     report,
     savings,
+    settings,
 )
 from scrooge.context import Context
 
@@ -778,4 +779,30 @@ def needs_a_look(
             }
             for each in changed.changes
         ],
+    }
+
+
+def listed_rule(rule: settings.ListedRule) -> JSON:
+    """One rule of the settings page: what it gives, in which file, and how many committed
+    rows it matches (null when its pattern is none)."""
+    return {
+        "file": rule.file.key,
+        "owner": rule.file.owner,
+        "position": rule.position,
+        "match": rule.match,
+        "category": rule.category,
+        "direction": rule.direction,
+        "account": rule.account,
+        "matches": rule.matches,
+    }
+
+
+def listed_category(category: settings.ListedCategory) -> JSON:
+    """One category of the settings page, and how many committed rows carry it."""
+    return {
+        "name": category.name,
+        "side": category.side,
+        "parent": category.parent,
+        "built_in": category.built_in,
+        "rows": category.rows,
     }

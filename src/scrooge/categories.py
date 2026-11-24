@@ -105,6 +105,31 @@ def add(path: Path, extra: Extra) -> None:
     leaves = uscite.setdefault(extra.group, []) if extra.side == "uscite" else entrate
     if extra.name not in leaves:
         leaves.append(extra.name)
+    _write(path, uscite, entrate)
+
+
+def rename(path: Path, old: str, new: str) -> None:
+    """Call the added category `old` `new` in `path`, everywhere it is added, and so the group
+    of its own it was added with, if it was; the order stays as it was."""
+    uscite, entrate = _read(path)
+    swap = {old: new}
+    uscite = {
+        group if group in USCITE else swap.get(group, group): [swap.get(n, n) for n in leaves]
+        for group, leaves in uscite.items()
+    }
+    _write(path, uscite, [swap.get(name, name) for name in entrate])
+
+
+def drop(path: Path, name: str) -> None:
+    """Take the added category `name` out of `path`, and the group it leaves empty with it."""
+    uscite, entrate = _read(path)
+    kept = {group: [leaf for leaf in leaves if leaf != name] for group, leaves in uscite.items()}
+    groups = {group: leaves for group, leaves in kept.items() if leaves or not uscite[group]}
+    _write(path, groups, [entry for entry in entrate if entry != name])
+
+
+def _write(path: Path, uscite: dict[str, list[str]], entrate: list[str]) -> None:
+    """Write the additions to `path` again, keeping its leading comments."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     header = "".join(takewhile(lambda line: line.startswith("#"), text.splitlines(keepends=True)))
     body = yaml.safe_dump(

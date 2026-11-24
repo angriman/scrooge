@@ -88,6 +88,14 @@ def direction(txn: Transaction) -> str:
     return "in" if txn.amount > 0 else "out"
 
 
+def quoted(text: str) -> str:
+    """`text` as a YAML string: JSON strings are valid YAML, and quote whatever a merchant name
+    or a pattern may contain."""
+    return _UNREADABLE.sub(
+        lambda found: f"\\u{ord(found[0]):04x}", json.dumps(text, ensure_ascii=False)
+    )
+
+
 def append_rule(
     path: Path, counterparty: str, flow: str, category: str, *, first: bool = False
 ) -> None:
@@ -102,13 +110,8 @@ def append_rule(
     if "rules:" not in text:
         text += "rules:\n"
     text = text.rstrip().removesuffix("[]").rstrip() + "\n"
-    # JSON strings are valid YAML, and quote whatever a merchant name may contain.
-    match = _UNREADABLE.sub(
-        lambda found: f"\\u{ord(found[0]):04x}",
-        json.dumps(f"(?m)^{re.escape(counterparty)}$", ensure_ascii=False),
-    )
-    name = json.dumps(category, ensure_ascii=False)
-    rule = f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
+    match = quoted(f"(?m)^{re.escape(counterparty)}$")
+    rule = f"  - {{match: {match}, category: {quoted(category)}, direction: {flow}}}\n"
     head, key, rest = text.partition("rules:\n") if first else (text, "", "")
     path.write_text(head + key + rule + rest, encoding="utf-8")
 
