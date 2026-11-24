@@ -15,8 +15,21 @@
 	import { cn } from '#lib/ui/cn.js';
 	import { here, pick, show } from '#lib/view.js';
 	import type { LayoutProps } from './$types';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { movedTo } from '#lib/moved.js';
+	import { renamed } from '#lib/renamed.js';
 
 	let { data, children }: LayoutProps = $props();
+
+	// A step inside the app to a renamed page's old address goes to the new one before anything
+	// loads, with the hash (`#checks`), which the old address's load cannot read.
+	beforeNavigate(({ to, type, cancel }) => {
+		const moved = to && type !== 'popstate' && type !== 'leave' ? movedTo(to.url, renamed) : null;
+		if (moved) {
+			cancel();
+			void goto(moved);
+		}
+	});
 
 	const EVERYONE = '';
 
