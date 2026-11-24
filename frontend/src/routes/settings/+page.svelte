@@ -1,0 +1,140 @@
+<script lang="ts">
+	import { invalidate } from '$app/navigation';
+	import { page } from '$app/state';
+	import { send } from '#lib/api.js';
+	import AddCategory from '#lib/import/AddCategory.svelte';
+	import CategoryRow from '#lib/settings/CategoryRow.svelte';
+	import PatternTest from '#lib/settings/PatternTest.svelte';
+	import RuleRow from '#lib/settings/RuleRow.svelte';
+	import { categoryKey, mergeInto, sections } from '#lib/settings/categories.js';
+	import { byFile, edited, fileNote, fileTitle, ruleKey, seen, type Draft } from '#lib/settings/rules.js';
+	import type { Rule } from '#lib/types.js';
+	import Panel from '#lib/ui/Panel.svelte';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
+
+	const token = $derived(data.session.token);
+	const owner = $derived(page.url.searchParams.get('owner') ?? '');
+	const rules = $derived(data.rules);
+	const listed = $derived(data.categories);
+	const files = $derived(byFile(rules.files, rules.rules));
+
+	// What the box at the top of the rules tries; a rule's "Try" puts its pattern there.
+	let match = $state('');
+	let direction = $state('');
+	let tester = $state<HTMLElement>();
+
+	function tryPattern(pattern: string, way: string) {
+		match = pattern;
+		direction = way;
+		tester?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		tester?.querySelector('input')?.focus();
+	}
+
+	/** Send a change, and load the page again when it is made: what went wrong, or null. */
+	async function change(path: string, body: unknown): Promise<string | null> {
+		const done = await send(`/api/settings/${path}`, body, token);
+		if (!done.ok) return (done.sent.errors ?? []).join(' ') || 'The change was refused.';
+		await invalidate('api:settings');
+		return null;
+	}
+
+	const save = (rule: Rule, draft: Draft) => change('rules/edit', edited(rule, draft));
+	const move = (rule: Rule, by: -1 | 1) => change('rules/move', { ...seen(rule), by });
+	const removeRule = (rule: Rule) => change('rules/remove', seen(rule));
+	const add = (name: string, side: string, group: string) =>
+		change('categories/add', { name, side, group });
+</script>
+
+<svelte:head>
+	<title>Settings · scrooge</title>
+</svelte:head>
+
+<div class="flex flex-col gap-6">
+	<header>
+		<h1 class="text-heading font-medium text-ink">Settings</h1>
+		<p class="text-body text-ink-secondary">
+			The categories rows are given, and the rules every import gives them with.
+			{#if !rules.editable}They can only be looked at here.{/if}
+		</p>
+	</header>
+
+	<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+		<Panel title="Categories" note="Built in, then those added. A rename or a merge changes the committed rows and the rules too.">
+			{#each listed.errors as error (error)}
+				<p class="mb-2 text-small text-caution" role="status">{error}</p>
+			{/each}
+			<div class="flex flex-col gap-4">
+				{#each sections(listed.categories) as section (section.heading)}
+					<section>
+						<h3 class="text-caption font-medium text-ink-secondary">{section.heading}</h3>
+						<ul class="divide-y divide-line">
+							{#each section.categories as category (categoryKey(category))}
+								<CategoryRow
+									{category}
+									into={mergeInto(listed.categories, category)}
+									editable={listed.editable}
+									onrename={(to) => change('categories/rename', { name: category.name, to })}
+									onmerge={(into) => change('categories/merge', { name: category.name, into })}
+									onremove={() => change('categories/remove', { name: category.name })}
+								/>
+							{/each}
+						</ul>
+					</section>
+				{/each}
+				{#if listed.editable}
+					<AddCategory under={listed.groups} onadd={add} summary="Add a category" />
+				{/if}
+			</div>
+		</Panel>
+
+		<div class="flex flex-col gap-6">
+			<Panel
+				title="Rules"
+				note={owner
+					? `Those tried on ${owner}'s rows, in the order they are tried: the first that matches gives the category.`
+					: 'In the order they are tried: the first that matches gives the category.'}
+			>
+				{#each rules.errors as error (error)}
+					<p class="mb-2 text-small text-caution" role="status">{error}</p>
+				{/each}
+				<div bind:this={tester} class="mb-4 rounded-panel bg-sunken p-3">
+					<PatternTest {owner} bind:match bind:direction />
+				</div>
+				{#if !files.length}
+					<p class="text-body text-ink-secondary">This app has no rules files to show.</p>
+				{/if}
+				<div class="flex flex-col gap-5">
+					{#each files as group (group.file.key)}
+						<section>
+							<h3 class="text-body font-medium text-ink">{fileTitle(group.file)}</h3>
+							<p class="text-caption text-ink-muted">{fileNote(group.file)}</p>
+							{#if group.rules.length}
+								<ul class="mt-1 divide-y divide-line">
+									{#each group.rules as rule, index (ruleKey(rule))}
+										<RuleRow
+											{rule}
+											leaves={rules.leaves}
+											editable={rules.editable}
+											first={index === 0}
+											last={index === group.rules.length - 1}
+											onsave={(draft) => save(rule, draft)}
+											onmove={(by) => move(rule, by)}
+											onremove={() => removeRule(rule)}
+											ontry={tryPattern}
+										/>
+									{/each}
+								</ul>
+							{:else}
+								<p class="mt-1 text-small text-ink-secondary">
+									No rules yet: choosing a category on Import or Transactions with “remember” adds them.
+								</p>
+							{/if}
+						</section>
+					{/each}
+				</div>
+			</Panel>
+		</div>
+	</div>
+</div>
