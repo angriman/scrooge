@@ -304,6 +304,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     maturities: MaturitySource | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
     currencies: Sequence[str] = networth.DEFAULT_COLUMNS,
+    frozen: Sequence[str] = (),
     spa: Path | None = None,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
@@ -321,6 +322,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     which bills to add to `instruments.yaml`.
     `currency` is what the figures are shown in until another is chosen on a page.
     `currencies` are those the month-end table of net worth shows side by side.
+    `frozen` names the accounts whose money cannot be reached (a rent deposit): with the
+    pensions, net worth sets them apart from what is liquid.
     `spa` is the folder of the frontend built from frontend/, served at /app: every address
     there that is not one of its files is its page. Without it there is no /app.
     """
@@ -413,6 +416,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.maturities = maturities
     app.state.currency = currency
     app.state.currencies = tuple(currencies)
+    app.state.frozen = tuple(frozen)
     app.state.held = {}
     app.state.access = access
     app.state.read_only = read_only
@@ -568,7 +572,7 @@ def _overview(request: Request) -> Response:
         "source": request.url_for("networth_json").include_query_params(
             currency=asked.currency, by=asked.by, **({"owner": asked.owner} if asked.owner else {})
         ),
-        "breakdowns": forms.BREAKDOWNS,
+        "breakdowns": forms.PAGE_BREAKDOWNS,
         "parts": _parts(shown.worth, asked.by, people) if shown and shown.day else [],
         "slots": _SLOTS,
         "ring": _ring(shown.held) if shown else [],

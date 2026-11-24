@@ -38,7 +38,8 @@ class AnalysisView:
     errors: tuple[str, ...]
 
 
-BREAKDOWNS = ("total", "asset", "owner")  # how the chart of the first page cuts its line
+BREAKDOWNS = ("total", "asset", "owner", "liquidity")  # how the chart of net worth cuts its line
+PAGE_BREAKDOWNS = BREAKDOWNS[:3]  # those the first page of web/app.py offers; /app has them all
 DEFAULT_BREAKDOWN = "asset"  # the parts by asset type unless asked otherwise
 
 
@@ -194,13 +195,13 @@ def holdings_view(params: Mapping[str, str]) -> HoldingsView:
 
 
 def networth_view(params: Mapping[str, str]) -> NetWorthView:
-    """`owner`, `currency` (euros when left out) and `by` (total, asset or owner; asset when
-    left out or unreadable)."""
+    """`owner`, `currency` (euros when left out) and `by` (total, asset, owner or liquidity;
+    asset when left out or unreadable)."""
     errors: list[str] = []
     currency = _currency(params, errors)
     by = _text(params, "by") or DEFAULT_BREAKDOWN
     if by not in BREAKDOWNS:
-        errors.append(f"'{by}' is not total, asset or owner.")
+        errors.append(f"'{by}' is not total, asset, owner or liquidity.")
         by = DEFAULT_BREAKDOWN
     return NetWorthView(_text(params, "owner"), currency, by, tuple(errors))
 

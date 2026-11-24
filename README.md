@@ -58,6 +58,7 @@ currency: CHF                        # EUR, CHF, USD, GBP or JPY; EUR without it
 currencies: [CHF, USD, EUR]          # the month-end table's columns; these without it
 unmatched: Non classificato          # the category of rows no rule matches
 account_labels: {U7654321: "IBKR 2"} # a second account at a broker, by its number
+frozen: [Deposito affitto]           # accounts out of reach, as the pages name them; pensions are
 ```
 
 `unmatched` lets every statement be committed without choosing categories (net worth needs

@@ -126,14 +126,20 @@ def _overview(request: Request) -> Response:
 
 
 def _networth(request: Request) -> Response:
-    """Net worth day by day for `owner` in `currency`, cut by `by` (total, asset or owner)."""
+    """Net worth day by day for `owner` in `currency`, cut by `by` (total, asset, owner or
+    liquidity)."""
     asked = forms.networth_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
+    frozen: tuple[str, ...] = request.app.state.frozen
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
+        if asked.by == "liquidity":
+            errors += _unknown_frozen(conn, frozen)
         worth = wire.unless_rate_missing(
-            errors, lambda: networth.run(conn, owner=asked.owner, currency=asked.currency), None
+            errors,
+            lambda: networth.run(conn, owner=asked.owner, currency=asked.currency, frozen=frozen),
+            None,
         )
     series = None if worth is None else wire.series(worth, asked.by)
     return JSONResponse({"series": series, "errors": errors})
@@ -757,6 +763,15 @@ async def _uncommit(request: Request) -> Response:
     return await _remove(request, staging.uncommit)
 
 
+def _unknown_frozen(conn: sqlite3.Connection, frozen: tuple[str, ...]) -> list[str]:
+    """A sentence for each name of the config's `frozen` that no account is called."""
+    return [
+        f"No account is called {name}, which 'frozen' in scrooge.yaml names: write it as the "
+        f"pages name the account."
+        for name in networth.unknown_accounts(conn, frozen)
+    ]
+
+
 def _networth_months(request: Request) -> Response:
     """Net worth at the end of every month for `owner`, newest first, in each currency of the
     config's `currencies`, and in `currency` too when it is not one of them."""
@@ -765,8 +780,10 @@ def _networth_months(request: Request) -> Response:
         return _refused(asked.errors)
     configured: tuple[str, ...] = request.app.state.currencies
     currencies = [*configured, *(() if asked.currency in configured else (asked.currency,))]
+    frozen: tuple[str, ...] = request.app.state.frozen
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
+        errors += _unknown_frozen(conn, frozen)
         valued = networth.value(conn, asked.owner)
 
         def unconverted(exc: networth.MissingRateError) -> None:
@@ -775,7 +792,7 @@ def _networth_months(request: Request) -> Response:
             if (said := wire.sentence(exc)) not in errors:
                 errors.append(said)
 
-        ends = networth.month_ends(conn, valued, currencies, unconverted)
+        ends = networth.month_ends(conn, valued, currencies, unconverted, frozen=frozen)
     return JSONResponse(
         {
             "currencies": currencies,

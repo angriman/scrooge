@@ -187,7 +187,7 @@ def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: Te
     assert response.status_code == 200
     errors = [
         "'XAU' is not one of EUR, CHF, USD, GBP, JPY.",
-        "'shape' is not total, asset or owner.",
+        "'shape' is not total, asset, owner or liquidity.",
     ]
     assert re.findall(r'<p class="error" role="alert">(.*?)</p>', response.text) == [
         error.replace("'", "&#39;") for error in errors

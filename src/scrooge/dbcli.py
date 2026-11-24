@@ -522,6 +522,18 @@ def _currencies(config: dict[str, object], path: Path) -> tuple[str, ...]:
     return tuple(dict.fromkeys(codes))  # each once, in the order named
 
 
+def _frozen(config: dict[str, object], path: Path) -> tuple[str, ...]:
+    """`frozen`: the accounts, as the pages name them, whose money cannot be reached (a rent
+    deposit); the pensions are frozen without it."""
+    named = config.get("frozen", [])
+    if not isinstance(named, list) or not all(
+        isinstance(name, str) and name.strip() for name in named
+    ):
+        msg = f"{path}: 'frozen' must list the names of accounts, as the pages show them"
+        raise ConfigError(msg)
+    return tuple(dict.fromkeys(name.strip() for name in named))
+
+
 def _unmatched(config: dict[str, object], path: Path) -> str:
     """`unmatched`: the category of the expenses and income no rule matches, for who tracks
     net worth alone; without it they go to review."""
@@ -591,6 +603,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             imports,
             _currency(config, args.config),
             _currencies(config, args.config),
+            _frozen(config, args.config),
         )
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
@@ -812,6 +825,7 @@ class _Pages:
     imports: importing.Setup
     currency: str  # what the figures are shown in until another is chosen
     currencies: tuple[str, ...]  # the columns of the month-end table
+    frozen: tuple[str, ...]  # the accounts whose money cannot be reached
 
 
 def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
@@ -833,6 +847,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         maturities=prices.TreasuryDirect(),
         currency=pages.currency,
         currencies=pages.currencies,
+        frozen=pages.frozen,
         spa=webapp.SPA,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
