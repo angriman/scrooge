@@ -353,7 +353,7 @@ def covered(lines: Sequence[Coverage]) -> date | None:
     return min((line.committed for line in lines if line.committed and monthly(line)), default=None)
 
 
-def _joined(spans: list[tuple[date, date]], committed: bool) -> list[Span]:
+def joined(spans: list[tuple[date, date]], committed: bool) -> list[Span]:
     """`spans` as runs: statements that overlap or follow on day after day are one."""
     runs: list[Span] = []
     for first, last in sorted(spans):
@@ -381,7 +381,7 @@ def timeline(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Track,
         states = grouped.setdefault((name, account, source), {False: [], True: []})
         states[bool(committed)].append((_day(first), _day(last)))
     return tuple(
-        Track(name, account, source, (*_joined(states[False], False), *_joined(states[True], True)))
+        Track(name, account, source, (*joined(states[False], False), *joined(states[True], True)))
         for (name, account, source), states in grouped.items()
     )
 

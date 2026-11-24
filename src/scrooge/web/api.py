@@ -43,6 +43,7 @@ from scrooge import (
     recurring,
     report,
     staging,
+    together,
 )
 from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
@@ -225,7 +226,8 @@ def _statements(request: Request) -> Response:
     it holds now in `currency` (its cash by currency, its securities, its last month-ends:
     `holds`), the runs of days they cover and the statements themselves; the
     day every monthly account is covered to; and the statements' own balances against those
-    worked out here."""
+    worked out here. A broker's accounts in each currency are one account (`together`), with
+    the names they are booked under (`parts`)."""
     asked = forms.holdings_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
@@ -251,22 +253,20 @@ def _statements(request: Request) -> Response:
         address = str(request.url_for("original", number=statement.id)) if kept else None
         return wire.statement(statement, address)
 
-    def row(line: months.Coverage, late: bool) -> wire.JSON:
-        found = held.get((line.owner, line.account))
+    def row(one: together.Row, late: bool) -> wire.JSON:
         shown = wire.statements_account(
-            line,
+            one.line,
             late,
-            None if found is None else found.balance,
-            tracks.get((line.owner, line.account, line.source), ()),
-            [
-                listed(s)
-                for s in files.get((line.owner, line.account), ())
-                if s.source == line.source
-            ],
+            None if one.held is None else one.held.balance,
+            one.spans,
+            [listed(s) for s in one.statements],
         )
-        return {**shown, "holds": wire.account_holds(found)}
+        return {**shown, "holds": wire.account_holds(one.held), "parts": list(one.parts)}
 
-    accounts = [row(line, late) for line, late in zip(lines, months.behind(lines), strict=True)]
+    # A broker's currencies are one account here, and judged as one (`together`).
+    rows = together.rows(lines, tracks, files, held)
+    lines = tuple(one.line for one in rows)
+    accounts = [row(one, late) for one, late in zip(rows, months.behind(lines), strict=True)]
     return JSONResponse(
         {
             "currency": asked.currency,
