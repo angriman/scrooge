@@ -83,7 +83,7 @@
 	<!-- The lead: what the accounts hold now, then up to when every statement of them is in. -->
 	<section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="accounts">
 		<h1 id="accounts" class="text-small text-ink-secondary">{title}</h1>
-		<p class="mt-1 text-hero font-medium tracking-tight text-ink">
+		<p class="mt-1 text-figure font-medium tracking-tight text-ink sm:text-hero">
 			{#if held.total !== null}
 				<Amount value={held.total} currency={listed.currency} />
 			{:else}
