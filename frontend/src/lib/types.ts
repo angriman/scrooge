@@ -542,13 +542,16 @@ export interface NetWorthMonths {
 
 /** A payment that comes back at a steady pace, as paid (positive). */
 export interface RecurringPayment {
+	/** Its first payment's id: two can have the same name, never the same id. */
+	id: string;
+	/** Who was paid, as the cash flow names them and the `merchant` filter reads them. */
 	name: string;
 	owner: string;
 	account: string;
 	every: 'monthly' | 'yearly';
 	amount: Amount;
 	currency: string;
-	/** What was paid before the latest amount, when the price changed. */
+	/** What the payment before the latest was, when the price changed between the two. */
 	previous: Amount | null;
 	count: number;
 	first: string;

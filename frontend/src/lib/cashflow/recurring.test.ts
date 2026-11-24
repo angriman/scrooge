@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RecurringPayment } from '#lib/types.js';
-import { everyName, isNew, priceChange } from './recurring.js';
+import type { Recurring, RecurringPayment } from '#lib/types.js';
+import { anyRecurring, everyName, isNew, priceChange } from './recurring.js';
 
 const payment = (fields: Partial<RecurringPayment>): RecurringPayment => ({
+	id: 't1',
 	name: 'Streamio',
 	owner: 'Anna',
 	account: 'Migros',
@@ -30,6 +31,22 @@ describe('the recurring payments of the cash flow', () => {
 		expect(isNew(payment({ first: '2026-08-01' }), '2026-10-31')).toBe(true);
 		expect(isNew(payment({ first: '2026-07-31' }), '2026-10-31')).toBe(false);
 		expect(isNew(payment({ first: '2026-10-01' }), null)).toBe(false);
+	});
+
+	it('leaves the panel out when nothing is listed, active or stopped', () => {
+		const list = (fields: Partial<Recurring>): Recurring => ({
+			currency: 'CHF',
+			through: '2026-10-31',
+			monthly: '0',
+			active: [],
+			ended: [],
+			errors: [],
+			...fields
+		});
+		expect(anyRecurring(list({}))).toBe(false);
+		expect(anyRecurring(list({ through: null }))).toBe(false);
+		expect(anyRecurring(list({ active: [payment({})] }))).toBe(true);
+		expect(anyRecurring(list({ ended: [payment({})] }))).toBe(true);
 	});
 
 	it('names the pace', () => {

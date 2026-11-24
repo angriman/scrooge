@@ -25,7 +25,7 @@ its price changed. Those that stopped are folded below. Each opens its transacti
 	{@const change = priceChange(payment)}
 	<li>
 		<a
-			href={transactions({ text: payment.name })}
+			href={transactions({ merchant: payment.name, account: payment.account })}
 			class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-control px-1 py-2 hover:bg-sunken"
 		>
 			<span class="flex min-w-0 items-center gap-2 text-body text-ink">
@@ -68,12 +68,12 @@ its price changed. Those that stopped are folded below. Each opens its transacti
 			{/if}
 		</p>
 		<ul class="divide-y divide-line">
-			{#each recurring.active as payment (`${payment.owner}|${payment.account}|${payment.name}`)}
+			{#each recurring.active as payment (payment.id)}
 				{@render line(payment, false)}
 			{/each}
 		</ul>
 	{:else}
-		<p class="text-body text-ink-secondary">Nothing is paid at a steady pace yet.</p>
+		<p class="text-body text-ink-secondary">Nothing is paid at a steady pace now.</p>
 	{/if}
 	{#if recurring.ended.length}
 		<button
@@ -86,7 +86,7 @@ its price changed. Those that stopped are folded below. Each opens its transacti
 		</button>
 		{#if ended}
 			<ul class="mt-2 divide-y divide-line">
-				{#each recurring.ended as payment (`${payment.owner}|${payment.account}|${payment.name}`)}
+				{#each recurring.ended as payment (payment.id)}
 					{@render line(payment, true)}
 				{/each}
 			</ul>
