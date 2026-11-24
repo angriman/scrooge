@@ -28,7 +28,7 @@ from decimal import Decimal
 from itertools import pairwise
 from pathlib import Path
 
-from scrooge import categories, classification
+from scrooge import categories, classification, yamlfiles
 from scrooge.categories import Extra
 from scrooge.classification import Patterns, names
 from scrooge.models import CashBalance, Kind, Transaction, TypedHolding
@@ -589,18 +589,20 @@ def _rules_kept() -> Iterator[dict[Path, str | None]]:
     """Yields a place for what each rules file held before it was touched (None: no file).
 
     Whatever raises inside, those files are put back: a rule is never saved for a choice
-    the database did not keep.
+    the database did not keep. The lock of every writer of these files (`yamlfiles`) is held
+    throughout, so that what is put back is never another change made meanwhile.
     """
     before: dict[Path, str | None] = {}
-    try:
-        yield before
-    except BaseException:
-        for path, text in before.items():
-            if text is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_text(text, encoding="utf-8")
-        raise
+    with yamlfiles.LOCK:
+        try:
+            yield before
+        except BaseException:
+            for path, text in before.items():
+                if text is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    yamlfiles.write(path, text)
+            raise
 
 
 def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:

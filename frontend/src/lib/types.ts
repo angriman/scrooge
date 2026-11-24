@@ -769,3 +769,68 @@ export interface TransactionsContext {
 	balance: Amount | null;
 	errors: string[];
 }
+
+/** A file of rules: a person's own, tried first, or one everybody shares. */
+export interface RulesFile {
+	key: string;
+	owner: string | null;
+}
+
+/** One rule of `/api/settings/rules`: where it is, and how many committed rows it matches. */
+export interface Rule {
+	file: string;
+	owner: string | null;
+	/** From 1, in its file. */
+	position: number;
+	match: string;
+	category: string;
+	/** `in`, `out`, or empty for both. */
+	direction: string;
+	account: string;
+	/** Committed rows it would match on its own, whatever rule before it takes them first;
+	 * null when its pattern is none. */
+	matches: number | null;
+	/** What a change of it sends back: its lines as shown. */
+	version: string;
+	/** Why it cannot be changed here; null when it can. */
+	fixed: string | null;
+}
+
+export interface SettingsRules {
+	people: string[];
+	files: RulesFile[];
+	rules: Rule[];
+	/** The categories a rule can give. */
+	leaves: Headed[];
+	/** Whether this app can change them: not on a copy, nor without a place for rules. */
+	editable: boolean;
+	errors: string[];
+}
+
+/** What a pattern tried on the committed rows matches; nothing is saved. */
+export interface PatternTest {
+	count: number;
+	/** The newest of them. */
+	rows: Transaction[];
+	errors: string[];
+}
+
+export interface ListedCategory {
+	name: string;
+	side: 'uscite' | 'entrate' | 'transfer';
+	/** The top-level category of an expense. */
+	parent: string | null;
+	built_in: boolean;
+	/** Committed rows that carry it. */
+	rows: number;
+}
+
+export interface SettingsCategories {
+	categories: ListedCategory[];
+	/** What a new expense category can go under. */
+	groups: string[];
+	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
+	unmatched: string | null;
+	editable: boolean;
+	errors: string[];
+}

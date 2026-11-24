@@ -26,7 +26,7 @@ from pathlib import Path
 
 import yaml
 
-from scrooge import categories
+from scrooge import categories, yamlfiles
 from scrooge.errors import ConfigError
 from scrooge.models import Holding, Kind, SecurityTrade, Transaction
 
@@ -88,6 +88,14 @@ def direction(txn: Transaction) -> str:
     return "in" if txn.amount > 0 else "out"
 
 
+def quoted(text: str) -> str:
+    """`text` as a YAML string: JSON strings are valid YAML, and quote whatever a merchant name
+    or a pattern may contain."""
+    return _UNREADABLE.sub(
+        lambda found: f"\\u{ord(found[0]):04x}", json.dumps(text, ensure_ascii=False)
+    )
+
+
 def append_rule(
     path: Path, counterparty: str, flow: str, category: str, *, first: bool = False
 ) -> None:
@@ -96,21 +104,18 @@ def append_rule(
     The rule matches `counterparty` as a whole description or counterparty, not as a substring,
     so it covers the rows the user was shown and nothing else. `first` puts it before the
     rules already in the file instead: the first rule to match wins, so that is where a
-    choice that corrects one of them belongs.
+    choice that corrects one of them belongs. The file is read and written under the lock
+    of every writer of rules (`yamlfiles`).
     """
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    if "rules:" not in text:
-        text += "rules:\n"
-    text = text.rstrip().removesuffix("[]").rstrip() + "\n"
-    # JSON strings are valid YAML, and quote whatever a merchant name may contain.
-    match = _UNREADABLE.sub(
-        lambda found: f"\\u{ord(found[0]):04x}",
-        json.dumps(f"(?m)^{re.escape(counterparty)}$", ensure_ascii=False),
-    )
-    name = json.dumps(category, ensure_ascii=False)
-    rule = f"  - {{match: {match}, category: {name}, direction: {flow}}}\n"
-    head, key, rest = text.partition("rules:\n") if first else (text, "", "")
-    path.write_text(head + key + rule + rest, encoding="utf-8")
+    match = quoted(f"(?m)^{re.escape(counterparty)}$")
+    rule = f"  - {{match: {match}, category: {quoted(category)}, direction: {flow}}}\n"
+    with yamlfiles.LOCK:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        if "rules:" not in text:
+            text += "rules:\n"
+        text = text.rstrip().removesuffix("[]").rstrip() + "\n"
+        head, key, rest = text.partition("rules:\n") if first else (text, "", "")
+        yamlfiles.write(path, head + key + rule + rest)
 
 
 def _load(path: Path, key: str) -> object:
