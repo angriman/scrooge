@@ -48,6 +48,12 @@ LUKAS = [
     row("-1.75", date(2026, 5, 31), "3", **TAX),
 ]
 ANNA_USD = [row("-4", date(2026, 2, 2), "1", **COMMISSION, **USD)]
+# A commission refunded in full: the account cost nothing, and is not listed.
+TASTY = {"account": "Tastytrade", "currency": "USD", "source_file": "tastytrade.csv"}
+ANNA_TASTY = [
+    row("-2", date(2026, 4, 1), "1", **COMMISSION, **TASTY),
+    row("2", date(2026, 4, 2), "2", **COMMISSION, **TASTY),
+]
 
 
 @pytest.fixture(scope="module")
@@ -56,7 +62,14 @@ def conn() -> Iterator[sqlite3.Connection]:
     db.migrate(connection, CLOSED_AT)
     files = (("ibkr", LUKAS_USD), ("ibkr", LUKAS_GBP), ("finpension", LUKAS_FUND))
     close(connection, OWNER, (START, END), END, *files, ("migros", LUKAS))
-    close(connection, PARTNER, (date(2026, 1, 1), END), END, ("ibkr", ANNA_USD))
+    close(
+        connection,
+        PARTNER,
+        (date(2026, 1, 1), END),
+        END,
+        ("ibkr", ANNA_USD),
+        ("tastytrade", ANNA_TASTY),
+    )
     for day, currency, rate in (
         (date(2025, 1, 1), "EUR", "0.95"),
         (date(2025, 3, 14), "USD", "0.80"),

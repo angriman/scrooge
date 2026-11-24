@@ -10,7 +10,16 @@ from starlette.testclient import TestClient
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close
-from tests.test_costs import ANNA_USD, END, LUKAS, LUKAS_FUND, LUKAS_GBP, LUKAS_USD, START
+from tests.test_costs import (
+    ANNA_TASTY,
+    ANNA_USD,
+    END,
+    LUKAS,
+    LUKAS_FUND,
+    LUKAS_GBP,
+    LUKAS_USD,
+    START,
+)
 
 SITE = "http://127.0.0.1:8765"
 
@@ -22,7 +31,14 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     db.migrate(conn, CLOSED_AT)
     files = (("ibkr", LUKAS_USD), ("ibkr", LUKAS_GBP), ("finpension", LUKAS_FUND))
     close(conn, OWNER, (START, END), END, *files, ("migros", LUKAS))
-    close(conn, PARTNER, (date(2026, 1, 1), END), END, ("ibkr", ANNA_USD))
+    close(
+        conn,
+        PARTNER,
+        (date(2026, 1, 1), END),
+        END,
+        ("ibkr", ANNA_USD),
+        ("tastytrade", ANNA_TASTY),
+    )
     store.set_rate(conn, date(2025, 3, 14), "USD", Decimal("0.80"), source="fetched:yahoo")
     store.set_rate(conn, date(2026, 3, 16), "USD", Decimal("0.90"), source="fetched:yahoo")
     conn.close()
