@@ -14,7 +14,7 @@ from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE, txn
 from tests.web.builders import AUGUST_DAYS, Site, close
 
-OWN = "rules:\n  - {match: 'ANNA MEIER', category: Regali}  # birthdays\n"
+OWN = "rules:\n  - {match: 'ANNA MEIER', category: Gifts}  # birthdays\n"
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
         "owner": OWNER,
         "position": 1,
         "match": "ANNA MEIER",
-        "category": "Regali",
+        "category": "Gifts",
         "direction": "",
         "account": "",
         "matches": 1,
@@ -73,7 +73,7 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
         ("KONSUM|FRISCHMARKT", 2),
     ]
     assert sent["editable"] is True
-    assert "Entrate" in [group["heading"] for group in sent["leaves"]]
+    assert "Income" in [group["heading"] for group in sent["leaves"]]
     assert sent["errors"] == []
     anna = site.client.get("/api/settings/rules", params={"owner": PARTNER}).json()
     assert [f["key"] for f in anna["files"]] == ["rules.anna.yaml", "rules.yaml"]
@@ -155,9 +155,9 @@ def _rule(site: Site, position: int, **fields: object) -> dict[str, object]:
 
 def test_a_rule_is_edited_moved_and_removed(site: Site) -> None:
     shared = site.folder / "rules.yaml"
-    edit = _rule(site, 3, match="KONSUM", category="Spesa", direction="out")
+    edit = _rule(site, 3, match="KONSUM", category="Groceries", direction="out")
     assert _post(site, "rules/edit", edit).json() == {"errors": []}
-    assert '  - {match: "KONSUM", category: "Spesa", direction: out}\n' in shared.read_text(
+    assert '  - {match: "KONSUM", category: "Groceries", direction: out}\n' in shared.read_text(
         encoding="utf-8"
     )
     assert _post(site, "rules/move", _rule(site, 3, by=-1)).json() == {"errors": []}
@@ -212,7 +212,7 @@ def test_the_categories_are_listed_with_their_rows(site: Site) -> None:
         "built_in": False,
         "rows": 1,
     }
-    assert listed["Spesa", "uscite"]["rows"] == 2
+    assert listed["Groceries", "uscite"]["rows"] == 2
     assert "Prestiti" in sent["groups"]
     assert sent["editable"] is True
 
@@ -223,14 +223,14 @@ def test_categories_are_added_renamed_merged_and_removed(site: Site) -> None:
     assert _post(site, "categories/add", {"name": "Mance", "side": "entrate"}).status_code == 409
     renamed = _post(site, "categories/rename", {"name": "Prestiti", "to": "Mutuo"})
     assert renamed.json() == {"rows": 1, "errors": []}
-    merged = _post(site, "categories/merge", {"name": "Mutuo", "into": "Regali"})
+    merged = _post(site, "categories/merge", {"name": "Mutuo", "into": "Gifts"})
     assert merged.json() == {"rows": 1, "errors": []}
     assert _post(site, "categories/remove", {"name": "Mance"}).json() == {"errors": []}
     names = [c["name"] for c in site.client.get("/api/settings/categories").json()["categories"]]
     assert {"Prestiti", "Mutuo", "Mance"}.isdisjoint(names)
-    refused = _post(site, "categories/remove", {"name": "Spesa"})
+    refused = _post(site, "categories/remove", {"name": "Groceries"})
     assert refused.status_code == 409
-    assert refused.json()["errors"][0].startswith("Spesa is built in")
+    assert refused.json()["errors"][0].startswith("Groceries is built in")
 
 
 def test_a_rename_the_database_cannot_take_is_refused(site: Site) -> None:
@@ -248,14 +248,14 @@ def test_a_rename_the_database_cannot_take_is_refused(site: Site) -> None:
 
 
 def test_a_category_is_moved_under_another(site: Site) -> None:
-    moved = _post(site, "categories/move", {"name": "Prestiti", "under": "Casa"})
+    moved = _post(site, "categories/move", {"name": "Prestiti", "under": "Home"})
     assert moved.json() == {"rows": 1, "errors": []}
     listed = site.client.get("/api/settings/categories").json()
     found = [c for c in listed["categories"] if c["name"] == "Prestiti"]
-    assert [(c["parent"], c["rows"]) for c in found] == [("Casa", 1)]
+    assert [(c["parent"], c["rows"]) for c in found] == [("Home", 1)]
     assert listed["unmatched"] is None
-    refused = _post(site, "categories/merge", {"name": "Stipendio", "into": "Spesa"})
+    refused = _post(site, "categories/merge", {"name": "Salary", "into": "Groceries"})
     assert refused.status_code == 409
     assert refused.json()["errors"] == [
-        "Stipendio is income and Spesa is not: they cannot be merged."
+        "Salary is income and Groceries is not: they cannot be merged."
     ]

@@ -33,7 +33,7 @@ def _draft(site: Site, owner: str = "Lukas") -> dict[str, Any]:
 def _leaf(draft: dict[str, Any], incoming: bool) -> str:
     """A category for money coming in, or one for money going out."""
     for group in draft["choices"]["leaves"]:
-        if (group["heading"] == "Entrate") == incoming:
+        if (group["heading"] == "Income") == incoming:
             return str(group["names"][0])
     raise AssertionError
 
@@ -106,12 +106,12 @@ def test_categories_are_given_and_what_is_staged_is_committed(site: Site) -> Non
 
 def test_a_choice_for_rows_no_longer_staged_changes_nothing(site: Site) -> None:
     _upload(site, "Migros.csv")
-    choices = [{"ids": ["not-a-row"], "category": "Spesa"}]
+    choices = [{"ids": ["not-a-row"], "category": "Groceries"}]
     sent = {"owner": "Lukas", "choices": choices}
     response = site.client.post("/api/import/categories", json=sent, headers=_headers(site))
     assert response.status_code == 409
     assert "load the page again" in response.json()["errors"][0]
-    garbled = {"owner": "Lukas", "choices": "Spesa"}
+    garbled = {"owner": "Lukas", "choices": "Groceries"}
     assert (
         site.client.post("/api/import/categories", json=garbled, headers=_headers(site)).status_code
         == 409

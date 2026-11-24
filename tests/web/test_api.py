@@ -200,7 +200,7 @@ def test_a_month_is_how_net_worth_moved_and_what_was_spent_as_text(client: TestC
     assert (shown["work"], shown["rate_salary"], shown["rate_salary_year"]) == ("0.00", None, None)
     assert shown["arrived"] == "0"
     assert shown["categories"] == [
-        {"name": "Alimentari", "spent": "150.00", "usual": None, "against_usual": None}
+        {"name": "Food", "spent": "150.00", "usual": None, "against_usual": None}
     ]
     assert shown["missing"] == []
     # August: the history starts on its last day, so how it moved is not known.
@@ -214,7 +214,7 @@ def test_a_month_sends_what_was_saved_of_income_and_of_salary(tmp_path: Path) ->
     db.migrate(conn, NOW)
     rows = (
         spent("5000", date(2026, 9, 25), **SALARY),
-        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interessi"),
+        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interest"),
         spent("-1500", date(2026, 9, 10)),
     )
     close(conn, account("migros", "Migros", "CHF", "1000", *rows))
@@ -457,7 +457,7 @@ def test_a_category_is_changed_with_the_token_of_the_session(writable: TestClien
 
 def test_a_change_without_the_token_or_from_another_site_is_refused(writable: TestClient) -> None:
     row = _changeable(writable)
-    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Affitto"}
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Rent"}
     assert writable.post("/api/transactions/category", json=sent).status_code == 403
     token = writable.get("/api/session").json()["token"]
     elsewhere = {"X-Token": token, "Origin": "https://example.com"}
@@ -482,7 +482,7 @@ def test_a_copy_refuses_every_change(database: Path) -> None:
     session = copy.get("/api/session").json()
     assert session["rules"] is False
     row = _changeable(copy)
-    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Affitto"}
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Rent"}
     headers = {"X-Token": session["token"]}
     assert copy.post("/api/transactions/category", json=sent, headers=headers).status_code == 403
 
@@ -499,8 +499,8 @@ def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: Te
     shown = sent["report"]
     assert shown["currency"] == "CHF"
     assert [period["name"] for period in shown["periods"]][-1] == "2026-09"
-    assert shown["periods"][-1]["spent_by"] == {"Alimentari": "120.00"}
-    assert [category["name"] for category in shown["categories"]] == ["Alimentari"]
+    assert shown["periods"][-1]["spent_by"] == {"Food": "120.00"}
+    assert [category["name"] for category in shown["categories"]] == ["Food"]
     assert shown["totals"]["spent"] == "120.00"
     assert {line["currency"] for line in shown["as_paid"]} <= {"CHF", "EUR", "USD"}
     quarters = client.get("/api/cashflow", params={"by": "quarter", "from": "2026-07"}).json()

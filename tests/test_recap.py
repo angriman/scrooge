@@ -46,7 +46,7 @@ def test_a_month_is_how_net_worth_moved_and_what_was_saved_of_it(
     # Nothing came in; 120 francs on the card, at 0.80 francs a dollar, went out.
     assert (shown.income, shown.spent, shown.rate) == (D(0), D("150.00"), None)
     assert shown.saved == D("-150.00")
-    assert shown.categories == (Category("Alimentari", D("150.00"), None),)
+    assert shown.categories == (Category("Food", D("150.00"), None),)
     # Of the 127.50 dollars net worth fell, 150 were spent: the prices made up 22.50.
     assert (shown.moved, shown.other) == (D("-127.50"), D("22.50"))
     assert shown.missing == ()
@@ -68,7 +68,7 @@ def test_income_and_spending_are_those_of_the_analysis(conn: sqlite3.Connection)
 def test_what_was_saved_is_also_a_part_of_the_salary(conn: sqlite3.Connection) -> None:
     rows = (
         spent("5000", date(2026, 9, 25), **SALARY),
-        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interessi"),
+        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interest"),
         spent("-1500", date(2026, 9, 10)),
     )
     close(conn, account("migros", "Migros", "CHF", "1000", *rows))
@@ -125,7 +125,7 @@ def test_a_month_that_has_not_ended_is_so_far(conn: sqlite3.Connection) -> None:
 def test_a_category_is_set_against_its_usual_month(
     spent: str, usual: str | None, against: str | None
 ) -> None:
-    category = Category("Alimentari", D(spent), None if usual is None else D(usual))
+    category = Category("Food", D(spent), None if usual is None else D(usual))
     assert category.against_usual == (None if against is None else D(against))
 
 

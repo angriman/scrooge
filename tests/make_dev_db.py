@@ -79,15 +79,15 @@ INSTRUMENTS = INSTRUMENTS_YAML + MATURED
 # The rules naming the invented people and shops of the fixtures come first, then those of
 # the starter rules.yaml. What no rule matches is a present, so that
 # everything can be committed.
-SHOPS = """  - {match: 'ALPENBAHN', category: Treni}
-  - {match: 'VELOSHARE', category: Trasporti locali}
-  - {match: 'AEROSUR', category: Voli}
-  - {match: 'MOBILHAUS', category: Arredamento e casa}
-  - {match: 'TECHNIKUM', category: Elettronica}
-  - {match: 'FOOD RUN', category: "Ristoranti e bar"}
-  - {match: 'KASSA BILLING', category: Acquisti vari}
+SHOPS = """  - {match: 'ALPENBAHN', category: Trains}
+  - {match: 'VELOSHARE', category: Local transport}
+  - {match: 'AEROSUR', category: Flights}
+  - {match: 'MOBILHAUS', category: Household}
+  - {match: 'TECHNIKUM', category: Electronics}
+  - {match: 'FOOD RUN', category: "Eating out"}
+  - {match: 'KASSA BILLING', category: Other shopping}
 """
-FALLBACK = "\n  # make dev-db: whatever is left\n  - {match: '.', category: Regali}\n"
+FALLBACK = "\n  # make dev-db: whatever is left\n  - {match: '.', category: Gifts}\n"
 # Invented closes, in the instrument's currency, from the first day prices are asked for.
 CLOSES = {"ACME": "113.1", "GOOG": "204.3", "WIDG": "54.25"}
 FUNDS = {"CH0000000011": ("ALPHACH.SW", "1510"), "CH0000000029": ("ALPHAWLD.SW", "1310")}
@@ -228,7 +228,7 @@ def _files(folder: Path) -> Built:
     # Never the repository's own rules.yaml or categories.yaml: those are the user's, real.
     starter = ROOT / "src" / "scrooge" / "starter"
     generic = (starter / "rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
-    own = RULES.replace("  - {match: '.', category: Regali}\n", SHOPS).rstrip("\n") + "\n"
+    own = RULES.replace("  - {match: '.', category: Gifts}\n", SHOPS).rstrip("\n") + "\n"
     rules = folder / "rules.yaml"
     rules.write_text(own + generic.rstrip("\n") + FALLBACK, encoding="utf-8")
     shutil.copy(starter / "categories.yaml", folder / "categories.yaml")

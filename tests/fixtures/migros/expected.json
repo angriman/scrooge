@@ -37,7 +37,7 @@
     "source_file": "migros.csv",
     "source_ref": "3",
     "counterparty": "Revolut**1234*",
-    "category": "Topup Revolut",
+    "category": "Revolut top-up",
     "confidence": "1",
     "booking_date": "2026-09-07"
   },
@@ -79,7 +79,7 @@
     "source_file": "migros.csv",
     "source_ref": "6",
     "counterparty": "Prelevamento al Bancomat BM Zürich 12.09.2026 10:15 Carta: 000000******0000",
-    "category": "Prelievi",
+    "category": "Withdrawals",
     "confidence": "1",
     "booking_date": "2026-09-14"
   },
@@ -93,7 +93,7 @@
     "source_file": "migros.csv",
     "source_ref": "7",
     "counterparty": "Storno",
-    "category": "Prelievi",
+    "category": "Withdrawals",
     "confidence": "1",
     "booking_date": "2026-09-15"
   },
@@ -107,7 +107,7 @@
     "source_file": "migros.csv",
     "source_ref": "8",
     "counterparty": "Interactive Brokers LLC",
-    "category": "Topup IBKR",
+    "category": "IBKR top-up",
     "confidence": "1",
     "booking_date": "2026-09-18"
   },
@@ -121,7 +121,7 @@
     "source_file": "migros.csv",
     "source_ref": "9",
     "counterparty": "REVOLUT LTD",
-    "category": "Topup Revolut",
+    "category": "Revolut top-up",
     "confidence": "1",
     "booking_date": "2026-09-21"
   },

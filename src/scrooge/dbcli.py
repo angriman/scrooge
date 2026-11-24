@@ -50,7 +50,7 @@ The database path, the person and the names that recognise each person as a coun
 come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`. `currency`
 there is what the pages show figures in until another is chosen on them.
 `unmatched` there is the category of the expenses and income no rule matches: they then need
-no review, for who tracks net worth alone. `scrooge init` writes `unmatched: Non classificato`.
+no review, for who tracks net worth alone. `scrooge init` writes `unmatched: Uncategorized`.
 `account_labels` there names a further account at a broker by its account number.
 `rules` there lists the rules files, first wins, and `instruments` names the instruments
 file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
@@ -112,6 +112,7 @@ import uvicorn
 import yaml
 
 from scrooge import (
+    categories,
     classification,
     importing,
     marketdata,
@@ -550,7 +551,7 @@ def _unmatched(config: dict[str, object], path: Path) -> str:
     if not isinstance(named, str):
         msg = f"{path}: 'unmatched' must be the name of a category"
         raise ConfigError(msg)
-    return named.strip()
+    return categories.canonical(named.strip())
 
 
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:

@@ -1,12 +1,12 @@
 """What investments paid: dividends and interest, and the tax withheld from them, month by
 month and holding by holding. The income view of the investments page.
 
-The rows are those of the categories `Dividendi`, `Interessi` and `Ritenute` that the cash-flow
-page counts, each converted at the rate of its own day into one currency, as the analysis views
-do. The range runs, unless asked otherwise, over the twelve months up to the last day committed:
-the month of that day and the eleven before it. Those twelve months are added up whatever the
-range, so the page can say what a year pays now. Rows in a currency no rate is stored for are
-left out, and said to be, rather than leaving the whole page empty.
+The rows are those of the categories `Dividends`, `Interest` and `Withholding tax` that the
+cash-flow page counts, each converted at the rate of its own day into one currency, as the
+analysis views do. The range runs, unless asked otherwise, over the twelve months up to the
+last day committed: the month of that day and the eleven before it. Those twelve months are
+added up whatever the range, so the page can say what a year pays now. Rows in a currency no
+rate is stored for are left out, and said to be, rather than leaving the whole page empty.
 
 A row carries no link to an instrument: what paid it is named, if at all, only in its
 counterparty. IBKR, Tastytrade and Schwab write the symbol there, Finpension the fund's ISIN,
@@ -37,7 +37,7 @@ from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY, MissingRateError, convert, rates_on
 
-DIVIDENDS, INTEREST, TAX = "Dividendi", "Interessi", "Ritenute"
+DIVIDENDS, INTEREST, TAX = "Dividends", "Interest", "Withholding tax"
 CATEGORIES = (DIVIDENDS, INTEREST, TAX)
 
 

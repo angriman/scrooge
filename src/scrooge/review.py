@@ -14,7 +14,7 @@ from scrooge.classification import Patterns
 from scrooge.models import Transaction
 
 _HELP = (
-    "Answer with a number, a name or a part of one (rist -> Ristoranti e bar).\n"
+    "Answer with a number, a name or a part of one (groc -> Groceries).\n"
     "  ?            list the categories again\n"
     "  +Name        a new category; +Group:Name puts an expense under a top-level category\n"
     "  (nothing)    skip these rows\n"
@@ -76,7 +76,7 @@ def ask_categories(
 
 
 def menu(extras: tuple[Extra, ...]) -> str:
-    """Every category with its number, one line per top-level category of the Uscite."""
+    """Every category with its number, one line per top-level category of the expenses."""
     number = {name: n for n, name in enumerate(categories.names(extras), start=1)}
     uscite = {group: list(leaves) for group, leaves in categories.USCITE.items()}
     for extra in extras:
@@ -84,10 +84,10 @@ def menu(extras: tuple[Extra, ...]) -> str:
             uscite.setdefault(extra.group, []).append(extra.name)
     entrate = (*categories.ENTRATE, *(e.name for e in extras if e.side == "entrate"))
     margin = max(map(len, uscite)) + 4
-    lines = ["Uscite"]
+    lines = ["Expenses"]
     lines += [_line(f"  {group}", leaves, number, margin) for group, leaves in uscite.items()]
-    lines += ["Entrate", _line("", entrate, number, 2)]
-    lines += ["Trasferimenti", _line("", categories.TRANSFERS, number, 2)]
+    lines += ["Income", _line("", entrate, number, 2)]
+    lines += ["Transfers", _line("", categories.TRANSFERS, number, 2)]
     return "\n".join(lines)
 
 
@@ -142,10 +142,10 @@ def _plain(text: str) -> str:
 
 
 def _new(answer: str, flow: str, extras: tuple[Extra, ...]) -> Extra:
-    """`+Group:Name` for a row going `flow`: money received is Entrate, which have no groups."""
+    """`+Group:Name` for a row going `flow`: money received is income, which has no groups."""
     group, _, name = (part.strip() for part in answer[1:].rpartition(":"))
     if flow == "in":
         return Extra(name, "entrate")
-    group = group or name  # a category on its own is its own group, like Regali
+    group = group or name  # a category on its own is its own group, like Gifts
     same = [known for known in categories.groups(extras) if known.lower() == group.lower()]
     return Extra(name, "uscite", same[0] if same else group)

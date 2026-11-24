@@ -246,14 +246,14 @@ def test_a_bill_without_its_purchase_is_shown_on_import_and_blocks_the_commit(ru
 
 
 def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> None:
-    run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
+    run.rules.write_text("rules:\n  - {match: Muster, category: Rent}\n", encoding="utf-8")
     assert run.load() == dbcli.NEEDS_REVIEW
     before = run.pending()
-    run.answers = ["Spesa", "q"]
+    run.answers = ["Groceries", "q"]
     assert run.load("--review") == dbcli.NEEDS_REVIEW
     assert len(run.questions) == 2
     assert f"saved to {run.rules}" in run.output
-    assert 'category: "Spesa"' in run.rules.read_text(encoding="utf-8")
+    assert 'category: "Groceries"' in run.rules.read_text(encoding="utf-8")
     assert 0 < run.pending() < before
 
     run.questions.clear()
@@ -263,7 +263,7 @@ def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> N
 
 def test_the_rules_of_the_other_person_are_not_applied(run: Run) -> None:
     run.rules.write_text("rules: []\n", encoding="utf-8")
-    rule = "rules:\n  - {match: Muster, category: Affitto}\n"
+    rule = "rules:\n  - {match: Muster, category: Rent}\n"
     run.rules.with_name("rules.anna.yaml").write_text(rule, encoding="utf-8")
     run.load()
     without = run.pending()
@@ -273,7 +273,7 @@ def test_the_rules_of_the_other_person_are_not_applied(run: Run) -> None:
 
 
 def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
-    run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
+    run.rules.write_text("rules:\n  - {match: Muster, category: Rent}\n", encoding="utf-8")
     run.answers = ["+Prestiti", "q"]
     assert run.load("--review") == dbcli.NEEDS_REVIEW
     added = run.rules.with_name("categories.yaml")
@@ -287,6 +287,17 @@ def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
     assert conn.execute(query).fetchone()[0] > 0
     conn.close()
     assert run.load() == dbcli.NEEDS_REVIEW  # the saved rule and category are read again
+
+
+def test_an_unmatched_category_of_before_is_read_by_its_english_name(run: Run) -> None:
+    run.rules.write_text("rules: []\n", encoding="utf-8")
+    config = run.config.read_text(encoding="utf-8")
+    run.config.write_text(config + "unmatched: Unicorni\n", encoding="utf-8")
+    assert run.load() == dbcli.FAILED
+    assert "unmatched: 'Unicorni' is no category" in run.output
+    run.config.write_text(config + "unmatched: Non classificato\n", encoding="utf-8")
+    assert run.load() == dbcli.NEEDS_REVIEW  # the transfers: no expense or income is left
+    assert "\n4 transactions need a category" in run.output
 
 
 def test_review_asks_nothing_when_every_row_has_a_category(run: Run) -> None:
@@ -911,11 +922,11 @@ def test_shares_typed_before_the_export_is_imported_are_removed_first(run: Run) 
 
 
 def test_query_lists_the_matching_rows_and_their_total(closed: Run) -> None:
-    assert closed("query", "--category", "Spesa") == dbcli.OK
+    assert closed("query", "--category", "Groceries") == dbcli.OK
     assert closed.output == (
-        "2026-08-07  Lukas  Swisscard    -41.85  CHF  Spesa  FRISCHMARKT ZENTRUM\n"
-        "2026-08-30  Lukas  Migros       -25.40  CHF  Spesa  KONSUM-1234 ZUERICH\n"
-        "2026-08-31  Lukas  Revolut CHF  -20.00  CHF  Spesa  Konsum\n"
+        "2026-08-07  Lukas  Swisscard    -41.85  CHF  Groceries  FRISCHMARKT ZENTRUM\n"
+        "2026-08-30  Lukas  Migros       -25.40  CHF  Groceries  KONSUM-1234 ZUERICH\n"
+        "2026-08-31  Lukas  Revolut CHF  -20.00  CHF  Groceries  Konsum\n"
         "3 transactions\n"
         "Total:\n"
         "  -87.25 CHF  (3)\n"
@@ -938,7 +949,7 @@ def test_query_can_print_the_totals_alone_with_a_line_per_period(closed: Run) ->
 
 def test_query_takes_a_day_a_month_or_a_year_as_either_end(closed: Run) -> None:
     def count(*args: str) -> str:
-        assert closed("query", "--summary", "--category", "Spesa", *args) == dbcli.OK
+        assert closed("query", "--summary", "--category", "Groceries", *args) == dbcli.OK
         return closed.output.partition("\n")[0]
 
     assert count("--from", "2026-08-30") == "2 transactions"
@@ -952,7 +963,7 @@ def test_query_takes_a_day_a_month_or_a_year_as_either_end(closed: Run) -> None:
 def test_query_by_booking_date_shows_that_date(closed: Run) -> None:
     assert closed("query", "--text", "frischmarkt", "--booking", "--from", "2026-09") == dbcli.OK
     assert closed.output == (
-        "2026-09-04  Lukas  Swisscard  -41.85  CHF  Spesa  FRISCHMARKT ZENTRUM\n"
+        "2026-09-04  Lukas  Swisscard  -41.85  CHF  Groceries  FRISCHMARKT ZENTRUM\n"
         "1 transaction\n"
         "Total:\n"
         "  -41.85 CHF  (1)\n"
@@ -963,8 +974,8 @@ def test_query_combines_account_amount_and_owner(closed: Run) -> None:
     migros = ("query", "--account", "Migros", "--min", "1000", "--max", "2000")
     assert closed(*migros, "--owner", "Lukas") == dbcli.OK
     assert closed.output.startswith(
-        "2026-09-01  Lukas  Migros  -1,850.00  CHF  Affitto  Hans Muster\n"
-        "2026-09-08  Lukas  Migros  -1,288.18  CHF           Swisscard AECS GmbH\n"
+        "2026-09-01  Lukas  Migros  -1,850.00  CHF  Rent  Hans Muster\n"
+        "2026-09-08  Lukas  Migros  -1,288.18  CHF        Swisscard AECS GmbH\n"
         "2 transactions\n"
     )
     assert closed("query", "--owner", "Anna") == dbcli.OK

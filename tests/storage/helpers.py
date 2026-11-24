@@ -41,7 +41,7 @@ def txn(amount: str, **fields: Any) -> Transaction:
         "kind": Kind.EXPENSE,
         "source_file": "migros.csv",
         "source_ref": "1",
-        "category": "Spesa",
+        "category": "Groceries",
     }
     return Transaction(amount=Decimal(amount), **(defaults | fields))
 
@@ -55,7 +55,7 @@ def trade(amount: str, ticker: str, quantity: str, **fields: Any) -> SecurityTra
         "kind": Kind.SECURITY_TRADE,
         "source_file": "ibkr.csv",
         "source_ref": "Trades:1",
-        "category": "Investimenti",
+        "category": "Investments",
         "price": Decimal("101.25"),
         "asset_tab": "ETFs",
     }

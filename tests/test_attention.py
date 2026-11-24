@@ -134,7 +134,7 @@ def _recurrence(amounts: list[str], *, through: date) -> query.Recurrence:
             counterparty="Streamio",
             kind=Kind.EXPENSE,
             category="SIM",
-            category_parent="Telefonia",
+            category_parent="Phone",
             counterparty_owner=None,
         )
         for n, (m, amount) in enumerate(zip(range(4, 4 + len(amounts)), amounts, strict=True))

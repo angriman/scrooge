@@ -16,8 +16,8 @@ from scrooge.storage import db, store
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 
 START, END = date(2025, 1, 1), date(2026, 8, 31)
-SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
-BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
+SALARY = {"kind": Kind.INCOME, "category": "Salary"}
+BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investments"}
 TRADE = {"kind": Kind.TRADING, "category": "Trading"}
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 
@@ -36,8 +36,8 @@ def salaries(amount: str, first: date, months: int) -> list[Transaction]:
 
 LUKAS = [
     *salaries("5000", START, 20),
-    txn("10", date=date(2026, 6, 30), source_ref="1", kind=Kind.INTEREST, category="Interessi"),
-    txn("-4", date=date(2026, 7, 31), source_ref="2", kind=Kind.INTEREST, category="Interessi"),
+    txn("10", date=date(2026, 6, 30), source_ref="1", kind=Kind.INTEREST, category="Interest"),
+    txn("-4", date=date(2026, 7, 31), source_ref="2", kind=Kind.INTEREST, category="Interest"),
     # Options closed at a gain, then at a loss: income is what is left of the two.
     txn("300", date=date(2026, 7, 10), source_ref="3", **TRADE),
     txn("-120", date=date(2026, 7, 20), source_ref="4", **TRADE),
@@ -51,11 +51,11 @@ LUKAS = [
         date=date(2026, 7, 6),
         source_ref="8",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="ANNA MEIER",
     ),
     txn("20", date=date(2026, 7, 7), source_ref="9", kind=Kind.INCOME),
-    txn("-1850", date=date(2026, 7, 2), source_ref="10", category="Affitto"),
+    txn("-1850", date=date(2026, 7, 2), source_ref="10", category="Rent"),
 ]
 LUKAS_USD = [
     txn(
@@ -63,7 +63,7 @@ LUKAS_USD = [
         date=date(2025, 3, 15),
         source_ref="1",
         kind=Kind.DIVIDEND,
-        category="Dividendi",
+        category="Dividends",
         **USD,
     ),
     txn(
@@ -71,7 +71,7 @@ LUKAS_USD = [
         date=date(2026, 3, 16),
         source_ref="2",
         kind=Kind.DIVIDEND,
-        category="Dividendi",
+        category="Dividends",
         **USD,
     ),
 ]
@@ -82,7 +82,7 @@ ANNA = [
         date=date(2026, 7, 10),
         source_ref="1",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="LUKAS MEIER",
     ),
 ]
@@ -142,11 +142,11 @@ def test_income_is_grouped_by_where_it_comes_from(conn: sqlite3.Connection) -> N
 
 def test_the_sources_add_up_the_range_leaf_by_leaf(conn: sqlite3.Connection) -> None:
     assert his(conn).sources == (
-        Source("Lavoro", "Stipendio", 8, Decimal(40000)),
-        Source("Investimenti", "Trading", 2, Decimal(180)),
-        Source("Investimenti", "Dividendi", 1, Decimal(90)),
-        Source("Investimenti", "Interessi", 2, Decimal(6)),
-        Source("Altro", "Cashback", 1, Decimal(15)),
+        Source("Work", "Salary", 8, Decimal(40000)),
+        Source("Investments", "Trading", 2, Decimal(180)),
+        Source("Investments", "Dividends", 1, Decimal(90)),
+        Source("Investments", "Interest", 2, Decimal(6)),
+        Source("Other", "Cashback", 1, Decimal(15)),
     )
 
 

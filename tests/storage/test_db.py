@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from scrooge import staging
+from scrooge import categories, staging
 from scrooge.models import CashBalance, Transaction
-from scrooge.storage import db, pairs
+from scrooge.storage import db, pairs, store
 from scrooge.storage.ids import transaction_ids
 from tests.storage.conftest import NOW
 from tests.storage.helpers import CLOSED_AT, OWNER, batch, dump, migros, statement, txn
@@ -408,7 +408,7 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     every = db.migrations()
     monkeypatch.setattr(db, "migrations", lambda: every[:8])
     assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7, 8]
-    monkeypatch.undo()
+    monkeypatch.setattr(db, "migrations", lambda: every[:9])
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
     conn.execute("INSERT OR IGNORE INTO currencies (code, decimals) VALUES ('USD', 2)")
     for source, name, end in (("ibkr", "i", "2026-09-30"), ("migros", "m", "2026-09-30")):
@@ -438,4 +438,50 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     assert [row[0] for row in conn.execute("SELECT source FROM prices")] == ["manual"]
     conn.execute("DELETE FROM statement_files WHERE source = 'ibkr'")
     assert conn.execute("SELECT count(*) FROM statement_rates").fetchone()[0] == 0
+    conn.close()
+
+
+def test_migration_0010_gives_the_taxonomy_its_english_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    every = db.migrations()
+    monkeypatch.setattr(db, "migrations", lambda: every[:9])
+    assert db.migrate(conn, NOW) == list(range(1, 10))
+    monkeypatch.undo()
+    italian = {new: old for old, new in categories.ITALIAN.items()}
+    insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
+    expected: list[tuple[str, str, str | None]] = []
+
+    def add(name: str, side: str, parent: int | None = None, group: str | None = None) -> int:
+        expected.append((side, name, group))
+        row = conn.execute(insert, (italian.get(name, name), parent, side)).lastrowid
+        assert row is not None
+        return row
+
+    groups = {group: add(group, "uscite") for group in categories.USCITE}
+    for group, leaves in categories.USCITE.items():
+        for leaf in leaves:
+            add(leaf, "uscite", groups[group], group)
+    for side, names in (("entrate", categories.ENTRATE), ("transfer", categories.TRANSFERS)):
+        for name in names:
+            add(name, side)
+    # added by hand: under a group of the taxonomy, and a name of the taxonomy under one's own
+    conn.execute(insert, ("Spedizioni", groups["Transport"], "uscite"))
+    own = conn.execute(insert, ("Prestiti", None, "uscite")).lastrowid
+    conn.execute(insert, ("Affitto", own, "uscite"))
+    expected += [
+        ("uscite", "Spedizioni", "Transport"),
+        ("uscite", "Prestiti", None),
+        ("uscite", "Affitto", "Prestiti"),  # not the taxonomy's Affitto: left alone
+    ]
+
+    assert db.migrate(conn, NOW) == [10]
+    tree = conn.execute(
+        "SELECT c.side, c.name, p.name FROM categories c "
+        "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.id"
+    )
+    assert [tuple(row) for row in tree] == expected
+    store.seed_categories(conn)
+    assert conn.execute("SELECT count(*) FROM categories").fetchone()[0] == len(expected)
     conn.close()

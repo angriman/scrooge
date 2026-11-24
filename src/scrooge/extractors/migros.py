@@ -43,12 +43,12 @@ _TWINT = re.compile(r"((?:Addebito|Accredito) TWINT) (.*?)(?: \d{16})?$")
 _CARD_PURCHASE = re.compile(r"Acquisto (.+?) \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Carta:")
 # Transfers the sheet tracks as their own categories (D2), by what the booking text starts with.
 _TRANSFERS = (
-    ("Acquisto Revolut", Kind.TRANSFER, "Topup Revolut"),
-    ("REVOLUT LTD", Kind.TRANSFER, "Topup Revolut"),
-    ("Interactive Brokers", Kind.TRANSFER, "Topup IBKR"),
-    ("Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
-    ("Storno, Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
-    ("Storno: Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
+    ("Acquisto Revolut", Kind.TRANSFER, "Revolut top-up"),
+    ("REVOLUT LTD", Kind.TRANSFER, "Revolut top-up"),
+    ("Interactive Brokers", Kind.TRANSFER, "IBKR top-up"),
+    ("Prelevamento al Bancomat", Kind.TRANSFER, "Withdrawals"),
+    ("Storno, Prelevamento al Bancomat", Kind.TRANSFER, "Withdrawals"),
+    ("Storno: Prelevamento al Bancomat", Kind.TRANSFER, "Withdrawals"),
     # D3: the card bill is replaced by the individual Swisscard purchases.
     ("Swisscard AECS", Kind.INTERNAL, ""),
 )

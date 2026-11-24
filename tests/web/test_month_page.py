@@ -140,11 +140,11 @@ def test_a_month_says_which_committed_statements_cover_it_and_what_they_hold(
         ["Migros Bank account statement", "migros.csv", "2026-08-01 to 2026-08-31", "yes", "3"]
     ]
     assert [row[:3] for row in changeable] == [
-        ["KONSUM paid", "2026-08-03 · Migros · -45.20 CHF", "Spesa"],
-        ["KONSUM received", "2026-08-25 · Migros · 6,000.00 CHF", "Stipendio"],
-        ["SAVINGS TOPUP AUG paid", "2026-08-28 · Migros · -1,000.00 CHF", "Giroconto"],
+        ["KONSUM paid", "2026-08-03 · Migros · -45.20 CHF", "Groceries"],
+        ["KONSUM received", "2026-08-25 · Migros · 6,000.00 CHF", "Salary"],
+        ["SAVINGS TOPUP AUG paid", "2026-08-28 · Migros · -1,000.00 CHF", "Own transfer"],
     ]
-    assert ["Giroconto transfer", "-1,000.00 CHF", "1"] in totals
+    assert ["Own transfer transfer", "-1,000.00 CHF", "1"] in totals
     assert f'<a href="{SITE}/months?owner=Lukas" aria-current="page">Months</a>' in response.text
 
 
@@ -195,8 +195,8 @@ def test_the_form_offers_leaf_categories_and_only_these_rows_without_rules(
         'required aria-label="Category for SAVINGS TOPUP AUG">'
     ) in page
     assert page.count('<datalist id="categories">') == 1
-    assert '<option value="Affitto" label="Casa" data-side="uscite">' in page
-    assert '<option value="Casa"' not in page
+    assert '<option value="Rent" label="Home" data-side="uscite">' in page
+    assert '<option value="Home"' not in page
     assert re.findall(r"<script[^>]*>", page) == [
         f'<script src="{SITE}/static/choose.js" defer>',
         f'<script src="{SITE}/static/picker.js" defer>',
@@ -209,28 +209,28 @@ def test_a_category_that_was_wrong_in_a_committed_row_is_changed_from_the_page(
     client: TestClient, database: Path
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category="Regali", remember="rows", owner="Lukas")
+    form = sent(client, id=row, category="Gifts", remember="rows", owner="Lukas")
     wrong = client.post("/months/Lukas/2026-08/categorize", data=form)  # not said to be a change
     assert wrong.status_code == 409
     assert "those rows are no longer waiting for a category" in wrong.text
     response = client.post("/months/Lukas/2026-08/categorize", data=form | {"change": "1"})
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/months/Lukas/2026-08"
-    assert category_of(database, row) == ("Regali", "manual")
-    assert '<td data-label="Now">Regali</td>' in client.get("/months/Lukas/2026-08").text
+    assert category_of(database, row) == ("Gifts", "manual")
+    assert '<td data-label="Now">Gifts</td>' in client.get("/months/Lukas/2026-08").text
     # The other pages follow at once.
-    assert "Regali" in client.get("/transactions", params={"owner": "Lukas"}).text
+    assert "Gifts" in client.get("/transactions", params={"owner": "Lukas"}).text
 
 
 def test_a_choice_for_committed_rows_that_cannot_be_made_is_said(
     client: TestClient, database: Path
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category="Casa", remember="rows", change="1")
+    form = sent(client, id=row, category="Home", remember="rows", change="1")
     response = client.post("/months/Lukas/2026-08/categorize", data=form)
     assert response.status_code == 409
-    assert "No category was set: unknown category &#39;Casa&#39;." in response.text
-    assert category_of(database, row) == ("Giroconto", "rule")
+    assert "No category was set: unknown category &#39;Home&#39;." in response.text
+    assert category_of(database, row) == ("Own transfer", "rule")
     gone = client.post("/months/Lukas/2026-08/categorize", data=form | {"id": "gone"})
     assert "those rows cannot be given another category" in gone.text
     forged = client.post("/months/Lukas/2026-08/categorize", data=form | {"token": "x"})
@@ -247,14 +247,14 @@ def test_a_category_to_remember_is_saved_as_a_rule(database: Path, tmp_path: Pat
     page = client.get("/months/Lukas/2026-08").text
     assert '<input type="radio" name="remember" value="rule" checked>' in page
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category="Regali", remember="rule", change="1")
+    form = sent(client, id=row, category="Gifts", remember="rule", change="1")
     assert (
         client.post(
             "/months/Lukas/2026-08/categorize", data=form, follow_redirects=False
         ).status_code
         == 303
     )
-    assert category_of(database, row) == ("Regali", "manual")
+    assert category_of(database, row) == ("Gifts", "manual")
     assert rules.shared.read_text(encoding="utf-8").startswith("rules:\n")
 
 
@@ -266,27 +266,27 @@ def test_a_category_is_added_from_the_page_and_can_then_be_chosen(
     client = TestClient(app, base_url=SITE, follow_redirects=False)
     page = client.get("/months/Lukas/2026-08").text
     assert "<h2>Add a category</h2>" in page
-    assert '<option value="uscite:Casa">Expenses, Casa</option>' in page
-    assert '<option value="Animali"' not in page
-    form = sent(client, name="Animali", under="uscite:Casa", owner="Lukas")
+    assert '<option value="uscite:Home">Expenses, Home</option>' in page
+    assert '<option value="Pets"' not in page
+    form = sent(client, name="Pets", under="uscite:Home", owner="Lukas")
     response = client.post("/months/Lukas/2026-08/category", data=form)
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/months/Lukas/2026-08"
     assert (
-        '<option value="Animali" label="Casa" data-side="uscite">'
+        '<option value="Pets" label="Home" data-side="uscite">'
         in client.get("/months/Lukas/2026-08").text
     )
     added = (tmp_path / "categories.yaml").read_text(encoding="utf-8")
-    assert added == "categories:\n  uscite:\n    Casa:\n    - Animali\n  entrate: []\n"
+    assert added == "categories:\n  expenses:\n    Home:\n    - Pets\n  income: []\n"
     again = client.post("/months/Lukas/2026-08/category", data=form)
     assert again.status_code == 409
-    assert "No category was added: there is already a category &#39;Animali&#39;." in again.text
+    assert "No category was added: there is already a category &#39;Pets&#39;." in again.text
 
 
 def test_without_a_rules_file_no_category_can_be_added(client: TestClient) -> None:
     page = client.get("/months/Lukas/2026-08").text
     assert "Add a category" not in page
-    form = sent(client, name="Animali", under="entrate:")
+    form = sent(client, name="Pets", under="entrate:")
     assert client.post("/months/Lukas/2026-08/category", data=form).status_code == 404
 
 
@@ -295,13 +295,13 @@ def test_a_form_without_the_token_of_these_pages_changes_nothing(
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
     url = "/months/Lukas/2026-08/categorize"
-    fields = {"id": row, "category": "Regali", "change": "1"}
+    fields = {"id": row, "category": "Gifts", "change": "1"}
     assert client.post(url).status_code == 403
     assert client.post(url, data={"token": "guessed"}).status_code == 403
     good = sent(client, **fields)
     elsewhere = client.post(url, data=good, headers={"origin": "https://evil.example"})
     assert elsewhere.status_code == 403
-    assert category_of(database, row) == ("Giroconto", "rule")
+    assert category_of(database, row) == ("Own transfer", "rule")
     form = {"content-type": "application/x-www-form-urlencoded"}
     assert client.post(url, content=b"token=\xff", headers=form).status_code == 400
     assert client.post(url, data=good, headers={"origin": SITE}).status_code == 303

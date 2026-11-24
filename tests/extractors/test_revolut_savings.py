@@ -27,8 +27,8 @@ def test_interest_and_the_fee_on_it_are_booked_on_revolut_eur(result: Extraction
         totals[t.kind, t.category] = totals.get((t.kind, t.category), Decimal(0)) + t.amount
     assert totals == {
         # 0.0812 + 0.0574 + 0.04 PAID, and the 0.09 bought on 19 Sep that no transfer paid for
-        (Kind.INTEREST, "Interessi"): Decimal("0.2686"),
-        (Kind.COMMISSION, "Commissioni"): Decimal("-0.0086"),  # Service Fee -0.0050 - 0.0036
+        (Kind.INTEREST, "Interest"): Decimal("0.2686"),
+        (Kind.COMMISSION, "Fees"): Decimal("-0.0086"),  # Service Fee -0.0050 - 0.0036
     }
     assert {(t.account, t.currency) for t in result.transactions} == {("Revolut EUR", "EUR")}
 

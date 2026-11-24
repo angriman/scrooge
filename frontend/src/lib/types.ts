@@ -479,7 +479,7 @@ export interface CashFlowPeriod extends Saved {
 	rate_salary_12: Amount | null;
 	/** Spent in each of `CashFlowReport.parts`. */
 	spent_by: Record<string, Amount>;
-	/** Earned in each income group (Lavoro, Investimenti, Altro). */
+	/** Earned in each income group (Work, Investments, Other). */
 	earned_by: Record<string, Amount>;
 }
 

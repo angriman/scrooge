@@ -28,7 +28,7 @@ LUKAS = [
             "-1500",
             date=month(n, 1),
             source_ref=f"rent{n}",
-            category="Affitto",
+            category="Rent",
             counterparty=LANDLORD,
         )
         for n in range(24)
@@ -40,21 +40,21 @@ LUKAS = [
         for n in range(0, 24, 2)
     ),
     *(
-        txn("5000", date=month(n, 25), source_ref=f"pay{n}", kind=Kind.INCOME, category="Stipendio")
+        txn("5000", date=month(n, 25), source_ref=f"pay{n}", kind=Kind.INCOME, category="Salary")
         for n in range(23)
     ),
     # A refund from the shop lowers what was spent there.
     txn("20", date=date(2026, 7, 9), source_ref="1", kind=Kind.INCOME, counterparty=SHOP),
     # Paid to the other person, and paid back by her: not income.
     txn(
-        "-200", date=date(2026, 7, 10), source_ref="2", category="Regali", counterparty="Anna Meier"
+        "-200", date=date(2026, 7, 10), source_ref="2", category="Gifts", counterparty="Anna Meier"
     ),
     txn(
         "900",
         date=date(2026, 7, 15),
         source_ref="3",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="ANNA MEIER",
     ),
     # Securities are not spending.
@@ -63,7 +63,7 @@ LUKAS = [
         date=date(2026, 7, 3),
         source_ref="4",
         kind=Kind.SECURITY_TRADE,
-        category="Investimenti",
+        category="Investments",
     ),
 ]
 LUKAS_USD: list[Transaction] = [
@@ -73,7 +73,7 @@ LUKAS_USD: list[Transaction] = [
         date=date(2026, 1, 20),
         source_ref="0",
         kind=Kind.TRANSFER,
-        category="Giroconto",
+        category="Own transfer",
         account="IBKR USD",
         currency="USD",
         source_file="ibkr.csv",
@@ -83,7 +83,7 @@ LUKAS_USD: list[Transaction] = [
         date=date(2026, 2, 1),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Commissioni",
+        category="Fees",
         counterparty="/ESZ6",
         account="IBKR USD",
         currency="USD",
@@ -116,7 +116,7 @@ def amounts(found: context.Context) -> list[Decimal]:
 
 
 def test_a_category_month_by_month_against_its_usual_month(conn: sqlite3.Connection) -> None:
-    found = shown(conn, "category", "Alimentari")
+    found = shown(conn, "category", "Food")
     assert [each.first for each in found.months[:2]] == [date(2024, 9, 1), date(2024, 10, 1)]
     assert found.months[-1].first == date(2026, 8, 1)
     # 140 in the months of both shops, 100 in the others; the refund is taken off July.
@@ -130,24 +130,24 @@ def test_a_category_month_by_month_against_its_usual_month(conn: sqlite3.Connect
         Merchant("KONSUM ZUERICH", Decimal(2380), 25),
         Merchant("Coop Bern", Decimal(480), 12),
     )
-    assert amounts(shown(conn, "category", "Spesa")) == amounts(found)  # its one leaf
+    assert amounts(shown(conn, "category", "Groceries")) == amounts(found)  # its one leaf
 
 
 def test_a_category_of_income_is_money_earned(conn: sqlite3.Connection) -> None:
-    found = shown(conn, "category", "Stipendio")
+    found = shown(conn, "category", "Salary")
     assert found.earned
     assert amounts(found) == [Decimal(5000)] * 23 + [Decimal(0)]
     assert (found.usual, found.this_month) == (Decimal(5000), Decimal(0))
     assert found.merchants == (Merchant("Migros", Decimal(115000), 23),)  # it names nobody
     # What the other person pays back is not income.
-    assert set(amounts(shown(conn, "category", "Rimborsi"))) == {Decimal(0)}
+    assert set(amounts(shown(conn, "category", "Refunds"))) == {Decimal(0)}
 
 
 def test_only_the_largest_merchants_of_a_category_are_listed(
     conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(context, "MERCHANTS", 1)
-    found = shown(conn, "category", "Alimentari")
+    found = shown(conn, "category", "Food")
     assert found.merchants == (Merchant("KONSUM ZUERICH", Decimal(2380), 25),)
 
 
@@ -191,7 +191,7 @@ def test_an_account_counts_every_row_of_it_in_and_out(conn: sqlite3.Connection) 
 
 
 def test_only_an_account_is_a_net_flow(conn: sqlite3.Connection) -> None:
-    assert not shown(conn, "category", "Alimentari").net
+    assert not shown(conn, "category", "Food").net
     assert not shown(conn, "merchant", "Coop Bern").net
 
 
@@ -233,14 +233,14 @@ def test_a_name_the_database_does_not_have_is_refused(conn: sqlite3.Connection) 
     with pytest.raises(ValueError, match="'shop' is not one of category, merchant, account"):
         shown(conn, "shop", "Coop")
     with pytest.raises(MissingRateError, match="GBP"):
-        context.run(conn, "category", "Alimentari", owner=OWNER, currency="GBP")
+        context.run(conn, "category", "Food", owner=OWNER, currency="GBP")
 
 
 def test_an_exchange_nets_to_its_spread_and_trading_stays_inside() -> None:
     connection = db.connect(":memory:")
     db.migrate(connection, CLOSED_AT)
     # An account holds one currency: an exchange is a row out of one and a row into another.
-    francs = {"account": "Revolut CHF", "source_file": "revolut.csv", "category": "Acquisto EUR"}
+    francs = {"account": "Revolut CHF", "source_file": "revolut.csv", "category": "Buy EUR"}
     euros = francs | {"account": "Revolut EUR", "currency": "EUR", "source_file": "eur.csv"}
     out = [txn("-1000", date=date(2026, 7, 3), source_ref="1", kind=Kind.FX, **francs)]
     rows = [

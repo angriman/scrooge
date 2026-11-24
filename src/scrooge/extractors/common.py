@@ -187,7 +187,7 @@ def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is
         kind=Kind.INCOME,
         source_file=source_file,
         source_ref=f"{source_ref}:salary",
-        category="Stipendio",
+        category="Salary",
     )
     purchase = SecurityTrade(
         date=day,
@@ -198,7 +198,7 @@ def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is
         kind=Kind.SECURITY_TRADE,
         source_file=source_file,
         source_ref=source_ref,
-        category="Investimenti",
+        category="Investments",
         ticker=ticker,
         quantity=quantity,
         price=price,
@@ -215,9 +215,9 @@ _HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own ac
 def fx_category(bought: str) -> str:
     """The category of a currency exchange, by the currency it buys.
 
-    Back into the home currency it is a move between one's own accounts (`Giroconto`); EUR and
+    Back into the home currency it is a move between one's own accounts (`Own transfer`); EUR and
     USD have an `Acquisto` category of their own; any other currency has none.
     """
     if bought == _HOME_CURRENCY:
-        return "Giroconto"
-    return f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
+        return "Own transfer"
+    return f"Buy {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""

@@ -60,13 +60,13 @@ AUGUST_DAYS = (date(2026, 8, 1), date(2026, 8, 31))
 SEPTEMBER_DAYS = (date(2026, 9, 1), date(2026, 9, 30))
 LUKAS_AUGUST = [
     txn("-45.20", date=date(2026, 8, 3), source_ref="1"),
-    txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Stipendio"),
+    txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Salary"),
     txn(
         "-1000",
         date=date(2026, 8, 28),
         source_ref="3",
         kind=Kind.TRANSFER,
-        category="Giroconto",
+        category="Own transfer",
         description="SAVINGS TOPUP AUG",
     ),
 ]
@@ -78,7 +78,7 @@ LUKAS_SEPTEMBER = [
         date=date(2026, 9, 20),
         source_ref="6",
         kind=Kind.TRANSFER,
-        category="Giroconto",
+        category="Own transfer",
         description="SAVINGS TOPUP",
     ),
 ]

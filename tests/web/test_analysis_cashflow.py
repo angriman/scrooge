@@ -16,20 +16,20 @@ from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close
 from tests.web.test_app import text
 
-SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
-SHARES = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
+SALARY = {"kind": Kind.INCOME, "category": "Salary"}
+SHARES = {"kind": Kind.SECURITY_TRADE, "category": "Investments"}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
 SITE = "http://127.0.0.1:8765"
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 LUKAS = [
     txn("-45.20", date=date(2026, 7, 3), source_ref="1"),
-    txn("-1850", date=date(2026, 7, 20), source_ref="2", category="Affitto"),
+    txn("-1850", date=date(2026, 7, 20), source_ref="2", category="Rent"),
     txn("6000", date=date(2026, 7, 25), source_ref="3", **SALARY),
     txn("-500", date=date(2026, 8, 10), source_ref="4", **SHARES),
     txn("6100", date=date(2026, 8, 25), source_ref="5", **SALARY),
-    txn("-200", date=date(2026, 8, 26), source_ref="6", category="Regali", counterparty=GIFT),
+    txn("-200", date=date(2026, 8, 26), source_ref="6", category="Gifts", counterparty=GIFT),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti e bar", **EUR)]
+LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Eating out", **EUR)]
 ANNA = [
     txn("-60", date=date(2026, 8, 12), source_ref="1"),
     txn(
@@ -37,7 +37,7 @@ ANNA = [
         date=date(2026, 8, 26),
         source_ref="2",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="LUKAS MEIER",
     ),
 ]
@@ -88,12 +88,12 @@ def test_each_currency_has_its_periods_newest_first_and_their_sum(client: TestCl
         ["2026-07", "6,000.00", "-1,895.20", "", "4,104.80", "0.00"],
     ]
     assert chf_sum == [["All 2", "12,100.00", "-1,955.20", "", "10,144.80", "-500.00"]]
-    assert income == [["Stipendio", "12,100.00", "2"]]
-    assert expenses == [["Casa", "-1,850.00", "1"], ["Alimentari", "-105.20", "2"]]
-    assert investing == [["Investimenti", "-500.00", "1"]]
+    assert income == [["Salary", "12,100.00", "2"]]
+    assert expenses == [["Home", "-1,850.00", "1"], ["Food", "-105.20", "2"]]
+    assert investing == [["Investments", "-500.00", "1"]]
     assert eur == [["2026-08", "0.00", "-30.00", "", "-30.00", "0.00"]]
     assert eur_sum == [["All 1", "0.00", "-30.00", "", "-30.00", "0.00"]]
-    assert eur_expenses == [["Ristoranti e bar", "-30.00", "1"]]
+    assert eur_expenses == [["Eating out", "-30.00", "1"]]
     assert "what the two of you paid each other" in text(page)
 
 
@@ -115,7 +115,7 @@ def test_the_bars_are_drawn_to_the_largest_amount_of_the_currency(client: TestCl
 def test_one_person_sees_what_they_paid_the_other(client: TestClient) -> None:
     his, _, _, expenses, *_ = tables(flow(get(client, owner="Lukas")))
     assert his[0] == ["2026-08", "6,100.00", "-200.00", "", "5,900.00", "-500.00"]
-    assert ["Regali", "-200.00", "1"] in expenses
+    assert ["Gifts", "-200.00", "1"] in expenses
     hers = flow(get(client, owner="Anna"))
     assert tables(hers)[0] == [["2026-08", "200.00", "-60.00", "", "140.00", "0.00"]]
     assert "what the two of you paid each other" not in text(hers)
@@ -126,8 +126,8 @@ def test_periods_and_categories_link_to_their_transactions(client: TestClient) -
     page = page.replace(f"{SITE}/transactions?from=", "?").replace("&amp;", "&")
     assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas">2026-08</a>' in page
     # A category is listed over the range shown, which the page spells out.
-    assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas&category=Regali">Regali</a>' in page
-    followed = client.get("/transactions?from=2026-08-01&to=2026-08-31&owner=Lukas&category=Regali")
+    assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas&category=Gifts">Gifts</a>' in page
+    followed = client.get("/transactions?from=2026-08-01&to=2026-08-31&owner=Lukas&category=Gifts")
     assert "1 transaction · -200.00 CHF" in text(followed.text)
 
 
@@ -231,7 +231,7 @@ def test_the_household_is_sent_who_paid(client: TestClient) -> None:
     # His gift to her, as his statements have it.
     assert paid["moves"] == [{"sender": "Lukas", "receiver": "Anna", "amount": "200.00"}]
     assert paid["categories"][0] == {
-        "name": "Casa",
+        "name": "Home",
         "spent": "1850.00",
         "by": {"Anna": "0.00", "Lukas": "1850.00"},
     }

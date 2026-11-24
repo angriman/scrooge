@@ -9,7 +9,7 @@
     "source_file": "activity.csv",
     "source_ref": "Deposits & Withdrawals:1",
     "counterparty": "",
-    "category": "Topup IBKR",
+    "category": "IBKR top-up",
     "confidence": "1",
     "booking_date": "2026-09-10"
   },
@@ -23,7 +23,7 @@
     "source_file": "activity.csv",
     "source_ref": "Deposits & Withdrawals:2",
     "counterparty": "",
-    "category": "Prelievi",
+    "category": "Withdrawals",
     "confidence": "1",
     "booking_date": "2026-09-28"
   },
@@ -65,7 +65,7 @@
     "source_file": "activity.csv",
     "source_ref": "Deposits & Withdrawals:5",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-24"
   },
@@ -79,7 +79,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:1",
     "counterparty": "",
-    "category": "Investimenti",
+    "category": "Investments",
     "confidence": "1",
     "booking_date": "2026-09-15",
     "ticker": "ACME",
@@ -100,7 +100,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:1:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-15"
   },
@@ -114,7 +114,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:2",
     "counterparty": "",
-    "category": "Investimenti",
+    "category": "Investments",
     "confidence": "1",
     "booking_date": "2026-09-23",
     "ticker": "WIDG",
@@ -135,7 +135,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:2:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-23"
   },
@@ -163,7 +163,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:4:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-16"
   },
@@ -191,7 +191,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:5:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-29"
   },
@@ -205,7 +205,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:6:base",
     "counterparty": "",
-    "category": "Acquisto USD",
+    "category": "Buy USD",
     "confidence": "1",
     "booking_date": "2026-09-12"
   },
@@ -219,7 +219,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:6:quote",
     "counterparty": "",
-    "category": "Acquisto USD",
+    "category": "Buy USD",
     "confidence": "1",
     "booking_date": "2026-09-12"
   },
@@ -233,7 +233,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:6:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-12"
   },
@@ -261,7 +261,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:8:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-08"
   },
@@ -289,7 +289,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:9:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-08"
   },
@@ -303,7 +303,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:10:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-21"
   },
@@ -331,7 +331,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:11:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-22"
   },
@@ -345,7 +345,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:12",
     "counterparty": "",
-    "category": "Investimenti",
+    "category": "Investments",
     "confidence": "1",
     "booking_date": "2026-09-09",
     "ticker": "912797ZZ1",
@@ -366,7 +366,7 @@
     "source_file": "activity.csv",
     "source_ref": "Trades:12:comm",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-09"
   },
@@ -380,7 +380,7 @@
     "source_file": "activity.csv",
     "source_ref": "Corporate Actions:1:principal",
     "counterparty": "912797YY2",
-    "category": "Investimenti",
+    "category": "Investments",
     "confidence": "1",
     "booking_date": "2026-09-17",
     "ticker": "912797YY2",
@@ -401,7 +401,7 @@
     "source_file": "activity.csv",
     "source_ref": "Corporate Actions:1:interest",
     "counterparty": "912797YY2",
-    "category": "Interessi",
+    "category": "Interest",
     "confidence": "1",
     "booking_date": "2026-09-17"
   },
@@ -415,7 +415,7 @@
     "source_file": "activity.csv",
     "source_ref": "Transfers:1",
     "counterparty": "MS-XXXXXX-00",
-    "category": "Giroconto",
+    "category": "Own transfer",
     "confidence": "1",
     "booking_date": "2026-09-29",
     "ticker": "GOOG",
@@ -436,7 +436,7 @@
     "source_file": "activity.csv",
     "source_ref": "Dividends:1",
     "counterparty": "ACME",
-    "category": "Dividendi",
+    "category": "Dividends",
     "confidence": "1",
     "booking_date": "2026-09-25"
   },
@@ -450,7 +450,7 @@
     "source_file": "activity.csv",
     "source_ref": "Dividends:2",
     "counterparty": "WIDG",
-    "category": "Dividendi",
+    "category": "Dividends",
     "confidence": "1",
     "booking_date": "2026-09-26"
   },
@@ -464,7 +464,7 @@
     "source_file": "activity.csv",
     "source_ref": "Withholding Tax:1",
     "counterparty": "ACME",
-    "category": "Ritenute",
+    "category": "Withholding tax",
     "confidence": "1",
     "booking_date": "2026-09-25"
   },
@@ -478,7 +478,7 @@
     "source_file": "activity.csv",
     "source_ref": "Withholding Tax:2",
     "counterparty": "WIDG",
-    "category": "Ritenute",
+    "category": "Withholding tax",
     "confidence": "1",
     "booking_date": "2026-09-26"
   },
@@ -492,7 +492,7 @@
     "source_file": "activity.csv",
     "source_ref": "Interest:1",
     "counterparty": "",
-    "category": "Interessi",
+    "category": "Interest",
     "confidence": "1",
     "booking_date": "2026-09-03"
   },
@@ -506,7 +506,7 @@
     "source_file": "activity.csv",
     "source_ref": "Interest:2",
     "counterparty": "",
-    "category": "Interessi",
+    "category": "Interest",
     "confidence": "1",
     "booking_date": "2026-09-03"
   },
@@ -520,7 +520,7 @@
     "source_file": "activity.csv",
     "source_ref": "Fees:1",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-02"
   },
@@ -534,7 +534,7 @@
     "source_file": "activity.csv",
     "source_ref": "Fees:2",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-02"
   },
@@ -548,7 +548,7 @@
     "source_file": "activity.csv",
     "source_ref": "Fees:3",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-02"
   },
@@ -576,7 +576,7 @@
     "source_file": "activity.csv",
     "source_ref": "GST/VAT Details:1",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-02"
   },
@@ -590,7 +590,7 @@
     "source_file": "activity.csv",
     "source_ref": "GST/VAT Details:2",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-02"
   },
@@ -604,7 +604,7 @@
     "source_file": "activity.csv",
     "source_ref": "GST/VAT Details:3",
     "counterparty": "",
-    "category": "Commissioni",
+    "category": "Fees",
     "confidence": "1",
     "booking_date": "2026-09-02"
   }

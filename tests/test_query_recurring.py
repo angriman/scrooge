@@ -17,8 +17,8 @@ def _row(  # a row is many fields; the tests vary these
     counterparty: str = "Landlord AG",
     *,
     kind: Kind = Kind.EXPENSE,
-    category: str | None = "Affitto",
-    parent: str | None = "Casa",
+    category: str | None = "Rent",
+    parent: str | None = "Home",
     currency: str = "CHF",
     account: str = "Migros",
 ) -> Row:
@@ -86,16 +86,16 @@ def test_only_money_in_and_out_comes_back() -> None:
 def test_rows_add_up_by_top_level_category_and_currency_largest_first() -> None:
     rows = [
         _row(1, date(2026, 9, 1), "-1850"),
-        _row(2, date(2026, 9, 2), "-20", "Coop", category="Spesa", parent=None),
-        _row(3, date(2026, 9, 3), "-30", "Coop", category="Spesa", parent=None),
-        _row(4, date(2026, 9, 4), "-10", "Coop", category="Spesa", parent=None, currency="EUR"),
+        _row(2, date(2026, 9, 2), "-20", "Coop", category="Groceries", parent=None),
+        _row(3, date(2026, 9, 3), "-30", "Coop", category="Groceries", parent=None),
+        _row(4, date(2026, 9, 4), "-10", "Coop", category="Groceries", parent=None, currency="EUR"),
         _row(5, date(2026, 9, 5), "200", "Savings", kind=Kind.INTERNAL, category=None, parent=None),
     ]
     assert query.by_category(rows) == (
-        CategorySum("Casa", "CHF", 1, D("-1850")),
+        CategorySum("Home", "CHF", 1, D("-1850")),
         CategorySum(query.TRANSFERS, "CHF", 1, D("200")),
-        CategorySum("Spesa", "CHF", 2, D("-50")),
-        CategorySum("Spesa", "EUR", 1, D("-10")),
+        CategorySum("Groceries", "CHF", 2, D("-50")),
+        CategorySum("Groceries", "EUR", 1, D("-10")),
     )
 
 

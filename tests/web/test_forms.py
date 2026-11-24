@@ -24,7 +24,7 @@ def test_every_field_is_read() -> None:
         "booking": "1",
         "owner": "Lukas",
         "account": "Migros",
-        "category": "Ristoranti e bar",
+        "category": "Eating out",
         "kind": "expense",
         "min": "10",
         "max": "1'250.50",
@@ -38,7 +38,7 @@ def test_every_field_is_read() -> None:
             booking=True,
             owner="Lukas",
             account="Migros",
-            category="Ristoranti e bar",
+            category="Eating out",
             kind=Kind.EXPENSE,
             at_least=Decimal(10),
             at_most=Decimal("1250.50"),
@@ -137,7 +137,7 @@ def test_a_context_is_of_exactly_one_category_merchant_or_account() -> None:
     asked = forms.context_view({"merchant": " Trattoria ", "owner": "Anna", "text": "x"})
     assert asked == forms.ContextView("Anna", "EUR", "merchant", "Trattoria", ())
     assert forms.context_view({"account": "Migros", "currency": "chf"}).currency == "CHF"
-    for params in ({}, {"category": " "}, {"category": "Casa", "account": "Migros"}):
+    for params in ({}, {"category": " "}, {"category": "Home", "account": "Migros"}):
         refused = forms.context_view(params)
         assert (refused.kind, refused.name) == ("", "")
         assert refused.errors == ("Ask for exactly one of category, merchant and account.",)

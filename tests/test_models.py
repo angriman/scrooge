@@ -49,7 +49,7 @@ def test_a_security_trade_made_from_a_transaction_keeps_every_field_of_it() -> N
     txn = replace(
         _make(Decimal("-12.50")),
         counterparty="Shop",
-        category="Investimenti",
+        category="Investments",
         booking_date=date(2026, 9, 3),
     )
     trade = SecurityTrade.from_transaction(

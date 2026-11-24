@@ -121,7 +121,7 @@
     "source_file": "statement.txt",
     "source_ref": "0002:20",
     "counterparty": "REVOLUT**1234*",
-    "category": "Topup Revolut",
+    "category": "Revolut top-up",
     "confidence": "1",
     "booking_date": "2026-09-04"
   },

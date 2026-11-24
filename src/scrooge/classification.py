@@ -2,9 +2,9 @@
 
 Rules are regular expressions matched, case-insensitively, against a transaction's description
 and counterparty; the first match wins. Extractors already set the deterministic categories
-(Trading, Commissioni, top-ups...), so rules only apply to rows still without one.
+(Trading, Fees, top-ups...), so rules only apply to rows still without one.
 
-A rule that gives a transfer category (Topup Revolut, Giroconto...) to a row the extractor took
+A rule that gives a transfer category (Revolut top-up, Own transfer...) to a row the extractor took
 for income or an expense also makes it a transfer, which is never income or an expense: the
 answers of `--review` need no `kind`.
 
@@ -144,7 +144,7 @@ def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -
             if not isinstance(entry, dict) or not {"match", "category"} <= entry.keys():
                 msg = f"{where}: needs 'match' and 'category'"
                 raise ConfigError(msg)
-            category = str(entry["category"])
+            category = categories.canonical(str(entry["category"]))
             if category not in known:
                 msg = f"{where}: unknown category {category!r}"
                 raise ConfigError(msg)

@@ -60,11 +60,11 @@ def test_the_real_date_is_always_the_value_date(result: Extraction) -> None:
 
 
 def test_transfers_and_the_card_bill_are_classified(result: Extraction) -> None:
-    assert _row(result, "3")[2:] == (Kind.TRANSFER, "Topup Revolut")
-    assert _row(result, "9")[2:] == (Kind.TRANSFER, "Topup Revolut")
-    assert _row(result, "8")[2:] == (Kind.TRANSFER, "Topup IBKR")
-    assert _row(result, "6")[1:] == (Decimal(-100), Kind.TRANSFER, "Prelievi")
-    assert _row(result, "7")[1:] == (Decimal(20), Kind.TRANSFER, "Prelievi")  # reversal nets
+    assert _row(result, "3")[2:] == (Kind.TRANSFER, "Revolut top-up")
+    assert _row(result, "9")[2:] == (Kind.TRANSFER, "Revolut top-up")
+    assert _row(result, "8")[2:] == (Kind.TRANSFER, "IBKR top-up")
+    assert _row(result, "6")[1:] == (Decimal(-100), Kind.TRANSFER, "Withdrawals")
+    assert _row(result, "7")[1:] == (Decimal(20), Kind.TRANSFER, "Withdrawals")  # reversal nets
     assert _row(result, "4")[1:] == (Decimal("-1288.18"), Kind.INTERNAL, "")  # D3
 
 
@@ -72,7 +72,7 @@ def test_money_coming_back_from_a_broker_is_left_for_review() -> None:
     back = migros._classify("Interactive Brokers LLC, One Pickwick Plaza", Decimal(3000))
     assert back == (Kind.TRANSFER, "")
     reversal = migros._classify("Storno: Prelevamento al Bancomat BM Zürich", Decimal(20))
-    assert reversal == (Kind.TRANSFER, "Prelievi")
+    assert reversal == (Kind.TRANSFER, "Withdrawals")
 
 
 def test_everything_else_is_income_or_expense_for_the_rules(result: Extraction) -> None:
@@ -198,7 +198,7 @@ def test_the_older_layout_is_read_and_put_back_in_balance_order() -> None:
     assert [t.source_ref for t in result.transactions] == ["1", "2", "4", "3", "5"]
     by_ref = {t.source_ref: t for t in result.transactions}
     assert (by_ref["2"].kind, by_ref["2"].category) == (Kind.INTERNAL, "")
-    assert (by_ref["3"].kind, by_ref["3"].category) == (Kind.TRANSFER, "Topup IBKR")
+    assert (by_ref["3"].kind, by_ref["3"].category) == (Kind.TRANSFER, "IBKR top-up")
     assert by_ref["1"].description == "Hans Muster, Beispielweg 8, 5000 Aarau"
     assert by_ref["1"].counterparty == "Hans Muster"
 

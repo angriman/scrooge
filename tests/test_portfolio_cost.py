@@ -34,7 +34,7 @@ def conn() -> Iterator[sqlite3.Connection]:
 
 def moved(ticker: str, quantity: str, worth: str, on: date, **fields: object) -> SecurityTrade:
     """Shares moved in kind, as the broker's extractor books them: no cash, worth `worth`."""
-    row = bought(ticker, quantity, "0", on, kind=Kind.TRANSFER, category="Giroconto", **fields)
+    row = bought(ticker, quantity, "0", on, kind=Kind.TRANSFER, category="Own transfer", **fields)
     return replace(row, cost=D(worth), price=abs(D(worth) / D(quantity)))
 
 

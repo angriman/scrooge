@@ -46,10 +46,10 @@ _T_BILL = "Fixed Income Security"
 _SECURITIES = {"Equity", _T_BILL}
 _MONEY_MOVEMENTS = {
     "Mark to Market": (Kind.TRADING, "Trading"),
-    "Credit Interest": (Kind.INTEREST, "Interessi"),
-    "Debit Interest": (Kind.INTEREST, "Interessi"),
-    "Dividend": (Kind.DIVIDEND, "Dividendi"),
-    "Balance Adjustment": (Kind.COMMISSION, "Commissioni"),  # regulatory fee adjustments
+    "Credit Interest": (Kind.INTEREST, "Interest"),
+    "Debit Interest": (Kind.INTEREST, "Interest"),
+    "Dividend": (Kind.DIVIDEND, "Dividends"),
+    "Balance Adjustment": (Kind.COMMISSION, "Fees"),  # regulatory fee adjustments
     "Deposit": (Kind.TRANSFER, ""),  # wires in: the category is left for review
     "Withdrawal": (Kind.TRANSFER, ""),
 }
@@ -85,7 +85,7 @@ def extract(content: str, source_file: str) -> Extraction:
         day = parse_iso_date(row["Date"], "Tastytrade Date")
         for ref, amount, leg_kind, leg_category in (
             (str(n), gross, kind, category),
-            (f"{n}:fees", charges, Kind.COMMISSION, "Commissioni"),
+            (f"{n}:fees", charges, Kind.COMMISSION, "Fees"),
         ):
             if amount != 0:  # expirations and futures opens move no cash
                 txn = Transaction(
@@ -186,12 +186,12 @@ def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
             # Principal back. The export has no cost to split the interest out (D13): the
             # database does it from the stored purchases.
             if row["Sub Type"] == "Maturity":
-                return Kind.INCOME, "Investimenti"
-            return Kind.SECURITY_TRADE, "Investimenti"
+                return Kind.INCOME, "Investments"
+            return Kind.SECURITY_TRADE, "Investments"
         return Kind.TRADING, "Trading"
     if row["Type"] == "Money Movement" and row["Sub Type"] in _MONEY_MOVEMENTS:
         if row["Sub Type"] == "Deposit" and row["Instrument Type"] == "Equity":
-            return Kind.DIVIDEND, "Dividendi"  # small fund distributions arrive as "Deposit"
+            return Kind.DIVIDEND, "Dividends"  # small fund distributions arrive as "Deposit"
         return _MONEY_MOVEMENTS[row["Sub Type"]]
     msg = f"Tastytrade row {n}: unsupported row type {row['Type']!r} / {row['Sub Type']!r}"
     raise UnsupportedStatementError(msg)
