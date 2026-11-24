@@ -15,7 +15,8 @@ A category added there, or on a page, has no translation: its label is the name 
 and its key is made from that name (`key`). A file may name a built-in category by its key, by
 its English label or by the Italian name it had until 2026-11-24, and a file written before
 then says `uscite` and `entrate` for `expenses` and `income`: all are read as they were meant,
-and never rewritten for it.
+and never rewritten for it on load. `scrooge migrate-files` writes them once with today's
+names; reading the old ones can go once it has been out for a release or two.
 """
 
 from __future__ import annotations
@@ -221,7 +222,8 @@ LABELS_EN: dict[str, str] = {
     OWN_TRANSFER: "Own transfer",
 }
 # The same in Italian: the names the taxonomy had until 2026-11-24. A rules file,
-# `categories.yaml` or the config that still names one means its key.
+# `categories.yaml` or the config that still names one means its key. Reading files by these
+# names can go once `scrooge migrate-files` has been out for a release or two.
 LABELS_IT: dict[str, str] = {
     UNSORTED: "Non classificato",
     GROUP_HOME: "Casa",
@@ -284,10 +286,12 @@ LABELS_IT: dict[str, str] = {
 }
 LABELS: dict[str, dict[str, str]] = {"en": LABELS_EN, "it": LABELS_IT}
 LANGUAGE = "en"  # what the pages and the terminal show
-# The key of every label a file may name a built-in category by.
+# The key of every label a file may name a built-in category by. The Italian ones can go
+# once `scrooge migrate-files` has been out for a release or two: then only the English.
 _BY_LABEL: dict[str, str] = {
     label: key for table in (LABELS_IT, LABELS_EN) for key, label in table.items()
 }
+_BY_ENGLISH: dict[str, str] = {label: key for key, label in LABELS_EN.items()}
 
 
 def slug(name: str) -> str:
@@ -302,6 +306,12 @@ def key(name: str) -> str:
     label or its Italian name; any other name by its `slug`, the key a category added with
     that name has. "" for a name without a letter or a digit."""
     return _BY_LABEL.get(name.strip()) or slug(name)
+
+
+def legacy(name: str) -> bool:
+    """Whether `name` means its category only by the Italian name it had until 2026-11-24:
+    what `scrooge migrate-files` writes again."""
+    return key(name) != (_BY_ENGLISH.get(name.strip()) or slug(name))
 
 
 def label(name: str, added: Mapping[str, str] | None = None, language: str = LANGUAGE) -> str:
@@ -353,13 +363,11 @@ GROUPS: frozenset[str] = frozenset(EXPENSE_GROUPS)
 
 FILE = "categories.yaml"  # looked for next to the first rules file
 SIDES = ("expenses", "income")  # the sides' names in the database and in `Extra`
+# How `categories.yaml` named each side until 2026-11-24. Reading them can go once
+# `scrooge migrate-files` has been out for a release or two.
+OLD_SIDES = {"uscite": "expenses", "entrate": "income"}
 # How `categories.yaml` names each side, and how it named them before.
-_SIDE_NAMES = {
-    "expenses": "expenses",
-    "income": "income",
-    "uscite": "expenses",
-    "entrate": "income",
-}
+_SIDE_NAMES = {"expenses": "expenses", "income": "income", **OLD_SIDES}
 
 
 def builtin(side: str, name: str, *, group: bool = False) -> bool:
@@ -394,7 +402,12 @@ class Extra:
 
 def load(path: Path) -> tuple[Extra, ...]:
     """The categories `path` adds to the taxonomy; none when the file does not exist."""
-    expenses, income = _read(path)
+    return parse(path.read_text(encoding="utf-8") if path.exists() else "", path)
+
+
+def parse(text: str, path: Path) -> tuple[Extra, ...]:
+    """The categories `text`, the content of `path`, adds to the taxonomy."""
+    expenses, income = _sides(yaml.safe_load(text), path)
     return (
         *(Extra(leaf, "expenses", group) for group, leaves in expenses.items() for leaf in leaves),
         *(Extra(name, "income") for name in income),
@@ -484,7 +497,12 @@ def _write(path: Path, expenses: dict[str, list[str]], income: list[str]) -> Non
 
 def _read(path: Path) -> tuple[dict[str, list[str]], list[str]]:
     """The groups of expenses and their leaves, and the income, by the names written."""
-    data = (yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None) or {}
+    return _sides(yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None, path)
+
+
+def _sides(data: object, path: Path) -> tuple[dict[str, list[str]], list[str]]:
+    """The groups of expenses and their leaves, and the income, of the parsed `path`."""
+    data = data or {}
     added = (data.get("categories") or {}) if isinstance(data, dict) else None
     if not isinstance(added, dict) or not added.keys() <= _SIDE_NAMES.keys():
         msg = f"{path}: expected a top-level 'categories' with 'expenses' and 'income'"
