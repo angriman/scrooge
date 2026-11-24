@@ -7,7 +7,7 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 	const { session } = await parent();
 	// The chart is cut by person only when there are several and they are all shown.
 	const people = session.people.length > 1 && !url.searchParams.get('owner');
-	const asked = oneOf(url, 'by', ['asset', 'owner', 'total'] as const, 'asset');
+	const asked = oneOf(url, 'by', ['asset', 'owner', 'liquidity', 'total'] as const, 'asset');
 	const by = asked === 'owner' && !people ? 'asset' : asked;
 	const whose = pick(url, ['owner', 'currency']);
 	const series = (cut: string) =>
