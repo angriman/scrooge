@@ -1,11 +1,14 @@
 <!--
 @component
-Every account a source feeds, one row each: what it holds now, how far its statements go, and the
-days they cover on a line of time, committed solid, staged hatched, a gap left open. The line is
-the page's one picture: where a statement is missing shows as a hole. A row opens to its
-statements, newest first, each with the file it came from.
+Every account a source feeds, one row each: what it holds now and a small line of its last
+month-ends, how far its statements go, and the days they cover on a line of time, committed
+solid, staged hatched, a gap left open. The line is the page's one picture: where a statement is
+missing shows as a hole. A row opens to what it holds by part (its cash in each currency, its
+securities), then its statements, newest first, each with the file it came from.
 -->
 <script lang="ts">
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Download from '@lucide/svelte/icons/download';
 	import { addDays, day, daysBetween, monthOf, toDate } from '#lib/format/date.js';
@@ -13,6 +16,8 @@ statements, newest first, each with the file it came from.
 	import Amount from '#lib/ui/Amount.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { cn } from '#lib/ui/cn.js';
+	import { heldLines, securitiesQuery } from './holds.js';
+	import Sparkline from './Sparkline.svelte';
 
 	interface Props {
 		accounts: StatementsAccount[];
@@ -78,6 +83,9 @@ statements, newest first, each with the file it came from.
 
 	let open = $state<string | null>(null);
 	const keyOf = (account: StatementsAccount) => `${account.owner}|${account.account}|${account.source}`;
+	// Where an account's securities are listed: its owner's holdings, in the page's currency.
+	const securities = (owner: string) =>
+		`${resolve('/investments')}?${securitiesQuery(owner, page.url.searchParams.get('currency'))}`;
 	const span = (first: string, last: string) =>
 		first.slice(0, 4) === last.slice(0, 4) && first !== last
 			? `${day(first).replace(/ \d{4}$/, '')} to ${day(last)}`
@@ -114,7 +122,7 @@ statements, newest first, each with the file it came from.
 							type="button"
 							aria-expanded={expanded}
 							onclick={() => (open = expanded ? null : key)}
-							class="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_10rem_auto]"
+							class="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_14rem_auto]"
 						>
 							<span class="min-w-0">
 								<span class="block truncate font-medium text-ink">{account.account}</span>
@@ -147,9 +155,13 @@ statements, newest first, each with the file it came from.
 									{/if}
 								{/each}
 							</span>
-							<!-- What it holds: the figure of the row, beside the line on a wide screen. -->
-							<span class="text-right">
+							<!-- What it holds: the figure of the row, beside the line on a wide screen, after
+							     the small line of its last month-ends. -->
+							<span class="flex items-center justify-end gap-3 text-right md:justify-between">
 								{#if account.balance !== null}
+									{#if account.holds}
+										<Sparkline balances={account.holds.months.map((month) => month.balance)} />
+									{/if}
 									<Amount value={account.balance} {currency} places={0} class="text-title font-medium text-ink" />
 								{:else}
 									<span class="text-small text-ink-muted">Not known</span>
@@ -163,6 +175,33 @@ statements, newest first, each with the file it came from.
 
 						{#if expanded}
 							<div class="px-4 pb-4">
+								{#if account.holds}
+									{@const lines = heldLines(account.holds, currency)}
+									{#if lines.length}
+										<table class="mb-4 w-full max-w-md text-body">
+											<caption class="mb-1 text-left text-small text-ink-secondary">Holds</caption>
+											<tbody>
+												{#each lines as line (line.label)}
+													<tr class="border-b border-line last:border-b-0">
+														<th scope="row" class="py-1.5 pr-4 text-left align-top font-normal text-ink-secondary">
+															{#if line.securities}
+																<a href={securities(account.owner)} class="text-brand hover:text-brand-hover">{line.label}</a>
+															{:else}
+																{line.label}
+															{/if}
+														</th>
+														<td class="py-1.5 text-right">
+															<Amount value={line.amount} currency={line.currency} class="text-ink" />
+															{#if line.converted !== null}
+																<Amount value={line.converted} {currency} class="block text-small text-ink-muted" />
+															{/if}
+														</td>
+													</tr>
+												{/each}
+											</tbody>
+										</table>
+									{/if}
+								{/if}
 								<p class="mb-3 text-small text-ink-muted">
 									{account.label}{#if !account.monthly}<span class="block"
 											>Reports less often than monthly, so it counts as behind only after a longer wait.</span
@@ -212,7 +251,7 @@ statements, newest first, each with the file it came from.
 
 		<!-- The months of the line, under the rows: its margins are the columns either side of the
 		     line in a row (padding, name, gap; gap, balance, gap, chevron, padding). -->
-		<div class="relative mx-4 hidden h-6 md:ml-[calc(16rem+2rem)] md:mr-[calc(10rem+4rem)] md:block" aria-hidden="true">
+		<div class="relative mx-4 hidden h-6 md:ml-[calc(16rem+2rem)] md:mr-[calc(14rem+4rem)] md:block" aria-hidden="true">
 			{#each ticks as tick, index (index)}
 				{#if tick.label}
 					<span class="absolute top-1 -translate-x-1/2 text-caption whitespace-nowrap text-ink-muted" style:left="{tick.left}%">

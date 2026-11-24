@@ -269,6 +269,18 @@ export interface StatementsAccount extends Account {
 	balance: Amount | null;
 	spans: { first: Day; last: Day; committed: boolean }[];
 	statements: StatementFile[];
+	/** What it holds by part; null when its balance is not known. */
+	holds: AccountHolds | null;
+}
+
+/** What an account holds now by part, and its balance at the last month-ends. */
+export interface AccountHolds {
+	/** Its cash in each currency, the largest first: as kept, and in the currency asked for. */
+	cash: { currency: string; amount: Amount; converted: Amount }[];
+	/** Its securities together, in the currency asked for; null when it holds none. */
+	securities: Amount | null;
+	/** Oldest first, at most twelve; the last is the last day there is. */
+	months: { day: Day; balance: Amount }[];
 }
 
 export interface Statements {
