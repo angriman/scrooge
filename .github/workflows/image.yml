@@ -25,8 +25,14 @@ jobs:
     permissions:
       contents: read
 
+  # Built and run once on each processor first (container.yml).
+  smoke:
+    uses: ./.github/workflows/container.yml
+    permissions:
+      contents: read
+
   image:
-    needs: check
+    needs: [check, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
