@@ -52,6 +52,16 @@ describe('the cash flow as a table', () => {
 
 	it('sums up the range in a last row', () => {
 		const total = totalRow(saved('5000.00', '4000.00', '2600.00', '2400.00'));
-		expect([total.period, total.salary, total.rate]).toEqual(['In all', '4000.00', '50.0%']);
+		expect([total.period, total.salary, total.rate, total.rateSalary]).toEqual([
+			'In all',
+			'4000.00',
+			'50.0%',
+			'62.5%'
+		]);
+	});
+
+	it('leaves the rate on salary open when the range had no salary', () => {
+		const total = totalRow(saved('300.00', '0.00', '100.00', '200.00'));
+		expect([total.salary, total.rate, total.rateSalary]).toEqual(['0.00', '50.0%', '–']);
 	});
 });

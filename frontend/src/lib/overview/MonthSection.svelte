@@ -136,7 +136,7 @@ read as complete.
 						{recap.rate_year === null ? '–' : percent(recap.rate_year, 0)}
 					</dd>
 					{#if recap.rate_salary_year !== null}
-						<dd class="text-caption text-ink-secondary">{percent(recap.rate_salary_year, 0)} of salary</dd>
+						<dd class="text-caption text-ink-secondary">{percent(recap.rate_salary_year, 0)} of salary over 12 months</dd>
 					{/if}
 				</div>
 			</dl>

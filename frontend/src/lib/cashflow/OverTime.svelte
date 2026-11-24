@@ -123,6 +123,8 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 			<span>Saved <Amount value={detail.saved} {currency} places={0} class="text-ink" /></span>
 			{#if detail.rate !== null}<span>Rate <span class="text-brand">{percent(detail.rate, 0)}</span></span>{/if}
 			{#if detail.rate_salary !== null}<span>On salary <span class="text-brand">{percent(detail.rate_salary, 0)}</span></span>{/if}
+			{#if detail.rate_12 !== null}<span>12-month rate <span class="text-brand">{percent(detail.rate_12, 0)}</span></span>{/if}
+			{#if detail.rate_salary_12 !== null}<span>12-month on salary <span class="text-brand">{percent(detail.rate_salary_12, 0)}</span></span>{/if}
 		</p>
 	{/if}
 

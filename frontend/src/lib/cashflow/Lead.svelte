@@ -23,7 +23,8 @@ came in, what went out, the salary and how much of the income was earned by work
 
 	const short = $derived(totals.saved.startsWith('-'));
 	// The change of the savings rate, in points: rates of different incomes are compared, not
-	// the amounts.
+	// the amounts. The sentence writes out the space before the bracket, as Svelte trims a plain
+	// one at the start of a block; without a change there is neither the space nor the bracket.
 	const points = $derived(
 		totals.rate !== null && yearBefore?.rate != null ? difference(totals.rate, yearBefore.rate) : null
 	);
@@ -63,7 +64,7 @@ came in, what went out, the salary and how much of the income was earned by work
 				<dd class="text-title text-ink"><Amount value={totals.spent} places={0} /></dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">Salary</dt>
+				<dt class="text-ink-secondary" title="Income from work">Salary</dt>
 				<dd class="text-title text-ink"><Amount value={totals.work} places={0} /></dd>
 			</div>
 			<div>
