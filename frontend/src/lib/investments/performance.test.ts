@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InvestedDay, MeasuredAccount } from '#lib/types.js';
-import { described, direction, nearest, over, plot, rangeOf } from './performance.js';
+import { described, direction, mwrPer, nearest, over, plot, rangeOf } from './performance.js';
 
 describe('the range', () => {
 	it('is the one asked for, or the year to date', () => {
@@ -79,7 +79,9 @@ describe('an account', () => {
 		net_flows: '900.00',
 		gain: '100.00',
 		twr: '11.10',
-		mwr: null
+		mwr: null,
+		mwr_a_year: false,
+		twr_since: null
 	};
 
 	it('says whose it is when both people are listed, and what it is made of', () => {
@@ -87,5 +89,12 @@ describe('an account', () => {
 		expect(described(ibkr, false)).toBe('IBKR CHF, IBKR USD');
 		expect(described({ ...ibkr, accounts: ['IBKR USD'] }, true)).toBe('Lukas');
 		expect(described({ ...ibkr, accounts: ['IBKR USD'] }, false)).toBe('');
+	});
+});
+
+describe('the money-weighted return', () => {
+	it('is a rate a year from a year up, and over the period below', () => {
+		expect(mwrPer({ mwr_a_year: true })).toBe('a year');
+		expect(mwrPer({ mwr_a_year: false })).toBe('over the period');
 	});
 });

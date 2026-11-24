@@ -54,6 +54,9 @@ def test_the_year_to_date_is_sent_unless_a_range_is_asked(client: TestClient) ->
         "gain": "50.00",
         "twr": "0.29",
         "mwr": shown["totals"]["mwr"],
+        # A month: the money-weighted return over it, not a rate a year.
+        "mwr_a_year": False,
+        "twr_since": None,
     }
     assert shown["totals"]["mwr"] is not None
     assert shown["series"][0] == {"day": "2026-08-30", "value": "0.00", "invested": "0.00"}

@@ -790,13 +790,16 @@ def _measured(measured: performance.Measured) -> JSON:
         "gain": number(measured.gain),
         "twr": number(measured.twr),
         "mwr": number(measured.mwr),
+        "mwr_a_year": measured.a_year,
+        "twr_since": day(measured.since),
     }
 
 
 def performance_report(shown: performance.Performance) -> JSON:
     """What the investment accounts returned over a range, in one currency: in all and account
     by account, and day by day (week by week over a long range) what they were worth against
-    the money put in. `twr` is in percent over the range, `mwr` in percent a year."""
+    the money put in. `twr` is in percent over the range, from `twr_since` when that is later
+    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise."""
     return {
         "currency": shown.currency,
         "range": shown.range,

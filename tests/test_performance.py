@@ -25,41 +25,68 @@ def values(*amounts: int) -> list[Decimal]:
 # ---------------------------------------------------------------------- rates of return
 
 
+FIRST = date(2026, 9, 1)  # the first day of the ranges below, `values[1]`
+
+
+def measured(worth: list[Decimal], flows: list[Decimal]) -> performance.Measured:
+    return measure(worth, flows, FIRST)
+
+
 def test_without_flows_the_time_weighted_return_is_the_simple_return() -> None:
     worth = values(1000, 1100, 1045, 1210)
-    assert time_weighted(worth, values(0, 0, 0, 0)) == D("0.21")
-    measured = measure(worth, values(0, 0, 0, 0))
-    assert (measured.net_flows, measured.gain, measured.twr) == (D(0), D(210), D("21.00"))
+    assert time_weighted(worth, values(0, 0, 0, 0)) == (D("0.21"), 1)
+    found = measured(worth, values(0, 0, 0, 0))
+    assert (found.net_flows, found.gain, found.twr, found.since) == (D(0), D(210), D("21.00"), None)
 
 
 def test_a_deposit_comes_at_the_start_of_its_day_and_earns_from_then() -> None:
     # 10% on the first day; 1000 put in, 2200 out of 2100 on the second; 5% on the third.
     worth, flows = values(1000, 1100, 2200, 2310), values(0, 0, 1000, 0)
-    measured = measure(worth, flows)
-    assert (measured.start, measured.end, measured.net_flows) == (D(1000), D(2310), D(1000))
-    assert measured.gain == D(310)
-    assert measured.twr == D("21.00")  # 1.1 x 22/21 x 1.05
-    # 310 on 1000 for three days and 1000 for two: as a rate a year, past any to give.
-    assert measured.mwr is None
+    found = measured(worth, flows)
+    assert (found.start, found.end, found.net_flows) == (D(1000), D(2310), D(1000))
+    assert found.gain == D(310)
+    assert found.twr == D("21.00")  # 1.1 x 22/21 x 1.05
+    # 310 on 1000 for three days and on 1000 more for two: less than 21% over the range,
+    # more than 310 on the 2000 there was at the end.
+    assert found.mwr is not None
+    assert not found.a_year
+    assert D("15.5") < found.mwr < D(21)
 
 
-def test_a_withdrawal_takes_money_out_without_being_a_loss() -> None:
-    # 20% on the first day; 600 taken out, nothing moves on the second; 10% on the third.
-    measured = measure(values(1000, 1200, 600, 660), values(0, 0, -600, 0))
-    assert (measured.net_flows, measured.gain, measured.twr) == (D(-600), D(260), D("32.00"))
+def test_a_withdrawal_goes_at_the_end_of_its_day_and_earns_that_day() -> None:
+    # 20% on the first day; 600 taken out on a day nothing moves; 10% on the third.
+    found = measured(values(1000, 1200, 600, 660), values(0, 0, -600, 0))
+    assert (found.net_flows, found.gain, found.twr) == (D(-600), D(260), D("32.00"))
+    # A quarter taken out on a day that loses 2%: the day returns -2%, not more.
+    assert time_weighted(values(1000, 730), values(0, -250)) == (D("-0.02"), 1)
+
+
+def test_a_holding_moved_out_whole_returns_what_its_day_did() -> None:
+    # 100 shares at 50 and 30 cents of cash; moved out in kind at the next close of 49, the
+    # cents stay behind and earn nothing.
+    worth = [D("5000.30"), D("0.30"), D("0.30")]
+    found = measured(worth, [D(0), D(-4900), D(0)])
+    assert (found.net_flows, found.gain) == (D(-4900), D(-100))
+    assert found.twr == D("-2.00")
+
+
+def test_money_coming_in_later_does_not_hide_what_was_made_before() -> None:
+    found = measured(values(5000, 6500, 606500), values(0, 0, 600000))
+    assert found.twr == D("30.00")
 
 
 def test_a_range_that_starts_with_nothing_counts_from_the_first_money_put_in() -> None:
-    measured = measure(values(0, 0, 1000, 1100), values(0, 0, 1000, 0))
-    assert (measured.start, measured.net_flows, measured.gain) == (D(0), D(1000), D(100))
-    assert measured.twr == D("10.00")
+    found = measured(values(0, 0, 1000, 1100), values(0, 0, 1000, 0))
+    assert (found.start, found.net_flows, found.gain) == (D(0), D(1000), D(100))
+    assert (found.twr, found.since) == (D("10.00"), date(2026, 9, 2))
     assert time_weighted(values(0, 0, 0), values(0, 0, 0)) is None
-    assert measure(values(0, 0), values(0, 0)) == performance.Measured(D(0), D(0), D(0), None, None)
+    nothing = measured(values(0, 0), values(0, 0))
+    assert nothing == performance.Measured(D(0), D(0), D(0), None, None)
 
 
 def test_a_day_that_starts_with_less_than_nothing_is_no_day_of_return() -> None:
     # 100 owed, 150 put in: the 50 left grows by 10%.
-    assert time_weighted(values(-100, 50, 55), values(0, 150, 0)) == D("0.1")
+    assert time_weighted(values(-100, 50, 55), values(0, 150, 0)) == (D("0.1"), 1)
 
 
 def test_what_is_made_before_any_money_is_put_in_is_no_return() -> None:
@@ -67,15 +94,25 @@ def test_what_is_made_before_any_money_is_put_in_is_no_return() -> None:
     # 1000 put in that earns 5%.
     worth = [D(0), D(2), D(4), D(1002), D("1052.10")]
     flows = values(0, 0, 0, 998, 0)
-    assert time_weighted(worth, flows) == D("0.05")
-    assert measure(worth, flows).gain == D("54.10")
+    found = measured(worth, flows)
+    assert (found.twr, found.since) == (D("5.00"), date(2026, 9, 3))
+    assert found.gain == D("54.10")
 
 
-def test_a_day_on_next_to_nothing_or_ending_below_nothing_is_no_day_of_return() -> None:
-    # 5 left after 1095 taken out, then 9: each under a hundredth of the most invested.
-    assert time_weighted(values(1000, 1100, 9, 18), values(0, 0, -1095, 0)) == D("0.1")
+def test_a_day_on_less_than_a_unit_or_ending_below_nothing_is_no_day_of_return() -> None:
+    # All but 50 cents taken out on a day nothing moves; then those cents gain 80%.
+    worth = [D(1000), D(1100), D("0.50"), D("0.90")]
+    assert time_weighted(worth, [D(0), D(0), D("-1099.50"), D(0)]) == (D("0.1"), 1)
     # Losing more than there was: money put in is missing, not a return of -300%.
-    assert time_weighted(values(1000, 1100, -2200), values(0, 0, 0)) == D("0.1")
+    assert time_weighted(values(1000, 1100, -2200), values(0, 0, 0)) == (D("0.1"), 1)
+
+
+def test_the_money_weighted_return_is_over_the_range_until_it_lasts_a_year() -> None:
+    # 3% over 30 days stays 3%: a year at that pace would read as 43%.
+    month = measured([D(1000), *[D(1000)] * 29, D(1030)], [D(0)] * 31)
+    assert (month.mwr, month.a_year) == (D("3.00"), False)
+    year = measured([D(1000), *[D(1000)] * 364, D(1100)], [D(0)] * 366)
+    assert (year.mwr, year.a_year) == (D("10.00"), True)
 
 
 @pytest.mark.parametrize(
@@ -92,7 +129,7 @@ def test_a_day_on_next_to_nothing_or_ending_below_nothing_is_no_day_of_return() 
 def test_the_money_weighted_return_converges_on_the_rate_a_year(
     dated: list[tuple[int, int]], rate: str
 ) -> None:
-    found = money_weighted([(days, D(amount)) for days, amount in dated])
+    found = money_weighted([(days, D(amount)) for days, amount in dated], 365)
     assert found is not None
     assert abs(found - D(rate)) < D("1e-9")
 
@@ -293,6 +330,32 @@ def test_each_person_and_both_together(conn: sqlite3.Connection) -> None:
     assert both.totals.end == D("10500.00")
     alone = performance.run(conn, owner=PARTNER, currency="USD", range_="all")
     assert [row.owner for row in alone.holders] == [PARTNER]
+
+
+def test_money_one_person_gives_the_other_moves_nothing_for_both_together(
+    conn: sqlite3.Connection,
+) -> None:
+    close(conn, ibkr(deposit("-1000", day(10)), bought("WIDG", "10", "-500", day(15))))
+    close(conn, ibkr(opening="500", month=AUGUST), owner=PARTNER, month=AUGUST)
+    close(conn, ibkr(deposit("1000", day(10)), opening="500"), owner=PARTNER)
+    price(conn, "WIDG", day(15), "50")
+    price(conn, "WIDG", day(25), "55")
+    both = performance.run(conn, currency="USD", range_="1m")
+    assert both.totals is not None
+    assert (both.totals.start, both.totals.net_flows, both.totals.gain) == (
+        D("10500.00"),
+        D("0.00"),
+        D("50.00"),
+    )
+    assert both.totals.twr == D("0.48")  # 50 on 10500
+    assert [(row.owner, row.measured.net_flows) for row in both.holders] == [
+        (PARTNER, D("1000.00")),
+        (OWNER, D("-1000.00")),
+    ]
+    alone = performance.run(conn, owner=OWNER, currency="USD", range_="1m")
+    assert alone.totals is not None
+    assert (alone.totals.net_flows, alone.totals.gain) == (D("-1000.00"), D("50.00"))
+    assert alone.totals.twr == D("0.56")  # the 1000 leaves at the end of its day: 50 on 9000
 
 
 def test_without_investment_accounts_there_is_nothing_to_measure(

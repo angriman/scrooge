@@ -633,8 +633,12 @@ export interface Measured {
 	gain: Amount;
 	/** Time-weighted, in percent over the range; null when nothing was invested. */
 	twr: Amount | null;
-	/** Money-weighted, in percent a year; null when there is no such rate. */
+	/** Money-weighted, in percent; null when there is no such rate. */
 	mwr: Amount | null;
+	/** `mwr` is a rate a year (a range of a year or more); else it is over the range. */
+	mwr_a_year: boolean;
+	/** The first day `twr` counts, when it is after the range's first; else null. */
+	twr_since: Day | null;
 }
 
 /** One broker's accounts of one person, in every currency together. */

@@ -5,7 +5,7 @@
 import { addDays, day, daysBetween } from '#lib/format/date.js';
 import { approximate, money } from '#lib/format/number.js';
 import { daysBack, RANGES, type Range } from '#lib/overview/range.js';
-import type { Amount, Day, InvestedDay, MeasuredAccount } from '#lib/types.js';
+import type { Amount, Day, InvestedDay, Measured, MeasuredAccount } from '#lib/types.js';
 
 export { RANGES, type Range };
 
@@ -43,6 +43,11 @@ export function over(range: Range, first: Day, last: Day): string {
 export function described(row: MeasuredAccount, people: boolean): string {
 	const parts = [people ? row.owner : '', row.accounts.length > 1 ? row.accounts.join(', ') : ''];
 	return parts.filter(Boolean).join(' · ');
+}
+
+/** What the money-weighted return is over: `a year` from a year up, `over the period` below. */
+export function mwrPer(measured: Pick<Measured, 'mwr_a_year'>): string {
+	return measured.mwr_a_year ? 'a year' : 'over the period';
 }
 
 /** Which way a figure went, as its rounding writes it: a change that rounds to nothing is flat. */

@@ -12,7 +12,7 @@ and the same figures account by account.
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { described, direction, nearest, over, plot, type Range } from './performance.js';
+	import { described, direction, mwrPer, nearest, over, plot, type Range } from './performance.js';
 
 	interface Props {
 		performance: PerformanceReport;
@@ -34,6 +34,11 @@ and the same figures account by account.
 	const frame = $derived({ width, height: HEIGHT, top: 12, right: 8, bottom: 24, left: 44 });
 	const drawn = $derived(plot(performance.series, frame));
 	let pointed = $state<number | null>(null);
+	// Another range is other days: nothing of it is under the pointer yet.
+	$effect.pre(() => {
+		void performance.series;
+		pointed = null;
+	});
 	const shown = $derived(performance.series[pointed ?? performance.series.length - 1]);
 	// Over a long range the API sends a point a week.
 	const weekly = $derived(
@@ -71,9 +76,12 @@ and the same figures account by account.
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.mwr !== null}
 					Money-weighted <span class={cn('font-medium', tone(totals.mwr))}>{signedPercent(totals.mwr)}</span>
-					a year, on the money as it was put in.
+					{mwrPer(totals)}, on the money as it was put in.
 				{:else}
-					The money-weighted return has no rate a year to give over so few days.
+					The money-weighted return has no rate to give over these days.
+				{/if}
+				{#if totals.twr_since}
+					The time-weighted return counts from {day(totals.twr_since)}, when money was first put in.
 				{/if}
 			</p>
 		</div>
@@ -179,7 +187,7 @@ and the same figures account by account.
 		<span class="text-right">Put in</span>
 		<span class="text-right">Gain</span>
 		<span class="text-right">Time-weighted</span>
-		<span class="text-right">A year</span>
+		<span class="text-right">Money-weighted</span>
 	</div>
 	<ul class="rounded-panel bg-panel">
 		{#each performance.accounts as row (`${row.owner}|${row.name}`)}

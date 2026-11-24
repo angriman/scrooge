@@ -34,21 +34,27 @@ is part of the return in that currency: shares in dollars that stand still have 
 something in francs when the dollar rose. An account with anything in a currency no rate is
 stored for is left out, and said to be, rather than leaving the page empty.
 
-**The time-weighted return** links the return of every day of the range: what the accounts
-are worth at the end of the day over what they were worth the day before with the day's flows,
-which come at its start. It measures the investments, not when money went in. A day that
-starts with next to nothing invested, or ends with less than nothing, or comes before any
-money is put in, is no day of return (`time_weighted`).
+**The time-weighted return** links the return of every day of the range. What comes in on a
+day comes at its start and earns that day; what goes out goes at its end and earned that day
+first: the day returns its worth at the end with what went out, over its worth the day before
+with what came in. Flows within a day are netted first, so money moved between two accounts
+counted together on one day moves nothing. It measures the investments, not when money went
+in. A day before any money is put in, or that starts with less than one unit invested, or that
+ends with less than nothing, is no day of return (`time_weighted`); the day the return is
+measured from is said when it is not the range's first.
 
-**The money-weighted return** is the rate, a year, at which the value the range starts with
-and every flow grow into the value it ends with (an internal rate of return of dated flows,
-XIRR): it measures what the money put in earned, when it was put in. **The gain** is the
-value at the end less that at the start and less the money put in. Nothing here is stored and
-nothing here writes.
+**The money-weighted return** is the rate at which the value the range starts with and every
+flow, dated as above, grow into the value it ends with (an internal rate of return of dated
+flows, XIRR): it measures what the money put in earned, when it was put in. Over a range of a
+year or more it is a rate a year; over a shorter one it is the rate over the range, as a rate
+a year would make a few good weeks look like a fortune. **The gain** is the value at the end
+less that at the start and less the money put in. Nothing here is stored and nothing here
+writes.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 from collections import defaultdict
@@ -71,13 +77,12 @@ WEEKLY_AFTER = 400  # days: a longer range is drawn one point a week
 _BROKERS = ("broker_cash", "broker_securities")  # the kinds of account a broker feeds
 _LEFT_OUT = frozenset({PENSION, PILLAR2, CARD})  # an account with these is no investment
 _CENT = Decimal("0.01")
-# A day starts with next to nothing invested below this part of the most any day starts with.
-_MATERIAL = 100
+# Below this, in the currency asked for, a day starts with nothing invested to return on.
+_FLOOR = Decimal(1)
 _ONE_DAY = timedelta(days=1)
-_YEAR = 365.0
-# The rates a money-weighted return is looked for between, a year: from all but everything
-# lost up to a billion times what was put in. A range of days can make a small gain a huge
-# rate a year; beyond these there is none to give.
+_YEAR = 365  # days: a range at least this long has its money-weighted return a year
+# The rates a money-weighted return is looked for between: from all but everything lost up to
+# a billion times what was put in; beyond these there is none to give.
 _LOWEST, _HIGHEST = -0.999999, 1e9
 
 
@@ -89,7 +94,11 @@ class Measured:
     end: Decimal  # worth at the end of its last day
     net_flows: Decimal  # money put in, less what was taken out
     twr: Decimal | None  # time-weighted, in percent over the range; None: nothing was invested
-    mwr: Decimal | None  # money-weighted, in percent a year; None: there is no such rate
+    mwr: Decimal | None  # money-weighted, in percent; None: there is no such rate
+    a_year: bool = False  # `mwr` is a rate a year (a range of a year or more), else over it
+    # The first day the time-weighted return counts, when it is after the range's first day;
+    # None: it counts from the first day, or not at all.
+    since: date | None = None
 
     @property
     def gain(self) -> Decimal:
@@ -133,48 +142,52 @@ class Performance:
 # ---------------------------------------------------------------------------- rates of return
 
 
-def time_weighted(values: Sequence[Decimal], flows: Sequence[Decimal]) -> Decimal | None:
-    """The return over the days of `values`, linked day by day, as a fraction.
+def time_weighted(
+    values: Sequence[Decimal], flows: Sequence[Decimal]
+) -> tuple[Decimal, int] | None:
+    """The return over the days of `values`, linked day by day, as a fraction, and the first
+    day it counts.
 
-    `values[0]` is the worth before the first day; `values[n]` and `flows[n]` are the worth at
-    the end of day n and the money put in at its start (`flows[0]` is not read).
+    `values[0]` is the worth before the first day; `values[n]` is the worth at the end of day
+    n and `flows[n]` the money that day put in, less what it took out (`flows[0]` is not read).
+    Money in comes at the start of the day, money out at its end.
 
     Some days are left out, as no day of return. Those before any money is put in (the start
     value and the flows so far add up to nothing): what an account makes before the deposit
     that pays for it (a bill bought first, an export that reaches back only so far) is made on
-    money the history does not show. A day that starts with next to nothing invested, less than
-    a hundredth of the most any day of the range starts with: a return on a few cents says
-    nothing. A day that ends with less than nothing: losing more than was invested says that
-    money put in is missing, not what was returned. None when every day is left out.
+    money the history does not show. A day that starts with less than one unit invested: there
+    is nothing to return on. A day that ends with less than nothing: losing more than was
+    invested says that money put in is missing, not what was returned. None when every day is
+    left out.
     """
-    starts = [values[day - 1] + flows[day] for day in range(1, len(values))]
-    least = max(starts, default=Decimal(0)) / _MATERIAL
     put_in, started = values[0], values[0] > 0
-    grown, counted = Decimal(1), False
-    for day, invested in enumerate(starts, start=1):
-        put_in += flows[day]
+    grown, since = Decimal(1), 0
+    for day in range(1, len(values)):
+        flow = flows[day]
+        put_in += flow
         started = started or put_in > 0
-        if not started or invested <= 0 or invested < least or values[day] < 0:
+        invested = values[day - 1] + max(flow, Decimal(0))
+        if not started or invested < _FLOOR or values[day] < 0:
             continue
-        grown *= values[day] / invested
-        counted = True
-    return grown - 1 if counted else None
+        grown *= (values[day] - min(flow, Decimal(0))) / invested
+        since = since or day
+    return (grown - 1, since) if since else None
 
 
-def money_weighted(dated: Sequence[tuple[int, Decimal]]) -> Decimal | None:
-    """The rate a year at which `dated`, amounts on days counted from the first, add up to
-    nothing: what goes in is negative, what comes out positive. None when there is no such
-    rate between all lost and a billion times over, or nothing ever moves.
+def money_weighted(dated: Sequence[tuple[int, Decimal]], period: int = _YEAR) -> Decimal | None:
+    """The rate over `period` days at which `dated`, amounts on days counted from the first,
+    add up to nothing: what goes in is negative, what comes out positive. None when there is
+    no such rate between all lost and a billion times over, or nothing ever moves.
 
     Found by halving the interval it lies in, which always converges once it is bracketed.
     """
-    flows = [(days / _YEAR, float(amount)) for days, amount in dated if amount]
-    if not flows or max(years for years, _ in flows) <= 0:
+    flows = [(days / period, float(amount)) for days, amount in dated if amount]
+    if not flows or max(periods for periods, _ in flows) <= 0:
         return None
 
     def worth(rate: float) -> float:
         grown = math.log1p(rate)
-        return sum(amount * math.exp(-years * grown) for years, amount in flows)
+        return sum(amount * math.exp(-periods * grown) for periods, amount in flows)
 
     low, high = _LOWEST, 1.0
     while worth(low) * worth(high) > 0:
@@ -194,24 +207,29 @@ def money_weighted(dated: Sequence[tuple[int, Decimal]]) -> Decimal | None:
     return Decimal(repr((low + high) / 2))
 
 
-def measure(values: Sequence[Decimal], flows: Sequence[Decimal]) -> Measured:
+def measure(values: Sequence[Decimal], flows: Sequence[Decimal], first: date) -> Measured:
     """Start, end, money put in, and both returns of `values` and `flows`, read as for
-    `time_weighted`. The money-weighted return counts the start value put in before the first
-    day, each flow at the start of its day (the end of the day before) and the end value taken
-    out at the end of the last."""
+    `time_weighted`; `first` is the day of `values[1]`. The money-weighted return counts the
+    start value put in before the first day, money in at the start of its day (the end of the
+    day before), money out at the end of its day, and the end value taken out at the end of the
+    last; a rate a year over a year or more, over the range otherwise."""
     start, end = values[0], values[-1]
+    days = len(values) - 1
     net = sum(flows[1:], Decimal(0))
     dated = [(0, -start)]
-    dated += [(day - 1, -flow) for day, flow in enumerate(flows) if day and flow]
-    dated.append((len(values) - 1, end))
-    twr = time_weighted(values, flows)
-    mwr = money_weighted(dated) if len(values) > 1 else None
+    dated += [(day - 1 if flow > 0 else day, -flow) for day, flow in enumerate(flows) if day]
+    dated.append((days, end))
+    linked = time_weighted(values, flows)
+    a_year = days >= _YEAR
+    mwr = money_weighted(dated, _YEAR if a_year else days) if days else None
     return Measured(
         start,
         end,
         net,
-        None if twr is None else (twr * 100).quantize(_CENT),
+        None if linked is None else (linked[0] * 100).quantize(_CENT),
         None if mwr is None else (mwr * 100).quantize(_CENT),
+        a_year,
+        first + timedelta(days=linked[1] - 1) if linked and linked[1] > 1 else None,
     )
 
 
@@ -279,38 +297,42 @@ def _invested(
 def _flows(
     conn: sqlite3.Connection, ids: set[int], days: Sequence[date]
 ) -> dict[int, list[tuple[date, str, Decimal]]]:
-    """account -> (day, currency, amount) of each row that is money put in or taken out, and
-    of each move of shares in kind, valued (see the module)."""
-    first, last = days[0], days[-1]
+    """account -> (day, currency, amount) of each row of the accounts `ids` within `days` that
+    is money put in or taken out, and of each move of shares in kind, valued (see the module).
+
+    A committed row always has a category (a row waiting for one holds its month back), so an
+    income or an expense is investing or not by its category; one typed without a category is
+    money from outside."""
+    within = (json.dumps(sorted(ids)), days[0].isoformat(), days[-1].isoformat())
+    accounts = "t.account_id IN (SELECT value FROM json_each(?)) AND t.booking_date BETWEEN ? AND ?"
     found: dict[int, list[tuple[date, str, Decimal]]] = defaultdict(list)
-    investing = sorted(_INVESTING)
     rows = conn.execute(
-        "SELECT t.account_id, t.booking_date, t.currency, t.amount_nano FROM transactions t "  # noqa: S608  # only "?" marks and the fixed condition of `store.committed_or_typed` are interpolated
+        "SELECT t.account_id, t.booking_date, t.currency, t.amount_nano FROM transactions t "  # noqa: S608  # only "?" marks and the fixed conditions above and of `store.committed_or_typed` are interpolated
         "LEFT JOIN categories c ON c.id = t.category_id "
         "LEFT JOIN categories p ON p.id = c.parent_id "
-        f"WHERE {committed_or_typed('t.statement_file_id')} AND t.amount_nano <> 0 "
-        "AND (t.kind = 'transfer' OR (t.kind IN ('income', 'expense') "
+        f"WHERE {accounts} AND {committed_or_typed('t.statement_file_id')} "
+        "AND t.amount_nano <> 0 AND (t.kind = 'transfer' OR (t.kind IN ('income', 'expense') "
         "AND coalesce(p.name, c.name, '') NOT IN (?, ?)))",
-        investing,
+        (*within, *sorted(_INVESTING)),
     )
-    for account, day_text, currency, nano in rows:
-        day = date.fromisoformat(day_text)
-        if account in ids and first <= day <= last:
-            found[account].append((day, str(currency), from_nano(nano)))
+    for account, day, currency, nano in rows:
+        found[account].append((date.fromisoformat(day), str(currency), from_nano(nano)))
     moved = conn.execute(
-        "SELECT t.account_id, t.booking_date, tr.instrument_id, i.currency, tr.quantity, "  # noqa: S608  # only the fixed condition of `store.committed_or_typed` is interpolated
+        "SELECT t.account_id, t.booking_date, tr.instrument_id, i.currency, tr.quantity, "  # noqa: S608  # only "?" marks and the fixed conditions above and of `store.committed_or_typed` are interpolated
         "tr.cost_nano FROM trades tr JOIN transactions t ON t.id = tr.transaction_id "
         "JOIN instruments i ON i.id = tr.instrument_id "
-        f"WHERE t.kind = 'transfer' AND {committed_or_typed('t.statement_file_id')}"
+        f"WHERE {accounts} AND t.kind = 'transfer' AND {committed_or_typed('t.statement_file_id')}",
+        within,
     ).fetchall()
-    moved = [row for row in moved if row[0] in ids and first <= date.fromisoformat(row[1]) <= last]
+    # Only on the days shares moved in kind: the closes are read again, as net worth reads
+    # them, for those days alone.
     when = sorted({date.fromisoformat(row[1]) for row in moved})
     closes = networth.closes_on(conn, when) if when else {}
-    for account, day_text, instrument, currency, quantity, cost in moved:
-        day = date.fromisoformat(day_text)
+    for account, day, instrument, currency, quantity, cost in moved:
         on = closes.get(instrument)
-        worth = Decimal(quantity) * on[when.index(day)] if on else from_nano(cost)
-        found[account].append((day, str(currency), worth))
+        at = when.index(date.fromisoformat(day))
+        worth = Decimal(quantity) * on[at] if on else from_nano(cost)
+        found[account].append((date.fromisoformat(day), str(currency), worth))
     return found
 
 
@@ -387,14 +409,14 @@ def run(
             owner_,
             name,
             tuple(sorted(accounts[i].name for i in members)),
-            _rounded(measure(values, put_in)),
+            _rounded(measure(values, put_in, base + _ONE_DAY)),
         )
         for (owner_, name), members, values, put_in in measured
     ]
     rows.sort(key=lambda row: (row.owner, -row.measured.end, row.name))
     return replace(
         found,
-        totals=_rounded(measure(total, put)),
+        totals=_rounded(measure(total, put, base + _ONE_DAY)),
         points=sampled(points),
         holders=tuple(rows),
     )
