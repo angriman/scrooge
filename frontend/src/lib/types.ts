@@ -634,6 +634,9 @@ export interface MonthEndFigure {
 	 * config names `frozen`. */
 	liquid: Amount;
 	frozen: Amount;
+	/** What accounts held when they were first counted within the month, left out of `change`:
+	 * the two add up to the difference of the totals. Null with `change`. */
+	arrived: Amount | null;
 }
 
 /** The last day of one month there is, and net worth on it by currency. */

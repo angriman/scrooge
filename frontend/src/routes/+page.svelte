@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { page } from '$app/state';
+	import { coveredUpTo } from '#lib/coverage/covered.js';
 	import { assetColor, inOrder, liquidityColor } from '#lib/design/data.js';
 	import { addDays } from '#lib/format/date.js';
 	import Allocation from '#lib/overview/Allocation.svelte';
@@ -9,6 +10,7 @@
 	import MonthSection from '#lib/overview/MonthSection.svelte';
 	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
+	import { statementsUpTo } from '#lib/overview/through.js';
 	import { daysBack, DEFAULT_RANGE, RANGES, rangeLabel, type Range } from '#lib/overview/range.js';
 	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
@@ -19,6 +21,8 @@
 	const series = $derived(data.worth.series);
 	const currency = $derived(figures?.currency ?? data.session.currency);
 	const owner = $derived(page.url.searchParams.get('owner'));
+	// The header's day for whose figures are shown: the card does not name a later one.
+	const covered = $derived(coveredUpTo(data.session.people, owner ?? ''));
 	// One person alone: nothing on the page is about whose it is.
 	const single = $derived(data.session.people.length < 2);
 	const title = $derived(
@@ -103,7 +107,7 @@
 				{colors}
 				{title}
 				{currency}
-				through={figures.through && figures.through !== figures.day ? figures.through : null}
+				through={statementsUpTo(figures.through, figures.day, covered)}
 				{range}
 				onrange={(chosen: Range) =>
 					show(here(), { range: chosen === DEFAULT_RANGE ? null : chosen }, { shallow: true })}
