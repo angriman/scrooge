@@ -172,12 +172,13 @@ def _attention(request: Request) -> Response:
         except networth.MissingRateError as exc:
             errors.append(wire.sentence(exc))
             checks = ()
-        unsorted = attention.uncategorised(conn, owner, request.app.state.unmatched)
+        unmatched: str = request.app.state.unmatched
+        unsorted = attention.uncategorised(conn, owner, unmatched)
         changed = attention.changes(conn, owner=owner, currency=asked.currency)
     errors += [wire.sentence(exc) for exc in changed.errors]
     return JSONResponse(
         {
-            **wire.needs_a_look(asked.currency, unsorted, changed),
+            **wire.needs_a_look(asked.currency, unmatched, unsorted, changed),
             "staged": [{"owner": p.name, "count": p.staged} for p in people if p.staged],
             "behind": [
                 wire.account(line)

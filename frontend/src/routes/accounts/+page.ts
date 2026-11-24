@@ -6,7 +6,7 @@ import type { PageLoad } from './$types';
 export const load: PageLoad = async ({ fetch, url }) => {
 	const [listed, attention] = await Promise.all([
 		get<Statements>(fetch, '/api/statements', pick(url, ['owner', 'currency'])),
-		get<Attention>(fetch, '/api/attention', pick(url, ['owner']))
+		get<Attention>(fetch, '/api/attention', pick(url, ['owner', 'currency']))
 	]);
 	return { listed, attention };
 };

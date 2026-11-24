@@ -689,13 +689,16 @@ def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
 
 def needs_a_look(
     currency: str,
+    unmatched: str,
     unsorted: Sequence[attention.Uncategorised],
     changed: attention.Changes,
 ) -> JSON:
-    """The rows to categorise, per person, and the recurring payments that went up or are new,
-    what changed in `currency` (as paid, positive; null when a rate is missing)."""
+    """The rows still in the category `unmatched` (null: there is none), per person, and the
+    recurring payments that went up or are new, what changed in `currency` (as paid,
+    positive; null when a rate is missing)."""
     return {
         "currency": currency,
+        "unmatched": unmatched or None,
         "uncategorised": [{"owner": each.owner, "count": each.count} for each in unsorted],
         "recurring": [
             {

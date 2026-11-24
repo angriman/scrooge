@@ -157,7 +157,28 @@ export interface Attention {
 	behind: Account[];
 	/** Lines of statements whose figures differ from those worked out here. */
 	differ: number;
+	/** What `RecurringChange.change` is in. */
+	currency: string;
+	/** The category of the rows no rule matched (`unmatched` in the config); null: none. */
+	unmatched: string | null;
+	/** Committed rows still in `unmatched`, per person. */
+	uncategorised: { owner: string; count: number }[];
+	/** Recurring payments still paid that went up or started lately, the latest first. */
+	recurring: RecurringChange[];
 	errors: string[];
+}
+
+/** A recurring payment that went up lately (`change`: by how much a payment) or is new
+ * (`change`: what a payment costs), in `Attention.currency`; null when a rate is missing. */
+export interface RecurringChange {
+	name: string;
+	account: string;
+	owner: string;
+	every: 'monthly' | 'yearly';
+	kind: 'up' | 'new';
+	change: Amount | null;
+	/** The first payment at the new price, or the first of all. */
+	since: Day;
 }
 
 /** One instrument in one account (src/scrooge/portfolio.py `Position`). Native figures are in

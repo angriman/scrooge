@@ -23,7 +23,7 @@ def _client(path: Path, *, unmatched: str = categories.UNSORTED, rate: bool = Tr
 
 def test_rows_to_categorise_and_payments_that_changed_are_listed(tmp_path: Path) -> None:
     sent = _client(tmp_path).get("/api/attention").json()
-    assert sent["currency"] == "CHF"
+    assert (sent["currency"], sent["unmatched"]) == ("CHF", categories.UNSORTED)
     assert sent["uncategorised"] == [{"owner": PARTNER, "count": 1}, {"owner": OWNER, "count": 2}]
     assert sent["recurring"] == [
         {
@@ -69,7 +69,7 @@ def test_a_missing_rate_is_a_sentence_and_the_change_is_unknown(tmp_path: Path) 
 
 def test_without_unmatched_there_is_nothing_to_categorise(tmp_path: Path) -> None:
     sent = _client(tmp_path, unmatched="").get("/api/attention").json()
-    assert sent["uncategorised"] == []
+    assert (sent["unmatched"], sent["uncategorised"]) == (None, [])
 
 
 def test_nobody_of_that_name_is_not_found(tmp_path: Path) -> None:

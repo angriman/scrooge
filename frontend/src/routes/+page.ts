@@ -18,7 +18,7 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		series('asset'),
 		by === 'asset' ? null : series(by),
 		get<Month>(fetch, '/api/month', pick(url, ['owner', 'currency', 'month'])),
-		get<Attention>(fetch, '/api/attention', pick(url, ['owner']))
+		get<Attention>(fetch, '/api/attention', pick(url, ['owner', 'currency']))
 	]);
 	// The month-end table values everything once more, in each of its currencies: it is asked
 	// for only once it is shown (`view=table`, a view of the page that loads nothing else), and
