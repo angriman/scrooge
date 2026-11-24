@@ -219,36 +219,33 @@ def _statements(request: Request) -> Response:
         }
         files = months.by_account(conn, asked.owner)
         try:
-            valued = networth.value(conn, asked.owner)
-            balances = networth.balances(conn, valued, asked.currency)
-            held = holds.of(conn, valued, asked.currency)
+            held = holds.of(conn, networth.value(conn, asked.owner), asked.currency)
             checks = networth.checks(conn, owner=asked.owner)
         except networth.MissingRateError as exc:
             errors.append(wire.sentence(exc))
-            balances, held, checks = {}, {}, ()
+            held, checks = {}, ()
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
         address = str(request.url_for("original", number=statement.id)) if kept else None
         return wire.statement(statement, address)
 
-    accounts = [
-        {
-            **wire.statements_account(
-                line,
-                late,
-                balances.get((line.owner, line.account)),
-                tracks.get((line.owner, line.account, line.source), ()),
-                [
-                    listed(s)
-                    for s in files.get((line.owner, line.account), ())
-                    if s.source == line.source
-                ],
-            ),
-            "holds": wire.account_holds(held.get((line.owner, line.account))),
-        }
-        for line, late in zip(lines, months.behind(lines), strict=True)
-    ]
+    def row(line: months.Coverage, late: bool) -> wire.JSON:
+        found = held.get((line.owner, line.account))
+        shown = wire.statements_account(
+            line,
+            late,
+            None if found is None else found.balance,
+            tracks.get((line.owner, line.account, line.source), ()),
+            [
+                listed(s)
+                for s in files.get((line.owner, line.account), ())
+                if s.source == line.source
+            ],
+        )
+        return {**shown, "holds": wire.account_holds(found)}
+
+    accounts = [row(line, late) for line, late in zip(lines, months.behind(lines), strict=True)]
     return JSONResponse(
         {
             "currency": asked.currency,

@@ -10,10 +10,10 @@ import pytest
 from scrooge import holds, networth
 from scrooge.holds import Cash, Holds, MonthEnd
 from scrooge.models import CashBalance, Transaction
-from scrooge.networth import CASH, ETFS, MissingRateError
+from scrooge.networth import CARD, CASH, ETFS, PENSION, PILLAR2, MissingRateError
 from scrooge.pipeline import Statement
 from scrooge.storage import db, store
-from tests.storage.helpers import AUGUST, OWNER, SEPTEMBER, statement
+from tests.storage.helpers import AUGUST, OWNER, PARTNER, SEPTEMBER, statement
 from tests.test_networth import NOW, account, bought, close, price, rate, spent
 
 D = Decimal
@@ -39,8 +39,9 @@ def broker(month: date, dollars: tuple[str, str], euros: str, *rows: Transaction
 
 
 def two_months(conn: sqlite3.Connection) -> None:
-    """August and September 2026 of Lukas: a bank account in francs, and a broker that keeps
-    dollars, euros and an ETF bought in August. A dollar is 0.80 francs, a euro 0.90."""
+    """August and September 2026 of Lukas: a bank account and a card in francs, and a broker
+    that keeps dollars, euros and an ETF bought in August. Anna has a bank account of the same
+    name in September. A dollar is 0.80 francs, a euro 0.90."""
     widgets = bought("WIDG", "10", "-500", date(2026, 8, 20), source_file="IBKR 2026-08.csv")
     close(
         conn,
@@ -51,8 +52,10 @@ def two_months(conn: sqlite3.Connection) -> None:
     close(
         conn,
         account("migros", "Migros", "CHF", "800", spent("-100", date(2026, 9, 5))),
+        account("swisscard", "Swisscard", "CHF", "-150"),
         broker(SEPTEMBER, ("4500", "4500"), "2000"),
     )
+    close(conn, account("migros", "Migros", "CHF", "300"), owner=PARTNER)
     price(conn, "WIDG", date(2026, 8, 31), "50")
     price(conn, "WIDG", date(2026, 9, 30), "60")
     rate(conn, "USD", date(2026, 8, 1), "0.8")
@@ -61,12 +64,13 @@ def two_months(conn: sqlite3.Connection) -> None:
 
 def test_each_account_holds_its_cash_and_its_securities_apart(conn: sqlite3.Connection) -> None:
     two_months(conn)
-    valued = networth.value(conn, OWNER)
+    valued = networth.value(conn, None)
     found = holds.of(conn, valued, "CHF")
     # The history starts on the eve of August: what the first statements open with.
     ends = (date(2026, 7, 31), date(2026, 8, 31), date(2026, 9, 30))
     assert found[OWNER, "Migros"] == Holds(
-        (Cash("CHF", D("700.00"), D("700.00")),),
+        D("700.00"),
+        (Cash(CASH, "CHF", D("700.00"), D("700.00")),),
         None,
         tuple(
             MonthEnd(end, D(v))
@@ -74,22 +78,27 @@ def test_each_account_holds_its_cash_and_its_securities_apart(conn: sqlite3.Conn
         ),
     )
     assert found[OWNER, "IBKR USD"] == Holds(
-        (Cash("USD", D("4500.00"), D("3600.00")),),
+        D("4080.00"),
+        (Cash(CASH, "USD", D("4500.00"), D("3600.00")),),
         D("480.00"),
         tuple(
             MonthEnd(end, D(v))
             for end, v in zip(ends, ("4000.00", "4000.00", "4080.00"), strict=True)
         ),
     )
-    assert found[OWNER, "IBKR EUR"].cash == (Cash("EUR", D("2000.00"), D("1800.00")),)
+    assert found[OWNER, "IBKR EUR"].cash == (Cash(CASH, "EUR", D("2000.00"), D("1800.00")),)
     assert found[OWNER, "IBKR EUR"].securities is None
-    # The parts add up to the balance the page shows.
-    for key, balance in networth.balances(conn, valued, "CHF").items():
-        held = found[key]
+    # A card's balance is what it owes, not cash; the same name is another person's account.
+    assert found[OWNER, "Swisscard"].cash == (Cash(CARD, "CHF", D("-150.00"), D("-150.00")),)
+    assert found[PARTNER, "Migros"].balance == D("300.00")
+    # The parts add up to the balance, which is the one net worth has.
+    balances = networth.balances(conn, valued, "CHF")
+    assert {key: held.balance for key, held in found.items()} == balances
+    for held in found.values():
         parts = sum((c.converted for c in held.cash), held.securities or D(0))
-        assert (parts, held.months[-1].balance) == (balance, balance)
+        assert parts == held.months[-1].balance == held.balance
     in_dollars = holds.of(conn, valued, "USD")[OWNER, "IBKR USD"]
-    assert in_dollars.cash == (Cash("USD", D("4500.00"), D("4500.00")),)
+    assert in_dollars.cash == (Cash(CASH, "USD", D("4500.00"), D("4500.00")),)
     assert in_dollars.securities == D("600.00")
 
 
@@ -100,6 +109,10 @@ def test_nothing_valued_holds_nothing_and_a_missing_rate_is_raised(
     two_months(conn)
     with pytest.raises(MissingRateError):
         holds.of(conn, networth.value(conn, OWNER), "JPY")
+    # An account kept in a currency no rate is stored for cannot be converted either.
+    close(conn, account("revolut", "Revolut GBP", "GBP", "100"), owner=PARTNER)
+    with pytest.raises(MissingRateError, match="GBP"):
+        holds.of(conn, networth.value(conn, None), "CHF")
 
 
 def test_a_broker_lists_its_cash_by_currency_and_the_last_twelve_month_ends(
@@ -129,8 +142,8 @@ def test_a_broker_lists_its_cash_by_currency_and_the_last_twelve_month_ends(
     valued = networth.Valued(days, series, (), (), {OWNER: days[-1]})
     held = holds.of(conn, valued, "CHF")[OWNER, "ACME"]
     assert held.cash == (
-        Cash("USD", D("1250.00"), D("1000.00")),
-        Cash("CHF", D("100.00"), D("100.00")),
+        Cash(CASH, "USD", D("1250.00"), D("1000.00")),
+        Cash(CASH, "CHF", D("100.00"), D("100.00")),
     )
     assert held.securities == D("400.00")
     assert len(held.months) == holds.MONTHS
@@ -144,6 +157,28 @@ def test_a_broker_lists_its_cash_by_currency_and_the_last_twelve_month_ends(
         date(2025, 10, 31),
         date(2025, 11, 28),
     ]
+
+
+def test_pension_cash_and_a_fund_balance_say_what_they_are(conn: sqlite3.Connection) -> None:
+    owner = store.ensure_owner(conn, OWNER)
+    third = store.ensure_account(
+        conn, owner, name="ACME 3a", kind="broker_cash", currency="CHF", source="finpension"
+    )
+    fund = store.ensure_account(
+        conn, owner, name="ACME Fund", kind="manual", currency="CHF", source="axa"
+    )
+    days = (date(2026, 9, 29), date(2026, 9, 30))
+    series = (
+        networth.Series(OWNER, third, PENSION, "CHF", [D(20), D(20)]),
+        networth.Series(OWNER, third, PENSION, "CHF", [D(980), D(990)], instrument_id=1),
+        networth.Series(OWNER, fund, PILLAR2, "CHF", [D(50000), D(50000)]),
+    )
+    found = holds.of(conn, networth.Valued(days, series, (), (), {}), "CHF")
+    assert (found[OWNER, "ACME 3a"].cash, found[OWNER, "ACME 3a"].securities) == (
+        (Cash(PENSION, "CHF", D("20.00"), D("20.00")),),
+        D("990.00"),
+    )
+    assert found[OWNER, "ACME Fund"].cash == (Cash(PILLAR2, "CHF", D("50000.00"), D("50000.00")),)
 
 
 def _cut(series: networth.Series, length: int) -> networth.Series:

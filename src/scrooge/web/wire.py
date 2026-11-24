@@ -354,7 +354,12 @@ def account_holds(held: holds.Holds | None) -> JSON | None:
         return None
     return {
         "cash": [
-            {"currency": c.currency, "amount": number(c.amount), "converted": number(c.converted)}
+            {
+                "asset": c.asset,
+                "currency": c.currency,
+                "amount": number(c.amount),
+                "converted": number(c.converted),
+            }
             for c in held.cash
         ],
         "securities": number(held.securities),

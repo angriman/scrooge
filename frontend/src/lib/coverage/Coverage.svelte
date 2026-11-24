@@ -156,13 +156,14 @@ securities), then its statements, newest first, each with the file it came from.
 								{/each}
 							</span>
 							<!-- What it holds: the figure of the row, beside the line on a wide screen, after
-							     the small line of its last month-ends. -->
+							     the small line of its last month-ends (on a phone, the figure alone). -->
 							<span class="flex items-center justify-end gap-3 text-right md:justify-between">
 								{#if account.balance !== null}
-									{#if account.holds}
-										<Sparkline balances={account.holds.months.map((month) => month.balance)} />
-									{/if}
 									<Amount value={account.balance} {currency} places={0} class="text-title font-medium text-ink" />
+									{#if account.holds}
+										<!-- Drawn before the figure, said after it. -->
+										<Sparkline months={account.holds.months} {currency} class="order-first" />
+									{/if}
 								{:else}
 									<span class="text-small text-ink-muted">Not known</span>
 								{/if}

@@ -275,8 +275,10 @@ export interface StatementsAccount extends Account {
 
 /** What an account holds now by part, and its balance at the last month-ends. */
 export interface AccountHolds {
-	/** Its cash in each currency, the largest first: as kept, and in the currency asked for. */
-	cash: { currency: string; amount: Amount; converted: Amount }[];
+	/** Its cash in each currency, the largest first: as kept, and in the currency asked for.
+	 * `asset` is the kind net worth counts it as: `Cash`, `Card` (what a card owes), `Pillar 3a`
+	 * (the cash inside one) or `Pillar 2` (what a pension fund's certificates state). */
+	cash: { asset: string; currency: string; amount: Amount; converted: Amount }[];
 	/** Its securities together, in the currency asked for; null when it holds none. */
 	securities: Amount | null;
 	/** Oldest first, at most twelve; the last is the last day there is. */

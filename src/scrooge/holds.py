@@ -25,8 +25,12 @@ _CENT = Decimal("0.01")
 
 @dataclass(frozen=True, slots=True)
 class Cash:
-    """The cash an account keeps in one currency, on the last day."""
+    """The cash an account keeps in one currency, on the last day. `asset` says what kind of
+    cash it is, as net worth counts it: cash (`networth.CASH`), what a card owes or is owed
+    (`CARD`), the cash inside a pillar 3a (`PENSION`) or what a pension fund's certificates
+    state (`PILLAR2`)."""
 
+    asset: str
     currency: str
     amount: Decimal  # in `currency`, to the cent
     converted: Decimal  # in the currency asked for, to the cent
@@ -45,6 +49,7 @@ class MonthEnd:
 class Holds:
     """What one account holds now, by part, and its balance at the last month-ends."""
 
+    balance: Decimal  # all of it in the currency asked for, to the cent: `networth.balances`
     cash: tuple[Cash, ...]  # the largest first, in the currency asked for
     securities: Decimal | None  # what its securities are worth together; None: it holds none
     months: tuple[MonthEnd, ...]  # oldest first, from the first it held anything; at most MONTHS
@@ -63,16 +68,17 @@ def of(
     conn: sqlite3.Connection, valued: networth.Valued | None, currency: str
 ) -> dict[tuple[str, str], Holds]:
     """What every account of `valued` holds, in `currency`; by its owner and name, as
-    `networth.balances` has it. Raises `networth.MissingRateError` as that does."""
+    `networth.balances` has it, whose balances this gives too: a page that shows both reads the
+    rates once. Raises `networth.MissingRateError` as that does."""
     if valued is None:
         return {}
     names = {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
     kept = ends(valued.days)[-MONTHS:]
     days = [valued.days[index] for index in kept]
-    # Only the month-ends are converted: the rates are read for those days alone. The last of
-    # them is the last day, whose rates the balance is converted at.
+    # Only the month-ends are converted: the rates are carried to those days alone. The last
+    # of them is the last day, whose rates the balance is converted at.
     rates = networth.rates_on(conn, days)
-    cash: dict[tuple[str, str], dict[str, list[Decimal]]] = defaultdict(dict)
+    cash: dict[tuple[str, str], dict[tuple[str, str], list[Decimal]]] = defaultdict(dict)
     securities: dict[tuple[str, str], Decimal] = {}
     history: dict[tuple[str, str], list[Decimal]] = {}
     for series in valued.series:
@@ -83,21 +89,23 @@ def of(
         added = history.setdefault(key, [Decimal(0)] * len(kept))
         history[key] = [was + value for was, value in zip(added, converted, strict=True)]
         if series.instrument_id is None:
-            native, into = cash[key].get(series.currency, [Decimal(0), Decimal(0)])
-            cash[key][series.currency] = [native + series.values[-1], into + converted[-1]]
+            kind = series.asset, series.currency
+            native, into = cash[key].get(kind, [Decimal(0), Decimal(0)])
+            cash[key][kind] = [native + series.values[-1], into + converted[-1]]
         elif series.values[-1]:
             securities[key] = securities.get(key, Decimal(0)) + converted[-1]
     found: dict[tuple[str, str], Holds] = {}
     for key, balances in history.items():
         start = next((at for at, value in enumerate(balances) if value), len(balances))
         found[key] = Holds(
+            balances[-1].quantize(_CENT),
             tuple(
                 sorted(
                     (
-                        Cash(name, native.quantize(_CENT), into.quantize(_CENT))
-                        for name, (native, into) in cash[key].items()
+                        Cash(asset, name, native.quantize(_CENT), into.quantize(_CENT))
+                        for (asset, name), (native, into) in cash[key].items()
                     ),
-                    key=lambda each: (-each.converted, each.currency),
+                    key=lambda each: (-each.converted, each.currency, each.asset),
                 )
             ),
             None if key not in securities else securities[key].quantize(_CENT),
