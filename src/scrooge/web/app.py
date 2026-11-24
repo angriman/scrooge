@@ -66,6 +66,7 @@ from scrooge import (
     report,
     spending,
     staging,
+    together,
 )
 from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
@@ -835,8 +836,10 @@ def _months(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         query.check_names(conn, query.Filter(owner=owner))
         lines = months.listing(conn, owner)
-        accounts = _accounts(months.coverage(conn, owner))
-        tracks = months.timeline(conn, owner)
+        # A broker's currencies are one account, as at /app/accounts (`together`).
+        rows = together.rows(conn, owner)
+        accounts = _accounts([row.line for row in rows])
+        tracks = [months.Track(r.line.owner, r.line.account, r.line.source, r.spans) for r in rows]
         people = query.people(conn)
     today = request.app.state.clock().date()
     shown = [person for person in people if owner in (None, person.name)]
