@@ -32,7 +32,8 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		/** What the headline is of: `Net worth`, `Anna’s net worth`. */
 		title: string;
 		currency: string;
-		/** The last day the statements of those shown cover, when it is before the last day. */
+		/** The last day the statements of those shown cover, when it is before the last day and
+		 * not after the header's "Complete up to" day (`statementsUpTo`). */
 		through: string | null;
 		range: Range;
 		onrange: (range: Range) => void;
