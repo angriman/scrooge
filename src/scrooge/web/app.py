@@ -66,6 +66,7 @@ from scrooge import (
     report,
     spending,
     staging,
+    together,
 )
 from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
@@ -75,7 +76,7 @@ from scrooge.prices import MaturitySource, PriceError
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
 from scrooge.validation import ReconciliationError
-from scrooge.web import api, auth, forms, shapes, wire
+from scrooge.web import api, auth, forms, settings_api, shapes, wire
 from scrooge.web import uploads as uploads_
 
 HOST = "127.0.0.1"  # where the app is served unless `scrooge.yaml` names another address
@@ -391,6 +392,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/login", _login, methods=["POST"]),
             Route("/logout", _logout, methods=["POST"], name="logout"),
             Mount("/static", StaticFiles(directory=_HERE / "static"), name="static"),
+            Mount(f"{_API}settings", routes=settings_api.routes),  # before the rest of /api
             Mount(_API.rstrip("/"), routes=api.routes),
             *(
                 []
@@ -835,8 +837,10 @@ def _months(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         query.check_names(conn, query.Filter(owner=owner))
         lines = months.listing(conn, owner)
-        accounts = _accounts(months.coverage(conn, owner))
-        tracks = months.timeline(conn, owner)
+        # A broker's currencies are one account, as at /app/accounts (`together`).
+        rows = together.rows(conn, owner)
+        accounts = _accounts([row.line for row in rows])
+        tracks = [months.Track(r.line.owner, r.line.account, r.line.source, r.spans) for r in rows]
         people = query.people(conn)
     today = request.app.state.clock().date()
     shown = [person for person in people if owner in (None, person.name)]

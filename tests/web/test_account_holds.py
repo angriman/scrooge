@@ -23,17 +23,26 @@ def test_each_account_says_what_it_holds_and_what_it_held_at_each_month_end(
     client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
     sent = client.get("/api/statements").json()
     accounts = {(a["owner"], a["account"]): a for a in sent["accounts"]}
-    broker = accounts[OWNER, "IBKR USD"]
-    assert (broker["balance"], sent["errors"]) == ("4080.00", [])
+    # The broker's dollars and euros are one account, as its statements are.
+    broker = accounts[OWNER, "IBKR"]
+    assert (broker["balance"], broker["parts"], sent["errors"]) == (
+        "5880.00",
+        ["IBKR EUR", "IBKR USD"],
+        [],
+    )
     assert broker["holds"] == {
-        "cash": [{"asset": "Cash", "currency": "USD", "amount": "4500.00", "converted": "3600.00"}],
+        "cash": [
+            {"asset": "Cash", "currency": "USD", "amount": "4500.00", "converted": "3600.00"},
+            {"asset": "Cash", "currency": "EUR", "amount": "2000.00", "converted": "1800.00"},
+        ],
         "securities": "480.00",
         "months": [
-            {"day": "2026-07-31", "balance": "4000.00"},
-            {"day": "2026-08-31", "balance": "4000.00"},
-            {"day": "2026-09-30", "balance": "4080.00"},
+            {"day": "2026-07-31", "balance": "5800.00"},
+            {"day": "2026-08-31", "balance": "5800.00"},
+            {"day": "2026-09-30", "balance": "5880.00"},
         ],
     }
+    assert accounts[OWNER, "Migros"]["parts"] == ["Migros"]
     bank = accounts[OWNER, "Migros"]["holds"]
     assert (bank["cash"], bank["securities"]) == (
         [{"asset": "Cash", "currency": "CHF", "amount": "700.00", "converted": "700.00"}],

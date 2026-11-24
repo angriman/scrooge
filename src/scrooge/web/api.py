@@ -33,6 +33,7 @@ from scrooge import (
     context,
     holds,
     marketdata,
+    merchants,
     months,
     networth,
     overview,
@@ -44,6 +45,7 @@ from scrooge import (
     recurring,
     report,
     staging,
+    together,
 )
 from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
@@ -82,7 +84,7 @@ def _session(request: Request) -> Response:
     state = request.app.state
     with db.reading(state.database) as conn:
         people = query.people(conn)
-        lines = months.coverage(conn)
+        lines = together.lines(conn)
     return JSONResponse(
         {
             "people": [
@@ -171,7 +173,7 @@ def _attention(request: Request) -> Response:
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
         people = [p for p in query.people(conn) if owner in (None, p.name)]
-        lines = months.coverage(conn, owner)
+        lines = together.lines(conn, owner)
         try:
             checks = networth.checks(conn, owner=owner)
         except networth.MissingRateError as exc:
@@ -222,7 +224,8 @@ def _statements(request: Request) -> Response:
     it holds now in `currency` (its cash by currency, its securities, its last month-ends:
     `holds`), the runs of days they cover and the statements themselves; the
     day every monthly account is covered to; and the statements' own balances against those
-    worked out here."""
+    worked out here. A broker's accounts in each currency are one account (`together`), with
+    the names they are booked under (`parts`)."""
     asked = forms.holdings_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
@@ -231,39 +234,32 @@ def _statements(request: Request) -> Response:
     errors: list[str] = []
     with db.reading(state.database) as conn:
         query.check_names(conn, query.Filter(owner=asked.owner))
-        lines = months.coverage(conn, asked.owner)
-        tracks = {
-            (t.owner, t.account, t.source): t.spans for t in months.timeline(conn, asked.owner)
-        }
-        files = months.by_account(conn, asked.owner)
         try:
             held = holds.of(conn, networth.value(conn, asked.owner), asked.currency)
             checks = networth.checks(conn, owner=asked.owner)
         except networth.MissingRateError as exc:
             errors.append(wire.sentence(exc))
             held, checks = {}, ()
+        # A broker's currencies are one account here, and judged as one (`together`).
+        rows = together.rows(conn, asked.owner, held)
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
         address = str(request.url_for("original", number=statement.id)) if kept else None
         return wire.statement(statement, address)
 
-    def row(line: months.Coverage, late: bool) -> wire.JSON:
-        found = held.get((line.owner, line.account))
+    def row(one: together.Row, late: bool) -> wire.JSON:
         shown = wire.statements_account(
-            line,
+            one.line,
             late,
-            None if found is None else found.balance,
-            tracks.get((line.owner, line.account, line.source), ()),
-            [
-                listed(s)
-                for s in files.get((line.owner, line.account), ())
-                if s.source == line.source
-            ],
+            None if one.held is None else one.held.balance,
+            one.spans,
+            [listed(s) for s in one.statements],
         )
-        return {**shown, "holds": wire.account_holds(found)}
+        return {**shown, "holds": wire.account_holds(one.held), "parts": list(one.parts)}
 
-    accounts = [row(line, late) for line, late in zip(lines, months.behind(lines), strict=True)]
+    lines = tuple(one.line for one in rows)
+    accounts = [row(one, late) for one, late in zip(rows, months.behind(lines), strict=True)]
     return JSONResponse(
         {
             "currency": asked.currency,
@@ -791,6 +787,25 @@ def _transactions_context(request: Request) -> Response:
     return JSONResponse({**wire.transactions_context(shown, held), "errors": errors})
 
 
+def _transactions_merchants(request: Request) -> Response:
+    """Every merchant `owner` (everyone) spent money at, named as the merchant filter reads
+    them, with what was spent there over the last twelve months in `currency`."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = wire.unless_rate_missing(
+                errors,
+                lambda: merchants.run(conn, owner=asked.owner, currency=asked.currency),
+                merchants.Merchants(asked.currency, None, None, (), ()),
+            )
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+    return JSONResponse({**wire.known_merchants(shown), "errors": errors})
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -841,6 +856,7 @@ routes = [
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
     Route("/transactions/context", _transactions_context, name="api_transactions_context"),
+    Route("/transactions/merchants", _transactions_merchants, name="api_transactions_merchants"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
     Route("/performance", _performance, name="api_performance"),

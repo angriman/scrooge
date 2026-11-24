@@ -886,14 +886,17 @@ def balances(
 
 @dataclass(frozen=True, slots=True)
 class Figure:
-    """Net worth at a month's end in one currency, how it moved since the month before, and
-    what of it is liquid and what frozen that day."""
+    """Net worth at a month's end in one currency, how it moved since the month before and what
+    came into view besides, and what of it is liquid and what frozen that day."""
 
     total: Decimal
     change: Decimal | None  # None: the history starts within the month
     percent: Decimal | None  # `change` in percent of the month before; None unless that is above 0
     liquid: Decimal
     frozen: Decimal
+    # What accounts brought into view within the month, left out of `change`: the two add up
+    # to the difference of the totals. None with `change`.
+    arrived: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -944,8 +947,9 @@ def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
     change is against the end of the month before, less what accounts brought into view in
     between (`NetWorth.arrived`), which the month's recap sets apart too: an account whose
     first statement is imported brings what it held, and that was not made in the month. So
-    a change is not always the difference of two totals. The first month has nothing before
-    it to change from. What is liquid and what frozen is that of the month's last day.
+    a change is not always the difference of two totals: with what arrived, it is. The first
+    month has nothing before it to change from. What is liquid and what frozen is that of the
+    month's last day.
     """
     if not worths or not worths[0].days:
         return ()
@@ -966,13 +970,13 @@ def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
             liquid = parts.get(LIQUID, nothing)[index]
             frozen = parts.get(FROZEN, nothing)[index]
             if before is None:
-                values[worth.currency] = Figure(total, None, None, liquid, frozen)
+                values[worth.currency] = Figure(total, None, None, liquid, frozen, None)
                 continue
             was = worth.total[before]
-            arrived = sum(worth.arrived[before + 1 : index + 1], Decimal(0))
+            arrived = sum(worth.arrived[before + 1 : index + 1], Decimal(0)).quantize(_CENT)
             change = (total - was - arrived).quantize(_CENT)
             percent = (change * 100 / was).quantize(_CENT) if was > 0 else None
-            values[worth.currency] = Figure(total, change, percent, liquid, frozen)
+            values[worth.currency] = Figure(total, change, percent, liquid, frozen, arrived)
         found.append(MonthEnd(days[index].replace(day=1), days[index], values))
     return tuple(reversed(found))
 

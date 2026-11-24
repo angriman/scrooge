@@ -287,6 +287,9 @@ export interface StatementsAccount extends Account {
 	statements: StatementFile[];
 	/** What it holds by part; null when its balance is not known. */
 	holds: AccountHolds | null;
+	/** The accounts it is booked as elsewhere: a broker's one per currency, whose statements
+	 * it lists together; its own name alone otherwise. */
+	parts: string[];
 }
 
 /** What an account holds now by part, and its balance at the last month-ends. */
@@ -675,6 +678,9 @@ export interface MonthEndFigure {
 	 * config names `frozen`. */
 	liquid: Amount;
 	frozen: Amount;
+	/** What accounts held when they were first counted within the month, left out of `change`:
+	 * the two add up to the difference of the totals. Null with `change`. */
+	arrived: Amount | null;
 }
 
 /** The last day of one month there is, and net worth on it by currency. */
@@ -737,6 +743,9 @@ export interface TransactionsContext {
 	currency: string;
 	/** The amounts are money earned (a category of income), not money spent. */
 	earned: boolean;
+	/** The amounts are an account's net flow: money in less money out, every row of it
+	 * counted, transfers too; above nothing, money put aside. */
+	net: boolean;
 	/** Two years of months up to the one of `through`, oldest first; none when nothing is
 	 * committed or a rate is missing. */
 	months: { month: string; amount: Amount }[];
@@ -750,5 +759,95 @@ export interface TransactionsContext {
 	merchants: { name: string; amount: Amount; count: number }[] | null;
 	/** For an account: what it holds now. */
 	balance: Amount | null;
+	errors: string[];
+}
+
+/** A merchant money was spent at, as the merchant filter names them
+ * (`/api/transactions/merchants`). */
+export interface KnownMerchant {
+	name: string;
+	/** Over the twelve months up to the last day committed, a refund lowering it. */
+	spent: Amount;
+	/** Rows over those twelve months. */
+	count: number;
+	/** The day of its last row, whenever it was. */
+	last: Day;
+}
+
+export interface KnownMerchants {
+	currency: string;
+	/** The first day of the twelve months; null when nothing is committed. */
+	since: Day | null;
+	through: Day | null;
+	/** Those spent at in the twelve months first, the largest first; then the others, the
+	 * latest first. As many as the chip lists at once. */
+	merchants: KnownMerchant[];
+	/** The names of the rest, in the same order: typing still finds them. */
+	others: string[];
+	errors: string[];
+}
+
+/** A file of rules: a person's own, tried first, or one everybody shares. */
+export interface RulesFile {
+	key: string;
+	owner: string | null;
+}
+
+/** One rule of `/api/settings/rules`: where it is, and how many committed rows it matches. */
+export interface Rule {
+	file: string;
+	owner: string | null;
+	/** From 1, in its file. */
+	position: number;
+	match: string;
+	category: string;
+	/** `in`, `out`, or empty for both. */
+	direction: string;
+	account: string;
+	/** Committed rows it would match on its own, whatever rule before it takes them first;
+	 * null when its pattern is none. */
+	matches: number | null;
+	/** What a change of it sends back: its lines as shown. */
+	version: string;
+	/** Why it cannot be changed here; null when it can. */
+	fixed: string | null;
+}
+
+export interface SettingsRules {
+	people: string[];
+	files: RulesFile[];
+	rules: Rule[];
+	/** The categories a rule can give. */
+	leaves: Headed[];
+	/** Whether this app can change them: not on a copy, nor without a place for rules. */
+	editable: boolean;
+	errors: string[];
+}
+
+/** What a pattern tried on the committed rows matches; nothing is saved. */
+export interface PatternTest {
+	count: number;
+	/** The newest of them. */
+	rows: Transaction[];
+	errors: string[];
+}
+
+export interface ListedCategory {
+	name: string;
+	side: 'uscite' | 'entrate' | 'transfer';
+	/** The top-level category of an expense. */
+	parent: string | null;
+	built_in: boolean;
+	/** Committed rows that carry it. */
+	rows: number;
+}
+
+export interface SettingsCategories {
+	categories: ListedCategory[];
+	/** What a new expense category can go under. */
+	groups: string[];
+	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
+	unmatched: string | null;
+	editable: boolean;
 	errors: string[];
 }

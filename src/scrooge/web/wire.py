@@ -30,8 +30,10 @@ from scrooge import (
     recurring,
     report,
     savings,
+    settings,
 )
 from scrooge.context import Context
+from scrooge.merchants import Merchants
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -660,7 +662,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
 
 def month_end(end: networth.MonthEnd) -> JSON:
     """Net worth at a month's end, by currency: its total, how it moved since the month
-    before (`networth.by_month`), and what of it is liquid and what frozen."""
+    before (`networth.by_month`) and what came into view besides, and what of it is liquid and
+    what frozen."""
     return {
         "month": f"{end.month:%Y-%m}",
         "day": day(end.day),
@@ -672,6 +675,7 @@ def month_end(end: networth.MonthEnd) -> JSON:
                 "percent": number(figure.percent),
                 "liquid": number(figure.liquid),
                 "frozen": number(figure.frozen),
+                "arrived": number(figure.arrived),
             }
             for currency, figure in end.values.items()
         },
@@ -718,6 +722,7 @@ def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
         "name": shown.name,
         "currency": shown.currency,
         "earned": shown.earned,
+        "net": shown.net,
         "months": [
             {"month": _month(month.first), "amount": number(month.amount)} for month in shown.months
         ],
@@ -764,6 +769,54 @@ def needs_a_look(
             }
             for each in changed.changes
         ],
+    }
+
+
+def known_merchants(shown: Merchants) -> JSON:
+    """`shown` as `/api/transactions/merchants` sends it."""
+    return {
+        "currency": shown.currency,
+        "since": day(shown.since),
+        "through": day(shown.through),
+        "merchants": [
+            {
+                "name": merchant.name,
+                "spent": number(merchant.spent),
+                "count": merchant.count,
+                "last": day(merchant.last),
+            }
+            for merchant in shown.merchants
+        ],
+        "others": list(shown.others),
+    }
+
+
+def listed_rule(rule: settings.ListedRule) -> JSON:
+    """One rule of the settings page: what it gives, in which file, how many committed rows
+    it would match on its own (null when its pattern is none), what a change of it sends back
+    (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
+    return {
+        "file": rule.file.key,
+        "owner": rule.file.owner,
+        "position": rule.position,
+        "match": rule.match,
+        "category": rule.category,
+        "direction": rule.direction,
+        "account": rule.account,
+        "matches": rule.matches,
+        "version": rule.version,
+        "fixed": rule.fixed or None,
+    }
+
+
+def listed_category(category: settings.ListedCategory) -> JSON:
+    """One category of the settings page, and how many committed rows carry it."""
+    return {
+        "name": category.name,
+        "side": category.side,
+        "parent": category.parent,
+        "built_in": category.built_in,
+        "rows": category.rows,
     }
 
 

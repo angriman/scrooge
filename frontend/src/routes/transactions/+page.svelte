@@ -10,7 +10,7 @@
 	import Filters from '#lib/transactions/Filters.svelte';
 	import Summary from '#lib/transactions/Summary.svelte';
 	import { FIELDS, TRANSFERS, filtered } from '#lib/transactions/filter.js';
-	import type { Transaction, Transactions } from '#lib/types.js';
+	import type { KnownMerchants, Transaction, Transactions } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { pick, withQuery } from '#lib/view.js';
 	import type { PageProps } from './$types';
@@ -86,6 +86,21 @@
 		if (shown) await fetchMore(Math.min(shown, MOST));
 	}
 
+	// The merchants the Merchant chip offers: asked for once per owner and currency, and again
+	// only when that failed.
+	const merchantLists = new Map<string, Promise<KnownMerchants>>();
+	function merchantsShown(): Promise<KnownMerchants> {
+		const params = pick(page.url, ['owner', 'currency']);
+		const key = params.toString();
+		let list = merchantLists.get(key);
+		if (!list) {
+			list = get<KnownMerchants>(fetch, '/api/transactions/merchants', params);
+			list.catch(() => merchantLists.delete(key));
+			merchantLists.set(key, list);
+		}
+		return list;
+	}
+
 	const csv = $derived.by(() => {
 		const query = pick(page.url, ['owner', ...FIELDS]).toString();
 		return `/transactions.csv${query ? `?${query}` : ''}`;
@@ -119,6 +134,7 @@
 		categories={listed.choices.categories}
 		kinds={listed.kinds}
 		{today}
+		merchants={merchantsShown}
 		onchange={change}
 	/>
 
