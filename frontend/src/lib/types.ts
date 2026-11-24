@@ -543,13 +543,16 @@ export interface PayoutsReport {
 	totals: Payout & { net: Amount };
 	/** The same months a year earlier; null when they are not all known. */
 	year_before: (Payout & { net: Amount }) | null;
+	/** The twelve months up to `through`, whatever the range. */
+	trailing: Payout & { net: Amount };
 	months: (Payout & { month: string })[];
 	holdings: PayingHolding[];
 }
 
-/** `/api/income`: what investments paid, and the ranges offered. */
+/** `/api/income`: what investments paid, and the ranges offered. `errors` names each currency
+ * whose rows were left out for want of a rate. */
 export interface InvestmentIncome {
-	income: PayoutsReport | null;
+	income: PayoutsReport;
 	logos: Record<string, string>;
 	ranges: { label: string; from: string; to: string }[];
 	errors: string[];

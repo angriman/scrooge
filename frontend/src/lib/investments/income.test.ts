@@ -4,10 +4,12 @@ import {
 	change,
 	chosenRange,
 	highest,
-	kindOf,
+	isTrailing,
+	kindsOf,
 	monthLabel,
 	paid,
 	stack,
+	trailingFrom,
 	transactionsOf,
 	withheld
 } from './income.js';
@@ -63,12 +65,23 @@ describe('what investments paid', () => {
 	it('opens the transactions a holding is made of', () => {
 		const range = { first: '2025-09-01', last: '2026-08-31' };
 		expect(transactionsOf(ACME, range, 'Anna').toString()).toBe(
-			'owner=Anna&from=2025-09-01&to=2026-08-31&kind=dividend&text=ACME'
+			'owner=Anna&from=2025-09-01&to=2026-08-31&kind=dividend%2Ctax&text=ACME'
 		);
 		expect(transactionsOf(CASH, { first: null, last: null }, null).toString()).toBe(
 			'kind=interest&account=IBKR+USD'
 		);
-		expect(kindOf({ ...CASH, interest: '0', tax: '-4.50' })).toBe('tax');
+		expect(kindsOf({ ...CASH, interest: '0', tax: '-4.50' })).toEqual(['tax']);
+		expect(kindsOf({ ...CASH, interest: '0' })).toEqual(['dividend', 'interest', 'tax']);
+	});
+
+	it('knows when the range is the last twelve months', () => {
+		expect(trailingFrom('2026-08-31')).toBe('2025-09-01');
+		expect(trailingFrom('2026-12-31')).toBe('2026-01-01');
+		const through = '2026-08-31';
+		expect(isTrailing({ first: '2025-09-01', last: through, through })).toBe(true);
+		expect(isTrailing({ first: '2026-01-01', last: through, through })).toBe(false);
+		expect(isTrailing({ first: '2025-09-01', last: '2026-07-31', through })).toBe(false);
+		expect(isTrailing({ first: null, last: null, through: null })).toBe(false);
 	});
 
 	it('takes no range asked for as the last twelve months', () => {

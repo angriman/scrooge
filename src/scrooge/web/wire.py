@@ -582,7 +582,8 @@ def _paid(paid: payouts.Paid) -> JSON:
 
 def payouts_report(shown: payouts.Payouts) -> JSON:
     """What investments paid over a range, in one currency: in all and against the same
-    months a year before, month by month, and holding by holding. Tax withheld is negative."""
+    months a year before, month by month, and holding by holding; and over the twelve months
+    up to the last day committed, whatever the range. Tax withheld is negative."""
     return {
         "currency": shown.currency,
         "first": day(shown.first),
@@ -592,6 +593,7 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
         "year_before": None
         if shown.year_before is None
         else {**_paid(shown.year_before), "net": number(shown.year_before.net)},
+        "trailing": {**_paid(shown.trailing), "net": number(shown.trailing.net)},
         "months": [{"month": month.name, **_paid(month.paid)} for month in shown.months],
         "holdings": [
             {

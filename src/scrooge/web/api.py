@@ -676,11 +676,11 @@ def _cashflow(request: Request) -> Response:
 
 def _income(request: Request) -> Response:
     """What investments paid from `from` to `to`, in `currency`: the twelve months up to the
-    last day committed when no range is asked for."""
+    last day committed when no range is asked for. Rows in a currency without a rate are left
+    out, each such currency said in `errors`."""
     asked = forms.analysis_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
-    errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
         try:
             query.check_names(conn, query.Filter(owner=asked.owner))
@@ -688,24 +688,16 @@ def _income(request: Request) -> Response:
             return _refused((wire.sentence(exc),))
         through = analysis.through(conn, asked.owner)
         firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
-        shown = wire.unless_rate_missing(
-            errors,
-            lambda: payouts.run(
-                conn,
-                first=asked.first,
-                last=asked.last,
-                owner=asked.owner,
-                currency=asked.currency,
-            ),
-            None,
+        shown = payouts.run(
+            conn, first=asked.first, last=asked.last, owner=asked.owner, currency=asked.currency
         )
         found = logos(request, conn)
     return JSONResponse(
         {
-            "income": None if shown is None else wire.payouts_report(shown),
+            "income": wire.payouts_report(shown),
             "logos": found,
-            "ranges": [] if through is None else _ranges(through, min(firsts).year),
-            "errors": errors,
+            "ranges": _ranges(through, min(firsts).year) if through and firsts else [],
+            "errors": [wire.sentence(networth.MissingRateError(why)) for why in shown.missing],
         }
     )
 

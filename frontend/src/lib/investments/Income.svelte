@@ -1,8 +1,9 @@
 <!--
 @component
 What investments paid over the range: dividends and interest in all, the tax withheld from them
-and what was left, against the same months a year before; each month as a column, dividends
-below interest; and each holding, what paid the most first, opening its transactions.
+and what was left, against the same months a year before and, for another range, beside what
+the last twelve months paid; each month as a column, dividends below interest, before tax; and
+each holding, what paid the most first, opening its transactions.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -17,6 +18,7 @@ below interest; and each holding, what paid the most first, opening its transact
 		DIVIDENDS_COLOR,
 		highest,
 		INTEREST_COLOR,
+		isTrailing,
 		monthLabel,
 		paid,
 		stack,
@@ -38,7 +40,8 @@ below interest; and each holding, what paid the most first, opening its transact
 	const currency = $derived(income.currency);
 	const total = $derived(paid(income.totals));
 	const moved = $derived(change(income.totals, income.year_before));
-	
+	const trailing = $derived(isTrailing(income) ? null : income.trailing);
+
 	let width = $state(640);
 	const HEIGHT = 200;
 	const TOP = 12;
@@ -83,6 +86,12 @@ below interest; and each holding, what paid the most first, opening its transact
 					Dividends and interest, before the tax withheld from them.
 				{/if}
 			</p>
+			{#if trailing}
+				<p class="mt-1 max-w-prose text-small text-ink-secondary">
+					The last 12 months paid <Amount value={paid(trailing)} {currency} places={0} class="text-ink" />,
+					<Amount value={trailing.net} {currency} places={0} class="text-ink" /> after tax.
+				</p>
+			{/if}
 		</div>
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
@@ -111,7 +120,7 @@ below interest; and each holding, what paid the most first, opening its transact
 			viewBox="0 0 {width} {HEIGHT}"
 			class="block h-[200px] w-full"
 			role="img"
-			aria-label="Dividends and interest paid each month, stacked"
+			aria-label="Dividends and interest paid each month, stacked, before tax"
 		>
 			<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption">{short(String(top))}</text>
 			<text x={LEFT - 6} y={TOP + plot} text-anchor="end" class="fill-ink-muted text-caption">0</text>
@@ -161,6 +170,7 @@ below interest; and each holding, what paid the most first, opening its transact
 			<li class="flex items-center gap-1.5">
 				<span class="size-2 rounded-[2px]" style:background={INTEREST_COLOR}></span>Interest
 			</li>
+			<li class="text-ink-muted">Before the tax withheld, which Net above takes off</li>
 		</ul>
 	</div>
 </Panel>

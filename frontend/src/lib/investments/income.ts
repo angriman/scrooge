@@ -3,7 +3,7 @@
 
 import { month as monthOf } from '#lib/format/date.js';
 import { approximate, difference, negate, percentOf, sum } from '#lib/format/number.js';
-import type { PayingHolding, Payout } from '#lib/types.js';
+import type { PayingHolding, Payout, PayoutsReport } from '#lib/types.js';
 
 /** The colour of dividends and of interest: shades of the colour of a gain, as income wears
  * on the cash flow. */
@@ -52,15 +52,21 @@ export function highest(months: readonly Payout[]): number {
 	);
 }
 
-/** The kind of rows a holding is mostly: its dividends, else its interest, else the tax
- * withheld from it. */
-export function kindOf(holding: PayingHolding): 'dividend' | 'interest' | 'tax' {
-	if (approximate(holding.dividends) !== 0) return 'dividend';
-	return approximate(holding.interest) !== 0 ? 'interest' : 'tax';
+/** The kinds of rows a holding has: dividends, interest and tax withheld, those it has
+ * anything of; all three when everything adds up to nothing. */
+export function kindsOf(holding: PayingHolding): ('dividend' | 'interest' | 'tax')[] {
+	const all = [
+		['dividend', holding.dividends],
+		['interest', holding.interest],
+		['tax', holding.tax]
+	] as const;
+	const kinds = all.filter(([, amount]) => approximate(amount) !== 0).map(([kind]) => kind);
+	return kinds.length ? kinds : all.map(([kind]) => kind);
 }
 
-/** The filter of the transactions behind a holding over the range: its kind, and the name its
- * rows give, or the account of those that name nothing. */
+/** The filter of the transactions behind a holding over the range: its kinds, so the tax
+ * withheld shows beside what was paid, and the name its rows give, or the account of those
+ * that name nothing. */
 export function transactionsOf(
 	holding: PayingHolding,
 	range: { first: string | null; last: string | null },
@@ -70,10 +76,27 @@ export function transactionsOf(
 	if (owner) query.set('owner', owner);
 	if (range.first) query.set('from', range.first);
 	if (range.last) query.set('to', range.last);
-	query.set('kind', kindOf(holding));
+	query.set('kind', kindsOf(holding).join(','));
 	if (holding.account) query.set('account', holding.account);
 	else query.set('text', holding.key);
 	return query;
+}
+
+/** The first day of the twelve months that end with the month of `through`. */
+export function trailingFrom(through: string): string {
+	const [year, month] = through.split('-').map(Number);
+	const index = year * 12 + month - 12;
+	return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}-01`;
+}
+
+/** Whether the range shown is the twelve months up to the last day committed, the figures of
+ * `trailing`. */
+export function isTrailing(income: Pick<PayoutsReport, 'first' | 'last' | 'through'>): boolean {
+	return (
+		income.through !== null &&
+		income.last === income.through &&
+		income.first === trailingFrom(income.through)
+	);
 }
 
 /** The range chosen of those offered, by its ends; none asked is the last twelve months. */

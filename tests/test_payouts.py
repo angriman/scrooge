@@ -8,7 +8,6 @@ import pytest
 
 from scrooge import payouts
 from scrooge.models import Kind, Transaction
-from scrooge.networth import MissingRateError
 from scrooge.payouts import Holding, Paid
 from scrooge.storage import db, store
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
@@ -169,6 +168,79 @@ def test_nothing_committed_has_no_range(conn: sqlite3.Connection) -> None:
     assert (shown.first, shown.through, shown.months, shown.currency) == (None, None, (), "EUR")
 
 
-def test_a_missing_rate_is_an_error(conn: sqlite3.Connection) -> None:
-    with pytest.raises(MissingRateError):
-        his(conn, currency="GBP")
+def test_without_a_rate_for_the_currency_asked_nothing_is_converted_and_it_is_said(
+    conn: sqlite3.Connection,
+) -> None:
+    shown = his(conn, currency="GBP")
+    assert (shown.totals, shown.holdings) == (payouts.NOTHING, ())
+    assert shown.missing == ("no exchange rate is stored for GBP: run `scrooge prices`",)
+
+
+def test_the_last_twelve_months_are_added_up_whatever_the_range(conn: sqlite3.Connection) -> None:
+    shown = his(conn, first=date(2026, 1, 1), last=date(2026, 3, 31))
+    assert shown.totals == amounts("90", "0", "-13.50")
+    assert shown.trailing == amounts("230", "95", "-18")
+    assert his(conn).trailing == his(conn).totals
+    # A range that ends before it starts still says what the last twelve months paid.
+    assert his(conn, first=date(2026, 8, 1), last=date(2026, 1, 31)).trailing == shown.trailing
+
+
+GBP = {"account": "Revolut GBP", "currency": "GBP", "source_file": "revolut.csv"}
+
+
+@pytest.fixture
+def lone() -> Iterator[sqlite3.Connection]:
+    """A database of one person's dividends in dollars, in pounds and in francs, with a rate for
+    dollars only."""
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    span = (date(2026, 1, 1), date(2026, 6, 30))
+    close(
+        connection,
+        OWNER,
+        span,
+        span[1],
+        (
+            "ibkr",
+            [
+                # IBKR may name what paid with its ISIN in brackets, the tax withheld without.
+                paid("100", date(2026, 3, 16), "1", "ACME(US0000000001)", **DIVIDEND, **USD),
+                paid("-15", date(2026, 3, 16), "2", "ACME", **TAX, **USD),
+                # Only the ISIN is an instrument's symbol: the holding is the ISIN.
+                paid("10", date(2026, 4, 1), "3", "FUND(IE0000000002)", **DIVIDEND, **USD),
+                paid("-1", date(2026, 4, 1), "4", "IE0000000002", **TAX, **USD),
+                # Neither is: the holding is the symbol, and only an ISIN is the ISIN.
+                paid("10", date(2026, 5, 1), "5", "WIDG (US0000000003)", **DIVIDEND, **USD),
+                paid("10", date(2026, 5, 2), "6", "(US0000000004)", **DIVIDEND, **USD),
+            ],
+        ),
+        ("revolut", [paid("50", date(2026, 4, 10), "1", "BRIT", **DIVIDEND, **GBP)]),
+        ("migros", [paid("5", date(2026, 5, 31), "1", **INTEREST)]),
+    )
+    store.instrument_id(connection, "ACME", "Stocks", "USD", name="ACME Corp")
+    store.instrument_id(connection, "IE0000000002", "Funds", "USD", name="ACME Fund")
+    store.set_rate(connection, date(2026, 1, 1), "USD", Decimal("0.90"), source="fetched:yahoo")
+    yield connection
+    connection.close()
+
+
+def test_rows_in_a_currency_without_a_rate_are_left_out_and_said(lone: sqlite3.Connection) -> None:
+    shown = his(lone)
+    # 130 dollars at 0.90 and 5 francs: the 50 pounds are not there.
+    assert shown.totals == amounts("117", "5", "-14.40")
+    assert "BRIT" not in {holding.key for holding in shown.holdings}
+    assert shown.missing == ("no exchange rate is stored for GBP: run `scrooge prices`",)
+    # In pounds, the pounds are counted and the rest cannot be.
+    pounds = his(lone, currency="GBP")
+    assert pounds.totals == amounts("50", "0")
+    assert pounds.missing == shown.missing
+
+
+def test_a_symbol_with_its_isin_in_brackets_is_the_same_holding(lone: sqlite3.Connection) -> None:
+    holdings = {holding.key: holding for holding in his(lone).holdings}
+    assert set(holdings) == {"ACME", "IE0000000002", "WIDG", "US0000000004", "Migros"}
+    assert holdings["ACME"].paid == amounts("90", "0", "-13.50")
+    assert (holdings["ACME"].name, holdings["ACME"].count) == ("ACME Corp", 2)
+    assert holdings["IE0000000002"].paid == amounts("9", "0", "-0.90")
+    assert holdings["IE0000000002"].name == "ACME Fund"
+    assert holdings["WIDG"].symbol is None
