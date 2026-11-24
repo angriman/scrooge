@@ -81,6 +81,18 @@ class MissingRateError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class FrozenAccount:
+    """An account the config names `frozen`, by its name as the pages show it: of `owner`
+    alone, or without one, every account so called, whoever's it is."""
+
+    account: str
+    owner: str | None = None
+
+    def names(self, owner: str, account: str) -> bool:
+        return self.account == account and self.owner in (None, owner)
+
+
+@dataclass(frozen=True, slots=True)
 class Line:
     """What one person holds of one kind of asset, day by day, in the currency asked for: of
     what can be reached, or of what is frozen."""
@@ -757,7 +769,7 @@ def run(
     *,
     owner: str | None = None,
     currency: str = DEFAULT_CURRENCY,
-    frozen: Collection[str] = (),
+    frozen: Collection[FrozenAccount] = (),
 ) -> NetWorth:
     """Net worth of `owner`, or of everyone, on every day, in `currency` (see `value`); what
     the accounts `frozen` names hold is frozen (see `worth_of`)."""
@@ -770,13 +782,13 @@ def worth_of(
     currency: str,
     rates: Mapping[str, Sequence[Decimal]] | None = None,
     *,
-    frozen: Collection[str] = (),
+    frozen: Collection[FrozenAccount] = (),
 ) -> NetWorth:
     """`run` for what `value` already worked out: a page that shows more than net worth
     values everything once. `rates` are those `rates_on` read for `valued.days`, for who
     converts into several currencies; they are read here without them. A line is frozen when
-    its asset is a pension (`FROZEN_ASSETS`) or its account is one of those `frozen` names as
-    the pages name it, and liquid otherwise."""
+    its asset is a pension (`FROZEN_ASSETS`) or one of `frozen` names its account, and liquid
+    otherwise."""
     if valued is None:
         return NetWorth(currency, (), (), ())
     if rates is None:
@@ -787,7 +799,8 @@ def worth_of(
     first = valued.days[0]
     for series in valued.series:
         converted = convert(series.values, series.currency, currency, rates)
-        held = series.asset in FROZEN_ASSETS or names.get(series.account_id) in frozen
+        name = names.get(series.account_id, "")
+        held = series.asset in FROZEN_ASSETS or any(f.names(series.owner, name) for f in frozen)
         key = (series.owner, series.asset, FROZEN if held else LIQUID)
         sums[key].append(converted)
         if series.arrival is None or series.arrival[0] <= first:
@@ -817,11 +830,30 @@ def _account_names(conn: sqlite3.Connection) -> dict[int, str]:
     return {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
 
 
-def unknown_accounts(conn: sqlite3.Connection, names: Iterable[str]) -> list[str]:
-    """Those of `names` (the config's `frozen`) that no account of anyone is called: a name
-    mistyped there would quietly leave its account liquid."""
-    known = set(_account_names(conn).values())
-    return [name for name in names if name not in known]
+def frozen_notes(conn: sqlite3.Connection, frozen: Iterable[FrozenAccount]) -> list[str]:
+    """What the reader must know of the config's `frozen`: an entry that names no account,
+    which a name mistyped there would quietly leave liquid, and a bare name that freezes the
+    accounts of several people, which may be meant for one of them alone."""
+    rows = conn.execute(
+        "SELECT o.name, a.name FROM accounts a JOIN owners o ON o.id = a.owner_id"
+    ).fetchall()
+    held = {(str(owner), str(account)) for owner, account in rows}
+    notes: list[str] = []
+    for entry in frozen:
+        owners = sorted({owner for owner, account in held if entry.names(owner, account)})
+        if not owners:
+            whose = f"{entry.owner} has no account" if entry.owner else "No account is"
+            notes.append(
+                f"{whose} called {entry.account}, which 'frozen' in scrooge.yaml names: write "
+                "it as the pages name the account."
+            )
+        elif len(owners) > 1:
+            notes.append(
+                f"{', '.join(owners[:-1])} and {owners[-1]} each have an account called "
+                f"{entry.account}, and 'frozen' in scrooge.yaml freezes them all: write "
+                f"{{{owners[0]}: {entry.account}}} there to freeze one alone."
+            )
+    return notes
 
 
 def balances(
@@ -875,7 +907,7 @@ def month_ends(
     currencies: Sequence[str],
     unconverted: Callable[[MissingRateError], object] | None = None,
     *,
-    frozen: Collection[str] = (),
+    frozen: Collection[FrozenAccount] = (),
 ) -> tuple[MonthEnd, ...]:
     """Net worth at the end of every month of `valued.days` in each of `currencies`, newest
     first (see `by_month`). Everything is valued once and the rates are read once: only the

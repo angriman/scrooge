@@ -1,6 +1,7 @@
 """`/api/networth/months`: net worth at the end of every month, in several currencies."""
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -146,20 +147,29 @@ def deposit(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_each_month_end_says_what_is_liquid_and_what_frozen_in_each_currency(
     deposit: Path,
 ) -> None:
-    app = webapp.create_app(
-        deposit, currency="CHF", currencies=("CHF", "USD"), frozen=("Rent deposit",)
-    )
+    named = (networth.FrozenAccount("Rent deposit"),)
+    app = webapp.create_app(deposit, currency="CHF", currencies=("CHF", "USD"), frozen=named)
     sent = TestClient(app, base_url=SITE).get("/api/networth/months").json()
     assert sent["errors"] == []
-    september = next(m for m in sent["months"] if m["month"] == "2026-09")["values"]
-    assert (september["CHF"]["liquid"], september["CHF"]["frozen"]) == ("1987.25", "23500.00")
-    assert set(september["USD"]) == {"total", "change", "percent", "liquid", "frozen"}
+    october, september, _ = sent["months"]
+    assert october["partial"]
+    assert september["values"]["CHF"] == {
+        "total": "25289.80",
+        "change": "1.80",  # what the bill earned
+        "percent": "0.03",
+        "liquid": "1789.80",
+        "frozen": "23500.00",
+    }
+    assert october["values"]["USD"]["frozen"] == "26111.11"  # 23500 francs at 0.90
+    for month in sent["months"]:
+        for figure in month["values"].values():
+            parts = Decimal(figure["liquid"]) + Decimal(figure["frozen"])
+            assert parts == Decimal(figure["total"])
 
 
 def test_a_frozen_name_no_account_has_is_said_and_freezes_nothing(deposit: Path) -> None:
-    app = webapp.create_app(
-        deposit, currency="CHF", currencies=("CHF", "USD"), frozen=("Rent depot",)
-    )
+    named = (networth.FrozenAccount("Rent depot"),)
+    app = webapp.create_app(deposit, currency="CHF", currencies=("CHF", "USD"), frozen=named)
     sent = TestClient(app, base_url=SITE).get("/api/networth/months").json()
     assert sent["errors"] == [
         "No account is called Rent depot, which 'frozen' in scrooge.yaml names: write it as "

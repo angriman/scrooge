@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -194,14 +194,16 @@ def holdings_view(params: Mapping[str, str]) -> HoldingsView:
     return HoldingsView(_text(params, "owner"), currency, tuple(errors))
 
 
-def networth_view(params: Mapping[str, str]) -> NetWorthView:
-    """`owner`, `currency` (euros when left out) and `by` (total, asset, owner or liquidity;
-    asset when left out or unreadable)."""
+def networth_view(
+    params: Mapping[str, str], breakdowns: Sequence[str] = BREAKDOWNS
+) -> NetWorthView:
+    """`owner`, `currency` (euros when left out) and `by`: one of `breakdowns` (those of /app
+    unless a page offers fewer), asset when left out or unreadable."""
     errors: list[str] = []
     currency = _currency(params, errors)
     by = _text(params, "by") or DEFAULT_BREAKDOWN
-    if by not in BREAKDOWNS:
-        errors.append(f"'{by}' is not total, asset, owner or liquidity.")
+    if by not in breakdowns:
+        errors.append(f"'{by}' is not {', '.join(breakdowns[:-1])} or {breakdowns[-1]}.")
         by = DEFAULT_BREAKDOWN
     return NetWorthView(_text(params, "owner"), currency, by, tuple(errors))
 

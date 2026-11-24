@@ -181,13 +181,19 @@ def test_the_parts_are_listed_and_stacked_from_the_steadiest_up(mixed: TestClien
     assert total == [sum(day) for day in zip(*parts, strict=True)]
 
 
+def test_the_pages_offer_no_cut_by_liquidity_which_is_for_app_alone(client: TestClient) -> None:
+    response = client.get("/", params={"by": "liquidity"})
+    assert "&#39;liquidity&#39; is not total, asset or owner." in response.text
+    assert client.get("/networth.json", params={"by": "liquidity"}).status_code == 400
+
+
 def test_a_view_that_cannot_be_read_is_reported_and_the_default_shown(client: TestClient) -> None:
     asked = {"currency": "XAU", "by": "shape"}
     response = client.get("/", params=asked)
     assert response.status_code == 200
     errors = [
         "'XAU' is not one of EUR, CHF, USD, GBP, JPY.",
-        "'shape' is not total, asset, owner or liquidity.",
+        "'shape' is not total, asset or owner.",
     ]
     assert re.findall(r'<p class="error" role="alert">(.*?)</p>', response.text) == [
         error.replace("'", "&#39;") for error in errors

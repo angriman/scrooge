@@ -1794,11 +1794,21 @@ def test_currencies_the_table_cannot_show_are_refused(run: Run, named: str) -> N
     ("named", "frozen"),
     [
         ("", ()),
-        ("frozen: [Rent deposit, ' ACME Bank', Rent deposit]\n", ("Rent deposit", "ACME Bank")),
+        (
+            "frozen: [Rent deposit, ' ACME Bank', {Anna: Savings}, Rent deposit]\n",
+            (
+                networth.FrozenAccount("Rent deposit"),
+                networth.FrozenAccount("ACME Bank"),
+                networth.FrozenAccount("Savings", "Anna"),
+            ),
+        ),
     ],
 )
 def test_the_pages_freeze_the_accounts_the_config_names(
-    run: Run, monkeypatch: pytest.MonkeyPatch, named: str, frozen: tuple[str, ...]
+    run: Run,
+    monkeypatch: pytest.MonkeyPatch,
+    named: str,
+    frozen: tuple[networth.FrozenAccount, ...],
 ) -> None:
     run.config.write_text(run.config.read_text(encoding="utf-8") + named, encoding="utf-8")
     served: list[Starlette] = []
@@ -1807,14 +1817,17 @@ def test_the_pages_freeze_the_accounts_the_config_names(
     assert served[-1].state.frozen == frozen
 
 
-@pytest.mark.parametrize("named", ["Rent deposit", "[1]", "['']", "{a: b}"])
+@pytest.mark.parametrize(
+    "named", ["Rent deposit", "[1]", "['']", "{a: b}", "[{Anna: 1}]", "[{Anna: a, Lukas: b}]"]
+)
 def test_frozen_accounts_not_listed_by_name_are_refused(run: Run, named: str) -> None:
     run.config.write_text(
         run.config.read_text(encoding="utf-8") + f"frozen: {named}\n", encoding="utf-8"
     )
     assert run("serve") == dbcli.FAILED
     assert run.output.endswith(
-        f"error: {run.config}: 'frozen' must list the names of accounts, as the pages show them\n"
+        f"error: {run.config}: 'frozen' must list accounts as the pages name them, or as "
+        "{owner: account}\n"
     )
 
 

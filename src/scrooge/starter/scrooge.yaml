@@ -42,7 +42,8 @@ currency: $currency
 
 # The accounts whose money cannot be reached, as the pages name them (a rent deposit): net
 # worth sets them apart as frozen, with Pillar 2 and Pillar 3a, which are frozen without it.
-# frozen: [Deposito affitto]
+# A bare name is every account so called; {<owner>: <name>} is that person's alone.
+# frozen: [Deposito affitto, {Anna: Risparmio}]
 
 # To reach the pages from other devices, with a password (`scrooge password` prints it):
 # serve:

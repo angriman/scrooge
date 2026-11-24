@@ -522,16 +522,25 @@ def _currencies(config: dict[str, object], path: Path) -> tuple[str, ...]:
     return tuple(dict.fromkeys(codes))  # each once, in the order named
 
 
-def _frozen(config: dict[str, object], path: Path) -> tuple[str, ...]:
-    """`frozen`: the accounts, as the pages name them, whose money cannot be reached (a rent
-    deposit); the pensions are frozen without it."""
+def _frozen(config: dict[str, object], path: Path) -> tuple[networth.FrozenAccount, ...]:
+    """`frozen: [<account>, {<owner>: <account>}, ...]`: the accounts, as the pages name them,
+    whose money cannot be reached (a rent deposit); a bare name is every account so called,
+    an owner's is theirs alone. The pensions are frozen without it."""
     named = config.get("frozen", [])
-    if not isinstance(named, list) or not all(
-        isinstance(name, str) and name.strip() for name in named
-    ):
-        msg = f"{path}: 'frozen' must list the names of accounts, as the pages show them"
+    msg = f"{path}: 'frozen' must list accounts as the pages name them, or as {{owner: account}}"
+    if not isinstance(named, list):
         raise ConfigError(msg)
-    return tuple(dict.fromkeys(name.strip() for name in named))
+    found: list[networth.FrozenAccount] = []
+    for entry in named:
+        if isinstance(entry, dict) and len(entry) == 1:
+            [(owner, account)] = entry.items()
+        else:
+            owner, account = None, entry  # a mapping of several is no account name either
+        texts = [account] if owner is None else [owner, account]
+        if not all(isinstance(text, str) and text.strip() for text in texts):
+            raise ConfigError(msg)
+        found.append(networth.FrozenAccount(account.strip(), owner.strip() if owner else None))
+    return tuple(dict.fromkeys(found))  # each once, in the order named
 
 
 def _unmatched(config: dict[str, object], path: Path) -> str:
@@ -825,7 +834,7 @@ class _Pages:
     imports: importing.Setup
     currency: str  # what the figures are shown in until another is chosen
     currencies: tuple[str, ...]  # the columns of the month-end table
-    frozen: tuple[str, ...]  # the accounts whose money cannot be reached
+    frozen: tuple[networth.FrozenAccount, ...]  # the accounts whose money cannot be reached
 
 
 def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:

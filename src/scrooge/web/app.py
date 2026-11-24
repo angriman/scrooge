@@ -304,7 +304,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     maturities: MaturitySource | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
     currencies: Sequence[str] = networth.DEFAULT_COLUMNS,
-    frozen: Sequence[str] = (),
+    frozen: Sequence[networth.FrozenAccount] = (),
     spa: Path | None = None,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
@@ -545,7 +545,7 @@ def _person_slots(people: Sequence[query.Person]) -> dict[str, int]:
 
 
 def _overview(request: Request) -> Response:
-    asked = forms.networth_view(_viewed(request))
+    asked = forms.networth_view(_viewed(request), forms.PAGE_BREAKDOWNS)
     errors = list(asked.errors)
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
@@ -1116,7 +1116,7 @@ def _parts(result: networth.NetWorth, by: str, people: tuple[query.Person, ...])
 def _networth_json(request: Request) -> Response:
     """What the chart of the first page draws, for the view of its address. Amounts are text,
     to the cent."""
-    asked = forms.networth_view(_viewed(request))
+    asked = forms.networth_view(_viewed(request), forms.PAGE_BREAKDOWNS)
     noted: list[str] = []
     with db.reading(request.app.state.database) as conn:
         people = query.people(conn)
