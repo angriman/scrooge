@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { MonthEndFigure, NetWorthMonths } from '#lib/types.js';
 import { cells, COLUMNS, inOrder, table } from './monthEnds.js';
 
-/** A month-end's figure, what is not liquid of its total frozen. */
+/** A month-end's figure, its split written out as the API sends it. */
 function figure(
 	total: string,
 	change: string | null,
 	percent: string | null,
-	liquid: string
+	liquid: string,
+	frozen: string
 ): MonthEndFigure {
-	return { total, change, percent, liquid, frozen: (Number(total) - Number(liquid)).toFixed(2) };
+	return { total, change, percent, liquid, frozen };
 }
 
 const sent: NetWorthMonths = {
@@ -20,9 +21,9 @@ const sent: NetWorthMonths = {
 			day: '2026-10-15',
 			partial: true,
 			values: {
-				CHF: figure('9900.00', '1000.00', '11.24', '4900.00'),
-				USD: figure('11000.00', '-125.00', '-1.12', '5444.44'),
-				EUR: figure('9900.00', '0.40', '0.00', '4900.00')
+				CHF: figure('9900.00', '1000.00', '11.24', '4900.00', '5000.00'),
+				USD: figure('11000.00', '-125.00', '-1.12', '5444.44', '5555.56'),
+				EUR: figure('9900.00', '0.40', '0.00', '4900.00', '5000.00')
 			}
 		},
 		{
@@ -30,9 +31,9 @@ const sent: NetWorthMonths = {
 			day: '2026-09-30',
 			partial: false,
 			values: {
-				CHF: figure('8900.00', null, null, '8900.00'),
-				USD: figure('11125.00', null, null, '11125.00'),
-				EUR: figure('8900.00', null, null, '8900.00')
+				CHF: figure('8900.00', null, null, '8900.00', '0.00'),
+				USD: figure('11125.00', null, null, '11125.00', '0.00'),
+				EUR: figure('8900.00', null, null, '8900.00', '0.00')
 			}
 		}
 	],

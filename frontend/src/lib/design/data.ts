@@ -15,10 +15,11 @@ export const ASSET_SLOTS: Readonly<Record<string, Slot>> = {
 	Bills: 6
 };
 
-/** What can be reached and what cannot, `networth.LIQUIDITY`: liquid wears the colour of
- * cash, frozen that of the second pillar, which is most of it. */
+/** What can be reached and what cannot, `networth.LIQUIDITY`. Liquid holds shares and bills as
+ * well as cash: it wears a slot no type of asset does, not cash's, which would read as cash
+ * beside the allocation. Frozen wears the second pillar's, which is most of it. */
 export const LIQUIDITY_SLOTS: Readonly<Record<string, Slot>> = {
-	Liquid: 3,
+	Liquid: 7,
 	Frozen: 5
 };
 
