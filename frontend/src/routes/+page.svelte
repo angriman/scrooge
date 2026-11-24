@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { page } from '$app/state';
-	import { assetColor, inOrder } from '#lib/design/data.js';
+	import { assetColor, inOrder, liquidityColor } from '#lib/design/data.js';
 	import { addDays } from '#lib/format/date.js';
 	import Allocation from '#lib/overview/Allocation.svelte';
 	import Holdings from '#lib/overview/Holdings.svelte';
@@ -52,20 +52,25 @@
 	const breakdowns = $derived([
 		{ value: 'asset', label: 'By type' },
 		...(data.people ? [{ value: 'owner', label: 'By person' }] : []),
+		{ value: 'liquidity', label: 'By liquidity' },
 		{ value: 'total', label: 'Total' }
 	]);
-	const colors = $derived(
-		data.by === 'owner'
-			? inOrder(data.session.people.map((person) => person.name))
-			: new Map((series?.parts ?? []).map((part) => [part.name, assetColor(part.name)]))
-	);
+	const colors = $derived.by(() => {
+		if (data.by === 'owner') return inOrder(data.session.people.map((person) => person.name));
+		const of = data.by === 'liquidity' ? liquidityColor : assetColor;
+		return new Map((series?.parts ?? []).map((part) => [part.name, of(part.name)]));
+	});
 </script>
 
 <svelte:head>
 	<title>Overview · scrooge</title>
 </svelte:head>
 
-<Notices attention={data.attention} onePerson={single || owner !== null} />
+<Notices
+	attention={data.attention}
+	onePerson={single || owner !== null}
+	readOnly={data.session.read_only}
+/>
 
 {#each [...data.shown.errors, ...data.worth.errors, ...data.month.errors] as error (error)}
 	<p

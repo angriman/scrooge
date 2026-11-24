@@ -15,11 +15,13 @@ from decimal import Decimal
 from typing import TypeVar
 
 from scrooge import (
+    attention,
     holds,
     importing,
     months,
     networth,
     overview,
+    paidby,
     payouts,
     portfolio,
     query,
@@ -141,12 +143,15 @@ def _days_of(values: Sequence[Decimal]) -> dict[str, str | None]:
 
 def series(worth: networth.NetWorth, by: str) -> JSON:
     """Net worth day by day from `first`, and its parts by `by` ("asset" in the order of
-    `networth.STACK`, "owner" by name, "total" none). `arrived` is what came into view on the
-    days anything did (`networth.NetWorth.arrivals`), by the index of the day."""
+    `networth.STACK`, "liquidity" frozen first, which moves least, "owner" by name, "total"
+    none). `arrived` is what came into view on the days anything did
+    (`networth.NetWorth.arrivals`), by the index of the day."""
     parts = worth.by(by) if by != "total" else {}
     came = worth.by(by, arrivals=True) if by != "total" else {}
     if by == "asset":
         names: Sequence[str] = [name for name in networth.STACK if name in parts]
+    elif by == "liquidity":
+        names = [name for name in reversed(networth.LIQUIDITY) if name in parts]
     else:
         names = sorted(parts)
     return {
@@ -592,6 +597,39 @@ def cashflow_report(shown: report.Report) -> JSON:
             for line in flow.totals
         ],
         "through": day(kept.through),
+        "paid_by": _paid_by(shown.paid_by),
+    }
+
+
+def _paid_by(shown: paidby.PaidBy | None) -> JSON | None:
+    """Who paid what the household spent: each person, before and after settling up, each
+    category split between them, and the net of what they paid each other."""
+    if shown is None:
+        return None
+    return {
+        "spent": number(shown.spent),
+        "people": [
+            {
+                "name": payer.name,
+                "spent": number(payer.spent),
+                "share": _percent(payer.share),
+                "settled": number(payer.settled),
+                "settled_share": _percent(payer.settled_share),
+            }
+            for payer in shown.people
+        ],
+        "categories": [
+            {
+                "name": split.name,
+                "spent": number(split.spent),
+                "by": {name: number(amount) for name, amount in split.by.items()},
+            }
+            for split in shown.categories
+        ],
+        "moves": [
+            {"sender": move.sender, "receiver": move.receiver, "amount": number(move.amount)}
+            for move in shown.moves
+        ],
     }
 
 
@@ -624,6 +662,7 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
                 "name": holding.name,
                 "symbol": holding.symbol,
                 "account": holding.account,
+                "owner": holding.owner,
                 **_paid(holding.paid),
                 "count": holding.count,
                 "last": day(holding.last),
@@ -634,8 +673,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
 
 
 def month_end(end: networth.MonthEnd) -> JSON:
-    """Net worth at a month's end, by currency: its total, and how it moved since the month
-    before (`networth.by_month`)."""
+    """Net worth at a month's end, by currency: its total, how it moved since the month
+    before (`networth.by_month`), and what of it is liquid and what frozen."""
     return {
         "month": f"{end.month:%Y-%m}",
         "day": day(end.day),
@@ -645,6 +684,8 @@ def month_end(end: networth.MonthEnd) -> JSON:
                 "total": number(figure.total),
                 "change": number(figure.change),
                 "percent": number(figure.percent),
+                "liquid": number(figure.liquid),
+                "frozen": number(figure.frozen),
             }
             for currency, figure in end.values.items()
         },
@@ -705,4 +746,36 @@ def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
             for merchant in shown.merchants
         ],
         "balance": number(balance),
+    }
+
+
+def needs_a_look(
+    currency: str,
+    unmatched: str,
+    unsorted: Sequence[attention.Uncategorised],
+    changed: attention.Changes | None,
+) -> JSON:
+    """The rows still in the category `unmatched` (null: there is none), per person, and the
+    recurring payments that went up or are new, what changed in `currency` (as paid,
+    positive; null when a rate is missing); `recurring` is null when they were not asked for."""
+    return {
+        "currency": currency,
+        "unmatched": unmatched or None,
+        "uncategorised": [{"owner": each.owner, "count": each.count} for each in unsorted],
+        "recurring": None
+        if changed is None
+        else [
+            {
+                "id": each.found.id,
+                "name": each.found.name,
+                "account": each.found.account,
+                "owner": each.found.owner,
+                "every": each.found.every,
+                "kind": each.kind,
+                "change": number(each.change),
+                "since": day(each.since),
+                "alone": each.alone,
+            }
+            for each in changed.changes
+        ],
     }

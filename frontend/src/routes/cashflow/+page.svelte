@@ -10,6 +10,9 @@
 	import Recurring from '#lib/cashflow/Recurring.svelte';
 	import Spending from '#lib/cashflow/Spending.svelte';
 	import Table from '#lib/cashflow/Table.svelte';
+	import WhatMoved from '#lib/cashflow/WhatMoved.svelte';
+	import WhoPaid from '#lib/cashflow/WhoPaid.svelte';
+	import { whatMoved } from '#lib/cashflow/whatMoved.js';
 	import { partColors, rangeName } from '#lib/cashflow/names.js';
 	import { anyRecurring } from '#lib/cashflow/recurring.js';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -119,6 +122,14 @@
 		range={rangeName(chosen || null, flow.first, flow.last)}
 		paidBack={report.paid_back}
 	/>
+
+	{@const moved = whatMoved(report.categories)}
+	{#if report.paid_by || moved.length}
+		<div class={['mt-6 grid items-start gap-6', report.paid_by && moved.length && 'lg:grid-cols-2']}>
+			{#if moved.length}<WhatMoved {moved} {colors} {transactions} />{/if}
+			{#if report.paid_by}<WhoPaid paidBy={report.paid_by} currency={report.currency} people={data.session.people} />{/if}
+		</div>
+	{/if}
 
 	<Panel class="mt-6">
 		{#snippet actions()}

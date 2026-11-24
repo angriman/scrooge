@@ -157,7 +157,34 @@ export interface Attention {
 	behind: Account[];
 	/** Lines of statements whose figures differ from those worked out here. */
 	differ: number;
+	/** What `RecurringChange.change` is in. */
+	currency: string;
+	/** The category of the rows no rule matched (`unmatched` in the config); null: none. */
+	unmatched: string | null;
+	/** Committed rows still in `unmatched`, per person. */
+	uncategorised: { owner: string; count: number }[];
+	/** Recurring payments still paid that went up or started lately, the latest first; null
+	 * unless asked for (`recurring=1`), as only Overview does. */
+	recurring: RecurringChange[] | null;
 	errors: string[];
+}
+
+/** A recurring payment that went up lately (`change`: by how much a payment) or is new
+ * (`change`: what a payment costs), in `Attention.currency`; null when a rate is missing. */
+export interface RecurringChange {
+	/** The payment's first row's id, as `RecurringPayment.id`. */
+	id: string;
+	/** Who was paid, as the `merchant` filter reads them. */
+	name: string;
+	account: string;
+	owner: string;
+	every: 'monthly' | 'yearly';
+	kind: 'up' | 'new';
+	change: Amount | null;
+	/** The first payment at the new price, or the first of all. */
+	since: Day;
+	/** Whether `merchant`, `account` and `owner` list its rows and no other payee's. */
+	alone: boolean;
 }
 
 /** One instrument in one account (src/scrooge/portfolio.py `Position`). Native figures are in
@@ -513,6 +540,26 @@ export interface CashFlowReport {
 		total: Amount;
 	}[];
 	through: string | null;
+	/** Who paid what the household spent; null for one person, or with only one. */
+	paid_by: PaidBy | null;
+}
+
+/** Who paid what the household spent over a range (src/scrooge/paidby.py `PaidBy`). */
+export interface PaidBy {
+	spent: Amount;
+	/** Everyone with statements committed, by name; `share` in percent of `spent`. `settled`:
+	 * what they spent, and sent the others, less what the others sent them. */
+	people: {
+		name: string;
+		spent: Amount;
+		share: Amount | null;
+		settled: Amount;
+		settled_share: Amount | null;
+	}[];
+	/** Each top-level category, the largest first, and what each person spent on it. */
+	categories: { name: string; spent: Amount; by: Record<string, Amount> }[];
+	/** The net of what two people paid each other over the range, `amount` above zero. */
+	moves: { sender: string; receiver: string; amount: Amount }[];
 }
 
 export interface CashFlow {
@@ -543,6 +590,9 @@ export interface PayingHolding extends Payout {
 	symbol: string | null;
 	/** The account, for rows that name nothing; else null. */
 	account: string | null;
+	/** Whose the account is, when two people have an account of its name and it is named
+	 * after them; else null. */
+	owner: string | null;
 	count: number;
 	last: Day;
 }
@@ -580,6 +630,10 @@ export interface MonthEndFigure {
 	change: Amount | null;
 	/** In percent of the month before; null unless that was above zero. */
 	percent: Amount | null;
+	/** What of `total` can be reached, and what is frozen: the pensions and the accounts the
+	 * config names `frozen`. */
+	liquid: Amount;
+	frozen: Amount;
 }
 
 /** The last day of one month there is, and net worth on it by currency. */

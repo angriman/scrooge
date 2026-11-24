@@ -7,7 +7,7 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 	const { session } = await parent();
 	// The chart is cut by person only when there are several and they are all shown.
 	const people = session.people.length > 1 && !url.searchParams.get('owner');
-	const asked = oneOf(url, 'by', ['asset', 'owner', 'total'] as const, 'asset');
+	const asked = oneOf(url, 'by', ['asset', 'owner', 'liquidity', 'total'] as const, 'asset');
 	const by = asked === 'owner' && !people ? 'asset' : asked;
 	const whose = pick(url, ['owner', 'currency']);
 	const series = (cut: string) =>
@@ -18,7 +18,11 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		series('asset'),
 		by === 'asset' ? null : series(by),
 		get<Month>(fetch, '/api/month', pick(url, ['owner', 'currency', 'month'])),
-		get<Attention>(fetch, '/api/attention', pick(url, ['owner']))
+		get<Attention>(
+			fetch,
+			'/api/attention',
+			new URLSearchParams([...pick(url, ['owner', 'currency']), ['recurring', '1']])
+		)
 	]);
 	// The month-end table values everything once more, in each of its currencies: it is asked
 	// for only once it is shown (`view=table`, a view of the page that loads nothing else), and

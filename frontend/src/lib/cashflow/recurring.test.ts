@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Recurring, RecurringPayment } from '#lib/types.js';
-import { anyRecurring, everyName, isNew, priceChange } from './recurring.js';
+import { anyRecurring, everyName, isNew, monthsBefore, priceChange } from './recurring.js';
 
 const payment = (fields: Partial<RecurringPayment>): RecurringPayment => ({
 	id: 't1',
@@ -32,6 +32,16 @@ describe('the recurring payments of the cash flow', () => {
 		expect(isNew(payment({ first: '2026-08-01' }), '2026-10-31')).toBe(true);
 		expect(isNew(payment({ first: '2026-07-31' }), '2026-10-31')).toBe(false);
 		expect(isNew(payment({ first: '2026-10-01' }), null)).toBe(false);
+		// Three months before the last of May are the last of February, not 3 March.
+		expect(isNew(payment({ first: '2026-03-01' }), '2026-05-31')).toBe(true);
+		expect(isNew(payment({ first: '2026-02-28' }), '2026-05-31')).toBe(false);
+	});
+
+	it('counts months back to the same day, or the last of a shorter month', () => {
+		expect(monthsBefore('2026-05-31', 3)).toBe('2026-02-28');
+		expect(monthsBefore('2028-05-31', 3)).toBe('2028-02-29');
+		expect(monthsBefore('2026-10-25', 2)).toBe('2026-08-25');
+		expect(monthsBefore('2026-01-15', 3)).toBe('2025-10-15');
 	});
 
 	it('leaves the panel out when nothing is listed, active or stopped', () => {

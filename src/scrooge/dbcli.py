@@ -522,6 +522,27 @@ def _currencies(config: dict[str, object], path: Path) -> tuple[str, ...]:
     return tuple(dict.fromkeys(codes))  # each once, in the order named
 
 
+def _frozen(config: dict[str, object], path: Path) -> tuple[networth.FrozenAccount, ...]:
+    """`frozen: [<account>, {<owner>: <account>}, ...]`: the accounts, as the pages name them,
+    whose money cannot be reached (a rent deposit); a bare name is every account so called,
+    an owner's is theirs alone. The pensions are frozen without it."""
+    named = config.get("frozen", [])
+    msg = f"{path}: 'frozen' must list accounts as the pages name them, or as {{owner: account}}"
+    if not isinstance(named, list):
+        raise ConfigError(msg)
+    found: list[networth.FrozenAccount] = []
+    for entry in named:
+        if isinstance(entry, dict) and len(entry) == 1:
+            [(owner, account)] = entry.items()
+        else:
+            owner, account = None, entry  # a mapping of several is no account name either
+        texts = [account] if owner is None else [owner, account]
+        if not all(isinstance(text, str) and text.strip() for text in texts):
+            raise ConfigError(msg)
+        found.append(networth.FrozenAccount(account.strip(), owner.strip() if owner else None))
+    return tuple(dict.fromkeys(found))  # each once, in the order named
+
+
 def _unmatched(config: dict[str, object], path: Path) -> str:
     """`unmatched`: the category of the expenses and income no rule matches, for who tracks
     net worth alone; without it they go to review."""
@@ -591,6 +612,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             imports,
             _currency(config, args.config),
             _currencies(config, args.config),
+            _frozen(config, args.config),
         )
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
@@ -812,6 +834,7 @@ class _Pages:
     imports: importing.Setup
     currency: str  # what the figures are shown in until another is chosen
     currencies: tuple[str, ...]  # the columns of the month-end table
+    frozen: tuple[networth.FrozenAccount, ...]  # the accounts whose money cannot be reached
 
 
 def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
@@ -833,6 +856,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         maturities=prices.TreasuryDirect(),
         currency=pages.currency,
         currencies=pages.currencies,
+        frozen=pages.frozen,
         spa=webapp.SPA,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
