@@ -1,5 +1,5 @@
 """`scrooge init | import | commit | statements | uncommit | discard | balance | keep | logo |
-prices | query | serve | password | publish`: the database from the terminal.
+prices | query | serve | password | publish | migrate-files`: the database from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/
     scrooge import <path>...  reconcile and classify the statements, then stage them
@@ -23,6 +23,8 @@ prices | query | serve | password | publish`: the database from the terminal.
                               statements as `import` does, for the person chosen there
     scrooge password          ask for a password and print its digest for `serve`
     scrooge publish [folder]  copy the database to the folder another machine shows it from
+    scrooge migrate-files     write the rules, categories.yaml and the config again with
+                              today's category names (--write; without it, only say what)
 
 There are no months to close (decided 2026-10-16): statements of any period are imported
 whenever they are at hand, and `commit` commits what is staged. Of an account, what is
@@ -62,6 +64,12 @@ people.
 `logo` keeps the image in the database (decided 2026-11-07), under the symbol `instruments`
 has for it: a ticker, an ISIN or a CUSIP. The holdings page lists the holdings that still have
 none. Nothing fetches a logo.
+`migrate-files` writes again, once, the names the app still reads but no longer writes: the
+Italian names of the categories (until 2026-11-24) and `uscite`/`entrate` in categories.yaml.
+It reads the files `import` and `serve` read, as they find them, and each person's own rules
+file; it says what it would change and changes nothing unless given `--write`, which keeps
+each file it changes as it was, next to it (`<name>.before-migrate-files`). It needs no
+database.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
@@ -116,6 +124,7 @@ from scrooge import (
     classification,
     importing,
     marketdata,
+    migratefiles,
     networth,
     onboarding,
     pipeline,
@@ -153,6 +162,7 @@ COMMANDS = (
     "password",
     "publish",
     "init",
+    "migrate-files",
 )
 # Commands that are not about one person's statements.
 _READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish")
@@ -200,6 +210,8 @@ def main(
         if args.command == "init":
             return onboarding.run(Path(onboarding.USERS), out, ask)
         args.config = _find_config(args)
+        if args.command == "migrate-files":  # about the files alone, not the database
+            return _migrate_files(args, out)
         return _run(args, _Console(out, ask, source), now())
     except _ERRORS as exc:
         out.write(f"error: {exc}\n")
@@ -208,17 +220,7 @@ def main(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="scrooge", description=__doc__)
-    files = argparse.ArgumentParser(add_help=False)
-    files.add_argument(
-        "--config",
-        type=Path,
-        help="the config (default: scrooge.yaml here, else the setup in users/ --user names, "
-        "or the only one there)",
-    )
-    files.add_argument(
-        "--user", help=f"the setup users/<name>/ to use (default: ${USER}, or the only one)"
-    )
-    files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
+    setup, files = _setup_flags()
     shared = argparse.ArgumentParser(add_help=False, parents=[files])
     shared.add_argument("--owner", help="whose statements (default: 'owner' in the config)")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -321,11 +323,52 @@ def _parser() -> argparse.ArgumentParser:
         nargs="?",
         help="the mounted folder the copy goes to (default: 'publish' in the config)",
     )
+    migrate = commands.add_parser(
+        "migrate-files", parents=[setup], help="write the files again with today's names"
+    )
+    _migrate_flags(migrate)
     return parser
+
+
+def _setup_flags() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
+    """`--config` and `--user`, of every command that reads the config; and those with `--db`,
+    of the commands that open the database."""
+    setup = argparse.ArgumentParser(add_help=False)
+    setup.add_argument(
+        "--config",
+        type=Path,
+        help="the config (default: scrooge.yaml here, else the setup in users/ --user names, "
+        "or the only one there)",
+    )
+    setup.add_argument(
+        "--user", help=f"the setup users/<name>/ to use (default: ${USER}, or the only one)"
+    )
+    files = argparse.ArgumentParser(add_help=False, parents=[setup])
+    files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
+    return setup, files
+
+
+def _migrate_flags(migrate: argparse.ArgumentParser) -> None:
+    _rules_flag(migrate)
+    migrate.add_argument(
+        "--write",
+        action="store_true",
+        help="write the changes, keeping each file as it was next to it (default: only say them)",
+    )
 
 
 def _rules_flags(command: argparse.ArgumentParser) -> None:
     """`--rules` and `--instruments`, of the commands that classify statements."""
+    _rules_flag(command)
+    command.add_argument(
+        "--instruments",
+        type=Path,
+        help="what is known about instruments (default: 'instruments' in the config, or "
+        "instruments.yaml)",
+    )
+
+
+def _rules_flag(command: argparse.ArgumentParser) -> None:
     command.add_argument(
         "--rules",
         type=Path,
@@ -333,12 +376,6 @@ def _rules_flags(command: argparse.ArgumentParser) -> None:
         help="rules file(s), first wins (default: 'rules' in the config, or rules.yaml); "
         "the owner's own rules.<owner>.yaml, next to the first, is read "
         "before them; a remembered category is saved in the first, or the owner's",
-    )
-    command.add_argument(
-        "--instruments",
-        type=Path,
-        help="what is known about instruments (default: 'instruments' in the config, or "
-        "instruments.yaml)",
     )
 
 
@@ -552,6 +589,15 @@ def _unmatched(config: dict[str, object], path: Path) -> str:
         msg = f"{path}: 'unmatched' must be the name of a category"
         raise ConfigError(msg)
     return categories.key(named)
+
+
+def _migrate_files(args: argparse.Namespace, out: TextIO) -> int:
+    """Write the rules files, categories.yaml and the config again with today's names."""
+    config = _config(args.config)
+    owner = config.get("owner")
+    people = [*_people(config, args.config), *([str(owner)] if owner else [])]
+    found = migratefiles.files(_rules(args, config), dict.fromkeys(people), args.config)
+    return migratefiles.run(found, out, apply=args.write)
 
 
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:

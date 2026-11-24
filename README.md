@@ -68,6 +68,12 @@ merchant and saves the answers as rules. Answer with a category's number or part
 
 Rows whose counterparty is the other person are marked, so the combined view leaves them out.
 
+Files written before 2026-11-24 may name categories in Italian (`Spesa`) and call the sides of
+`categories.yaml` `uscite` and `entrate`. They are still read so, but `scrooge migrate-files`
+writes them once with today's names: it says what it would change, and changes it with
+`--write`, keeping each file as it was beside it (`rules.yaml.before-migrate-files`). Comments,
+order and quotes stay as they were.
+
 ## The database
 
 Statements are committed as they come, of any period: there are no months to close.

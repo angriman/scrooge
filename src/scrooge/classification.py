@@ -131,7 +131,8 @@ def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -
 
     `known` is the key of every category a rule may name: the taxonomy plus what
     `categories.yaml` adds. A rule may name one by its key, its English label or its Italian
-    name (`categories.key`); the rule keeps its key.
+    name (`categories.key`; the Italian can go once `scrooge migrate-files` has been out for a
+    release or two); the rule keeps its key.
     """
     rules: list[Rule] = []
     for path in paths:
