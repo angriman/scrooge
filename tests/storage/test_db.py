@@ -503,11 +503,11 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
         assert row is not None
         return row
 
-    groups = {group: add(group, "uscite") for group in categories.USCITE}
-    for group, leaves in categories.USCITE.items():
+    groups = {group: add(group, "uscite") for group in categories.EXPENSE_GROUPS}
+    for group, leaves in categories.EXPENSE_GROUPS.items():
         for leaf in leaves:
             add(leaf, "uscite", groups[group], group)
-    for side, names in (("entrate", categories.ENTRATE), ("transfer", categories.TRANSFERS)):
+    for side, names in (("entrate", categories.INCOME_LEAVES), ("transfer", categories.TRANSFERS)):
         for name in names:
             add(name, side)
     # added by hand: under a group of the taxonomy, and a name of the taxonomy under one's own
@@ -534,7 +534,7 @@ def _italian_taxonomy(conn: sqlite3.Connection) -> dict[str, int]:
     a top-level category of the expenses under `group:` and its key."""
     insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
     ids: dict[str, int] = {}
-    for group, leaves in categories.USCITE.items():
+    for group, leaves in categories.EXPENSE_GROUPS.items():
         top = conn.execute(insert, (categories.LABELS_IT[group], None, "uscite")).lastrowid
         assert top is not None
         ids[f"group:{group}"] = top
@@ -542,7 +542,7 @@ def _italian_taxonomy(conn: sqlite3.Connection) -> dict[str, int]:
             row = conn.execute(insert, (categories.LABELS_IT[leaf], top, "uscite")).lastrowid
             assert row is not None
             ids[f"uscite:{leaf}"] = row
-    for side, names in (("entrate", categories.ENTRATE), ("transfer", categories.TRANSFERS)):
+    for side, names in (("entrate", categories.INCOME_LEAVES), ("transfer", categories.TRANSFERS)):
         for name in names:
             row = conn.execute(insert, (categories.LABELS_IT[name], None, side)).lastrowid
             assert row is not None

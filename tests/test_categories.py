@@ -32,7 +32,7 @@ def test_a_missing_or_empty_file_adds_nothing(tmp_path: Path) -> None:
     path.write_text(HEADER, encoding="utf-8")
     assert categories.load(path) == ()
     assert categories.names(()) == categories.ORDER
-    assert categories.groups(()) == tuple(categories.USCITE)
+    assert categories.groups(()) == tuple(categories.EXPENSE_GROUPS)
 
 
 def test_added_categories_are_saved_under_the_comments_and_read_back(tmp_path: Path) -> None:
@@ -48,7 +48,7 @@ def test_added_categories_are_saved_under_the_comments_and_read_back(tmp_path: P
     assert path.read_text(encoding="utf-8").startswith(HEADER + "categories:\n  expenses:\n")
     assert categories.load(path) == added
     assert categories.names(added) == (*categories.ORDER, "prestiti", "garden")
-    assert categories.groups(added) == (*categories.USCITE, "prestiti")
+    assert categories.groups(added) == (*categories.EXPENSE_GROUPS, "prestiti")
     assert categories.Labels.of(added)("garden") == "Garden"
     assert categories.Labels.of(added)(categories.GROUP_HOME) == "Home"
 

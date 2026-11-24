@@ -347,11 +347,11 @@ def move_rule(seen: Seen, by: int, categories_file: Path | None) -> None:
 
 def _taxonomy(extras: Sequence[categories.Extra]) -> list[tuple[str, str, str | None, bool]]:
     """Key, side, the key of its parent and whether it is built in, of every leaf category."""
-    uscite = categories.USCITE.items()
+    uscite = categories.EXPENSE_GROUPS.items()
     built = [
         *((leaf, "uscite", group, True) for group, leaves in uscite for leaf in leaves),
         *((e.key, "uscite", e.group_key, False) for e in extras if e.side == "uscite"),
-        *((name, "entrate", None, True) for name in categories.ENTRATE),
+        *((name, "entrate", None, True) for name in categories.INCOME_LEAVES),
         *((e.key, "entrate", None, False) for e in extras if e.side == "entrate"),
         *((name, "transfer", None, True) for name in categories.TRANSFERS),
     ]

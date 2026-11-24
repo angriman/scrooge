@@ -128,7 +128,7 @@ def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra]
         "VALUES (?, ?, ?, ?, ?)"
     )
     names = {**categories.LABELS_EN}
-    uscite = {parent: list(leaves) for parent, leaves in categories.USCITE.items()}
+    uscite = {parent: list(leaves) for parent, leaves in categories.EXPENSE_GROUPS.items()}
     for extra in extras:
         names.setdefault(extra.key, extra.name)
         if extra.side == "uscite":
@@ -145,7 +145,7 @@ def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra]
             order += 1
             conn.execute(insert, (leaf, names[leaf], parent_id, "uscite", order))
         order += 1
-    entrate = (*categories.ENTRATE, *(e.key for e in extras if e.side == "entrate"))
+    entrate = (*categories.INCOME_LEAVES, *(e.key for e in extras if e.side == "entrate"))
     for side, keys in (("entrate", entrate), ("transfer", categories.TRANSFERS)):
         for key in keys:
             order += 1

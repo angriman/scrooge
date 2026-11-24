@@ -74,15 +74,15 @@ def _rules(tmp_path: Path, text: str, name: str = "rules.yaml") -> Path:
 
 
 def test_taxonomy_names_are_unique_where_they_must_be_and_keep_sheet_order() -> None:
-    expense_leaves = [leaf for leaves in categories.USCITE.values() for leaf in leaves]
+    expense_leaves = [leaf for leaves in categories.EXPENSE_GROUPS.values() for leaf in leaves]
     # A leaf sits under one top-level category only, or its group would be ambiguous.
     assert len(expense_leaves) == len(set(expense_leaves))
-    assert len(categories.ENTRATE) == len(set(categories.ENTRATE))
+    assert len(categories.INCOME_LEAVES) == len(set(categories.INCOME_LEAVES))
     assert len(categories.TRANSFERS) == len(set(categories.TRANSFERS))
-    assert all(leaves for leaves in categories.USCITE.values())
+    assert all(leaves for leaves in categories.EXPENSE_GROUPS.values())
     # Transfers are neither expenses nor income; a few leaves are both, and only those.
-    assert not set(categories.TRANSFERS) & (set(expense_leaves) | set(categories.ENTRATE))
-    both = set(expense_leaves) & set(categories.ENTRATE)
+    assert not set(categories.TRANSFERS) & (set(expense_leaves) | set(categories.INCOME_LEAVES))
+    both = set(expense_leaves) & set(categories.INCOME_LEAVES)
     assert both == {
         categories.TRADING,
         categories.FEES,
@@ -91,10 +91,10 @@ def test_taxonomy_names_are_unique_where_they_must_be_and_keep_sheet_order() -> 
     }
     # ORDER lists every leaf once: a leaf on both sides is written once, where it first appears.
     assert len(categories.ORDER) == len(set(categories.ORDER))
-    assert set(categories.ORDER) == set(expense_leaves) | set(categories.ENTRATE) | set(
+    assert set(categories.ORDER) == set(expense_leaves) | set(categories.INCOME_LEAVES) | set(
         categories.TRANSFERS
     )
-    assert len(categories.ORDER) == len(expense_leaves) + len(categories.ENTRATE) + len(
+    assert len(categories.ORDER) == len(expense_leaves) + len(categories.INCOME_LEAVES) + len(
         categories.TRANSFERS
     ) - len(both)
     assert categories.ORDER[:3] == (categories.RENT, categories.UTILITIES, categories.HOUSEHOLD)
@@ -449,8 +449,8 @@ def test_unmatched_takes_only_expenses_and_income_no_rule_matched() -> None:
 
 
 def test_unsorted_is_a_built_in_category_for_expenses_and_income() -> None:
-    assert categories.UNSORTED in categories.USCITE[categories.UNSORTED]
-    assert categories.UNSORTED in categories.ENTRATE
+    assert categories.UNSORTED in categories.EXPENSE_GROUPS[categories.UNSORTED]
+    assert categories.UNSORTED in categories.INCOME_LEAVES
 
 
 @pytest.mark.parametrize("named", ["Spesa", "Groceries", categories.GROCERIES])

@@ -119,7 +119,7 @@ def buy(currency: str) -> str:
     return f"buy_{currency.lower()}"
 
 
-USCITE: dict[str, tuple[str, ...]] = {
+EXPENSE_GROUPS: dict[str, tuple[str, ...]] = {
     GROUP_HOME: (RENT, UTILITIES, HOUSEHOLD),
     GROUP_HEALTH: (HEALTH_INSURANCE, DENTIST, DOCTOR),
     GROUP_FOOD: (GROCERIES,),
@@ -138,7 +138,7 @@ USCITE: dict[str, tuple[str, ...]] = {
     GROUP_INVESTMENTS: (TRADING, INVESTMENTS),
     UNSORTED: (UNSORTED,),
 }
-ENTRATE: tuple[str, ...] = (
+INCOME_LEAVES: tuple[str, ...] = (
     SALARY,
     DIVIDENDS,
     INTEREST,
@@ -339,10 +339,16 @@ class Labels:
 
 # Every leaf category, in the order rows are written to the sheet.
 ORDER: tuple[str, ...] = tuple(
-    dict.fromkeys([*(leaf for leaves in USCITE.values() for leaf in leaves), *ENTRATE, *TRANSFERS])
+    dict.fromkeys(
+        [
+            *(leaf for leaves in EXPENSE_GROUPS.values() for leaf in leaves),
+            *INCOME_LEAVES,
+            *TRANSFERS,
+        ]
+    )
 )
 ALL: frozenset[str] = frozenset(ORDER)
-GROUPS: frozenset[str] = frozenset(USCITE)
+GROUPS: frozenset[str] = frozenset(EXPENSE_GROUPS)
 
 FILE = "categories.yaml"  # looked for next to the first rules file
 SIDES = ("uscite", "entrate")  # the sides' names in the database and in `Extra`
@@ -354,10 +360,10 @@ def builtin(side: str, name: str, *, group: bool = False) -> bool:
     """Whether the key `name` is a category of the taxonomy on `side`: a top-level one of the
     expenses with `group`, else one a row can carry."""
     if group:
-        return side == "uscite" and name in USCITE
+        return side == "uscite" and name in EXPENSE_GROUPS
     leaves = {
-        "uscite": {leaf for leaves in USCITE.values() for leaf in leaves},
-        "entrate": set(ENTRATE),
+        "uscite": {leaf for leaves in EXPENSE_GROUPS.values() for leaf in leaves},
+        "entrate": set(INCOME_LEAVES),
         "transfer": set(TRANSFERS),
     }
     return name in leaves.get(side, set())
@@ -396,7 +402,9 @@ def names(extras: tuple[Extra, ...]) -> tuple[str, ...]:
 
 def groups(extras: tuple[Extra, ...]) -> tuple[str, ...]:
     """The key of every top-level category of the expenses."""
-    return tuple(dict.fromkeys([*USCITE, *(e.group_key for e in extras if e.side == "uscite")]))
+    return tuple(
+        dict.fromkeys([*EXPENSE_GROUPS, *(e.group_key for e in extras if e.side == "uscite")])
+    )
 
 
 def add(path: Path, extra: Extra) -> None:
@@ -424,7 +432,7 @@ def rename(path: Path, old: str, new: str) -> None:
             return new if key(name) == old else name
 
         uscite = {
-            group if key(group) in USCITE else swap(group): [swap(n) for n in leaves]
+            group if key(group) in EXPENSE_GROUPS else swap(group): [swap(n) for n in leaves]
             for group, leaves in uscite.items()
         }
         _write(path, uscite, [swap(name) for name in entrate])

@@ -81,11 +81,11 @@ def menu(extras: tuple[Extra, ...]) -> str:
     """Every category with its number, one line per top-level category of the expenses."""
     label = categories.Labels.of(extras)
     number = {name: n for n, name in enumerate(categories.names(extras), start=1)}
-    uscite = {group: list(leaves) for group, leaves in categories.USCITE.items()}
+    uscite = {group: list(leaves) for group, leaves in categories.EXPENSE_GROUPS.items()}
     for extra in extras:
         if extra.side == "uscite" and extra.key not in uscite.setdefault(extra.group_key, []):
             uscite[extra.group_key].append(extra.key)
-    entrate = (*categories.ENTRATE, *(e.key for e in extras if e.side == "entrate"))
+    entrate = (*categories.INCOME_LEAVES, *(e.key for e in extras if e.side == "entrate"))
     margin = max(len(label(group)) for group in uscite) + 4
     lines = ["Expenses"]
     lines += [

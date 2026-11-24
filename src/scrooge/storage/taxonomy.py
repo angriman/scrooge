@@ -23,7 +23,7 @@ _LEAVES = (
 
 
 def _groups() -> str:
-    return json.dumps(list(categories.USCITE))
+    return json.dumps(list(categories.EXPENSE_GROUPS))
 
 
 def _leaves(conn: sqlite3.Connection, name: str) -> dict[str, int]:

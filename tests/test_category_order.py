@@ -65,7 +65,7 @@ def test_cash_flow_lines_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
         ("uscite", categories.GROUP_EATING_OUT),
     ]
     expenses = [name for side, name in _january_lines(conn) if side == "uscite"]
-    assert expenses == [name for name in categories.USCITE if name in expenses]
+    assert expenses == [name for name in categories.EXPENSE_GROUPS if name in expenses]
 
 
 def test_labels_in_another_language_change_no_line_and_no_stored_row() -> None:
@@ -135,8 +135,8 @@ def test_transaction_totals_by_category_tie_in_the_taxonomy_order(
 def test_the_choices_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
     found = query.choices(conn)
     headings = [heading for heading, _ in found.categories]
-    assert headings == [*categories.USCITE, "Income", "Transfer"]
-    assert found.groups == tuple(categories.USCITE)
+    assert headings == [*categories.EXPENSE_GROUPS, "Income", "Transfer"]
+    assert found.groups == tuple(categories.EXPENSE_GROUPS)
 
 
 def test_staged_and_committed_totals_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
