@@ -54,7 +54,11 @@
 	<title>Accounts · scrooge</title>
 </svelte:head>
 
-<Notices attention={data.attention} onePerson={single || owner !== null} />
+<Notices
+	attention={data.attention}
+	onePerson={single || owner !== null}
+	readOnly={data.session.read_only}
+/>
 
 {#each listed.errors as error (error)}
 	<p

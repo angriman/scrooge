@@ -163,14 +163,18 @@ export interface Attention {
 	unmatched: string | null;
 	/** Committed rows still in `unmatched`, per person. */
 	uncategorised: { owner: string; count: number }[];
-	/** Recurring payments still paid that went up or started lately, the latest first. */
-	recurring: RecurringChange[];
+	/** Recurring payments still paid that went up or started lately, the latest first; null
+	 * unless asked for (`recurring=1`), as only Overview does. */
+	recurring: RecurringChange[] | null;
 	errors: string[];
 }
 
 /** A recurring payment that went up lately (`change`: by how much a payment) or is new
  * (`change`: what a payment costs), in `Attention.currency`; null when a rate is missing. */
 export interface RecurringChange {
+	/** The payment's first row's id, as `RecurringPayment.id`. */
+	id: string;
+	/** Who was paid, as the `merchant` filter reads them. */
 	name: string;
 	account: string;
 	owner: string;
@@ -179,6 +183,8 @@ export interface RecurringChange {
 	change: Amount | null;
 	/** The first payment at the new price, or the first of all. */
 	since: Day;
+	/** Whether `merchant`, `account` and `owner` list its rows and no other payee's. */
+	alone: boolean;
 }
 
 /** One instrument in one account (src/scrooge/portfolio.py `Position`). Native figures are in

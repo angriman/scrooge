@@ -25,9 +25,11 @@ waits.
 		attention: Attention;
 		/** Whether the figures are of one person: their name then goes without saying. */
 		onePerson: boolean;
+		/** Whether this is a copy, where nothing can be changed. */
+		readOnly: boolean;
 	}
 
-	let { attention, onePerson }: Props = $props();
+	let { attention, onePerson, readOnly }: Props = $props();
 
 	const ICONS = {
 		staged: Inbox,
@@ -39,7 +41,7 @@ waits.
 	} satisfies Record<NoticeKind, unknown>;
 
 	const lines = $derived(
-		noticeLines(attention, onePerson, {
+		noticeLines(attention, { onePerson, readOnly }, {
 			importing: (owner) => `${resolve('/import')}?owner=${encodeURIComponent(owner)}`,
 			// The checks are on the Accounts page, for the same person and currency.
 			checks: (() => {

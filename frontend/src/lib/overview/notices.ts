@@ -13,7 +13,15 @@ export interface NoticeLine {
 	/** `waiting` is work to do; `caution` is something off. */
 	tone: 'waiting' | 'caution';
 	text: string;
-	action: { label: string; href: string };
+	/** Where it is dealt with; none for a payment whose rows no filter lists alone. */
+	action?: { label: string; href: string };
+}
+
+export interface NoticeOptions {
+	/** Whether the figures are of one person: their name then goes without saying. */
+	onePerson: boolean;
+	/** Whether this is a copy, where nothing can be changed. */
+	readOnly: boolean;
 }
 
 /** Where the lines lead: the component resolves the pages. */
@@ -53,9 +61,10 @@ export function changeText(
  * behind, figures that differ, rows to categorise, then recurring payments that changed. */
 export function noticeLines(
 	attention: Attention,
-	onePerson: boolean,
+	options: NoticeOptions,
 	links: NoticeLinks
 ): NoticeLine[] {
+	const onePerson = options.onePerson;
 	const whose = (owner: string) => (onePerson ? '' : ` of ${owner}`);
 	const are = (count: number) => (count === 1 ? 'is' : 'are');
 	const lines: NoticeLine[] = [];
@@ -100,25 +109,29 @@ export function noticeLines(
 			tone: 'waiting',
 			text: `${rows}${whose(waiting.owner)} ${are(waiting.count)} still in ${unmatched}.`,
 			action: {
-				label: 'Categorise',
+				// A copy only shows the rows: their category is changed where the database is.
+				label: options.readOnly ? 'See them' : 'Categorise',
 				href: links.transactions({ category: unmatched ?? '', owner: waiting.owner })
 			}
 		});
 	}
-	for (const payment of attention.recurring) {
+	for (const payment of attention.recurring ?? []) {
 		lines.push({
-			key: `${payment.kind}|${payment.owner}|${payment.account}|${payment.name}`,
+			key: `recurring|${payment.id}`,
 			kind: payment.kind,
 			tone: payment.kind === 'up' ? 'caution' : 'waiting',
 			text: changeText(payment, attention.currency, onePerson),
-			action: {
-				label: 'See payments',
-				href: links.transactions({
-					merchant: payment.name,
-					account: payment.account,
-					owner: payment.owner
-				})
-			}
+			// A name other payees of the account share would list their rows too: no link then.
+			action: payment.alone
+				? {
+						label: 'See payments',
+						href: links.transactions({
+							merchant: payment.name,
+							account: payment.account,
+							owner: payment.owner
+						})
+					}
+				: undefined
 		});
 	}
 	return lines;

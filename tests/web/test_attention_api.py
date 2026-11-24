@@ -11,6 +11,7 @@ from tests.storage.helpers import OWNER, PARTNER
 from tests.test_attention import build
 
 SITE = "http://127.0.0.1:8765"
+ASKED = {"recurring": "1"}
 
 
 def _client(path: Path, *, unmatched: str = categories.UNSORTED, rate: bool = True) -> TestClient:
@@ -22,18 +23,21 @@ def _client(path: Path, *, unmatched: str = categories.UNSORTED, rate: bool = Tr
 
 
 def test_rows_to_categorise_and_payments_that_changed_are_listed(tmp_path: Path) -> None:
-    sent = _client(tmp_path).get("/api/attention").json()
+    sent = _client(tmp_path).get("/api/attention", params={"owner": OWNER, **ASKED}).json()
     assert (sent["currency"], sent["unmatched"]) == ("CHF", categories.UNSORTED)
-    assert sent["uncategorised"] == [{"owner": PARTNER, "count": 1}, {"owner": OWNER, "count": 2}]
+    assert sent["uncategorised"] == [{"owner": OWNER, "count": 2}]
+    ids = [payment.pop("id") for payment in sent["recurring"]]
+    assert len(set(ids)) == 2
     assert sent["recurring"] == [
         {
-            "name": "Streamio",
+            "name": "Cloudy",
             "account": "Migros",
             "owner": OWNER,
             "every": "monthly",
             "kind": "up",
-            "change": "2.00",
+            "change": "1.20",
             "since": "2026-09-03",
+            "alone": True,
         },
         {
             "name": "Gymly",
@@ -43,26 +47,32 @@ def test_rows_to_categorise_and_payments_that_changed_are_listed(tmp_path: Path)
             "kind": "new",
             "change": "50.00",
             "since": "2026-08-03",
+            "alone": True,
         },
     ]
     assert sent["errors"] == []
 
 
+def test_recurring_payments_are_only_looked_at_when_asked_for(tmp_path: Path) -> None:
+    sent = _client(tmp_path).get("/api/attention").json()
+    assert sent["recurring"] is None
+    assert sent["uncategorised"] == [{"owner": PARTNER, "count": 1}, {"owner": OWNER, "count": 2}]
+
+
 def test_one_person_and_another_currency(tmp_path: Path) -> None:
     client = _client(tmp_path)
-    hers = client.get("/api/attention", params={"owner": PARTNER, "currency": "EUR"}).json()
-    assert (hers["currency"], hers["uncategorised"], hers["recurring"]) == (
-        "EUR",
-        [{"owner": PARTNER, "count": 1}],
-        [],
-    )
-    his = client.get("/api/attention", params={"owner": OWNER, "currency": "EUR"}).json()
-    assert [p["change"] for p in his["recurring"]] == ["2.50", "62.50"]
+    asked = {"owner": PARTNER, "currency": "EUR", "recurring": "1"}
+    hers = client.get("/api/attention", params=asked).json()
+    assert (hers["currency"], hers["uncategorised"]) == ("EUR", [{"owner": PARTNER, "count": 1}])
+    assert [(p["name"], p["change"]) for p in hers["recurring"]] == [("Phonio", "3.75")]
+    everyone = client.get("/api/attention", params={"currency": "EUR", **ASKED}).json()
+    assert [p["change"] for p in everyone["recurring"]] == ["1.50", "62.50", "3.75"]
 
 
 def test_a_missing_rate_is_a_sentence_and_the_change_is_unknown(tmp_path: Path) -> None:
-    sent = _client(tmp_path, rate=False).get("/api/attention", params={"currency": "EUR"}).json()
-    assert [p["change"] for p in sent["recurring"]] == [None, None]
+    asked = {"currency": "EUR", "owner": OWNER, **ASKED}
+    sent = _client(tmp_path, rate=False).get("/api/attention", params=asked).json()
+    assert [p["change"] for p in sent["recurring"]] == [None, None, None]
     assert len(sent["errors"]) == 1
     assert sent["errors"][0].endswith(".")
 

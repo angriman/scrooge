@@ -691,17 +691,20 @@ def needs_a_look(
     currency: str,
     unmatched: str,
     unsorted: Sequence[attention.Uncategorised],
-    changed: attention.Changes,
+    changed: attention.Changes | None,
 ) -> JSON:
     """The rows still in the category `unmatched` (null: there is none), per person, and the
     recurring payments that went up or are new, what changed in `currency` (as paid,
-    positive; null when a rate is missing)."""
+    positive; null when a rate is missing); `recurring` is null when they were not asked for."""
     return {
         "currency": currency,
         "unmatched": unmatched or None,
         "uncategorised": [{"owner": each.owner, "count": each.count} for each in unsorted],
-        "recurring": [
+        "recurring": None
+        if changed is None
+        else [
             {
+                "id": each.found.id,
                 "name": each.found.name,
                 "account": each.found.account,
                 "owner": each.found.owner,
@@ -709,6 +712,7 @@ def needs_a_look(
                 "kind": each.kind,
                 "change": number(each.change),
                 "since": day(each.since),
+                "alone": each.alone,
             }
             for each in changed.changes
         ],

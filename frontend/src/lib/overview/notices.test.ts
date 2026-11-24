@@ -25,6 +25,7 @@ const nothing: Attention = {
 };
 
 const payment = (fields: Partial<RecurringChange>): RecurringChange => ({
+	id: 's1',
 	name: 'Streamio',
 	account: 'Migros',
 	owner: 'Lukas',
@@ -32,12 +33,16 @@ const payment = (fields: Partial<RecurringChange>): RecurringChange => ({
 	kind: 'up',
 	change: '2.00',
 	since: '2026-09-03',
+	alone: true,
 	...fields
 });
 
+const household = { onePerson: false, readOnly: false };
+const onePerson = { onePerson: true, readOnly: false };
+
 describe('what needs a look', () => {
 	it('is nothing when nothing waits', () => {
-		expect(noticeLines(nothing, false, links)).toEqual([]);
+		expect(noticeLines(nothing, household, links)).toEqual([]);
 	});
 
 	it('keeps the statements first, then the rows to categorise and the payments', () => {
@@ -57,10 +62,10 @@ describe('what needs a look', () => {
 				uncategorised: [{ owner: 'Anna', count: 3 }],
 				recurring: [
 					payment({}),
-					payment({ name: 'Gymly', kind: 'new', change: '50.00' })
+					payment({ id: 'g1', name: 'Gymly', kind: 'new', change: '50.00' })
 				]
 			},
-			false,
+			household,
 			links
 		);
 		expect(lines.map((line) => [line.kind, line.tone, line.text])).toEqual([
@@ -105,7 +110,7 @@ describe('what needs a look', () => {
 				uncategorised: [{ owner: 'Anna', count: 1 }],
 				recurring: [payment({})]
 			},
-			true,
+			onePerson,
 			links
 		);
 		expect(lines.map((line) => [line.text, line.action])).toEqual([
@@ -133,7 +138,7 @@ describe('what needs a look', () => {
 				unmatched: null,
 				uncategorised: [{ owner: 'Anna', count: 1 }]
 			},
-			true,
+			onePerson,
 			links
 		);
 		expect(lines).toEqual([]);
@@ -165,5 +170,31 @@ describe('what needs a look', () => {
 			more: 2
 		});
 		expect(folded([1, 2, 3], 2)).toEqual({ shown: [1], more: 2 });
+	});
+
+	it('opens no payment whose name other payees share, and only shows rows on a copy', () => {
+		const lines = noticeLines(
+			{
+				...nothing,
+				uncategorised: [{ owner: 'Anna', count: 1 }],
+				recurring: [payment({ alone: false })]
+			},
+			{ onePerson: true, readOnly: true },
+			links
+		);
+		expect(lines.map((line) => line.action?.label)).toEqual(['See them', undefined]);
+	});
+
+	it('keys each payment by its id, even when two share a name', () => {
+		const lines = noticeLines(
+			{ ...nothing, recurring: [payment({}), payment({ id: 's2' })] },
+			onePerson,
+			links
+		);
+		expect(lines.map((line) => line.key)).toEqual(['recurring|s1', 'recurring|s2']);
+	});
+
+	it('lists no payments when they were not asked for', () => {
+		expect(noticeLines({ ...nothing, recurring: null }, onePerson, links)).toEqual([]);
 	});
 });

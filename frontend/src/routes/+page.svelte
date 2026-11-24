@@ -65,7 +65,11 @@
 	<title>Overview · scrooge</title>
 </svelte:head>
 
-<Notices attention={data.attention} onePerson={single || owner !== null} />
+<Notices
+	attention={data.attention}
+	onePerson={single || owner !== null}
+	readOnly={data.session.read_only}
+/>
 
 {#each [...data.shown.errors, ...data.worth.errors, ...data.month.errors] as error (error)}
 	<p

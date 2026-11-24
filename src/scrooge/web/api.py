@@ -158,7 +158,8 @@ def _attention(request: Request) -> Response:
     """What waits for `owner`, or for everyone: statements staged and not committed, accounts
     whose statements end well before the person's others, lines of statements whose figures
     differ from those worked out here, rows still in the category of those no rule matched,
-    and recurring payments that went up or started lately, in `currency`."""
+    and, with `recurring=1`, recurring payments that went up or started lately, in
+    `currency`: they read every committed row, which only the first page needs."""
     asked = forms.holdings_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
@@ -174,8 +175,12 @@ def _attention(request: Request) -> Response:
             checks = ()
         unmatched: str = request.app.state.unmatched
         unsorted = attention.uncategorised(conn, owner, unmatched)
-        changed = attention.changes(conn, owner=owner, currency=asked.currency)
-    errors += [wire.sentence(exc) for exc in changed.errors]
+        changed = (
+            attention.changes(conn, owner=owner, currency=asked.currency)
+            if request.query_params.get("recurring") == "1"
+            else None
+        )
+    errors += [] if changed is None else [wire.sentence(exc) for exc in changed.errors]
     return JSONResponse(
         {
             **wire.needs_a_look(asked.currency, unmatched, unsorted, changed),

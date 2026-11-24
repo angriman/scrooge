@@ -8,8 +8,15 @@ and the rows wait there until someone gives them a category of their own.
 A recurring payment changed when its price went up in the last two months, or when it came
 for the first time in the last three (the cash-flow page calls it new over the same three:
 a monthly payment is only known as one once it came three times). Both are judged against
-the last day of its rows, the day the list of recurring payments is as of, and only for those
-still paid. What changed is converted at the rate of that day and rounded to the cent.
+the last day the person's committed statements cover, so that a person whose statements lag
+behind the other's still sees their own changes, and only for payments still paid.
+
+A rise counts only when it is a new price and not a bill that varies: a monthly payment must
+have been paid at the new price at least twice (a phone or electricity bill rarely is), and
+the rise must be at least 5% of the price before and at least 1 of the currency asked for a
+month (a yearly payment's rise spread over twelve). When a rate is missing the 5% is all that
+is asked. What changed is converted at the rate of the last day of the rows and rounded to
+the cent.
 """
 
 from __future__ import annotations
@@ -27,6 +34,9 @@ from scrooge.extractors.common import month_end
 
 UP_WITHIN = 2  # months in which a rise in price is news
 NEW_WITHIN = 3  # months in which a payment that started is news
+RISE_SHARE = Decimal("0.05")  # of the price before, at least, for a rise to count
+RISE_MONTHLY = Decimal(1)  # of the currency asked for a month, at least
+PAID_AT_NEW = 2  # monthly payments at the new price, at least
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +54,7 @@ class Change:
     kind: Literal["up", "new"]
     change: Decimal | None
     since: date  # the first payment at the new price, or the first payment of all
+    alone: bool  # the transactions' merchant filter, with account and person, lists its rows
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,36 +87,42 @@ def months_before(day: date, months: int) -> date:
     return end.replace(day=min(day.day, end.day))
 
 
-def _changed(found: query.Recurrence) -> tuple[Literal["up", "new"], Decimal, date] | None:
-    """Whether `found` went up or is new, by how much a payment (as paid, positive), and
-    since when; None when neither."""
-    if found.first > months_before(found.through, NEW_WITHIN):
+def _changed(
+    found: query.Recurrence, through: date
+) -> tuple[Literal["up", "new"], Decimal, date] | None:
+    """Whether `found` went up or is new by `through`, by how much a payment (as paid,
+    positive), and since when; None when neither. A rise is only judged here by its share of
+    the price before; its size a month is judged once converted."""
+    if found.first > months_before(through, NEW_WITHIN):
         return "new", -found.latest.amount, found.first
     # The payments at the latest price, back to the one before them.
     same = 1
     while same < len(found.rows) and found.rows[-same - 1].amount == found.latest.amount:
         same += 1
-    if same == len(found.rows):
+    if same == len(found.rows) or (found.every == "monthly" and same < PAID_AT_NEW):
         return None
-    since, before = found.rows[-same].date, found.rows[-same - 1].amount
-    if since <= months_before(found.through, UP_WITHIN) or found.latest.amount >= before:
+    since, before = found.rows[-same].date, -found.rows[-same - 1].amount
+    rise = -found.latest.amount - before
+    if since <= months_before(through, UP_WITHIN) or rise < before * RISE_SHARE:
         return None
-    return "up", before - found.latest.amount, since
+    return "up", rise, since
 
 
 def changes(conn: sqlite3.Connection, *, owner: str | None, currency: str) -> Changes:
     """The recurring payments of `owner`, or of everyone, still paid that went up or started
     lately, with what changed in `currency`."""
+    last = {person.name: person.last for person in query.people(conn)}
     found = [
-        (each.found, changed)
+        (each, changed)
         for each in recurring.run(conn, owner=owner, currency=currency).active
-        if (changed := _changed(each.found)) is not None
+        if (changed := _changed(each.found, last.get(each.found.owner) or each.found.through))
     ]
     listed: list[Change] = []
     errors: dict[str, networth.MissingRateError] = {}
     if found:
-        rates = networth.rates_on(conn, [max(group.through for group, _ in found)])
-        for group, (kind, paid, since) in found:
+        rates = networth.rates_on(conn, [max(each.found.through for each, _ in found)])
+        for each, (kind, paid, since) in found:
+            group = each.found
             amount: Decimal | None
             try:
                 amount = networth.convert([paid], group.latest.currency, currency, rates)[0]
@@ -113,6 +130,9 @@ def changes(conn: sqlite3.Connection, *, owner: str | None, currency: str) -> Ch
             except networth.MissingRateError as exc:
                 amount = None
                 errors.setdefault(str(exc), exc)
-            listed.append(Change(group, kind, amount, since))
+            months = 1 if group.every == "monthly" else 12
+            if kind == "up" and amount is not None and amount < RISE_MONTHLY * months:
+                continue  # too small a rise to be news, once converted
+            listed.append(Change(group, kind, amount, since, each.alone))
     listed.sort(key=lambda each: (each.since, each.found.name), reverse=True)
     return Changes(currency, tuple(listed), tuple(errors.values()))
