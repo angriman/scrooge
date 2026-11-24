@@ -601,7 +601,7 @@ async def _add_category(request: Request) -> Response:
                 conn,
                 state.rules.shared.with_name(categories.FILE),
                 name=str(sent.get("name", "")),
-                side=str(sent.get("side", "")),
+                side=wire.side_sent(str(sent.get("side", ""))),
                 group=str(sent.get("group", "")),
             )
         finally:

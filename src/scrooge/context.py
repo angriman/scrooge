@@ -38,7 +38,7 @@ from scrooge.storage import store
 KINDS = ("category", "merchant", "account")  # what the transactions can be cut to
 MONTHS = 24  # shown, the last one included
 MERCHANTS = 5  # listed for a category, the largest first
-_EARNED = "entrate"  # the side of the taxonomy whose categories are money earned
+_EARNED = "income"  # the side of the taxonomy whose categories are money earned
 # Rows of an account whose money stays inside it: its net flow leaves them out.
 _INSIDE = frozenset({Kind.SECURITY_TRADE, Kind.TRADING})
 

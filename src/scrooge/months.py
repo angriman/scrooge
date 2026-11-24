@@ -116,7 +116,7 @@ class Pending:
     counterparty: str
     description: str
     category: str = ""  # of a row that has one
-    side: str = ""  # of that category: "uscite", "entrate" or "transfer"
+    side: str = ""  # of that category: "expenses", "income" or "transfer"
     changeable: bool = False  # money in or out whose category a rule or a choice gave
     statement: int | None = None  # the file it came from
 
@@ -137,7 +137,7 @@ class Group:
 
 @dataclass(frozen=True, slots=True)
 class CategoryTotal:
-    side: str  # "uscite", "entrate" or "transfer"; "" for the rows waiting for a category
+    side: str  # "expenses", "income" or "transfer"; "" for the rows waiting for a category
     category: str
     currency: str
     count: int

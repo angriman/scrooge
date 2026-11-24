@@ -3,6 +3,11 @@
 Migrations are the numbered files in `scrooge.storage.migrations`, applied in order, each in
 one transaction together with its row in `schema_version`: a `.sql` file is run as it is, a
 `.py` file is one whose `migrate(conn)` changes what SQL alone cannot (it computes in Python).
+
+A `.py` file that says `REBUILDS = True` builds a table again that other tables refer to (a
+CHECK cannot be changed in place). SQLite asks for foreign keys to be off for that, and they
+cannot be turned off inside a transaction: such a migration runs with them off, and is
+refused if any reference is broken when it is done.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ import importlib
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
@@ -23,8 +29,15 @@ CREATE TABLE IF NOT EXISTS schema_version (
 """
 
 
+@dataclass(frozen=True)
+class Rebuild:
+    """A `.py` migration that builds a table again: run with foreign keys off."""
+
+    migrate: Callable[[sqlite3.Connection], None]
+
+
 # The SQL of a `.sql` migration, or the `migrate` function of a `.py` one.
-Migration = str | Callable[[sqlite3.Connection], None]
+Migration = str | Callable[[sqlite3.Connection], None] | Rebuild
 
 
 class MigrationError(Exception):
@@ -85,7 +98,9 @@ def migrations() -> list[tuple[int, Migration]]:
         if suffix == "sql":
             found.append((int(number), entry.read_text(encoding="utf-8")))
         else:
-            found.append((int(number), importlib.import_module(f"{package}.{stem}").migrate))
+            module = importlib.import_module(f"{package}.{stem}")
+            rebuilds = getattr(module, "REBUILDS", False)
+            found.append((int(number), Rebuild(module.migrate) if rebuilds else module.migrate))
     return sorted(found, key=lambda migration: migration[0])
 
 
@@ -111,6 +126,9 @@ def migrate(conn: sqlite3.Connection, now: datetime) -> list[int]:
         msg = f"the database is at schema version {current}, this code knows up to {known}"
         raise MigrationError(msg)
     for number, step in pending:
+        if isinstance(step, Rebuild):
+            _rebuild(conn, number, step, now)
+            continue
         try:
             if isinstance(step, str):
                 conn.executescript(f"BEGIN IMMEDIATE;\n{step}")
@@ -123,6 +141,29 @@ def migrate(conn: sqlite3.Connection, now: datetime) -> list[int]:
             raise
         conn.execute("COMMIT")
     return [number for number, _ in pending]
+
+
+def _rebuild(conn: sqlite3.Connection, number: int, step: Rebuild, now: datetime) -> None:
+    """Run `step` as SQLite says a table is built again: foreign keys off, outside the
+    transaction, and every reference checked before it commits; then as they were."""
+    enforced = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        step.migrate(conn)
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            table, _, parent, _ = broken[0]
+            msg = f"migration {number} leaves rows of {table} without their {parent}"
+            raise MigrationError(msg)
+        conn.execute("INSERT INTO schema_version VALUES (?, ?)", (number, timestamp(now)))
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    else:
+        conn.execute("COMMIT")
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON" if enforced else "PRAGMA foreign_keys = OFF")
 
 
 def backup(conn: sqlite3.Connection, target: Path) -> None:

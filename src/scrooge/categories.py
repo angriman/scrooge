@@ -14,7 +14,8 @@ The taxonomy below is the base. `categories.yaml` adds to it (never removes or r
 A category added there, or on a page, has no translation: its label is the name it was given,
 and its key is made from that name (`key`). A file may name a built-in category by its key, by
 its English label or by the Italian name it had until 2026-11-24, and a file written before
-then says `uscite` and `entrate`: all are read as they were meant, and never rewritten for it.
+then says `uscite` and `entrate` for `expenses` and `income`: all are read as they were meant,
+and never rewritten for it.
 """
 
 from __future__ import annotations
@@ -119,7 +120,7 @@ def buy(currency: str) -> str:
     return f"buy_{currency.lower()}"
 
 
-USCITE: dict[str, tuple[str, ...]] = {
+EXPENSE_GROUPS: dict[str, tuple[str, ...]] = {
     GROUP_HOME: (RENT, UTILITIES, HOUSEHOLD),
     GROUP_HEALTH: (HEALTH_INSURANCE, DENTIST, DOCTOR),
     GROUP_FOOD: (GROCERIES,),
@@ -138,7 +139,7 @@ USCITE: dict[str, tuple[str, ...]] = {
     GROUP_INVESTMENTS: (TRADING, INVESTMENTS),
     UNSORTED: (UNSORTED,),
 }
-ENTRATE: tuple[str, ...] = (
+INCOME_LEAVES: tuple[str, ...] = (
     SALARY,
     DIVIDENDS,
     INTEREST,
@@ -339,25 +340,36 @@ class Labels:
 
 # Every leaf category, in the order rows are written to the sheet.
 ORDER: tuple[str, ...] = tuple(
-    dict.fromkeys([*(leaf for leaves in USCITE.values() for leaf in leaves), *ENTRATE, *TRANSFERS])
+    dict.fromkeys(
+        [
+            *(leaf for leaves in EXPENSE_GROUPS.values() for leaf in leaves),
+            *INCOME_LEAVES,
+            *TRANSFERS,
+        ]
+    )
 )
 ALL: frozenset[str] = frozenset(ORDER)
-GROUPS: frozenset[str] = frozenset(USCITE)
+GROUPS: frozenset[str] = frozenset(EXPENSE_GROUPS)
 
 FILE = "categories.yaml"  # looked for next to the first rules file
-SIDES = ("uscite", "entrate")  # the sides' names in the database and in `Extra`
+SIDES = ("expenses", "income")  # the sides' names in the database and in `Extra`
 # How `categories.yaml` names each side, and how it named them before.
-_SIDE_NAMES = {"expenses": "uscite", "income": "entrate", "uscite": "uscite", "entrate": "entrate"}
+_SIDE_NAMES = {
+    "expenses": "expenses",
+    "income": "income",
+    "uscite": "expenses",
+    "entrate": "income",
+}
 
 
 def builtin(side: str, name: str, *, group: bool = False) -> bool:
     """Whether the key `name` is a category of the taxonomy on `side`: a top-level one of the
     expenses with `group`, else one a row can carry."""
     if group:
-        return side == "uscite" and name in USCITE
+        return side == "expenses" and name in EXPENSE_GROUPS
     leaves = {
-        "uscite": {leaf for leaves in USCITE.values() for leaf in leaves},
-        "entrate": set(ENTRATE),
+        "expenses": {leaf for leaves in EXPENSE_GROUPS.values() for leaf in leaves},
+        "income": set(INCOME_LEAVES),
         "transfer": set(TRANSFERS),
     }
     return name in leaves.get(side, set())
@@ -368,8 +380,8 @@ class Extra:
     """A leaf category added by `categories.yaml`, by the names written there."""
 
     name: str
-    side: str  # "uscite" | "entrate"
-    group: str = ""  # uscite only: the top-level category it sits under
+    side: str  # "expenses" | "income"
+    group: str = ""  # expenses only: the top-level category it sits under
 
     @property
     def key(self) -> str:
@@ -382,10 +394,10 @@ class Extra:
 
 def load(path: Path) -> tuple[Extra, ...]:
     """The categories `path` adds to the taxonomy; none when the file does not exist."""
-    uscite, entrate = _read(path)
+    expenses, income = _read(path)
     return (
-        *(Extra(leaf, "uscite", group) for group, leaves in uscite.items() for leaf in leaves),
-        *(Extra(name, "entrate") for name in entrate),
+        *(Extra(leaf, "expenses", group) for group, leaves in expenses.items() for leaf in leaves),
+        *(Extra(name, "income") for name in income),
     )
 
 
@@ -396,45 +408,47 @@ def names(extras: tuple[Extra, ...]) -> tuple[str, ...]:
 
 def groups(extras: tuple[Extra, ...]) -> tuple[str, ...]:
     """The key of every top-level category of the expenses."""
-    return tuple(dict.fromkeys([*USCITE, *(e.group_key for e in extras if e.side == "uscite")]))
+    return tuple(
+        dict.fromkeys([*EXPENSE_GROUPS, *(e.group_key for e in extras if e.side == "expenses")])
+    )
 
 
 def add(path: Path, extra: Extra) -> None:
     """Save one more category in `path` (created if missing), keeping its leading comments.
     It goes under the group written there that has the key of its own group, if one has."""
     with yamlfiles.LOCK:
-        uscite, entrate = _read(path)
-        if extra.side == "uscite":
-            group = next((g for g in uscite if key(g) == extra.group_key), extra.group)
-            leaves = uscite.setdefault(group, [])
+        expenses, income = _read(path)
+        if extra.side == "expenses":
+            group = next((g for g in expenses if key(g) == extra.group_key), extra.group)
+            leaves = expenses.setdefault(group, [])
         else:
-            leaves = entrate
+            leaves = income
         if extra.key not in map(key, leaves):
             leaves.append(extra.name)
-        _write(path, uscite, entrate)
+        _write(path, expenses, income)
 
 
 def rename(path: Path, old: str, new: str) -> None:
     """Call the added category of key `old` `new` in `path`, everywhere it is added, and so the
     group of its own it was added with, if it was; the order stays as it was."""
     with yamlfiles.LOCK:
-        uscite, entrate = _read(path)
+        expenses, income = _read(path)
 
         def swap(name: str) -> str:
             return new if key(name) == old else name
 
-        uscite = {
-            group if key(group) in USCITE else swap(group): [swap(n) for n in leaves]
-            for group, leaves in uscite.items()
+        expenses = {
+            group if key(group) in EXPENSE_GROUPS else swap(group): [swap(n) for n in leaves]
+            for group, leaves in expenses.items()
         }
-        _write(path, uscite, [swap(name) for name in entrate])
+        _write(path, expenses, [swap(name) for name in income])
 
 
 def drop(path: Path, name: str) -> None:
     """Take the added category of key `name` out of `path`, and the group it leaves empty."""
     with yamlfiles.LOCK:
-        uscite, entrate = _read(path)
-        _write(path, _without(uscite, name), [entry for entry in entrate if key(entry) != name])
+        expenses, income = _read(path)
+        _write(path, _without(expenses, name), [entry for entry in income if key(entry) != name])
 
 
 def move(path: Path, name: str, group: str) -> None:
@@ -442,26 +456,26 @@ def move(path: Path, name: str, group: str) -> None:
     `path` (one written there with its key, else a new one of that name), at its end; the
     group it leaves empty goes."""
     with yamlfiles.LOCK:
-        uscite, entrate = _read(path)
-        written = next((n for leaves in uscite.values() for n in leaves if key(n) == name), name)
-        moved = _without(uscite, name)
+        expenses, income = _read(path)
+        written = next((n for leaves in expenses.values() for n in leaves if key(n) == name), name)
+        moved = _without(expenses, name)
         under = next((g for g in moved if key(g) == key(group)), group)
         moved.setdefault(under, []).append(written)
-        _write(path, moved, entrate)
+        _write(path, moved, income)
 
 
-def _without(uscite: dict[str, list[str]], name: str) -> dict[str, list[str]]:
+def _without(expenses: dict[str, list[str]], name: str) -> dict[str, list[str]]:
     """The groups without the leaf of key `name`; a group it leaves empty is left out."""
-    kept = {group: [n for n in leaves if key(n) != name] for group, leaves in uscite.items()}
-    return {group: leaves for group, leaves in kept.items() if leaves or not uscite[group]}
+    kept = {group: [n for n in leaves if key(n) != name] for group, leaves in expenses.items()}
+    return {group: leaves for group, leaves in kept.items() if leaves or not expenses[group]}
 
 
-def _write(path: Path, uscite: dict[str, list[str]], entrate: list[str]) -> None:
+def _write(path: Path, expenses: dict[str, list[str]], income: list[str]) -> None:
     """Write the additions to `path` again, keeping its leading comments."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     header = "".join(takewhile(lambda line: line.startswith("#"), text.splitlines(keepends=True)))
     body = yaml.safe_dump(
-        {"categories": {"expenses": uscite, "income": entrate}},
+        {"categories": {"expenses": expenses, "income": income}},
         allow_unicode=True,
         sort_keys=False,
     )
@@ -481,19 +495,19 @@ def _read(path: Path) -> tuple[dict[str, list[str]], list[str]]:
             msg = f"{path}: '{name}' and the other name of that side are both given: keep one"
             raise ConfigError(msg)
         sides[_SIDE_NAMES[name]] = sides.get(_SIDE_NAMES[name]) or value
-    uscite = sides.get("uscite") or {}
-    entrate = sides.get("entrate") or []
+    expenses = sides.get("expenses") or {}
+    income = sides.get("income") or []
     if (
-        not isinstance(uscite, dict)
-        or not all(_is_names(leaves) for leaves in uscite.values())
-        or not _is_names(entrate)
+        not isinstance(expenses, dict)
+        or not all(_is_names(leaves) for leaves in expenses.values())
+        or not _is_names(income)
     ):
         msg = (
             f"{path}: 'expenses' maps each top-level category to a list of names, "
             "'income' is a list of names"
         )
         raise ConfigError(msg)
-    return {str(group): list(leaves) for group, leaves in uscite.items()}, list(entrate)
+    return {str(group): list(leaves) for group, leaves in expenses.items()}, list(income)
 
 
 def _is_names(value: object) -> TypeGuard[list[str]]:

@@ -18,12 +18,12 @@ from scrooge import categories
 # The categories a row can carry, by key: leaves, never the top-level expense categories.
 _LEAVES = (
     "SELECT id, side, parent_id FROM categories "
-    "WHERE key = ? AND (side <> 'uscite' OR parent_id IS NOT NULL)"
+    "WHERE key = ? AND (side <> 'expenses' OR parent_id IS NOT NULL)"
 )
 
 
 def _groups() -> str:
-    return json.dumps(list(categories.USCITE))
+    return json.dumps(list(categories.EXPENSE_GROUPS))
 
 
 def _leaves(conn: sqlite3.Connection, name: str) -> dict[str, int]:
@@ -49,7 +49,7 @@ def rename(conn: sqlite3.Connection, old: str, new: str) -> int:
     any: each gets the key of its new name. Returns how many rows carry it."""
     rows = carried(conn, old)
     conn.execute(
-        "UPDATE categories SET name = ?2, key = ?4 WHERE key = ?1 AND (side <> 'uscite' "
+        "UPDATE categories SET name = ?2, key = ?4 WHERE key = ?1 AND (side <> 'expenses' "
         "OR parent_id IS NOT NULL OR key NOT IN (SELECT value FROM json_each(?3)))",
         (old, new, _groups(), categories.key(new)),
     )
@@ -76,17 +76,17 @@ def move(conn: sqlite3.Connection, name: str, group: str) -> int:
     that key, else a new one of that name), and take out the added group it leaves empty.
     Returns how many rows carry it."""
     leaf, before = conn.execute(
-        "SELECT id, parent_id FROM categories WHERE side = 'uscite' AND parent_id IS NOT NULL "
+        "SELECT id, parent_id FROM categories WHERE side = 'expenses' AND parent_id IS NOT NULL "
         "AND key = ?",
         (name,),
     ).fetchone()
     conn.execute(
         "INSERT OR IGNORE INTO categories (key, name, parent_id, side, sort_order) "
-        "SELECT ?, ?, NULL, 'uscite', coalesce(max(sort_order), 0) + 1 FROM categories",
+        "SELECT ?, ?, NULL, 'expenses', coalesce(max(sort_order), 0) + 1 FROM categories",
         (categories.key(group), group),
     )
     (parent,) = conn.execute(
-        "SELECT id FROM categories WHERE side = 'uscite' AND parent_id IS NULL AND key = ?",
+        "SELECT id FROM categories WHERE side = 'expenses' AND parent_id IS NULL AND key = ?",
         (categories.key(group),),
     ).fetchone()
     conn.execute("UPDATE categories SET parent_id = ? WHERE id = ?", (parent, leaf))
@@ -99,7 +99,7 @@ def drop(conn: sqlite3.Connection, name: str) -> None:
     leaves empty."""
     groups = [row["parent_id"] for row in conn.execute(_LEAVES, (name,)) if row["parent_id"]]
     conn.execute(
-        "DELETE FROM categories WHERE key = ? AND (side <> 'uscite' OR parent_id IS NOT NULL)",
+        "DELETE FROM categories WHERE key = ? AND (side <> 'expenses' OR parent_id IS NOT NULL)",
         (name,),
     )
     for group in groups:

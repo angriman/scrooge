@@ -17,7 +17,7 @@ from scrooge.storage.money import from_nano, to_nano, to_text
 
 _CURRENCY_DECIMALS = 2
 _INSTRUMENT_TYPES = {"ETFs": "etf", "Stocks": "stock", "Bonds": "bill", "Funds": "fund"}
-_SIDES = ("uscite", "entrate")
+_SIDES = ("expenses", "income")
 
 
 class UnknownCategoryError(Exception):
@@ -128,25 +128,25 @@ def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra]
         "VALUES (?, ?, ?, ?, ?)"
     )
     names = {**categories.LABELS_EN}
-    uscite = {parent: list(leaves) for parent, leaves in categories.USCITE.items()}
+    expenses = {parent: list(leaves) for parent, leaves in categories.EXPENSE_GROUPS.items()}
     for extra in extras:
         names.setdefault(extra.key, extra.name)
-        if extra.side == "uscite":
+        if extra.side == "expenses":
             names.setdefault(extra.group_key, extra.group)
-            uscite.setdefault(extra.group_key, []).append(extra.key)
+            expenses.setdefault(extra.group_key, []).append(extra.key)
     order = 0
-    for parent, leaves in uscite.items():
-        conn.execute(insert, (parent, names[parent], None, "uscite", order))
+    for parent, leaves in expenses.items():
+        conn.execute(insert, (parent, names[parent], None, "expenses", order))
         parent_id = conn.execute(
-            "SELECT id FROM categories WHERE side = 'uscite' AND parent_id IS NULL AND key = ?",
+            "SELECT id FROM categories WHERE side = 'expenses' AND parent_id IS NULL AND key = ?",
             (parent,),
         ).fetchone()[0]
         for leaf in leaves:
             order += 1
-            conn.execute(insert, (leaf, names[leaf], parent_id, "uscite", order))
+            conn.execute(insert, (leaf, names[leaf], parent_id, "expenses", order))
         order += 1
-    entrate = (*categories.ENTRATE, *(e.key for e in extras if e.side == "entrate"))
-    for side, keys in (("entrate", entrate), ("transfer", categories.TRANSFERS)):
+    income = (*categories.INCOME_LEAVES, *(e.key for e in extras if e.side == "income"))
+    for side, keys in (("income", income), ("transfer", categories.TRANSFERS)):
         for key in keys:
             order += 1
             conn.execute(insert, (key, names[key], None, side, order))
@@ -174,7 +174,7 @@ def category_labels(conn: sqlite3.Connection) -> categories.Labels:
 # income, then transfers; each top-level category by its sort_order, its leaves right after
 # it by theirs; the id breaks a tie. For `categories c LEFT JOIN categories p` (the parent).
 TAXONOMY_ORDER = (
-    "CASE c.side WHEN 'uscite' THEN 0 WHEN 'entrate' THEN 1 ELSE 2 END, "
+    "CASE c.side WHEN 'expenses' THEN 0 WHEN 'income' THEN 1 ELSE 2 END, "
     "coalesce(p.sort_order, c.sort_order), coalesce(p.id, c.id), c.parent_id IS NOT NULL, "
     "c.sort_order, c.id"
 )
@@ -208,7 +208,7 @@ def category_ranks(conn: sqlite3.Connection) -> Ranks:
     tops: dict[tuple[str, str], int] = {}
     leaves: dict[tuple[str, str], int] = {}
     found = conn.execute(
-        "SELECT c.side, c.key, c.parent_id IS NULL, c.side = 'uscite' AND c.parent_id IS NULL "  # noqa: S608  # only fixed text is interpolated
+        "SELECT c.side, c.key, c.parent_id IS NULL, c.side = 'expenses' AND c.parent_id IS NULL "  # noqa: S608  # only fixed text is interpolated
         f"FROM categories c LEFT JOIN categories p ON p.id = c.parent_id ORDER BY {TAXONOMY_ORDER}"
     )
     for side, name, top, group in found:
@@ -222,7 +222,7 @@ def category_ranks(conn: sqlite3.Connection) -> Ranks:
 def leaf_categories(conn: sqlite3.Connection) -> dict[tuple[str, str], int]:
     """(side, key) -> id of every category a transaction can carry."""
     rows = conn.execute(
-        "SELECT id, side, key FROM categories WHERE side <> 'uscite' OR parent_id IS NOT NULL"
+        "SELECT id, side, key FROM categories WHERE side <> 'expenses' OR parent_id IS NOT NULL"
     ).fetchall()
     return {(row["side"], row["key"]): int(row["id"]) for row in rows}
 

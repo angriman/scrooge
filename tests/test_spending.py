@@ -335,7 +335,7 @@ def test_a_row_without_a_counterparty_is_the_accounts() -> None:
         "Revolut CHF",
         Kind.EXPENSE,
         "CHF",
-        "uscite",
+        "expenses",
         categories.GROUP_HOME,
         categories.UTILITIES,
         0,

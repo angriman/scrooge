@@ -55,17 +55,17 @@ def _january_lines(conn: sqlite3.Connection) -> list[tuple[str, str]]:
 
 def test_cash_flow_lines_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
     assert _january_lines(conn) == [
-        ("entrate", categories.SALARY),
-        ("entrate", categories.REFUNDS),
-        ("entrate", categories.GIFTS_RECEIVED),
+        ("income", categories.SALARY),
+        ("income", categories.REFUNDS),
+        ("income", categories.GIFTS_RECEIVED),
         ("investing", categories.TRADING),
         ("investing", categories.INVESTMENTS),
-        ("uscite", categories.GROUP_HOME),
-        ("uscite", categories.GROUP_FOOD),
-        ("uscite", categories.GROUP_EATING_OUT),
+        ("expenses", categories.GROUP_HOME),
+        ("expenses", categories.GROUP_FOOD),
+        ("expenses", categories.GROUP_EATING_OUT),
     ]
-    expenses = [name for side, name in _january_lines(conn) if side == "uscite"]
-    assert expenses == [name for name in categories.USCITE if name in expenses]
+    expenses = [name for side, name in _january_lines(conn) if side == "expenses"]
+    assert expenses == [name for name in categories.EXPENSE_GROUPS if name in expenses]
 
 
 def test_labels_in_another_language_change_no_line_and_no_stored_row() -> None:
@@ -135,8 +135,8 @@ def test_transaction_totals_by_category_tie_in_the_taxonomy_order(
 def test_the_choices_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
     found = query.choices(conn)
     headings = [heading for heading, _ in found.categories]
-    assert headings == [*categories.USCITE, "Income", "Transfer"]
-    assert found.groups == tuple(categories.USCITE)
+    assert headings == [*categories.EXPENSE_GROUPS, "Income", "Transfer"]
+    assert found.groups == tuple(categories.EXPENSE_GROUPS)
 
 
 def test_staged_and_committed_totals_follow_the_taxonomy(conn: sqlite3.Connection) -> None:

@@ -167,7 +167,7 @@ class Choices:
     label: Labels = _BUILT_IN
 
 
-HEADINGS = {"entrate": "Income", "transfer": "Transfer"}  # the sides without groups
+HEADINGS = {"income": "Income", "transfer": "Transfer"}  # the sides without groups
 
 
 def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
@@ -184,7 +184,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
     groups: dict[str, list[str]] = {}
     leaves: dict[str, list[str]] = {}
     for r in found:
-        top = r["side"] == "uscite" and r["parent"] is None
+        top = r["side"] == "expenses" and r["parent"] is None
         heading = r["parent"] or (r["name"] if top else HEADINGS[r["side"]])
         names = groups.setdefault(heading, [])
         if r["name"] not in names:  # a leaf of the key of its parent is one choice
@@ -195,7 +195,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         tuple(r["name"] for r in accounts),
         tuple((heading, tuple(names)) for heading, names in groups.items()),
         tuple((heading, tuple(names)) for heading, names in leaves.items()),
-        tuple(r["name"] for r in found if r["side"] == "uscite" and r["parent"] is None),
+        tuple(r["name"] for r in found if r["side"] == "expenses" and r["parent"] is None),
         store.category_labels(conn),
     )
 

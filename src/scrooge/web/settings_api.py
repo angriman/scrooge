@@ -253,7 +253,7 @@ async def _add_category(request: Request) -> Response:
                 conn,
                 _places(request).categories_file,
                 name=_text(sent, "name"),
-                side=_text(sent, "side"),
+                side=wire.side_sent(_text(sent, "side")),
                 group=_text(sent, "group"),
             )
             return {"name": added.name}

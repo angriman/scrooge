@@ -140,8 +140,8 @@ def test_the_menu_of_a_row_that_has_a_category_keeps_it_and_the_waiting_one_asks
     assert f'<input name="category:{bakery}" list="categories" placeholder="Groceries" ' in page
     # One list of the categories, which every field suggests from as a name is typed.
     assert page.count('<datalist id="categories">') == 1
-    assert '<option value="Rent" label="Home" data-side="uscite">' in page
-    assert '<option value="Salary" label="Income" data-side="entrate">' in page
+    assert '<option value="Rent" label="Home" data-side="expenses">' in page
+    assert '<option value="Salary" label="Income" data-side="income">' in page
     assert '<option value="Own transfer" label="Transfer" data-side="transfer">' in page
     assert '<option value="Home"' not in page
     assert (
@@ -167,7 +167,7 @@ def test_the_page_has_what_the_live_totals_work_from(client: TestClient, databas
     ) in page
     assert f'<input type="hidden" name="ids:0" value="{kiosk}" form="draft-form">' in page
     assert '<tr data-side="" data-category="" data-currency="CHF">' in page  # the waiting line
-    assert '<tr data-side="uscite" data-category="Groceries" data-currency="CHF">' in page
+    assert '<tr data-side="expenses" data-category="Groceries" data-currency="CHF">' in page
     assert '<tr data-side="transfer" data-category="Own transfer" data-currency="CHF">' in page
     assert re.search(r'<td class="number total sum" data-unit="CHF">-80.00 CHF</td>', page)
     assert re.search(r'<td class="number count" data-label="Rows">1</td>', page)
@@ -479,14 +479,14 @@ def test_a_category_is_added_from_the_import_page_and_can_then_be_chosen(
     client.follow_redirects = False
     page = client.get("/import", params={"owner": "Lukas"}).text
     assert "<h2>Add a category</h2>" in page
-    assert '<option value="uscite:Home">Expenses, Home</option>' in page
+    assert '<option value="expenses:Home">Expenses, Home</option>' in page
     assert '<option value="Pets"' not in page
-    sent = form(client) | {"name": "Pets", "under": "uscite:Home"}
+    sent = form(client) | {"name": "Pets", "under": "expenses:Home"}
     response = client.post("/import/category", data=sent)
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/import?owner=Lukas"
     assert (
-        '<option value="Pets" label="Home" data-side="uscite">'
+        '<option value="Pets" label="Home" data-side="expenses">'
         in client.get("/import", params={"owner": "Lukas"}).text
     )
     added = (tmp_path / "categories.yaml").read_text(encoding="utf-8")
@@ -499,7 +499,7 @@ def test_a_category_is_added_from_the_import_page_and_can_then_be_chosen(
 def test_without_a_rules_file_no_category_can_be_added(client: TestClient) -> None:
     page = client.get("/import", params={"owner": "Lukas"}).text
     assert "Add a category" not in page
-    sent = form(client) | {"name": "Pets", "under": "entrate:"}
+    sent = form(client) | {"name": "Pets", "under": "income:"}
     assert client.post("/import/category", data=sent).status_code == 404
 
 

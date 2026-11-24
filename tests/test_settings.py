@@ -53,7 +53,7 @@ def conn(places: settings.Places) -> Iterator[sqlite3.Connection]:
     db.migrate(connection, NOW)
     for name, group in (("Shipping", categories.GROUP_TRANSPORT), ("Prestiti", "")):
         staging.add_category(
-            connection, places.categories_file, name=name, side="uscite", group=group
+            connection, places.categories_file, name=name, side="expenses", group=group
         )
     day = date(2026, 8, 10)
     lukas = [
@@ -333,14 +333,14 @@ def test_categories_list_the_taxonomy_then_what_is_added(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
     listed = {(c.key, c.side): c for c in settings.listed_categories(conn, places.categories_file)}
-    assert listed[categories.GROCERIES, "uscite"].rows == 2
-    assert listed[categories.GROCERIES, "uscite"].built_in
-    assert listed[categories.GROCERIES, "uscite"].name == "Groceries"  # its label
-    assert listed["shipping", "uscite"] == settings.ListedCategory(
-        "shipping", "Shipping", "uscite", "Transport", False, 1
+    assert listed[categories.GROCERIES, "expenses"].rows == 2
+    assert listed[categories.GROCERIES, "expenses"].built_in
+    assert listed[categories.GROCERIES, "expenses"].name == "Groceries"  # its label
+    assert listed["shipping", "expenses"] == settings.ListedCategory(
+        "shipping", "Shipping", "expenses", "Transport", False, 1
     )
-    assert listed["prestiti", "uscite"].parent == "Prestiti"
-    assert listed[categories.SALARY, "entrate"].rows == 1
+    assert listed["prestiti", "expenses"].parent == "Prestiti"
+    assert listed[categories.SALARY, "income"].rows == 1
     assert listed[categories.OWN_TRANSFER, "transfer"].rows == 0
     assert len(settings.listed_categories(conn, None)) == len(listed) - 2
 
@@ -352,7 +352,7 @@ def test_a_category_renamed_follows_on_rows_rules_and_file(
     assert rows == 1
     assert ("Anna Meier", "Mutuo casa") in _categories_of(conn)
     added = categories.load(places.categories_file)
-    assert categories.Extra("Mutuo casa", "uscite", "Mutuo casa") in added
+    assert categories.Extra("Mutuo casa", "expenses", "Mutuo casa") in added
     assert places.categories_file.read_text(encoding="utf-8").startswith("# Added by hand.\n")
     assert _own(places).read_text(encoding="utf-8") == OWN.replace(
         "category: Prestiti", 'category: "Mutuo casa"'
@@ -443,8 +443,8 @@ def test_a_merge_that_cannot_be_made_says_why(
 def test_an_added_category_nothing_gives_can_be_removed(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
-    staging.add_category(conn, places.categories_file, name="Mance", side="entrate", group="")
-    staging.add_category(conn, places.categories_file, name="Gatto", side="uscite", group="")
+    staging.add_category(conn, places.categories_file, name="Mance", side="income", group="")
+    staging.add_category(conn, places.categories_file, name="Gatto", side="expenses", group="")
     settings.remove_category(conn, places, name="Mance")
     settings.remove_category(conn, places, name="Gatto")
     names = [e.name for e in categories.load(places.categories_file)]
@@ -469,7 +469,7 @@ def test_a_category_in_use_is_not_removed(
 def test_a_category_a_rule_gives_is_not_removed(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
-    staging.add_category(conn, places.categories_file, name="Mance", side="entrate", group="")
+    staging.add_category(conn, places.categories_file, name="Mance", side="income", group="")
     _own(places).write_text("rules:\n  - {match: 'TIP', category: Mance}\n", encoding="utf-8")
     with pytest.raises(settings.SettingsError, match="1 rules give Mance"):
         settings.remove_category(conn, places, name="Mance")
@@ -505,14 +505,14 @@ def test_a_category_moved_under_another_keeps_its_rows(
         == 1
     )
     added = categories.load(places.categories_file)
-    assert categories.Extra("Prestiti", "uscite", "Home") in added  # by its label
+    assert categories.Extra("Prestiti", "expenses", "Home") in added  # by its label
     assert "prestiti" not in categories.groups(added)  # the group of its own went
     listed = settings.listed_categories(conn, places.categories_file)
     assert ("Prestiti", "Home", 1) in [(c.name, c.parent, c.rows) for c in listed]
     found = conn.execute("SELECT count(*) FROM categories WHERE key = 'prestiti'").fetchone()
     assert found[0] == 1  # the leaf, and no empty group
     settings.move_category(conn, places, name="Prestiti", under=" Debiti ", now=NOW)
-    assert categories.Extra("Prestiti", "uscite", "Debiti") in categories.load(
+    assert categories.Extra("Prestiti", "expenses", "Debiti") in categories.load(
         places.categories_file
     )
     query.check_names(conn, query.Filter(category="Debiti"))
@@ -531,7 +531,7 @@ def test_a_category_moved_under_another_keeps_its_rows(
 def test_a_move_that_cannot_be_made_says_why(
     conn: sqlite3.Connection, places: settings.Places, name: str, under: str, problem: str
 ) -> None:
-    staging.add_category(conn, places.categories_file, name="Mance", side="entrate", group="")
+    staging.add_category(conn, places.categories_file, name="Mance", side="income", group="")
     with pytest.raises(settings.SettingsError, match=problem):
         settings.move_category(conn, places, name=name, under=under, now=NOW)
 

@@ -789,7 +789,7 @@ def add_category(
     """Add a category to the taxonomy: in `file` (`categories.yaml`), which every import
     reads, and in the database. Returns it.
 
-    `side` is `uscite` or `entrate`. An expense goes under `group`, one of the top-level
+    `side` is `expenses` or `income`. An expense goes under `group`, one of the top-level
     categories there are, or under a new one named like itself when no group is given.
     """
     name = " ".join(name.split())
@@ -807,12 +807,12 @@ def add_category(
         if (side, new) in leaves or ("transfer", new) in leaves:
             msg = f"there is already a category {name!r}"
             raise StagingError(msg)
-        if side == "uscite" and group and categories.key(group) not in categories.groups(extras):
+        if side == "expenses" and group and categories.key(group) not in categories.groups(extras):
             msg = f"no group of categories named {group!r}"
             raise StagingError(msg)
-        if side == "uscite" and group:  # written by its label, which people read
+        if side == "expenses" and group:  # written by its label, which people read
             group = categories.Labels.of(extras).written(categories.key(group))
-        extra = Extra(name, side, (group or name) if side == "uscite" else "")
+        extra = Extra(name, side, (group or name) if side == "expenses" else "")
         before[file] = file.read_text(encoding="utf-8") if file.exists() else None
         categories.add(file, extra)
         store.seed_categories(conn, categories.load(file))
