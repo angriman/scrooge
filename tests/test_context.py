@@ -67,6 +67,17 @@ LUKAS = [
     ),
 ]
 LUKAS_USD: list[Transaction] = [
+    # Moved in from another account of his: not spent, but the account's own money in.
+    txn(
+        "1000",
+        date=date(2026, 1, 20),
+        source_ref="0",
+        kind=Kind.TRANSFER,
+        category="Giroconto",
+        account="IBKR USD",
+        currency="USD",
+        source_file="ibkr.csv",
+    ),
     txn(
         "-5",
         date=date(2026, 2, 1),
@@ -77,7 +88,7 @@ LUKAS_USD: list[Transaction] = [
         account="IBKR USD",
         currency="USD",
         source_file="ibkr.csv",
-    )
+    ),
 ]
 ANNA = [txn("-60", date=date(2026, 7, 12), source_ref="1", counterparty=SHOP)]
 
@@ -89,6 +100,7 @@ def conn() -> Iterator[sqlite3.Connection]:
     close(connection, OWNER, (START, END), END, ("migros", LUKAS), ("ibkr", LUKAS_USD))
     close(connection, PARTNER, (date(2026, 7, 1), END), END, ("migros", ANNA))
     store.set_rate(connection, START, "USD", Decimal("0.90"), source="fetched:yahoo")
+    store.set_rate(connection, date(2026, 2, 1), "USD", Decimal("0.80"), source="fetched:yahoo")
     yield connection
     connection.close()
 
@@ -152,15 +164,34 @@ def test_a_merchant_as_the_cash_flow_names_it(conn: sqlite3.Connection) -> None:
     )
 
 
-def test_an_account_is_what_was_spent_from_it_converted_on_its_day(
+def test_an_account_is_its_net_flow_each_row_converted_on_its_day(
     conn: sqlite3.Connection,
 ) -> None:
     found = shown(conn, "account", "IBKR USD")
-    assert amounts(found)[17] == Decimal("4.50")  # February 2026: 5 dollars at 0.90
-    assert sum(amounts(found)) == Decimal("4.50")
-    assert found.usual == Decimal(0)
-    assert context.balance(conn, "IBKR USD", owner=OWNER, currency="CHF") == Decimal("-4.50")
+    assert found.net
+    assert not found.earned
+    # January 2026: 1000 dollars moved in at 0.90; February: a fee of 5 at 0.80.
+    assert (amounts(found)[16], amounts(found)[17]) == (Decimal(900), Decimal(-4))
+    assert sum(amounts(found)) == Decimal(896)
+    assert (found.usual, found.merchants) == (Decimal(0), None)
+    assert context.balance(conn, "IBKR USD", owner=OWNER, currency="CHF") == Decimal(796)
     assert context.balance(conn, "Nowhere", owner=OWNER, currency="CHF") is None
+
+
+def test_an_account_counts_every_row_of_it_in_and_out(conn: sqlite3.Connection) -> None:
+    found = shown(conn, "account", "Migros")
+    # The salary less the rent and the shops: less in the months of both shops.
+    assert amounts(found)[:2] == [Decimal(3360), Decimal(3400)]
+    # July 2026: the refund, what went to and came back from Anna, and the securities bought.
+    assert amounts(found)[-2] == Decimal(3360 + 20 - 200 + 900 - 9920)
+    assert amounts(found)[-1] == Decimal(-1600)  # August: no salary yet
+    assert found.usual == Decimal(3380)  # between the months with one shop and with two
+    assert (found.name, found.this_month) == ("Migros", Decimal(-1600))
+
+
+def test_only_an_account_is_a_net_flow(conn: sqlite3.Connection) -> None:
+    assert not shown(conn, "category", "Alimentari").net
+    assert not shown(conn, "merchant", "Coop Bern").net
 
 
 @pytest.mark.parametrize("owner", [OWNER, None])
@@ -182,6 +213,10 @@ def test_both_people_need_twelve_months_each_for_a_usual_month(conn: sqlite3.Con
     found = shown(conn, "merchant", "Konsum Zuerich", owner=None)
     assert amounts(found)[-2] == Decimal(140)  # Anna's 60 in July too
     assert found.usual is None
+    # Both people's rows of an account of that name, and still no usual month.
+    flow = shown(conn, "account", "Migros", owner=None)
+    assert amounts(flow)[-2] == amounts(shown(conn, "account", "Migros"))[-2] - 60
+    assert flow.usual is None
     both = context.balance(conn, "Migros", currency="CHF")
     alone = context.balance(conn, "Migros", owner=OWNER, currency="CHF")
     assert both is not None

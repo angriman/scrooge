@@ -2,15 +2,17 @@
 @component
 What the transactions are cut to, over the last two years: one category, merchant or account,
 a bar for each month against its usual month (the dashed line), the last month lighter while
-it is not over. Beside it, where most of a category was spent, each a link to its rows, or
-what an account holds now. A month pointed at is said in full beneath.
+it is not over. A category or a merchant is what was spent (or earned); an account is its net
+flow, money put aside above the line of nothing and money taken out below it. Beside it, where
+most of a category was spent, each a link to its rows, or what an account holds now. A month
+pointed at is said in full beneath.
 -->
 <script lang="ts">
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { month, monthName } from '#lib/format/date.js';
 	import type { TransactionsContext } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
-	import { draw } from './context.js';
+	import { draw, flow } from './context.js';
 
 	interface Props {
 		context: TransactionsContext;
@@ -24,10 +26,19 @@ what an account holds now. A month pointed at is said in full beneath.
 	const HEIGHT = 64;
 
 	let width = $state(480);
-	const drawn = $derived(draw(context.months, context.usual, context.partial, width, HEIGHT));
+	const drawn = $derived(draw(context.months, context.usual, context.partial, width, HEIGHT, context.net));
 	const first = $derived(context.months[0]);
 	const last = $derived(context.months.at(-1));
-	const verb = $derived(context.earned ? 'Earned' : 'Spent');
+	const verb = $derived(context.net ? 'Net flow' : context.earned ? 'Earned' : 'Spent');
+	const said = $derived(context.net ? 'money in less money out, last two years' : 'last two years');
+
+	/** The colour of a bar: of a net flow, money put aside is a gain and money taken out a
+	 * loss; the last month is lighter while it is not over. */
+	function fill(negative: boolean, partial: boolean): string {
+		if (negative) return partial ? 'fill-loss/35 stroke-loss' : 'fill-loss';
+		if (context.net) return partial ? 'fill-gain/35 stroke-gain' : 'fill-gain';
+		return partial ? 'fill-brand/35 stroke-brand' : 'fill-brand';
+	}
 
 	let shown = $state<number | null>(null);
 	const pointed = $derived(shown === null ? null : context.months[shown]);
@@ -36,7 +47,7 @@ what an account holds now. A month pointed at is said in full beneath.
 <section class="rounded-panel bg-panel p-4" aria-label="{context.name} over the last two years">
 	<header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 		<div class="min-w-0">
-			<p class="text-caption text-ink-muted">{KINDS[context.kind]}, last two years</p>
+			<p class="text-caption text-ink-muted">{KINDS[context.kind]}, {said}</p>
 			<h2 class="truncate text-title font-medium text-ink">{context.name}</h2>
 		</div>
 		{#if context.balance !== null}
@@ -54,6 +65,8 @@ what an account holds now. A month pointed at is said in full beneath.
 	{/each}
 
 	{#if first && last}
+		{@const told = pointed ?? last}
+		{@const sofar = context.partial && told === last ? ' so far' : ''}
 		<div class="mt-3 grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_16rem]">
 			<div class="min-w-0">
 				<div bind:clientWidth={width}>
@@ -81,14 +94,14 @@ what an account holds now. A month pointed at is said in full beneath.
 										width={bar.width}
 										height={bar.height}
 										rx="1"
-										class={bar.partial ? 'fill-brand/35 stroke-brand' : 'fill-brand'}
+										class={fill(bar.negative, bar.partial)}
 										stroke-dasharray={bar.partial ? '2 2' : undefined}
 										stroke-width={bar.partial ? 1 : 0}
 									/>
 								{/if}
 							</g>
 						{/each}
-						<line x1="0" x2={width} y1={HEIGHT - 0.5} y2={HEIGHT - 0.5} class="stroke-line" />
+						<line x1="0" x2={width} y1={Math.min(drawn.zero, HEIGHT - 0.5)} y2={Math.min(drawn.zero, HEIGHT - 0.5)} class="stroke-line" />
 						{#if drawn.usual !== null}
 							<line
 								x1="0"
@@ -108,21 +121,24 @@ what an account holds now. A month pointed at is said in full beneath.
 				</div>
 
 				<p class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary" aria-live="polite">
-					{#if pointed}
-						<span>
-							{verb} in {monthName(pointed.month)}{context.partial && pointed === last ? ' so far' : ''}
-							<Amount value={pointed.amount} currency={context.currency} places={0} class="text-body text-ink" />
-						</span>
-					{:else}
-						<span>
-							{verb} in {monthName(last.month)}{context.partial ? ' so far' : ''}
-							<Amount value={last.amount} currency={context.currency} places={0} class="text-body text-ink" />
-						</span>
-					{/if}
+					<span>
+						{#if context.net}
+							{@const moved = flow(told.amount)}
+							{moved.said} in {monthName(told.month)}{sofar}
+							<Amount value={moved.amount} currency={context.currency} places={0} class="text-body text-ink" />
+						{:else}
+							{verb} in {monthName(told.month)}{sofar}
+							<Amount value={told.amount} currency={context.currency} places={0} class="text-body text-ink" />
+						{/if}
+					</span>
 					<span class="inline-flex items-baseline gap-1.5">
 						<span class="inline-block w-3 border-t border-dashed border-ink-secondary" aria-hidden="true"></span>
 						{#if context.usual === null}
 							Usual month not known yet
+						{:else if context.net}
+							{@const usual = flow(context.usual)}
+							Usual month: {usual.said.toLowerCase()}
+							<Amount value={usual.amount} currency={context.currency} places={0} class="text-body text-ink" />
 						{:else}
 							Usual month <Amount value={context.usual} currency={context.currency} places={0} class="text-body text-ink" />
 						{/if}

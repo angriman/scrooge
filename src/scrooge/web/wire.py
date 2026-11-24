@@ -732,6 +732,7 @@ def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
         "name": shown.name,
         "currency": shown.currency,
         "earned": shown.earned,
+        "net": shown.net,
         "months": [
             {"month": _month(month.first), "amount": number(month.amount)} for month in shown.months
         ],

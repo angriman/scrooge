@@ -696,6 +696,9 @@ export interface TransactionsContext {
 	currency: string;
 	/** The amounts are money earned (a category of income), not money spent. */
 	earned: boolean;
+	/** The amounts are an account's net flow: money in less money out, every row of it
+	 * counted, transfers too; above nothing, money put aside. */
+	net: boolean;
 	/** Two years of months up to the one of `through`, oldest first; none when nothing is
 	 * committed or a rate is missing. */
 	months: { month: string; amount: Amount }[];
