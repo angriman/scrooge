@@ -67,13 +67,13 @@ def test_a_release_is_salary_paid_in_shares_at_the_printed_price(result: Extract
     salary, purchase = result.transactions[:2]
     assert (salary.kind, salary.category, salary.amount) == (
         Kind.INCOME,
-        "Stipendio",
+        "Salary",
         Decimal("631.50"),
     )
     assert isinstance(purchase, SecurityTrade)
     assert (purchase.kind, purchase.category, purchase.amount) == (
         Kind.SECURITY_TRADE,
-        "Investimenti",
+        "Investments",
         Decimal("-631.50"),
     )
     assert (purchase.ticker, purchase.quantity, purchase.price, purchase.cost) == (
@@ -90,8 +90,8 @@ def test_a_release_is_salary_paid_in_shares_at_the_printed_price(result: Extract
 def test_a_withdrawal_moves_shares_out_in_kind_without_a_price(result: Extraction) -> None:
     moved = [t for t in result.transactions if t.description.startswith("Share withdrawal")]
     assert [(t.date, t.kind, t.amount, t.category) for t in moved] == [
-        (date(2026, 7, 29), Kind.TRANSFER, Decimal(0), "Giroconto"),
-        (date(2026, 8, 27), Kind.TRANSFER, Decimal(0), "Giroconto"),
+        (date(2026, 7, 29), Kind.TRANSFER, Decimal(0), "Own transfer"),
+        (date(2026, 8, 27), Kind.TRANSFER, Decimal(0), "Own transfer"),
     ]
     first = moved[0]
     assert isinstance(first, SecurityTrade)
@@ -105,17 +105,29 @@ def test_a_withdrawal_moves_shares_out_in_kind_without_a_price(result: Extractio
 def test_the_cash_rows(result: Extraction) -> None:
     cash = [t for t in result.transactions if not t.description.startswith(("Release", "Share"))]
     assert [(t.date, t.kind, t.category, t.description, t.amount) for t in cash] == [
-        (date(2026, 9, 14), Kind.DIVIDEND, "Dividendi", "Dividend", Decimal("0.20")),
-        (date(2026, 9, 14), Kind.TAX, "Ritenute", "Withholding tax", Decimal("-0.03")),
-        (date(2026, 9, 17), Kind.TRANSFER, "Giroconto", "Proceeds disbursement", Decimal("-0.27")),
+        (date(2026, 9, 14), Kind.DIVIDEND, "Dividends", "Dividend", Decimal("0.20")),
+        (date(2026, 9, 14), Kind.TAX, "Withholding tax", "Withholding tax", Decimal("-0.03")),
+        (
+            date(2026, 9, 17),
+            Kind.TRANSFER,
+            "Own transfer",
+            "Proceeds disbursement",
+            Decimal("-0.27"),
+        ),
         (
             date(2026, 9, 18),
             Kind.TRANSFER,
-            "Giroconto",
+            "Own transfer",
             "Proceeds disbursement cancelled",
             Decimal("0.27"),
         ),
-        (date(2026, 9, 21), Kind.TRANSFER, "Giroconto", "Proceeds disbursement", Decimal("-0.27")),
+        (
+            date(2026, 9, 21),
+            Kind.TRANSFER,
+            "Own transfer",
+            "Proceeds disbursement",
+            Decimal("-0.27"),
+        ),
     ]
 
 

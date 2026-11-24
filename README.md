@@ -56,7 +56,7 @@ owners:                              # how each person appears as a counterparty
   Anna: {match: ["ANNA MEIER", "CH00 0000 0000"]}
 currency: CHF                        # EUR, CHF, USD, GBP or JPY; EUR without it
 currencies: [CHF, USD, EUR]          # the month-end table's columns; these without it
-unmatched: Non classificato          # the category of rows no rule matches
+unmatched: Uncategorized             # the category of rows no rule matches
 account_labels: {U7654321: "IBKR 2"} # a second account at a broker, by its number
 frozen: [Deposito, {Anna: Risparmio}]  # frozen like the pensions; {owner: account} for one alone
 ```
@@ -64,7 +64,7 @@ frozen: [Deposito, {Anna: Risparmio}]  # frozen like the pensions; {owner: accou
 `unmatched` lets every statement be committed without choosing categories (net worth needs
 none). To track expenses, delete it and run `scrooge import --review`: it asks once per unknown
 merchant and saves the answers as rules. Answer with a category's number or part of its name;
-`+Prestiti` creates a category, `+Casa:Giardino` one under `Casa`.
+`+Loans` creates a category, `+Home:Garden` one under `Home`.
 
 Rows whose counterparty is the other person are marked, so the combined view leaves them out.
 
@@ -77,7 +77,7 @@ scrooge statements          # the statements stored, staged ones first, with the
 scrooge uncommit <id>       # take a committed statement back: it is staged again
 scrooge discard <id>        # remove a staged statement and everything it staged
 scrooge keep <path>...      # keep the files of statements imported before originals/ existed
-scrooge query --from 2026-09 --to 2026-09 --category Spesa --summary
+scrooge query --from 2026-09 --to 2026-09 --category Groceries --summary
 ```
 
 - An import is for one person. Of each account, what is already committed stays as it is and

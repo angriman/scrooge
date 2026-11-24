@@ -14,7 +14,7 @@ from outside them, on the day it was booked, as net worth books it:
 
 - a row of kind `transfer`: a deposit, a withdrawal, a move between a person's own accounts,
   the proceeds a stock plan pays out;
-- a row of kind `income` or `expense` outside the investing categories (`Investimenti`,
+- a row of kind `income` or `expense` outside the investing categories (`Investments`,
   `Trading`): shares a plan vests as salary, a referral bonus, a bill paid from the account.
   A bill's principal repaid is investing, and stays inside;
 - shares moved in or out in kind (from another broker, a plan's shares withdrawn to IBKR):

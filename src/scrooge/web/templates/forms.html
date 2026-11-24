@@ -6,7 +6,7 @@
 <datalist id="categories">
   {%- for heading, names in choices.leaves %}
   {%- for name in names %}
-  <option value="{{ name }}" label="{{ heading }}" data-side="{{ 'transfer' if heading == 'Transfer' else 'entrate' if heading == 'Entrate' else 'uscite' }}"></option>
+  <option value="{{ name }}" label="{{ heading }}" data-side="{{ 'transfer' if heading == 'Transfer' else 'entrate' if heading == 'Income' else 'uscite' }}"></option>
   {%- endfor %}
   {%- endfor %}
 </datalist>

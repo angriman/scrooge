@@ -25,7 +25,7 @@ from scrooge.storage.money import from_nano
 
 INCOME, EXPENSES, INVESTING = "entrate", "uscite", "investing"
 # The top-level categories, on either side of the taxonomy, that are investing.
-_INVESTING = frozenset({"Investimenti", "Trading"})
+_INVESTING = frozenset({"Investments", "Trading"})
 # Money that only changes place: stored and listed, never income or an expense.
 _NOT_COUNTED = (Kind.TRANSFER, Kind.FX, Kind.INTERNAL)
 

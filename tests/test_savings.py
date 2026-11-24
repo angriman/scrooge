@@ -20,17 +20,17 @@ START, END = date(2025, 1, 1), date(2026, 8, 31)
 JULY = date(2026, 7, 10)
 LUKAS = [
     *salaries("5000", START, 20),
-    *monthly("-1800", 1, "rent", category="Affitto"),
+    *monthly("-1800", 1, "rent", category="Rent"),
     txn("300", date=JULY, source_ref="1", kind=Kind.TRADING, category="Trading"),
-    txn("-9920", date=JULY, source_ref="2", kind=Kind.SECURITY_TRADE, category="Investimenti"),
+    txn("-9920", date=JULY, source_ref="2", kind=Kind.SECURITY_TRADE, category="Investments"),
     # A present for her, and her share of the rent from her: each leg also on her side.
-    txn("-200", date=JULY, source_ref="3", category="Regali", counterparty="ANNA MEIER"),
+    txn("-200", date=JULY, source_ref="3", category="Gifts", counterparty="ANNA MEIER"),
     txn(
         "900",
         date=JULY,
         source_ref="4",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="ANNA MEIER",
     ),
 ]
@@ -42,10 +42,10 @@ ANNA = [
         date=JULY,
         source_ref="2",
         kind=Kind.INCOME,
-        category="Regali ricevuti",
+        category="Gifts received",
         counterparty="LUKAS MEIER",
     ),
-    txn("-900", date=JULY, source_ref="3", category="Affitto", counterparty="LUKAS MEIER"),
+    txn("-900", date=JULY, source_ref="3", category="Rent", counterparty="LUKAS MEIER"),
 ]
 
 

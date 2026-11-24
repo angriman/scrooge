@@ -107,12 +107,12 @@ def test_pending_reverted_and_savings_mirror_rows_are_skipped(result: Extraction
 
 def test_deterministic_categories(result: Extraction) -> None:
     day = date(2026, 9, 1)
-    assert _row(result, "2") == (day.replace(day=4), Decimal(150), Kind.TRANSFER, "Topup Revolut")
-    assert _row(result, "14") == (day.replace(day=21), Decimal(50), Kind.TRANSFER, "Topup Revolut")
-    assert _row(result, "16") == (day.replace(day=23), Decimal(30), Kind.TRANSFER, "Topup Revolut")
-    assert _row(result, "4") == (day.replace(day=7), Decimal("-47.5"), Kind.FX, "Acquisto EUR")
+    assert _row(result, "2") == (day.replace(day=4), Decimal(150), Kind.TRANSFER, "Revolut top-up")
+    assert _row(result, "14") == (day.replace(day=21), Decimal(50), Kind.TRANSFER, "Revolut top-up")
+    assert _row(result, "16") == (day.replace(day=23), Decimal(30), Kind.TRANSFER, "Revolut top-up")
+    assert _row(result, "4") == (day.replace(day=7), Decimal("-47.5"), Kind.FX, "Buy EUR")
     assert _row(result, "15") == (day.replace(day=22), Decimal(-20), Kind.FX, "")  # no GBP category
-    assert _row(result, "6") == (day.replace(day=10), Decimal(-40), Kind.TRANSFER, "Prelievi")
+    assert _row(result, "6") == (day.replace(day=10), Decimal(-40), Kind.TRANSFER, "Withdrawals")
     assert _row(result, "9")[2:] == (Kind.INTERNAL, "")
     assert _row(result, "13")[2:] == (Kind.INTERNAL, "")
 
@@ -130,7 +130,7 @@ def test_everything_else_is_income_or_expense_left_for_the_rules(result: Extract
 
 
 def test_fees_are_separate_rows(result: Extraction) -> None:
-    assert _row(result, "4:fee")[1:] == (Decimal("-0.48"), Kind.COMMISSION, "Commissioni")
+    assert _row(result, "4:fee")[1:] == (Decimal("-0.48"), Kind.COMMISSION, "Fees")
     # a plan charge has no amount, only a fee: that fee is the expense
     assert _row(result, "5:fee")[1:] == (Decimal("-18.99"), Kind.EXPENSE, "")
     assert "5" not in {t.source_ref for t in result.transactions}
@@ -159,7 +159,7 @@ def test_exchanging_back_into_francs_is_a_move_between_own_accounts() -> None:
     content = TSV.replace("Exchanged to GBP\t-20", "Exchanged to CHF\t-20")
     assert content != TSV
     rows = revolut.extract(content, source_file="chf.tsv").transactions
-    assert (Kind.FX, "Giroconto") in {(t.kind, t.category) for t in rows}
+    assert (Kind.FX, "Own transfer") in {(t.kind, t.category) for t in rows}
 
 
 def test_savings_are_recognised_in_italian_too() -> None:

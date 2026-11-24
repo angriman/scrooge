@@ -25,9 +25,9 @@ export const LIQUIDITY_SLOTS: Readonly<Record<string, Slot>> = {
 
 /** The income groups of `income.GROUPS`. */
 export const INCOME_SLOTS: Readonly<Record<string, Slot>> = {
-	Lavoro: 4,
-	Investimenti: 1,
-	Altro: 6
+	Work: 4,
+	Investments: 1,
+	Other: 6
 };
 
 /** The colour of `slot`, as CSS takes it (a `fill`, a `stroke`, a `background`). */

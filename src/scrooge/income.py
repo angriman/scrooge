@@ -24,14 +24,14 @@ from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY
 
-LAVORO, INVESTIMENTI, ALTRO = "Lavoro", "Investimenti", "Altro"
-GROUPS = (LAVORO, INVESTIMENTI, ALTRO)  # as they are stacked and listed
-# The group of each income leaf; every other leaf is ALTRO.
+WORK, INVESTMENTS, OTHER = "Work", "Investments", "Other"
+GROUPS = (WORK, INVESTMENTS, OTHER)  # as they are stacked and listed
+# The group of each income leaf; every other leaf is OTHER.
 _GROUP_OF = {
-    "Stipendio": LAVORO,
-    "Dividendi": INVESTIMENTI,
-    "Interessi": INVESTIMENTI,
-    "Trading": INVESTIMENTI,
+    "Salary": WORK,
+    "Dividends": INVESTMENTS,
+    "Interest": INVESTMENTS,
+    "Trading": INVESTMENTS,
 }
 _TRADING = "Trading"  # a leaf on both sides: what was won and what was lost
 
@@ -42,7 +42,7 @@ class Period:
     first: date
     last: date
     groups: dict[str, Decimal]  # every one of GROUPS, in that order
-    employer: Decimal | None  # LAVORO's share of income in the twelve months ending with it
+    employer: Decimal | None  # WORK's share of income in the twelve months ending with it
 
     @property
     def total(self) -> Decimal:
@@ -78,7 +78,7 @@ def is_income(row: Counted) -> bool:
 
 def group(row: Counted) -> str:
     """The group of an income row."""
-    return INVESTIMENTI if row.investing else _GROUP_OF.get(row.leaf, ALTRO)
+    return INVESTMENTS if row.investing else _GROUP_OF.get(row.leaf, OTHER)
 
 
 def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
@@ -132,5 +132,5 @@ def _employer(found: analysis.Rows, span: analysis.Span, days: tuple[date, date]
         return None
     rows: list[Converted] = list(found.between(*window))
     total = sum((each.amount for each in rows), Decimal(0))
-    work = sum((each.amount for each in rows if group(each.row) == LAVORO), Decimal(0))
+    work = sum((each.amount for each in rows if group(each.row) == WORK), Decimal(0))
     return analysis.share(work, total)

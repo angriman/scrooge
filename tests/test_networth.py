@@ -201,7 +201,7 @@ def test_cash_starts_with_the_first_statement_and_follows_its_rows(
     rows = [
         spent("-200", day(10)),
         spent("-50.25", day(10)),
-        spent("3000", day(25), kind=Kind.INCOME, category="Stipendio"),
+        spent("3000", day(25), kind=Kind.INCOME, category="Salary"),
     ]
     close(conn, account("migros", "Migros", "CHF", "1000", *rows))
     result = networth.run(conn, currency="CHF")
@@ -277,7 +277,7 @@ def test_money_set_aside_inside_an_account_stays_part_of_it(conn: sqlite3.Connec
         account="Revolut EUR",
         currency="EUR",
         kind=Kind.INTEREST,
-        category="Interessi",
+        category="Interest",
         source_file="savings.tsv",
     )
     savings = statement("revolut_savings", [earned], filename="savings.tsv")
@@ -464,7 +464,7 @@ def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.C
             account="Tastytrade",
             currency="USD",
             kind=Kind.TRANSFER,
-            category="Giroconto",
+            category="Own transfer",
             source_file="tasty.csv",
         ),
         spent(
@@ -623,7 +623,9 @@ def test_shares_sold_before_any_close_leave_no_note(conn: sqlite3.Connection) ->
 def test_shares_moved_in_without_a_price_are_not_counted_and_a_note_says_so(
     conn: sqlite3.Connection,
 ) -> None:
-    close(conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Giroconto")))
+    close(
+        conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Own transfer"))
+    )
     conn.execute("UPDATE trades SET price = NULL")
     result = networth.run(conn, currency="USD")
     assert [x.asset for x in result.lines] == [CASH]

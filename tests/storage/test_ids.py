@@ -7,7 +7,7 @@ from tests.storage.helpers import txn
 
 def test_the_file_name_and_the_category_do_not_take_part() -> None:
     row = txn("-12.50")
-    again = replace(row, source_file="export (2).csv", source_ref="77", category="Ristoranti e bar")
+    again = replace(row, source_file="export (2).csv", source_ref="77", category="Eating out")
     assert transaction_ids("Lukas", [("migros", row)]) == transaction_ids(
         "Lukas", [("migros", again)]
     )

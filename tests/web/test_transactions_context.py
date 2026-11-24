@@ -24,7 +24,7 @@ def month(n: int, day: int) -> date:
 LUKAS = [
     *(txn("-100", date=month(n, 5), source_ref=f"f{n}", counterparty=SHOP) for n in range(14)),
     *(
-        txn("6000", date=month(n, 25), source_ref=f"p{n}", kind=Kind.INCOME, category="Stipendio")
+        txn("6000", date=month(n, 25), source_ref=f"p{n}", kind=Kind.INCOME, category="Salary")
         for n in range(14)
     ),
     txn("-30", date=date(2026, 8, 9), source_ref="1", counterparty="Coop-3 Bern"),
@@ -35,7 +35,7 @@ LUKAS_USD = [
         date=date(2026, 3, 2),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Commissioni",
+        category="Fees",
         **USD,
     )
 ]
@@ -65,7 +65,7 @@ def asked(client: TestClient, **params: str) -> dict[str, object]:
 def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
     client: TestClient,
 ) -> None:
-    sent = asked(client, owner=OWNER, category="Alimentari")
+    sent = asked(client, owner=OWNER, category="Food")
     months = sent.pop("months")
     assert isinstance(months, list)
     assert len(months) == 24
@@ -74,7 +74,7 @@ def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
     assert months[-1] == {"month": "2026-08", "amount": "130.00"}
     assert sent == {
         "kind": "category",
-        "name": "Alimentari",
+        "name": "Food",
         "currency": "CHF",
         "earned": False,
         "net": False,
@@ -92,7 +92,7 @@ def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
 
 
 def test_an_income_category_is_money_earned(client: TestClient) -> None:
-    sent = asked(client, owner=OWNER, category="Stipendio")
+    sent = asked(client, owner=OWNER, category="Salary")
     assert (sent["earned"], sent["usual"], sent["this_month"]) == (True, "6000.00", "6000.00")
 
 
@@ -140,7 +140,7 @@ def test_a_missing_rate_leaves_the_figures_out_and_says_why(client: TestClient) 
     [
         ({}, "Ask for exactly one of category, merchant and account."),
         (
-            {"category": "Casa", "merchant": "Coop"},
+            {"category": "Home", "merchant": "Coop"},
             "Ask for exactly one of category, merchant and account.",
         ),
         ({"category": "Alimentar"}, "No category named 'Alimentar'."),

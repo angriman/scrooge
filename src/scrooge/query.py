@@ -159,6 +159,9 @@ class Choices:
     groups: tuple[str, ...] = ()
 
 
+_HEADINGS = {"entrate": "Income", "transfer": "Transfer"}  # the sides without groups
+
+
 def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
     """The accounts of `owner` (of everyone without one) and the whole taxonomy."""
     accounts = conn.execute(
@@ -174,7 +177,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
     leaves: dict[str, list[str]] = {}
     for r in found:
         top = r["side"] == "uscite" and r["parent"] is None
-        heading = r["parent"] or (r["name"] if top else r["side"].capitalize())
+        heading = r["parent"] or (r["name"] if top else _HEADINGS[r["side"]])
         names = groups.setdefault(heading, [])
         if r["name"] not in names:  # a leaf named like its parent is one choice
             names.append(r["name"])

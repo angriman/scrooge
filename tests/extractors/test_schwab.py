@@ -36,7 +36,7 @@ def test_a_deposit_is_salary_in_shares_bought_at_the_vest_price(result: Extracti
     salary, purchase = result.transactions[:2]
     assert (salary.kind, salary.category, salary.amount) == (
         Kind.INCOME,
-        "Stipendio",
+        "Salary",
         Decimal("596.36880"),
     )
     assert isinstance(purchase, SecurityTrade)
@@ -60,9 +60,12 @@ def test_dividends_and_the_tax_withheld_are_cash(result: Extraction) -> None:
     cash = {t.kind: t for t in result.transactions if t.kind in {Kind.DIVIDEND, Kind.TAX}}
     assert (cash[Kind.DIVIDEND].amount, cash[Kind.DIVIDEND].category) == (
         Decimal("1091.67"),
-        "Dividendi",
+        "Dividends",
     )
-    assert (cash[Kind.TAX].amount, cash[Kind.TAX].category) == (Decimal("-163.75"), "Ritenute")
+    assert (cash[Kind.TAX].amount, cash[Kind.TAX].category) == (
+        Decimal("-163.75"),
+        "Withholding tax",
+    )
     assert cash[Kind.DIVIDEND].counterparty == "ACME"
 
 

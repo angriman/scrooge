@@ -16,8 +16,10 @@ from tests.web.builders import BUILT, close, household
 
 WEB = Path(webapp.__file__).parent
 ROWS = [
-    txn("6000", date=date(2026, 8, 25), source_ref="1", kind=Kind.INCOME, category="Stipendio"),
-    txn("-45.20", date=date(2026, 8, 3), source_ref="2", category="Spesa", counterparty="Bakery"),
+    txn("6000", date=date(2026, 8, 25), source_ref="1", kind=Kind.INCOME, category="Salary"),
+    txn(
+        "-45.20", date=date(2026, 8, 3), source_ref="2", category="Groceries", counterparty="Bakery"
+    ),
 ]
 PAGES = ["/", "/holdings", "/analysis", "/transactions", "/months"]
 VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'

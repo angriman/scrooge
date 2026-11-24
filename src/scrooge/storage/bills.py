@@ -1,8 +1,8 @@
 """Split what a bill pays back into cost and interest, first in, first out (D13).
 
 A bill sold, and at Tastytrade also a bill that matures, comes out of the extractor whole, as
-`Investimenti`. With the purchases in the database the cost of the lots it closes is known:
-the row keeps that cost, and the rest becomes a row of its own under `Interessi`. An IBKR
+`Investments`. With the purchases in the database the cost of the lots it closes is known:
+the row keeps that cost, and the rest becomes a row of its own under `Interest`. An IBKR
 maturity is the exception: its extractor has split it already, from the profit the statement
 prints. It closes its lots here like any other disposal, and is otherwise left alone.
 
@@ -22,7 +22,7 @@ from itertools import groupby
 
 from scrooge.validation import MissingLotsError
 
-_INTEREST = "Interessi"
+_INTEREST = "Interest"
 
 
 @dataclass(frozen=True, slots=True)

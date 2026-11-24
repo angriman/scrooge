@@ -26,6 +26,7 @@ from pathlib import Path
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
+from scrooge import categories
 from scrooge.classification import quoted
 from scrooge.errors import ConfigError
 
@@ -126,7 +127,7 @@ def _entry(text: str, path: Path, n: int, item: Node) -> Entry:
     gaps = [text[a:b] for a, b in zip(ends, starts, strict=True)]
     return Entry(
         match=values["match"],
-        category=values["category"],
+        category=categories.canonical(values["category"]),
         direction=values.get("direction", ""),
         account=values.get("account", ""),
         kind=values.get("kind", ""),

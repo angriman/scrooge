@@ -78,20 +78,20 @@ ITALIAN = [
 ]
 # Rules for the invented shops and payers below, before the starter's generic words.
 RULES = """rules:
-  - {match: 'IMMOBILIEN LINDENHOF', category: Affitto}
-  - {match: 'ACME SWITZERLAND|BEISPIEL PHARMA', category: Stipendio}
-  - {match: 'KONSUM|FRISCHMARKT', category: Spesa}
-  - {match: 'RAMEN|OSTERIA', category: Ristoranti e bar}
+  - {match: 'IMMOBILIEN LINDENHOF', category: Rent}
+  - {match: 'ACME SWITZERLAND|BEISPIEL PHARMA', category: Salary}
+  - {match: 'KONSUM|FRISCHMARKT', category: Groceries}
+  - {match: 'RAMEN|OSTERIA', category: Eating out}
   - {match: 'TELCO MOBILE', category: SIM}
-  - {match: 'LISTENLY|VIDORA', category: Abbonamenti digitali}
-  - {match: 'MODARIO', category: Vestiti}
+  - {match: 'LISTENLY|VIDORA', category: Digital subscriptions}
+  - {match: 'MODARIO', category: Clothes}
   - {match: 'FITPARK', category: Sport}
-  - {match: 'ALPENBAHN', category: Treni}
-  - {match: 'VELOSHARE', category: Trasporti locali}
-  - {match: 'AEROSUR', category: Voli}
-  - {match: 'MOBILHAUS', category: Arredamento e casa}
-  - {match: 'TECHNIKUM', category: Elettronica}
-  - {match: 'FINPENSION', category: Giroconto, kind: transfer}
+  - {match: 'ALPENBAHN', category: Trains}
+  - {match: 'VELOSHARE', category: Local transport}
+  - {match: 'AEROSUR', category: Flights}
+  - {match: 'MOBILHAUS', category: Household}
+  - {match: 'TECHNIKUM', category: Electronics}
+  - {match: 'FINPENSION', category: Own transfer, kind: transfer}
 """
 # Closes in the instrument's currency on the first day, and their yearly drift and volatility.
 STOCKS = {

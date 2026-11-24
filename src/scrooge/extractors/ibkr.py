@@ -82,11 +82,11 @@ def extract(content: str, source_file: str) -> Extraction:
         "Withholding Tax",
         sections.get("Withholding Tax", []),
         Kind.TAX,
-        "Ritenute",
+        "Withholding tax",
         backdated=True,  # corrections keep the original payment date
     )
     transactions += parser.cash_items(
-        "Interest", sections.get("Interest", []), Kind.INTEREST, "Interessi"
+        "Interest", sections.get("Interest", []), Kind.INTEREST, "Interest"
     )
     transactions += parser.fees(sections.get("Fees", []))
     # Commissions charged after the trade was reported (refunds come under Deposits instead).
@@ -94,7 +94,7 @@ def extract(content: str, source_file: str) -> Extraction:
         "Commission Adjustments",
         sections.get("Commission Adjustments", []),
         Kind.COMMISSION,
-        "Commissioni",
+        "Fees",
         backdated=True,  # a trade of the last day of the previous period keeps its date
     )
     # Cash-settled index options (SPX) exercised or assigned: the cash is in no trade's proceeds.
@@ -373,11 +373,11 @@ class _Parser:
             description = row["Description"]
             kind, category = Kind.TRANSFER, ""
             if description.startswith("Electronic Fund Transfer") and amount > 0:
-                category = "Topup IBKR"
+                category = "IBKR top-up"
             elif description.startswith("Disbursement") and amount < 0:
-                category = "Prelievi"
+                category = "Withdrawals"
             elif description.startswith("Commission Adjustment"):  # e.g. CAT fee refund
-                kind, category = Kind.COMMISSION, "Commissioni"
+                kind, category = Kind.COMMISSION, "Fees"
             out.append(
                 self._txn(
                     day=parse_iso_date(row["Settle Date"], "Deposits & Withdrawals"),
@@ -428,7 +428,7 @@ class _Parser:
             replace(txn, kind=Kind.INCOME, category="")
             if txn.description.startswith("REFERRER CREDIT")
             else txn
-            for txn in self.cash_items("Fees", rows, Kind.COMMISSION, "Commissioni")
+            for txn in self.cash_items("Fees", rows, Kind.COMMISSION, "Fees")
         ]
 
     def vat(self, rows: list[_Row]) -> list[Transaction]:
@@ -442,7 +442,7 @@ class _Parser:
                     amount=parse_decimal(row["GST/VAT"], "GST/VAT Details"),
                     description=f"VAT {row['Description'].strip()}",
                     kind=Kind.COMMISSION,
-                    category="Commissioni",
+                    category="Fees",
                     ref=f"GST/VAT Details:{n}",
                 )
             )
@@ -465,7 +465,7 @@ class _Parser:
                         amount=parse_decimal(row["Total"], "Cash Report Sales Tax"),
                         description="Sales Tax (VAT on fees)",
                         kind=Kind.COMMISSION,
-                        category="Commissioni",
+                        category="Fees",
                         ref=f"Cash Report:Sales Tax:{currency}",
                     )
                 )
@@ -517,7 +517,7 @@ class _Parser:
                     kind=Kind.SECURITY_TRADE,
                     source_file=self._source_file,
                     source_ref=f"Grant Activity:{n}",
-                    category="Investimenti",
+                    category="Investments",
                     ticker=symbol,
                     quantity=quantity,
                     price=price,
@@ -543,7 +543,7 @@ class _Parser:
             amount=proceeds - interest,
             description=f"T-bill {cusip} maturity: principal",
             kind=Kind.INCOME,
-            category="Investimenti",
+            category="Investments",
             ref=f"{ref}:principal",
             counterparty=cusip,
         )
@@ -567,7 +567,7 @@ class _Parser:
                     amount=interest,
                     description=f"T-bill {cusip} maturity: interest",
                     kind=Kind.INTEREST,
-                    category="Interessi",
+                    category="Interest",
                     ref=f"{ref}:interest",
                     counterparty=cusip,
                 )
@@ -607,7 +607,7 @@ class _Parser:
                     source_file=self._source_file,
                     source_ref=f"Transfers:{n}",
                     counterparty=row["Xfer Account"],
-                    category="Giroconto",
+                    category="Own transfer",
                     ticker=symbol,
                     quantity=quantity,
                     # + 0: plain digits, no exponent
@@ -620,7 +620,7 @@ class _Parser:
 
     def dividends(self, rows: list[_Row]) -> list[Transaction]:
         # Payments in lieu of dividends are booked as dividends too.
-        return self.cash_items("Dividends", rows, Kind.DIVIDEND, "Dividendi")
+        return self.cash_items("Dividends", rows, Kind.DIVIDEND, "Dividends")
 
     def trades(self, rows: list[_Row]) -> list[Transaction]:
         out: list[Transaction] = []
@@ -666,7 +666,7 @@ class _Parser:
                 amount=amount,
                 description=f"Commission {row['Symbol']}",
                 kind=Kind.COMMISSION,
-                category="Commissioni",
+                category="Fees",
                 ref=f"{ref}:comm",
                 backdated=backdated,
             )
@@ -696,7 +696,7 @@ class _Parser:
             kind=Kind.SECURITY_TRADE,
             source_file=self._source_file,
             source_ref=ref,
-            category="Investimenti",
+            category="Investments",
             ticker=symbol,
             quantity=quantity,
             price=price,

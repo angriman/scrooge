@@ -43,7 +43,7 @@ def test_buys_and_sells_are_fund_trades_by_isin(result: Extraction) -> None:
         ("CH0000000029", Decimal("-0.02"), Decimal(1310), Decimal("26.2"), "Funds"),
         ("CH0000000011", Decimal("0.05"), Decimal(1510), Decimal("-75.5"), "Funds"),
     ]
-    assert {(t.kind, t.category) for t in trades} == {(Kind.SECURITY_TRADE, "Investimenti")}
+    assert {(t.kind, t.category) for t in trades} == {(Kind.SECURITY_TRADE, "Investments")}
     assert all(t.cost == -t.amount for t in trades)
     assert trades[0].description == f"Buy: {SWISS} (0.1 @ 1500.5)"
     world = "ALPHA (CH) Index Fund - Equities World ex CH I-acc"
@@ -52,11 +52,11 @@ def test_buys_and_sells_are_fund_trades_by_isin(result: Extraction) -> None:
 
 def test_cash_rows_are_classified(result: Extraction) -> None:
     by_ref = {t.source_ref: t for t in result.transactions}
-    assert (by_ref["1"].kind, by_ref["1"].category) == (Kind.TRANSFER, "Investimenti")
-    assert (by_ref["4"].kind, by_ref["4"].category) == (Kind.COMMISSION, "Commissioni")
-    assert (by_ref["5"].kind, by_ref["5"].category) == (Kind.DIVIDEND, "Dividendi")
+    assert (by_ref["1"].kind, by_ref["1"].category) == (Kind.TRANSFER, "Investments")
+    assert (by_ref["4"].kind, by_ref["4"].category) == (Kind.COMMISSION, "Fees")
+    assert (by_ref["5"].kind, by_ref["5"].category) == (Kind.DIVIDEND, "Dividends")
     assert (by_ref["5"].counterparty, by_ref["5"].amount) == ("CH0000000029", Decimal("12.345678"))
-    assert (by_ref["7"].kind, by_ref["7"].category) == (Kind.INTEREST, "Interessi")
+    assert (by_ref["7"].kind, by_ref["7"].category) == (Kind.INTEREST, "Interest")
     assert by_ref["7"].description == "Interests"
 
 
@@ -65,7 +65,7 @@ def test_a_transfer_from_another_provider_is_a_transfer_like_a_deposit() -> None
     first = moved.transactions[0]
     assert (first.kind, first.category, first.amount) == (
         Kind.TRANSFER,
-        "Investimenti",
+        "Investments",
         Decimal(1500),
     )
 

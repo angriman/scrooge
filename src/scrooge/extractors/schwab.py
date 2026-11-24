@@ -7,7 +7,7 @@ fair market value); `Dividend` and `Tax Withholding` are the dividends and the U
 on them.
 
 A Deposit is booked as Morgan Stanley's Release is: the shares that arrive as salary in shares
-(`Stipendio`) at the fair market value of the vest and, the same day, their purchase at that
+(`Salary`) at the fair market value of the vest and, the same day, their purchase at that
 price. No cash moves, and what they cost is what they were worth.
 
 The period runs from the first row to the day of the export, which Schwab names the file after
@@ -59,8 +59,8 @@ _COLUMNS = (
 # The moment of the export at the end of the file's name: year, month, day, then the time.
 _EXPORTED = re.compile(r"_(\d{4})(\d{2})(\d{2})\d{6}$")
 _CASH = {
-    "Dividend": (Kind.DIVIDEND, "Dividendi"),
-    "Tax Withholding": (Kind.TAX, "Ritenute"),
+    "Dividend": (Kind.DIVIDEND, "Dividends"),
+    "Tax Withholding": (Kind.TAX, "Withholding tax"),
 }
 
 

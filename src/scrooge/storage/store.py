@@ -157,7 +157,7 @@ def leaf_categories(conn: sqlite3.Connection) -> dict[tuple[str, str], int]:
 def category_for(leaves: dict[tuple[str, str], int], name: str, amount: Decimal) -> int | None:
     """The category `name` on the side the sign points to, or on the other one.
 
-    Several names exist on both sides (Trading, Commissioni, Investimenti): the sign decides,
+    Several names exist on both sides (Trading, Fees, Investments): the sign decides,
     as in D1. A refund keeps its expense category although it is money coming in.
     """
     if not name:

@@ -27,18 +27,20 @@ NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
 START = date(2025, 1, 1)
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
-FOOD = {"category": "Ristoranti e bar", "counterparty": "Trattoria Ölberg"}
+FOOD = {"category": "Eating out", "counterparty": "Trattoria Ölberg"}
 
 # Lukas, January 2025 to September 2026; September is staged and not committed.
 LUKAS = [
     txn("-45.20", date=date(2025, 5, 3), source_ref="1"),
     txn("-80", date=date(2025, 5, 20), source_ref="2", description="CARD", **FOOD),
-    txn("6000", date=date(2025, 6, 25), source_ref="3", kind=Kind.INCOME, category="Stipendio"),
-    txn("6100", date=date(2026, 6, 25), source_ref="4", kind=Kind.INCOME, category="Stipendio"),
+    txn("6000", date=date(2025, 6, 25), source_ref="3", kind=Kind.INCOME, category="Salary"),
+    txn("6100", date=date(2026, 6, 25), source_ref="4", kind=Kind.INCOME, category="Salary"),
     # Bought on the last day of June, booked in July.
     txn("-15", date=date(2026, 6, 30), booking_date=date(2026, 7, 2), source_ref="5"),
-    txn("-1000", date=date(2026, 7, 2), source_ref="6", kind=Kind.TRANSFER, category="Giroconto"),
-    txn("-200", date=date(2026, 7, 10), source_ref="7", category="Regali", counterparty=GIFT),
+    txn(
+        "-1000", date=date(2026, 7, 2), source_ref="6", kind=Kind.TRANSFER, category="Own transfer"
+    ),
+    txn("-200", date=date(2026, 7, 10), source_ref="7", category="Gifts", counterparty=GIFT),
     txn("-12", date=date(2026, 9, 10), source_ref="8", source_file="migros sep.csv"),
 ]
 LUKAS_EUR = [
@@ -50,7 +52,7 @@ ANNA = [
         date=date(2026, 7, 10),
         source_ref="1",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="LUKAS MEIER",
     ),
     txn("-60", date=date(2026, 7, 12), source_ref="2"),
@@ -100,27 +102,27 @@ def test_a_row_carries_what_the_page_shows(conn: sqlite3.Connection) -> None:
     assert (row.owner, row.account, row.currency) == (OWNER, "Migros", "CHF")
     assert (row.date, row.booking_date) == (date(2026, 7, 10), date(2026, 7, 10))
     assert (row.amount, row.kind) == (Decimal(-200), Kind.EXPENSE)
-    assert (row.category, row.category_parent) == ("Regali", "Regali")
+    assert (row.category, row.category_parent) == ("Gifts", "Gifts")
     assert (row.counterparty, row.description) == ("Anna Meier", "KONSUM")
     assert row.counterparty_owner == PARTNER
     assert row.id
 
 
 def test_a_top_level_category_includes_its_leaves(conn: sqlite3.Connection) -> None:
-    may = Filter(first=date(2025, 5, 1), last=date(2025, 5, 31), category="Ristoranti e bar")
+    may = Filter(first=date(2025, 5, 1), last=date(2025, 5, 31), category="Eating out")
     assert amounts(query.run(conn, may)) == ["-80"]
-    assert amounts(query.run(conn, Filter(category="Ristoranti e bar"))) == ["-80", "-30"]
+    assert amounts(query.run(conn, Filter(category="Eating out"))) == ["-80", "-30"]
 
 
 def test_a_category_over_years_is_summed_per_year_and_month(conn: sqlite3.Connection) -> None:
-    result = query.run(conn, Filter(category="Stipendio"))
+    result = query.run(conn, Filter(category="Salary"))
     assert sums(result.totals) == [("", "CHF", 2, "12100")]
     assert sums(result.by_year) == [("2025", "CHF", 1, "6000"), ("2026", "CHF", 1, "6100")]
     assert sums(result.by_month) == [("2025-06", "CHF", 1, "6000"), ("2026-06", "CHF", 1, "6100")]
 
 
 def test_each_currency_has_its_own_total(conn: sqlite3.Connection) -> None:
-    result = query.run(conn, Filter(category="Ristoranti e bar"))
+    result = query.run(conn, Filter(category="Eating out"))
     assert sums(result.totals) == [("", "CHF", 1, "-80"), ("", "EUR", 1, "-30")]
 
 
@@ -273,16 +275,16 @@ def test_the_choices_are_the_accounts_in_view_and_the_whole_taxonomy(
     assert query.choices(conn).accounts == ("Migros", "Revolut EUR")
     assert query.choices(conn, PARTNER).accounts == ("Migros",)
     groups = dict(query.choices(conn).categories)
-    assert groups["Casa"] == ("Casa", "Affitto", "Utenze", "Arredamento e casa")
-    assert groups["Regali"] == ("Regali", "Donazioni")  # the leaf named like its parent: once
-    assert groups["Entrate"][0] == "Stipendio"
-    assert "Giroconto" in groups["Transfer"]
+    assert groups["Home"] == ("Home", "Rent", "Utilities", "Household")
+    assert groups["Gifts"] == ("Gifts", "Donations")  # the leaf named like its parent: once
+    assert groups["Income"][0] == "Salary"
+    assert "Own transfer" in groups["Transfer"]
     leaves = dict(query.choices(conn).leaves)
-    assert leaves["Casa"] == ("Affitto", "Utenze", "Arredamento e casa")
-    assert leaves["Regali"] == ("Regali", "Donazioni")
-    assert leaves["Entrate"] == groups["Entrate"]
-    assert next(iter(groups)) == "Casa"
-    assert [*groups][-2:] == ["Entrate", "Transfer"]
+    assert leaves["Home"] == ("Rent", "Utilities", "Household")
+    assert leaves["Gifts"] == ("Gifts", "Donations")
+    assert leaves["Income"] == groups["Income"]
+    assert next(iter(groups)) == "Home"
+    assert [*groups][-2:] == ["Income", "Transfer"]
 
 
 @pytest.mark.parametrize("text", ["May", "20266", "2026-13", "2026-02-30", ""])

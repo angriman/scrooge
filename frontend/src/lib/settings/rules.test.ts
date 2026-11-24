@@ -21,7 +21,7 @@ const rule = (file: RulesFile, position: number, match = 'KONSUM'): Rule => ({
 	owner: file.owner,
 	position,
 	match,
-	category: 'Spesa',
+	category: 'Groceries',
 	direction: '',
 	account: '',
 	matches: 2,
@@ -70,7 +70,7 @@ describe('a change', () => {
 	});
 
 	it('sends the rule as it was shown, and what it becomes', () => {
-		const draft = { match: 'KONSUM|COOP', category: 'Spesa', direction: 'out' };
+		const draft = { match: 'KONSUM|COOP', category: 'Groceries', direction: 'out' };
 		expect(edited(rule(shared, 2), draft)).toEqual({
 			file: 'rules.yaml',
 			position: 2,

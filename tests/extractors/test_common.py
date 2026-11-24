@@ -204,7 +204,7 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
         kind=Kind.INCOME,
         source_file="plan.csv",
         source_ref="7:salary",
-        category="Stipendio",
+        category="Salary",
     )
     assert purchase == SecurityTrade(
         date=date(2026, 3, 15),
@@ -215,7 +215,7 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
         kind=Kind.SECURITY_TRADE,
         source_file="plan.csv",
         source_ref="7",
-        category="Investimenti",
+        category="Investments",
         ticker="ACME",
         quantity=Decimal(10),
         price=Decimal("12.5"),
@@ -227,9 +227,9 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
 @pytest.mark.parametrize(
     ("bought", "category"),
     [
-        ("CHF", "Giroconto"),  # back home: a move between one's own accounts
-        ("EUR", "Acquisto EUR"),
-        ("USD", "Acquisto USD"),
+        ("CHF", "Own transfer"),  # back home: a move between one's own accounts
+        ("EUR", "Buy EUR"),
+        ("USD", "Buy USD"),
         ("GBP", ""),  # no category of its own
         ("", ""),
     ],

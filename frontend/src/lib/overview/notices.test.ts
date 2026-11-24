@@ -18,7 +18,7 @@ const nothing: Attention = {
 	behind: [],
 	differ: 0,
 	currency: 'CHF',
-	unmatched: 'Non classificato',
+	unmatched: 'Uncategorized',
 	uncategorised: [],
 	recurring: [],
 	errors: []
@@ -87,7 +87,7 @@ describe('what needs a look', () => {
 			[
 				'uncategorised',
 				'waiting',
-				'3 rows of Anna are still in Non classificato.'
+				'3 rows of Anna are still in Uncategorized.'
 			],
 			[
 				'up',
@@ -115,10 +115,10 @@ describe('what needs a look', () => {
 		);
 		expect(lines.map((line) => [line.text, line.action])).toEqual([
 			[
-				'1 row is still in Non classificato.',
+				'1 row is still in Uncategorized.',
 				{
 					label: 'Categorise',
-					href: '/transactions?category=Non+classificato&owner=Anna'
+					href: '/transactions?category=Uncategorized&owner=Anna'
 				}
 			],
 			[

@@ -34,7 +34,7 @@ def monthly(amount: str, day: int, ref: str, **fields: object) -> list[Transacti
 
 
 LUKAS = [
-    *monthly("-1800", 1, "rent", category="Affitto", counterparty=LANDLORD),
+    *monthly("-1800", 1, "rent", category="Rent", counterparty=LANDLORD),
     *monthly("-100", 5, "food", counterparty=SHOP),
     *salaries("5000", START, 20),
     # The same shop, written another way, and a refund from it.
@@ -44,26 +44,26 @@ LUKAS = [
         "-60",
         date=date(2025, 3, 12),
         source_ref="3",
-        category="Ristoranti e bar",
+        category="Eating out",
         counterparty="MARIAS CAFÉ BISTRO, ZÜRICH",
     ),
     txn(
         "-40",
         date=date(2026, 3, 10),
         source_ref="4",
-        category="Ristoranti e bar",
+        category="Eating out",
         counterparty="MARIAS CAFÉ BISTRO, ZÜRICH",
     ),
     # Paid to the other person, and paid back by her.
     txn(
-        "-200", date=date(2026, 7, 10), source_ref="5", category="Regali", counterparty="Anna Meier"
+        "-200", date=date(2026, 7, 10), source_ref="5", category="Gifts", counterparty="Anna Meier"
     ),
     txn(
         "900",
         date=date(2026, 7, 15),
         source_ref="6",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="ANNA MEIER",
     ),
     # Securities are not spending.
@@ -72,7 +72,7 @@ LUKAS = [
         date=date(2026, 7, 3),
         source_ref="7",
         kind=Kind.SECURITY_TRADE,
-        category="Investimenti",
+        category="Investments",
     ),
 ]
 LUKAS_USD = [
@@ -81,7 +81,7 @@ LUKAS_USD = [
         date=date(2026, 2, 1),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Commissioni",
+        category="Fees",
         counterparty="/ESZ6",
         account="IBKR USD",
         currency="USD",
@@ -95,7 +95,7 @@ ANNA = [
         date=date(2026, 7, 10),
         source_ref="2",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="LUKAS MEIER",
     ),
 ]
@@ -139,47 +139,47 @@ def test_each_category_against_its_usual_month_and_the_year_before(
     assert (result.spent, result.paid_back, result.net) == (D("15464.50"), D(900), D("14564.50"))
     assert result.categories == (
         Category(
-            "Casa",
+            "Home",
             8,
             D(14400),
             D("0.931"),
             D(1800),
             D(1800),
             D(14400),
-            (Leaf("Affitto", 8, D(14400)),),
+            (Leaf("Rent", 8, D(14400)),),
         ),
         # Eight months of shopping, the same shop once more, a refund from it.
         Category(
-            "Alimentari",
+            "Food",
             10,
             D(820),
             D("0.053"),
             D("102.50"),
             D(100),
             D(800),
-            (Leaf("Spesa", 10, D(820)),),
+            (Leaf("Groceries", 10, D(820)),),
         ),
-        Category("Regali", 1, D(200), D("0.013"), D(25), D(0), D(0), (Leaf("Regali", 1, D(200)),)),
+        Category("Gifts", 1, D(200), D("0.013"), D(25), D(0), D(0), (Leaf("Gifts", 1, D(200)),)),
         Category(
-            "Ristoranti e bar",
+            "Eating out",
             1,
             D(40),
             D("0.003"),
             D(5),
             D(0),
             D(60),
-            (Leaf("Ristoranti e bar", 1, D(40)),),
+            (Leaf("Eating out", 1, D(40)),),
         ),
         # 5 USD at 0.90.
         Category(
-            "Banca e broker",
+            "Banking",
             1,
             D("4.50"),
             D("0.000"),
             D("0.56"),
             D(0),
             D(0),
-            (Leaf("Commissioni", 1, D("4.50")),),
+            (Leaf("Fees", 1, D("4.50")),),
         ),
     )
 
@@ -189,14 +189,14 @@ def test_merchants_are_named_without_numbers_places_or_addresses(
 ) -> None:
     result = spent(conn)
     assert result.merchants == (
-        Merchant("Hans Muster", "Casa", 8, D(14400), date(2026, 1, 1), date(2026, 8, 1)),
-        Merchant("KONSUM ZUERICH", "Alimentari", 10, D(820), date(2026, 1, 5), date(2026, 8, 5)),
-        Merchant("Anna Meier", "Regali", 1, D(200), date(2026, 7, 10), date(2026, 7, 10)),
+        Merchant("Hans Muster", "Home", 8, D(14400), date(2026, 1, 1), date(2026, 8, 1)),
+        Merchant("KONSUM ZUERICH", "Food", 10, D(820), date(2026, 1, 5), date(2026, 8, 5)),
+        Merchant("Anna Meier", "Gifts", 1, D(200), date(2026, 7, 10), date(2026, 7, 10)),
         Merchant(
-            "MARIAS CAFÉ BISTRO", "Ristoranti e bar", 1, D(40), date(2026, 3, 10), date(2026, 3, 10)
+            "MARIAS CAFÉ BISTRO", "Eating out", 1, D(40), date(2026, 3, 10), date(2026, 3, 10)
         ),
         # A fee is the account's, whatever it names.
-        Merchant("IBKR USD", "Banca e broker", 1, D("4.50"), date(2026, 2, 1), date(2026, 2, 1)),
+        Merchant("IBKR USD", "Banking", 1, D("4.50"), date(2026, 2, 1), date(2026, 2, 1)),
     )
     assert result.merchants[1].average == D(82)
     assert (result.other_merchants, result.other_spent) == (0, D(0))
@@ -215,19 +215,19 @@ def test_each_period_stacks_the_largest_categories_and_hangs_what_came_back(
     conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     july = spent(conn, first=date(2026, 7, 1), last=date(2026, 7, 31))
-    assert july.parts == ("Casa", "Regali", "Alimentari", "Paid back")
+    assert july.parts == ("Home", "Gifts", "Food", "Paid back")
     assert july.periods[0].parts == {
-        "Casa": D(1800),
-        "Regali": D(200),
-        "Alimentari": D(120),
+        "Home": D(1800),
+        "Gifts": D(200),
+        "Food": D(120),
         "Paid back": D(-900),
     }
     assert july.periods[0].total == D(1220)
     monkeypatch.setattr(spending, "SHOWN", 1)
     fewer = spent(conn)
-    assert fewer.parts == ("Casa", "Others", "Paid back")
+    assert fewer.parts == ("Home", "Others", "Paid back")
     by_name = {period.name: period.parts for period in fewer.periods}
-    assert by_name["2026-02"] == {"Casa": D(1800), "Others": D("104.50"), "Paid back": D(0)}
+    assert by_name["2026-02"] == {"Home": D(1800), "Others": D("104.50"), "Paid back": D(0)}
 
 
 def test_a_payment_and_its_reversal_still_show_what_came_back() -> None:
@@ -241,7 +241,7 @@ def test_a_payment_and_its_reversal_still_show_what_came_back() -> None:
             date=date(2026, 1, 6),
             source_ref="2",
             kind=Kind.INCOME,
-            category="Rimborsi",
+            category="Refunds",
             counterparty="Anna Meier",
         ),
         txn(
@@ -249,21 +249,21 @@ def test_a_payment_and_its_reversal_still_show_what_came_back() -> None:
             date=date(2026, 1, 7),
             source_ref="3",
             kind=Kind.INCOME,
-            category="Rimborsi",
+            category="Refunds",
             counterparty="Anna Meier",
         ),
     ]
     close(connection, OWNER, (first, last), last, ("migros", rows))
     result = spent(connection, first=first, last=last)
     assert (result.spent, result.paid_back) == (D(10), D(0))
-    assert result.parts == ("Alimentari", "Paid back")
-    assert result.periods[0].parts == {"Alimentari": D(10), "Paid back": D(0)}
+    assert result.parts == ("Food", "Paid back")
+    assert result.periods[0].parts == {"Food": D(10), "Paid back": D(0)}
     connection.close()
 
 
 def test_both_people_without_what_they_pay_each_other(conn: sqlite3.Connection) -> None:
     both = spent(conn, owner=None, first=date(2026, 7, 1), last=date(2026, 7, 31))
-    assert both.parts == ("Casa", "Alimentari")
+    assert both.parts == ("Home", "Food")
     assert (both.spent, both.paid_back) == (D(1980), D(0))
     hers = spent(conn, owner=PARTNER, first=date(2026, 7, 1), last=date(2026, 7, 31))
     assert (hers.spent, hers.paid_back, hers.net) == (D(60), D(200), D(-140))
@@ -301,8 +301,8 @@ def test_a_row_without_a_counterparty_is_the_accounts() -> None:
         Kind.EXPENSE,
         "CHF",
         "uscite",
-        "Casa",
-        "Utenze",
+        "Home",
+        "Utilities",
         0,
         " 42 ",
         None,
@@ -339,13 +339,13 @@ def test_what_was_paid_back_is_not_spending_a_year_later_either() -> None:
         date=date(2025, 7, 15),
         source_ref="back",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="ANNA MEIER",
     )
     rows = [*monthly("-100", 5, "food", counterparty=SHOP), back]
     close(connection, OWNER, (START, END), END, ("migros", rows))
     july = spent(connection, first=date(2026, 7, 1), last=date(2026, 7, 31))
-    assert [(c.name, c.year_before) for c in july.categories] == [("Alimentari", D(100))]
+    assert [(c.name, c.year_before) for c in july.categories] == [("Food", D(100))]
 
 
 def test_a_category_usually_spent_on_and_not_in_the_range_is_there_at_nothing(
@@ -353,7 +353,7 @@ def test_a_category_usually_spent_on_and_not_in_the_range_is_there_at_nothing(
 ) -> None:
     # The rent is paid on the first: not in these days.
     result = spent(conn, first=date(2026, 8, 2))
-    rent = next(category for category in result.categories if category.name == "Casa")
-    assert rent == Category("Casa", 0, D(0), D("0.000"), D(0), D(1800), D(0), ())
+    rent = next(category for category in result.categories if category.name == "Home")
+    assert rent == Category("Home", 0, D(0), D("0.000"), D(0), D(1800), D(0), ())
     assert result.categories[-1] == rent
-    assert result.parts == ("Alimentari",)
+    assert result.parts == ("Food",)

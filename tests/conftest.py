@@ -17,11 +17,11 @@ FILES = {
     "swisscard.pdf": "swisscard/statement.txt",
 }
 RULES = """rules:
-  - {match: 'Hans Muster', category: Affitto}
-  - {match: 'ACME SWITZERLAND', category: Stipendio}
-  - {match: 'KONSUM|FRISCHMARKT', category: Spesa}
+  - {match: 'Hans Muster', category: Rent}
+  - {match: 'ACME SWITZERLAND', category: Salary}
+  - {match: 'KONSUM|FRISCHMARKT', category: Groceries}
   - {match: 'Metal plan fee', category: Revolut Metal}
-  - {match: '.', category: Regali}
+  - {match: '.', category: Gifts}
 """
 
 

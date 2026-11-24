@@ -22,8 +22,8 @@ from scrooge.models import Extraction, Kind, Transaction
 _DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_abbr) if name}
 _BOOKED = (
-    (re.compile(r"(Return PAID|Interest PAID)\b"), Kind.INTEREST, "Interessi"),
-    (re.compile(r"Service Fee Charged\b"), Kind.COMMISSION, "Commissioni"),
+    (re.compile(r"(Return PAID|Interest PAID)\b"), Kind.INTEREST, "Interest"),
+    (re.compile(r"Service Fee Charged\b"), Kind.COMMISSION, "Fees"),
 )
 # Fund movements, incl. interest already counted when PAID and later moved to the current account
 _IGNORED = re.compile(
@@ -57,7 +57,7 @@ def extract(content: str, source_file: str) -> Extraction:
         day = _date(row["Date"])
         days.append(day)
         if n in top_ups:
-            kind, category = Kind.INTEREST, "Interessi"
+            kind, category = Kind.INTEREST, "Interest"
         elif _IGNORED.match(description):
             continue
         else:

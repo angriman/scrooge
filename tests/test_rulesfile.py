@@ -11,12 +11,12 @@ from scrooge.errors import ConfigError
 TEXT = """# Rules of the tests.
 rules:
   # --- Shops
-  - {match: 'KONSUM|FRISCHMARKT', category: Spesa}  # food
+  - {match: 'KONSUM|FRISCHMARKT', category: Groceries}  # food
   - match: ACME, INC
-    category: Stipendio
+    category: Salary
     direction: in
 
-  - {match: '.', category: Regali, account: Migros}
+  - {match: '.', category: Gifts, account: Migros}
 """
 PATH = Path("rules.yaml")
 
@@ -28,20 +28,20 @@ def _entries(text: str = TEXT) -> tuple[rulesfile.Entry, ...]:
 def test_entries_say_what_each_rule_gives() -> None:
     found = _entries()
     assert [(e.match, e.category, e.direction, e.account) for e in found] == [
-        ("KONSUM|FRISCHMARKT", "Spesa", "", ""),
-        ("ACME, INC", "Stipendio", "in", ""),
-        (".", "Regali", "", "Migros"),
+        ("KONSUM|FRISCHMARKT", "Groceries", "", ""),
+        ("ACME, INC", "Salary", "in", ""),
+        (".", "Gifts", "", "Migros"),
     ]
     first, last = found[0].lines
-    assert TEXT[first:last] == "  - {match: 'KONSUM|FRISCHMARKT', category: Spesa}  # food\n"
+    assert TEXT[first:last] == "  - {match: 'KONSUM|FRISCHMARKT', category: Groceries}  # food\n"
 
 
 def test_a_rule_written_again_keeps_the_rest_and_its_comment(tmp_path: Path) -> None:
     found = _entries()
     text = rulesfile.rewritten(TEXT, found[0], {"match": "KONSUM", "direction": "out"})
     assert text == TEXT.replace(
-        "{match: 'KONSUM|FRISCHMARKT', category: Spesa}  # food",
-        '{match: "KONSUM", category: Spesa, direction: out}  # food',
+        "{match: 'KONSUM|FRISCHMARKT', category: Groceries}  # food",
+        '{match: "KONSUM", category: Groceries, direction: out}  # food',
     )
     path = tmp_path / "rules.yaml"
     path.write_text(text, encoding="utf-8")
@@ -50,7 +50,7 @@ def test_a_rule_written_again_keeps_the_rest_and_its_comment(tmp_path: Path) -> 
 
 def test_a_rule_on_lines_of_its_own_comes_back_between_braces(tmp_path: Path) -> None:
     text = rulesfile.rewritten(TEXT, _entries()[1], {"direction": "", "kind": "income"})
-    assert '  - {match: "ACME, INC", category: "Stipendio", kind: income}\n\n' in text
+    assert '  - {match: "ACME, INC", category: "Salary", kind: income}\n\n' in text
     path = tmp_path / "rules.yaml"
     path.write_text(text, encoding="utf-8")
     assert [rule.pattern.pattern for rule in load_rules([path])][1] == "ACME, INC"
@@ -59,7 +59,7 @@ def test_a_rule_on_lines_of_its_own_comes_back_between_braces(tmp_path: Path) ->
 def test_a_rule_removed_takes_its_lines_and_nothing_else() -> None:
     text = rulesfile.removed(TEXT, _entries()[1])
     assert text == TEXT.replace(
-        "  - match: ACME, INC\n    category: Stipendio\n    direction: in\n", ""
+        "  - match: ACME, INC\n    category: Salary\n    direction: in\n", ""
     )
 
 
@@ -69,11 +69,11 @@ def test_two_rules_swapped_leave_what_is_between_them() -> None:
     assert [e.match for e in _entries(text)] == ["KONSUM|FRISCHMARKT", ".", "ACME, INC"]
     assert "# --- Shops\n" in text
     assert "direction: in\n\n" not in text  # the blank line stayed where it was
-    assert "  - {match: '.', category: Regali, account: Migros}\n\n  - match: ACME" in text
+    assert "  - {match: '.', category: Gifts, account: Migros}\n\n  - match: ACME" in text
 
 
 def test_recategorized_changes_the_category_alone() -> None:
-    text, count = rulesfile.recategorized(TEXT, _entries(), "Spesa", "Cibo")
+    text, count = rulesfile.recategorized(TEXT, _entries(), "Groceries", "Cibo")
     assert count == 1
     assert "  - {match: 'KONSUM|FRISCHMARKT', category: \"Cibo\"}  # food\n" in text
 
@@ -94,9 +94,9 @@ def test_find_refuses_a_rule_that_changed(tmp_path: Path) -> None:
 
 def test_what_cannot_be_changed_line_by_line_is_said() -> None:
     text = (
-        "rules:\n  -\n    match: A\n    category: Spesa\n"
-        "  - match: B  # why\n    category: Spesa\n"
-        "  - {match: C,  # why\n     category: Spesa}\n"
+        "rules:\n  -\n    match: A\n    category: Groceries\n"
+        "  - match: B  # why\n    category: Groceries\n"
+        "  - {match: C,  # why\n     category: Groceries}\n"
         "  - {match: D, category: '#1'}\n"
     )
     lone, commented, flow, quoted = _entries(text)
@@ -124,7 +124,7 @@ def test_a_file_missing_has_no_rules(tmp_path: Path) -> None:
     [
         ("rules: [\n", "rules.yaml"),
         ("rules: {a: 1}\n", "expected a top-level 'rules' list"),
-        ("rules: [{match: a, category: Spesa}]\n", "one per line"),
+        ("rules: [{match: a, category: Groceries}]\n", "one per line"),
         ("rules:\n  - just text\n", "needs 'match' and 'category'"),
         ("rules:\n  - {match: a}\n", "needs 'match' and 'category'"),
     ],
@@ -135,8 +135,13 @@ def test_files_that_cannot_be_changed_here_say_why(text: str, problem: str) -> N
 
 
 def test_a_key_the_rules_do_not_read_is_kept_as_it_is() -> None:
-    text = "rules:\n  - match: KONSUM\n    category: Spesa\n    seen: [2025]\n"
+    text = "rules:\n  - match: KONSUM\n    category: Groceries\n    seen: [2025]\n"
     (entry,) = _entries(text)
     assert rulesfile.rewritten(text, entry, {"category": "Cibo"}) == (
         'rules:\n  - {match: "KONSUM", category: "Cibo", seen: [2025]}\n'
     )
+
+
+def test_a_category_of_before_is_given_by_its_english_name() -> None:
+    (entry,) = _entries("rules:\n  - match: KONSUM\n    category: Spesa\n")
+    assert entry.category == "Groceries"

@@ -140,13 +140,13 @@ def _classify(row: dict[str, str], amount: Decimal, n: int) -> tuple[Kind, str]:
     description = row["Description"]
     by_sign = (Kind.EXPENSE if amount < 0 else Kind.INCOME, "")  # category from rules.yaml
     if kind == "TOPUP" or (kind == "DEPOSIT" and _CARD_TOPUP.match(description)):
-        return Kind.TRANSFER, "Topup Revolut"
+        return Kind.TRANSFER, "Revolut top-up"
     if kind == "EXCHANGE":
         match = _EXCHANGED_TO.search(description)
         bought = match[1] if match else ""
         return Kind.FX, fx_category(bought)
     if kind == "ATM":
-        return Kind.TRANSFER, "Prelievi"
+        return Kind.TRANSFER, "Withdrawals"
     if kind in {"TRANSFER", "REV_PAYMENT"}:
         if _OWN_SAVINGS.match(description):
             return Kind.INTERNAL, ""  # to/from the savings held under the same sheet account
@@ -160,7 +160,7 @@ def _classify(row: dict[str, str], amount: Decimal, n: int) -> tuple[Kind, str]:
 def _fee(row: dict[str, str]) -> tuple[tuple[Kind, str], str]:
     if _type(row) in {"CHARGE", "FEE"}:  # the fee is the charge itself (e.g. "Metal plan fee")
         return (Kind.EXPENSE, ""), row["Description"]
-    return (Kind.COMMISSION, "Commissioni"), f"Fee: {row['Description']}"
+    return (Kind.COMMISSION, "Fees"), f"Fee: {row['Description']}"
 
 
 SOURCE = Source(

@@ -239,7 +239,7 @@ def _classify(merchant: str, billed: Decimal, section: str) -> tuple[Kind, str]:
     if section == _MISCELLANEOUS and merchant == "CASHBACK":
         return Kind.INCOME, "Cashback"
     if merchant.startswith("REVOLUT**"):  # card top-up of the Revolut account
-        return Kind.TRANSFER, "Topup Revolut"
+        return Kind.TRANSFER, "Revolut top-up"
     return (Kind.EXPENSE if billed > 0 else Kind.INCOME), ""  # category from rules.yaml
 
 

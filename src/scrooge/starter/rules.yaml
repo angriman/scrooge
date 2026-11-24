@@ -10,34 +10,34 @@
 # `rules.<owner>.yaml` beside it, read before this file. `--review` and the import page add
 # rules here. Transactions no rule matches are left for review.
 rules:
-  # --- Trasporti
-  - {match: 'CARBURANTI|TANKSTELLE|DISTRIBUTORE', category: Carburante}
-  - {match: 'PARKING|PARCHEGGIO|PARKHAUS|AUTOSTRAD|PEDAGGIO', category: Parcheggi e pedaggi}
+  # --- Transport
+  - {match: 'CARBURANTI|TANKSTELLE|DISTRIBUTORE', category: Fuel}
+  - {match: 'PARKING|PARCHEGGIO|PARKHAUS|AUTOSTRAD|PEDAGGIO', category: Parking and tolls}
 
-  # --- Ristoranti e bar
-  - {match: 'RESTAURANT|RISTORANTE|TRATTORIA|OSTERIA|PIZZERIA|\bPIZZA|RAMEN|SUSHI|\bGRILL\b', category: "Ristoranti e bar"}
-  - {match: 'GELAT|\bCAF[EÉ]\b|CAFF[EÈ]|\bKAFI\b|KAFFEE|COFFEE|\bBAR\b|BISTRO|BAKERY|B[AÄ]CKEREI|CONFISERIE|CONFISEUR', category: "Ristoranti e bar"}
+  # --- Eating out
+  - {match: 'RESTAURANT|RISTORANTE|TRATTORIA|OSTERIA|PIZZERIA|\bPIZZA|RAMEN|SUSHI|\bGRILL\b', category: "Eating out"}
+  - {match: 'GELAT|\bCAF[EÉ]\b|CAFF[EÈ]|\bKAFI\b|KAFFEE|COFFEE|\bBAR\b|BISTRO|BAKERY|B[AÄ]CKEREI|CONFISERIE|CONFISEUR', category: "Eating out"}
 
-  # --- Alimentari
-  - {match: 'SUPERMARKET|SUPERMERCATO|HOFLADEN', category: Spesa}
+  # --- Food
+  - {match: 'SUPERMARKET|SUPERMERCATO|HOFLADEN', category: Groceries}
 
-  # --- Casa, salute, cura personale
-  - {match: 'ELEKTRIZIT[AÄ]TSWERK', category: Utenze}
-  - {match: 'KRANKEN-?VERSICHERUNG', category: Assicurazione sanitaria}
-  - {match: 'APOTHEKE|PHARMACIE|FARMACIA|DROGERIE', category: Medico/Farmacia}
-  - {match: 'ZAHNARZT|DENTIST', category: Dentista}
-  - {match: 'BARBIERE|BARBER|COIFFEUR', category: Barbiere}
+  # --- Home, health, personal care
+  - {match: 'ELEKTRIZIT[AÄ]TSWERK', category: Utilities}
+  - {match: 'KRANKEN-?VERSICHERUNG', category: Health insurance}
+  - {match: 'APOTHEKE|PHARMACIE|FARMACIA|DROGERIE', category: Doctor/Pharmacy}
+  - {match: 'ZAHNARZT|DENTIST', category: Dentist}
+  - {match: 'BARBIERE|BARBER|COIFFEUR', category: Barber}
 
-  # --- Formazione, viaggi
-  - {match: 'LIBRERIA|BUCHHANDLUNG', category: Libri}
-  - {match: '\bHOTELS?\b|HOSTEL', category: Alloggi}
-  - {match: 'BERGBAHNEN|LUFTSEILBAHN|\bKINO\b|CINEMA|MUSEUM|MUSEO', category: Attività/Svago}
+  # --- Education, travel
+  - {match: 'LIBRERIA|BUCHHANDLUNG', category: Books}
+  - {match: '\bHOTELS?\b|HOSTEL', category: Accommodation}
+  - {match: 'BERGBAHNEN|LUFTSEILBAHN|\bKINO\b|CINEMA|MUSEUM|MUSEO', category: Activities}
 
-  # --- Banca
+  # --- Banking
   - {match: 'Metal( repricing \d+)? plan fee', category: Revolut Metal}
-  - {match: 'Spese per traffico pagamenti|SPESE DI GESTIONE|Withdrawal Fee', category: Commissioni}
+  - {match: 'Spese per traffico pagamenti|SPESE DI GESTIONE|Withdrawal Fee', category: Fees}
 
-  # --- Donazioni, tasse e burocrazia (after Utenze: "Elektrizitätswerk der Stadt ...")
-  - {match: 'STIFTUNG', category: Donazioni}
-  - {match: 'STEUERAMT|AGENZIA DELLE ENTRATE', category: Tasse}
-  - {match: 'CONSOLATO|STADTPOLIZEI', category: Documenti e burocrazia}
+  # --- Donations, taxes and paperwork (after Utilities: "Elektrizitätswerk der Stadt ...")
+  - {match: 'STIFTUNG', category: Donations}
+  - {match: 'STEUERAMT|AGENZIA DELLE ENTRATE', category: Taxes}
+  - {match: 'CONSOLATO|STADTPOLIZEI', category: Paperwork}

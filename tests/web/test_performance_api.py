@@ -25,7 +25,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
         account="IBKR USD",
         currency="USD",
         kind=Kind.TRANSFER,
-        category="Giroconto",
+        category="Own transfer",
     )
     close(
         conn,

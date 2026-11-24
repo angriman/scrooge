@@ -184,7 +184,9 @@ def test_what_was_sold_is_not_held(conn: sqlite3.Connection) -> None:
 def test_shares_without_any_price_are_not_listed_and_a_note_says_so(
     conn: sqlite3.Connection,
 ) -> None:
-    close(conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Giroconto")))
+    close(
+        conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Own transfer"))
+    )
     conn.execute("UPDATE trades SET price = NULL")
     held = agrees_with_net_worth(conn, None, "USD")
     assert held.positions == ()

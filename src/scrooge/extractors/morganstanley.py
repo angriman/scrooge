@@ -3,7 +3,7 @@
 The router reads the PDF's text layer; `extract` parses that text and is pure. One account,
 `Morgan Stanley`: the shares of the plan's one company and a few cents of cash, in USD.
 
-A Release is a vest: the shares that arrive, booked as salary (`Stipendio`) at the price
+A Release is a vest: the shares that arrive, booked as salary (`Salary`) at the price
 printed with them and, the same day, as their purchase at that price. No cash moves, and what
 they cost is what they were worth. A Share Withdrawal moves shares out in kind (to IBKR): no
 cash, no price. A Stock Split prints its ratio (`20 for 1`) and is no transaction: the shares
@@ -75,18 +75,18 @@ class _CashRow(NamedTuple):
 
 _CASH_ROWS = (
     # Gross, then net of fees: the tax withheld is a row of its own.
-    _CashRow(re.compile(r"Dividend Credit \S+ (\S+)"), Kind.DIVIDEND, "Dividendi", "Dividend"),
-    _CashRow(re.compile(r"Withholding Tax (\S+)"), Kind.TAX, "Ritenute", "Withholding tax"),
+    _CashRow(re.compile(r"Dividend Credit \S+ (\S+)"), Kind.DIVIDEND, "Dividends", "Dividend"),
+    _CashRow(re.compile(r"Withholding Tax (\S+)"), Kind.TAX, "Withholding tax", "Withholding tax"),
     _CashRow(
         re.compile(r"Proceeds Disbursement (\S+)"),
         Kind.TRANSFER,
-        "Giroconto",
+        "Own transfer",
         "Proceeds disbursement",
     ),
     _CashRow(
         re.compile(r"Cancel Proceeds Disb (\S+)"),
         Kind.TRANSFER,
-        "Giroconto",
+        "Own transfer",
         "Proceeds disbursement cancelled",
     ),
 )
@@ -170,7 +170,7 @@ def _transactions(
                 kind=Kind.TRANSFER,
                 source_file=source_file,
                 source_ref=f"Share Withdrawal:{ref}",
-                category="Giroconto",
+                category="Own transfer",
                 ticker=ticker,
                 quantity=quantity,
                 price=None,  # moved in kind: the statement prints no price

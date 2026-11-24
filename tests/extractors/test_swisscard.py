@@ -79,7 +79,7 @@ def test_classification(result: Extraction) -> None:
     assert by_merchant["CASHBACK"].kind is Kind.INCOME
     assert (by_merchant["REVOLUT**1234*"].kind, by_merchant["REVOLUT**1234*"].category) == (
         Kind.TRANSFER,
-        "Topup Revolut",
+        "Revolut top-up",
     )
     assert (by_merchant["AEROSUR"].kind, by_merchant["AEROSUR"].category) == (Kind.EXPENSE, "")
     refund = next(t for t in result.transactions if t.amount == Decimal("2.40"))

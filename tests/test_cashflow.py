@@ -16,36 +16,38 @@ from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 START, END = date(2025, 1, 1), date(2026, 8, 31)
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
-SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
-BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
+SALARY = {"kind": Kind.INCOME, "category": "Salary"}
+BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investments"}
 
 LUKAS = [
     txn("-45.20", date=date(2025, 5, 3), source_ref="1"),
-    txn("-80", date=date(2025, 5, 20), source_ref="2", category="Ristoranti e bar"),
+    txn("-80", date=date(2025, 5, 20), source_ref="2", category="Eating out"),
     txn("20", date=date(2025, 5, 25), source_ref="3", kind=Kind.INCOME),  # a refund
     txn("6000", date=date(2025, 5, 25), source_ref="4", **SALARY),
-    txn("-1850", date=date(2025, 6, 2), source_ref="5", category="Affitto"),
+    txn("-1850", date=date(2025, 6, 2), source_ref="5", category="Rent"),
     # Bought on the last day of June, booked in July.
     txn("-15", date=date(2026, 6, 30), booking_date=date(2026, 7, 2), source_ref="6"),
-    txn("-1000", date=date(2026, 7, 2), source_ref="7", kind=Kind.TRANSFER, category="Giroconto"),
-    txn("-500", date=date(2026, 7, 3), source_ref="8", kind=Kind.FX, category="Acquisto EUR"),
+    txn(
+        "-1000", date=date(2026, 7, 2), source_ref="7", kind=Kind.TRANSFER, category="Own transfer"
+    ),
+    txn("-500", date=date(2026, 7, 3), source_ref="8", kind=Kind.FX, category="Buy EUR"),
     txn("-70", date=date(2026, 7, 4), source_ref="9", kind=Kind.INTERNAL, category=""),
-    txn("-200", date=date(2026, 7, 10), source_ref="10", category="Regali", counterparty=GIFT),
+    txn("-200", date=date(2026, 7, 10), source_ref="10", category="Gifts", counterparty=GIFT),
     txn("6100", date=date(2026, 7, 25), source_ref="11", **SALARY),
     # A bill bought and repaid with its interest, and a futures trade closed at a loss.
     txn("-9920", date=date(2026, 8, 3), source_ref="12", **BILL),
     txn("9920", date=date(2026, 8, 20), source_ref="13", **BILL),
-    txn("80", date=date(2026, 8, 20), source_ref="14", kind=Kind.INTEREST, category="Interessi"),
+    txn("80", date=date(2026, 8, 20), source_ref="14", kind=Kind.INTEREST, category="Interest"),
     txn("-35", date=date(2026, 8, 21), source_ref="15", kind=Kind.TRADING, category="Trading"),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 7, 5), source_ref="1", category="Ristoranti e bar", **EUR)]
+LUKAS_EUR = [txn("-30", date=date(2026, 7, 5), source_ref="1", category="Eating out", **EUR)]
 ANNA = [
     txn(
         "200",
         date=date(2026, 7, 10),
         source_ref="1",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category="Refunds",
         counterparty="LUKAS MEIER",
     ),
     txn("-60", date=date(2026, 7, 12), source_ref="2"),
@@ -79,9 +81,9 @@ def balance(period: str, currency: str, income: str, expenses: str) -> Balance:
 def test_a_month_is_income_and_expenses_by_top_level_category(conn: sqlite3.Connection) -> None:
     may = cashflow.run(conn, first=date(2025, 5, 1), last=date(2025, 5, 31), owner=OWNER)
     assert may.lines == (
-        line("2025-05 CHF entrate", "Stipendio", 1, "6000"),
-        line("2025-05 CHF uscite", "Alimentari", 2, "-25.2"),  # the refund lowers it
-        line("2025-05 CHF uscite", "Ristoranti e bar", 1, "-80"),
+        line("2025-05 CHF entrate", "Salary", 1, "6000"),
+        line("2025-05 CHF uscite", "Eating out", 1, "-80"),
+        line("2025-05 CHF uscite", "Food", 2, "-25.2"),  # the refund lowers it
     )
     assert may.balances == (balance("2025-05", "CHF", "6000", "-105.2"),)
     assert may.balances[0].net == Decimal("5894.8")
@@ -90,9 +92,9 @@ def test_a_month_is_income_and_expenses_by_top_level_category(conn: sqlite3.Conn
 def test_transfers_exchanges_and_internal_rows_are_never_counted(conn: sqlite3.Connection) -> None:
     his = july(conn, OWNER)
     assert his.lines == (
-        line("2026-07 CHF entrate", "Stipendio", 1, "6100"),
-        line("2026-07 CHF uscite", "Regali", 1, "-200"),
-        line("2026-07 EUR uscite", "Ristoranti e bar", 1, "-30"),
+        line("2026-07 CHF entrate", "Salary", 1, "6100"),
+        line("2026-07 CHF uscite", "Gifts", 1, "-200"),
+        line("2026-07 EUR uscite", "Eating out", 1, "-30"),
     )
     assert his.balances == (
         balance("2026-07", "CHF", "6100", "-200"),
@@ -107,9 +109,9 @@ def test_what_the_two_pay_each_other_counts_for_one_and_not_for_both(
     assert hers.balances == (balance("2026-07", "CHF", "200", "-60"),)
     both = july(conn, None)
     assert both.lines == (
-        line("2026-07 CHF entrate", "Stipendio", 1, "6100"),
-        line("2026-07 CHF uscite", "Alimentari", 1, "-60"),
-        line("2026-07 EUR uscite", "Ristoranti e bar", 1, "-30"),
+        line("2026-07 CHF entrate", "Salary", 1, "6100"),
+        line("2026-07 CHF uscite", "Food", 1, "-60"),
+        line("2026-07 EUR uscite", "Eating out", 1, "-30"),
     )
 
 
@@ -118,8 +120,8 @@ def test_securities_and_trading_are_investing_not_income_or_expenses(
 ) -> None:
     august = cashflow.run(conn, first=date(2026, 8, 1), last=END)
     assert august.lines == (
-        line("2026-08 CHF entrate", "Interessi", 1, "80"),
-        line("2026-08 CHF investing", "Investimenti", 2, "0"),
+        line("2026-08 CHF entrate", "Interest", 1, "80"),
+        line("2026-08 CHF investing", "Investments", 2, "0"),
         line("2026-08 CHF investing", "Trading", 1, "-35"),
     )
     (month,) = august.balances
@@ -130,21 +132,21 @@ def test_securities_and_trading_are_investing_not_income_or_expenses(
 def test_the_whole_range_is_added_up_per_category(conn: sqlite3.Connection) -> None:
     result = cashflow.run(conn, first=date(2025, 1, 1), last=date(2025, 12, 31), owner=OWNER)
     assert result.totals == (
-        line(" CHF entrate", "Stipendio", 1, "6000"),
-        line(" CHF uscite", "Alimentari", 2, "-25.2"),
-        line(" CHF uscite", "Casa", 1, "-1850"),
-        line(" CHF uscite", "Ristoranti e bar", 1, "-80"),
+        line(" CHF entrate", "Salary", 1, "6000"),
+        line(" CHF uscite", "Eating out", 1, "-80"),
+        line(" CHF uscite", "Food", 2, "-25.2"),
+        line(" CHF uscite", "Home", 1, "-1850"),
     )
 
 
 def test_a_row_counts_on_the_day_it_really_happened(conn: sqlite3.Connection) -> None:
     june = cashflow.run(conn, first=date(2026, 6, 1), last=date(2026, 6, 30))
-    assert june.lines == (line("2026-06 CHF uscite", "Alimentari", 1, "-15"),)
+    assert june.lines == (line("2026-06 CHF uscite", "Food", 1, "-15"),)
 
 
 def test_both_ends_of_the_range_are_included(conn: sqlite3.Connection) -> None:
     result = cashflow.run(conn, first=date(2025, 5, 3), last=date(2025, 5, 20))
-    assert [str(item.total) for item in result.lines] == ["-45.2", "-80"]
+    assert [str(item.total) for item in result.lines] == ["-80", "-45.2"]
 
 
 @pytest.mark.parametrize(
