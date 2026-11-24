@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+from scrooge import categories
 from scrooge.errors import ExtractionError
 from scrooge.extractors import common
 from scrooge.models import Kind, SecurityTrade, Transaction
@@ -204,7 +205,7 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
         kind=Kind.INCOME,
         source_file="plan.csv",
         source_ref="7:salary",
-        category="Salary",
+        category=categories.SALARY,
     )
     assert purchase == SecurityTrade(
         date=date(2026, 3, 15),
@@ -215,7 +216,7 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
         kind=Kind.SECURITY_TRADE,
         source_file="plan.csv",
         source_ref="7",
-        category="Investments",
+        category=categories.INVESTMENTS,
         ticker="ACME",
         quantity=Decimal(10),
         price=Decimal("12.5"),
@@ -227,9 +228,9 @@ def test_a_share_vest_is_salary_in_shares_and_their_purchase_at_the_price() -> N
 @pytest.mark.parametrize(
     ("bought", "category"),
     [
-        ("CHF", "Own transfer"),  # back home: a move between one's own accounts
-        ("EUR", "Buy EUR"),
-        ("USD", "Buy USD"),
+        ("CHF", categories.OWN_TRANSFER),  # back home: a move between one's own accounts
+        ("EUR", categories.buy("EUR")),
+        ("USD", categories.buy("USD")),
         ("GBP", ""),  # no category of its own
         ("", ""),
     ],

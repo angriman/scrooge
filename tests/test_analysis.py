@@ -5,7 +5,7 @@ from decimal import Decimal
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import analysis
+from scrooge import analysis, categories
 from scrooge.analysis import Converted, Rows, Span
 from scrooge.cashflow import Counted, Grouping
 from scrooge.models import Kind
@@ -151,8 +151,8 @@ def converted(day: date, amount: str = "10") -> Converted:
         Kind.EXPENSE,
         "CHF",
         "expenses",
-        "Groceries",
-        "Groceries",
+        categories.GROCERIES,
+        categories.GROCERIES,
         0,
         "",
         None,

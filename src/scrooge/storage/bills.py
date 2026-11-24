@@ -20,9 +20,8 @@ from datetime import date
 from decimal import ROUND_HALF_EVEN, Decimal
 from itertools import groupby
 
+from scrooge.categories import INTEREST
 from scrooge.validation import MissingLotsError
-
-_INTEREST = "Interest"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +74,7 @@ def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
     """Redo the interest split of every bill disposal of `owner`; returns those it could not do."""
     _undo(conn, owner)
     interest = conn.execute(
-        "SELECT id FROM categories WHERE side = 'entrate' AND name = ?", (_INTEREST,)
+        "SELECT id FROM categories WHERE side = 'entrate' AND name = ?", (INTEREST,)
     ).fetchone()[0]
     missing: list[MissingLotsError] = []
     for row, cost in _disposals(conn, owner):

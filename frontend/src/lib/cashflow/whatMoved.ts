@@ -27,7 +27,7 @@ export function whatMoved(categories: CashFlowReport['categories'], count = 3): 
 	}
 	const away = (each: Moved) => Math.abs(approximate(each.change));
 	return moved
-		.sort((a, b) => away(b) - away(a) || a.name.localeCompare(b.name))
+		.sort((a, b) => away(b) - away(a)) // stable: a tie keeps the server's order
 		.slice(0, count);
 }
 

@@ -192,7 +192,7 @@ def test_staged_statements_are_invisible_until_committed(
         "SELECT owner, account, category, category_parent, category_side "
         "FROM committed_transactions WHERE description LIKE 'FRISCHMARKT%' LIMIT 1",
     )
-    assert sample == [(OWNER, "Swisscard", "Groceries", "Food", "uscite")]
+    assert sample == [(OWNER, "Swisscard", categories.GROCERIES, categories.GROUP_FOOD, "uscite")]
 
 
 def test_committing_again_is_a_no_op(conn: sqlite3.Connection, folder: Path) -> None:
@@ -257,11 +257,11 @@ def test_categories_follow_the_sign_and_fall_back_to_the_other_side(
     conn: sqlite3.Connection,
 ) -> None:
     amounts = {
-        "expense": txn("-50", description="expense", category="Trading"),
-        "income": txn("70", description="income", category="Trading"),
-        "refund": txn("5", description="refund", category="Groceries"),
-        "clawback": txn("-9", description="clawback", category="Salary"),
-        "transfer": txn("-100", description="transfer", category="Revolut top-up"),
+        "expense": txn("-50", description="expense", category=categories.TRADING),
+        "income": txn("70", description="income", category=categories.TRADING),
+        "refund": txn("5", description="refund", category=categories.GROCERIES),
+        "clawback": txn("-9", description="clawback", category=categories.SALARY),
+        "transfer": txn("-100", description="transfer", category=categories.REVOLUT_TOP_UP),
     }
     staging.stage(conn, batch(statement("migros", list(amounts.values()))), NOW)
     sides = dict(
@@ -297,13 +297,16 @@ def test_the_taxonomy_is_seeded_once(conn: sqlite3.Connection) -> None:
         "SELECT c.name, p.name FROM categories c JOIN categories p ON p.id = c.parent_id "
         "WHERE c.name IN ('Gifts', 'Flights') ORDER BY 1",
     )
-    assert tree == [("Flights", "Transport"), ("Gifts", "Gifts")]
+    assert tree == [
+        (categories.FLIGHTS, categories.GROUP_TRANSPORT),
+        (categories.GIFTS, categories.GROUP_GIFTS),
+    ]
 
 
 def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection) -> None:
     added = (
         Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", "Home"),
+        Extra("Garden", "uscite", categories.GROUP_HOME),
         Extra("Prestiti", "entrate"),
     )
     lent = batch(migros("0", "-1", category="Prestiti"))
@@ -314,7 +317,7 @@ def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection)
         "ON p.id = c.parent_id WHERE c.name IN ('Prestiti', 'Garden') ORDER BY c.id",
     )
     assert tree == [
-        ("Garden", "uscite", "Home"),
+        ("Garden", "uscite", categories.GROUP_HOME),
         ("Prestiti", "uscite", None),
         ("Prestiti", "uscite", "Prestiti"),
         ("Prestiti", "entrate", None),
@@ -325,10 +328,12 @@ def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection)
 
 def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None:
     lines = [
-        txn("-40", description="TWINT Anna Meier", category="Eating out"),
-        txn("25", description="Bonifico", counterparty="ANNA MEIER", category="Refunds"),
+        txn("-40", description="TWINT Anna Meier", category=categories.EATING_OUT),
+        txn("25", description="Bonifico", counterparty="ANNA MEIER", category=categories.REFUNDS),
         txn("-12", description="KONSUM"),
-        txn("-500", description="ANNA MEIER", kind=Kind.TRANSFER, category="Revolut top-up"),
+        txn(
+            "-500", description="ANNA MEIER", kind=Kind.TRANSFER, category=categories.REVOLUT_TOP_UP
+        ),
         txn("-3", description="LUKAS MEIER"),  # the owner is not their own counterparty
     ]
     staging.stage(conn, batch(statement("migros", lines)), NOW)
@@ -529,8 +534,8 @@ def test_a_manual_category_survives_a_new_import(conn: sqlite3.Connection) -> No
         "JOIN categories c ON c.id = t.category_id ORDER BY 1",
     )
     assert kept == [
-        (-30_000_000_000, "Flights", "manual", "expense"),
-        (-8_000_000_000, "Groceries", "rule", "transfer"),
+        (-30_000_000_000, categories.FLIGHTS, "manual", "expense"),
+        (-8_000_000_000, categories.GROCERIES, "rule", "transfer"),
     ]
 
 
@@ -745,7 +750,7 @@ def test_rows_another_source_books_on_the_account_stay_out_of_its_balance(
         [txn("-5", source_file="eur.tsv", **euro)],
         [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(15))],
     )
-    paid = {"source_file": "savings.tsv", "kind": Kind.INTEREST, "category": "Interest"}
+    paid = {"source_file": "savings.tsv", "kind": Kind.INTEREST, "category": categories.INTEREST}
     interest = txn("0.08", **paid, **euro)
     staging.stage(conn, batch(current, statement("revolut_savings", [interest])), NOW)
     assert rows(conn, "SELECT sum(amount_nano) FROM transactions") == [(-4_920_000_000,)]
@@ -1350,8 +1355,14 @@ def test_the_fixture_bill_is_split_into_cost_and_interest(
         "WHERE t.description LIKE 'Maturity%' ORDER BY t.amount_nano DESC",
     )
     assert parts == [
-        ("Maturity 10.0 912797YY2 @ 1000", 9_920_000_000_000, "income", "Investments", 0),
-        ("Maturity 10.0 912797YY2 @ 1000 (interest)", 80_000_000_000, "interest", "Interest", 1),
+        ("Maturity 10.0 912797YY2 @ 1000", 9_920_000_000_000, "income", categories.INVESTMENTS, 0),
+        (
+            "Maturity 10.0 912797YY2 @ 1000 (interest)",
+            80_000_000_000,
+            "interest",
+            categories.INTEREST,
+            1,
+        ),
     ]
 
 
@@ -1398,10 +1409,10 @@ def test_lots_are_closed_first_in_first_out(conn: sqlite3.Connection) -> None:
         FIRST,
     )
     assert parts == [
-        ("2026-09-02", "security_trade", "Investments", 2_970_000_000_000),
-        ("2026-09-02", "interest", "Interest", 12_000_000_000),
-        ("2026-09-16", "income", "Investments", 6_940_000_000_000),  # 1980 + 4960
-        ("2026-09-16", "interest", "Interest", 60_000_000_000),
+        ("2026-09-02", "security_trade", categories.INVESTMENTS, 2_970_000_000_000),
+        ("2026-09-02", "interest", categories.INTEREST, 12_000_000_000),
+        ("2026-09-16", "income", categories.INVESTMENTS, 6_940_000_000_000),  # 1980 + 4960
+        ("2026-09-16", "interest", categories.INTEREST, 60_000_000_000),
     ]
     # the statement's figures are untouched in total, and the split is stable
     total = rows(conn, "SELECT sum(amount_nano) FROM transactions WHERE booking_date >= ?", FIRST)
@@ -1433,7 +1444,7 @@ def test_a_manual_category_on_the_interest_survives(conn: sqlite3.Connection) ->
         "SELECT c.name, t.category_source, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.split_of IS NOT NULL",
     )
-    assert kept == [("Dividends", "manual", 30_000_000_000)]
+    assert kept == [(categories.DIVIDENDS, "manual", 30_000_000_000)]
 
 
 def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> None:
@@ -1444,8 +1455,20 @@ def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> 
     matured = {**ibkr, "currency": "USD", "date": date(2026, 9, 16)}
     september = [
         bill("2982", "-3000", date(2026, 9, 2), **ibkr),
-        txn("1980", kind=Kind.INCOME, category="Investments", description="principal", **matured),
-        txn("20", kind=Kind.INTEREST, category="Interest", description="interest", **matured),
+        txn(
+            "1980",
+            kind=Kind.INCOME,
+            category=categories.INVESTMENTS,
+            description="principal",
+            **matured,
+        ),
+        txn(
+            "20",
+            kind=Kind.INTEREST,
+            category=categories.INTEREST,
+            description="interest",
+            **matured,
+        ),
     ]
     staged = staging.stage(conn, batch(statement("ibkr", september)), NOW)
     assert staged.gaps == ()
@@ -1457,10 +1480,10 @@ def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> 
         FIRST,
     )
     assert parts == [
-        ("-3000 912797YY2", "Investments", 2_970_000_000_000),
-        ("-3000 912797YY2 (interest)", "Interest", 12_000_000_000),
-        ("principal", "Investments", 1_980_000_000_000),
-        ("interest", "Interest", 20_000_000_000),
+        ("-3000 912797YY2", categories.INVESTMENTS, 2_970_000_000_000),
+        ("-3000 912797YY2 (interest)", categories.INTEREST, 12_000_000_000),
+        ("principal", categories.INVESTMENTS, 1_980_000_000_000),
+        ("interest", categories.INTEREST, 20_000_000_000),
     ]
 
 
@@ -1606,9 +1629,9 @@ def test_a_choice_for_these_rows_alone_is_an_override_that_survives_an_import(
     conn: sqlite3.Connection,
 ) -> None:
     ids = waiting_month(conn)
-    assert choose(conn, [ids["KIOSK1"], ids["KIOSK3"]], "Gifts") == 2
-    assert category_of(conn, ids["KIOSK1"]) == ("Gifts", "uscite", "manual", "expense")
-    assert category_of(conn, ids["KIOSK3"]) == ("Gifts", "uscite", "manual", "income")
+    assert choose(conn, [ids["KIOSK1"], ids["KIOSK3"]], categories.GIFTS) == 2
+    assert category_of(conn, ids["KIOSK1"]) == (categories.GIFTS, "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "uscite", "manual", "income")
     assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
     # The kind was not chosen: it is not pinned, and a later import may give another.
     assert rows(conn, "SELECT count(*), min(created_at), max(kind) FROM overrides") == [
@@ -1616,7 +1639,7 @@ def test_a_choice_for_these_rows_alone_is_an_override_that_survives_an_import(
     ]
 
     assert waiting_month(conn) == ids  # imported again: the same rows, the choice put back
-    assert category_of(conn, ids["KIOSK1"]) == ("Gifts", "uscite", "manual", "expense")
+    assert category_of(conn, ids["KIOSK1"]) == (categories.GIFTS, "uscite", "manual", "expense")
     assert category_of(conn, ids["KIOSK2"]) == (None, None, None, "expense")
 
 
@@ -1628,8 +1651,8 @@ def test_a_choice_to_remember_becomes_a_rule_per_counterparty_and_direction(
     everyone = [pattern for patterns in PEOPLE.values() for pattern in patterns]
     remember = staging.Remember(shared, own, everyone)
     chosen = [ids["KIOSK1"], ids["KIOSK2"], ids["KIOSK3"], ids["TWINT4"]]
-    assert choose(conn, chosen, "Gifts", remember) == 4
-    assert category_of(conn, ids["KIOSK2"]) == ("Gifts", "uscite", "rule", "expense")
+    assert choose(conn, chosen, categories.GIFTS, remember) == 4
+    assert category_of(conn, ids["KIOSK2"]) == (categories.GIFTS, "uscite", "rule", "expense")
     assert rows(conn, "SELECT count(*) FROM overrides") == [(0,)]
     assert shared.read_text(encoding="utf-8") == (
         "rules:\n"
@@ -1643,9 +1666,9 @@ def test_a_choice_to_remember_becomes_a_rule_per_counterparty_and_direction(
 
 def test_a_transfer_category_makes_the_row_a_transfer(conn: sqlite3.Connection) -> None:
     ids = waiting_month(conn)
-    choose(conn, [ids["TO SAVINGS5"]], "Own transfer")
+    choose(conn, [ids["TO SAVINGS5"]], categories.OWN_TRANSFER)
     assert category_of(conn, ids["TO SAVINGS5"]) == (
-        "Own transfer",
+        categories.OWN_TRANSFER,
         "transfer",
         "manual",
         "transfer",
@@ -1663,7 +1686,7 @@ def test_a_row_made_a_transfer_is_no_longer_money_between_the_two(
     ids = waiting_month(conn)
     twint = ids["TWINT4"]
     assert named(conn, twint) is not None
-    choose(conn, [ids["KIOSK1"]], "Gifts")
+    choose(conn, [ids["KIOSK1"]], categories.GIFTS)
     before = dump(conn)
 
     # As a rule it would be lost on the next import: transfer rules skip rows naming the other.
@@ -1671,19 +1694,20 @@ def test_a_row_made_a_transfer_is_no_longer_money_between_the_two(
     shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
     remember = staging.Remember(shared, own, everyone, PEOPLE[PARTNER])
     with pytest.raises(staging.StagingError, match=r"a transfer \(Anna Meier\)"):
-        choose(conn, [twint], "Own transfer", remember)
+        choose(conn, [twint], categories.OWN_TRANSFER, remember)
     assert dump(conn) == before
     assert not list(tmp_path.iterdir())
-    assert choose(conn, [twint], "Gifts", remember) == 1  # not a transfer: a rule of his own
+    # Not a transfer: a rule of his own.
+    assert choose(conn, [twint], categories.GIFTS, remember) == 1
     assert named(conn, twint) is not None
     assert [path.name for path in tmp_path.iterdir()] == ["rules.lukas.yaml"]
 
     ids = waiting_month(conn)  # imported again without that rule: the row waits again
-    choose(conn, [twint], "Own transfer")
-    assert category_of(conn, twint) == ("Own transfer", "transfer", "manual", "transfer")
+    choose(conn, [twint], categories.OWN_TRANSFER)
+    assert category_of(conn, twint) == (categories.OWN_TRANSFER, "transfer", "manual", "transfer")
     assert named(conn, twint) is None
     assert waiting_month(conn) == ids  # and the override says the same after an import
-    assert category_of(conn, twint) == ("Own transfer", "transfer", "manual", "transfer")
+    assert category_of(conn, twint) == (categories.OWN_TRANSFER, "transfer", "manual", "transfer")
     assert named(conn, twint) is None
 
 
@@ -1707,7 +1731,7 @@ def test_rules_files_are_left_as_they_were_when_a_choice_fails(
 
     monkeypatch.setattr(classification, "append_rule", full_disk)
     with pytest.raises(OSError, match="no space left"):
-        choose(conn, chosen, "Gifts", remember)
+        choose(conn, chosen, categories.GIFTS, remember)
     assert len(saved) == 2
     assert not list(tmp_path.iterdir())  # files that were not there are gone again
 
@@ -1715,7 +1739,7 @@ def test_rules_files_are_left_as_they_were_when_a_choice_fails(
     shared.write_text("rules: []\n", encoding="utf-8")
     own.write_text("rules: []\n", encoding="utf-8")
     with pytest.raises(OSError, match="no space left"):
-        choose(conn, chosen, "Gifts", remember)
+        choose(conn, chosen, categories.GIFTS, remember)
     assert shared.read_text(encoding="utf-8") == own.read_text(encoding="utf-8") == "rules: []\n"
     assert dump(conn) == before
 
@@ -1728,11 +1752,11 @@ def test_a_choice_that_cannot_be_made_changes_nothing(
     remember = staging.Remember(tmp_path / "rules.yaml", tmp_path / "own.yaml", ())
     one = [ids["KIOSK1"]]
     refused: list[tuple[list[str], str, staging.Remember | None, str]] = [
-        ([*one, ids["DONE7"]], "Gifts", None, "no longer waiting"),
-        ([*one, "no-such-row"], "Gifts", None, "no longer waiting"),
-        ([], "Gifts", None, "no longer waiting"),
+        ([*one, ids["DONE7"]], categories.GIFTS, None, "no longer waiting"),
+        ([*one, "no-such-row"], categories.GIFTS, None, "no longer waiting"),
+        ([], categories.GIFTS, None, "no longer waiting"),
         (one, "", None, "no category was chosen"),
-        ([*one, ids["6"]], "Gifts", remember, "any text"),
+        ([*one, ids["6"]], categories.GIFTS, remember, "any text"),
     ]
     for chosen, category, how, message in refused:
         with pytest.raises(staging.StagingError, match=message):
@@ -1743,7 +1767,7 @@ def test_a_choice_that_cannot_be_made_changes_nothing(
     assert not list(tmp_path.iterdir())
 
     # The same id twice is one row; a row without text can still be set for itself alone.
-    assert choose(conn, [ids["6"], ids["6"]], "Gifts") == 1
+    assert choose(conn, [ids["6"], ids["6"]], categories.GIFTS) == 1
 
 
 def choose_all(
@@ -1762,32 +1786,32 @@ def test_choices_made_together_are_given_all_or_none(
     shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
     everyone = [pattern for patterns in PEOPLE.values() for pattern in patterns]
     remember = staging.Remember(shared, own, everyone)
-    kiosk = staging.Choice((ids["KIOSK1"], ids["KIOSK2"]), "Gifts", rule=True)
+    kiosk = staging.Choice((ids["KIOSK1"], ids["KIOSK2"]), categories.GIFTS, rule=True)
     unknown = staging.Choice((ids["TO SAVINGS5"],), "Regalo")
     with pytest.raises(store.UnknownCategoryError, match="'Regalo'"):
         choose_all(conn, [kiosk, unknown], remember)
     assert dump(conn) == before
     assert not list(tmp_path.iterdir())  # the rule of the first choice went with it
 
-    savings = staging.Choice((ids["TO SAVINGS5"],), "Own transfer")
-    changed = staging.Choice((ids["DONE7"],), "Gifts", change=True)
+    savings = staging.Choice((ids["TO SAVINGS5"],), categories.OWN_TRANSFER)
+    changed = staging.Choice((ids["DONE7"],), categories.GIFTS, change=True)
     assert choose_all(conn, [kiosk, savings, changed], remember) == 4
-    assert category_of(conn, ids["KIOSK2"]) == ("Gifts", "uscite", "rule", "expense")
+    assert category_of(conn, ids["KIOSK2"]) == (categories.GIFTS, "uscite", "rule", "expense")
     assert category_of(conn, ids["TO SAVINGS5"]) == (
-        "Own transfer",
+        categories.OWN_TRANSFER,
         "transfer",
         "manual",
         "transfer",
     )
-    assert category_of(conn, ids["DONE7"]) == ("Gifts", "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
     assert shared.read_text(encoding="utf-8") == (
         'rules:\n  - {match: "(?m)^KIOSK$", category: "Gifts", direction: out}\n'
     )
     assert not own.exists()
     # Without a place for rules, a choice to remember is kept for its rows alone.
-    choice = staging.Choice((ids["KIOSK3"],), "Gifts", rule=True)
+    choice = staging.Choice((ids["KIOSK3"],), categories.GIFTS, rule=True)
     assert choose_all(conn, [choice]) == 1
-    assert category_of(conn, ids["KIOSK3"]) == ("Gifts", "uscite", "manual", "income")
+    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "uscite", "manual", "income")
     assert choose_all(conn, []) == 0
 
 
@@ -1798,9 +1822,9 @@ def test_rows_of_a_committed_statement_or_of_nobody_are_not_waiting_for_a_catego
     (txn_id,) = rows(conn, "SELECT id FROM transactions")[0]
     staging.commit(conn, owner=OWNER, now=NOW)
     with pytest.raises(staging.StagingError, match=f"{staging._NOT_WAITING}"):
-        choose(conn, [txn_id], "Gifts")
+        choose(conn, [txn_id], categories.GIFTS)
     with pytest.raises(staging.StagingError, match="load the page again"):
-        choose(conn, [txn_id], "Gifts", owner="Nobody")
+        choose(conn, [txn_id], categories.GIFTS, owner="Nobody")
 
 
 def change(
@@ -1824,11 +1848,11 @@ def test_a_row_that_has_a_category_can_be_given_another_which_an_import_keeps(
     conn: sqlite3.Connection,
 ) -> None:
     ids = waiting_month(conn)
-    assert category_of(conn, ids["DONE7"]) == ("Groceries", "uscite", "rule", "expense")
-    assert change(conn, [ids["DONE7"]], "Gifts") == 1
-    assert category_of(conn, ids["DONE7"]) == ("Gifts", "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GROCERIES, "uscite", "rule", "expense")
+    assert change(conn, [ids["DONE7"]], categories.GIFTS) == 1
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
     assert waiting_month(conn) == ids  # imported again, with the category the statement gave
-    assert category_of(conn, ids["DONE7"]) == ("Gifts", "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
 
 
 def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
@@ -1838,7 +1862,7 @@ def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
     shared, own = tmp_path / "rules.local.yaml", tmp_path / "rules.lukas.yaml"
     shared.write_text("rules:\n  - {match: 'DONE', category: Groceries}\n", encoding="utf-8")
     remember = staging.Remember(shared, own, [])
-    assert change(conn, [ids["DONE7"]], "Gifts", remember) == 1
+    assert change(conn, [ids["DONE7"]], categories.GIFTS, remember) == 1
     assert shared.read_text(encoding="utf-8") == (
         "rules:\n"
         '  - {match: "(?m)^DONE$", category: "Gifts", direction: out}\n'
@@ -1846,18 +1870,23 @@ def test_a_changed_category_to_remember_goes_before_the_rule_that_was_wrong(
     )
     # These rows keep it whatever the rules say on the next import.
     assert rows(conn, "SELECT transaction_id, kind FROM overrides") == [(ids["DONE7"], None)]
-    assert category_of(conn, ids["DONE7"]) == ("Gifts", "uscite", "manual", "expense")
+    assert category_of(conn, ids["DONE7"]) == (categories.GIFTS, "uscite", "manual", "expense")
 
 
 def test_a_transfer_given_an_expense_category_is_an_expense_again(
     conn: sqlite3.Connection,
 ) -> None:
     ids = waiting_month(conn)
-    choose(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], "Own transfer")
+    choose(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], categories.OWN_TRANSFER)
     assert category_of(conn, ids["KIOSK3"])[3] == "transfer"
-    assert change(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], "Gifts") == 2
-    assert category_of(conn, ids["TO SAVINGS5"]) == ("Gifts", "uscite", "manual", "expense")
-    assert category_of(conn, ids["KIOSK3"]) == ("Gifts", "uscite", "manual", "income")
+    assert change(conn, [ids["TO SAVINGS5"], ids["KIOSK3"]], categories.GIFTS) == 2
+    assert category_of(conn, ids["TO SAVINGS5"]) == (
+        categories.GIFTS,
+        "uscite",
+        "manual",
+        "expense",
+    )
+    assert category_of(conn, ids["KIOSK3"]) == (categories.GIFTS, "uscite", "manual", "income")
     assert rows(conn, "SELECT kind FROM overrides ORDER BY kind") == [("expense",), ("income",)]
 
 
@@ -1865,28 +1894,33 @@ def test_a_transfer_changed_twice_stays_the_kind_the_first_change_gave_after_an_
     conn: sqlite3.Connection,
 ) -> None:
     def month() -> Batch:
-        kept = {"kind": Kind.TRANSFER, "category": "Own transfer"}
+        kept = {"kind": Kind.TRANSFER, "category": categories.OWN_TRANSFER}
         found = [txn("-50", source_ref="1", description="SAVINGS", **kept)]
         balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(50))
         return batch(statement("migros", found, [balance]))
 
     staging.stage(conn, month(), NOW)
     ((txn_id,),) = rows(conn, "SELECT id FROM transactions")
-    assert category_of(conn, txn_id) == ("Own transfer", "transfer", "rule", "transfer")
-    change(conn, [txn_id], "Gifts")
-    change(conn, [txn_id], "Groceries")
+    assert category_of(conn, txn_id) == (categories.OWN_TRANSFER, "transfer", "rule", "transfer")
+    change(conn, [txn_id], categories.GIFTS)
+    change(conn, [txn_id], categories.GROCERIES)
     staging.stage(conn, month(), NOW)  # the rule makes it a transfer again
-    assert category_of(conn, txn_id) == ("Groceries", "uscite", "manual", "expense")
+    assert category_of(conn, txn_id) == (categories.GROCERIES, "uscite", "manual", "expense")
 
 
 def test_an_expense_changed_to_one_transfer_and_then_another_stays_a_transfer_after_an_import(
     conn: sqlite3.Connection,
 ) -> None:
     ids = waiting_month(conn)
-    change(conn, [ids["DONE7"]], "Own transfer")
-    change(conn, [ids["DONE7"]], "Withdrawals")
+    change(conn, [ids["DONE7"]], categories.OWN_TRANSFER)
+    change(conn, [ids["DONE7"]], categories.WITHDRAWALS)
     waiting_month(conn)  # imported again, with the kind the statement gave
-    assert category_of(conn, ids["DONE7"]) == ("Withdrawals", "transfer", "manual", "transfer")
+    assert category_of(conn, ids["DONE7"]) == (
+        categories.WITHDRAWALS,
+        "transfer",
+        "manual",
+        "transfer",
+    )
 
 
 def test_only_rows_that_have_a_category_and_are_money_in_or_out_can_be_changed(
@@ -1894,21 +1928,21 @@ def test_only_rows_that_have_a_category_and_are_money_in_or_out_can_be_changed(
 ) -> None:
     ids = waiting_month(conn)
     with pytest.raises(staging.StagingError, match="cannot be given another category"):
-        change(conn, [ids["KIOSK1"]], "Gifts")  # it has none yet
+        change(conn, [ids["KIOSK1"]], categories.GIFTS)  # it has none yet
     bought = trade("-1012.50", "WIDG", "10", date=date(2026, 9, 15))
     staging.stage(conn, batch(statement("ibkr", [bought])), NOW)
     (trade_id,) = rows(conn, "SELECT id FROM transactions WHERE kind = 'security_trade'")
     with pytest.raises(staging.StagingError, match="cannot be given another category"):
-        change(conn, [trade_id[0]], "Gifts")
+        change(conn, [trade_id[0]], categories.GIFTS)
 
 
 def test_a_committed_row_can_be_given_another_category(conn: sqlite3.Connection) -> None:
     staging.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
     (txn_id,) = rows(conn, "SELECT id FROM transactions")[0]
     staging.commit(conn, owner=OWNER, now=NOW)
-    assert change(conn, [txn_id], "Gifts") == 1
+    assert change(conn, [txn_id], categories.GIFTS) == 1
     seen = rows(conn, "SELECT category FROM committed_transactions")
-    assert seen == [("Gifts",)]  # the dashboards follow at once
+    assert seen == [(categories.GIFTS,)]  # the dashboards follow at once
 
 
 def added(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
@@ -1925,20 +1959,20 @@ def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_inco
     waiting_month(conn)
     file = tmp_path / "categories.yaml"
     staging.add_category(conn, file, name="  Prestiti ", side="uscite", group="")
-    staging.add_category(conn, file, name="Pets", side="uscite", group="Home")
+    staging.add_category(conn, file, name="Pets", side="uscite", group=categories.GROUP_HOME)
     staging.add_category(conn, file, name="Prestiti", side="entrate", group="")
     assert sorted(added(conn), key=str) == sorted(
         [
             ("Prestiti", "uscite", None),  # the group
             ("Prestiti", "uscite", "Prestiti"),  # and its one leaf
-            ("Pets", "uscite", "Home"),
+            ("Pets", "uscite", categories.GROUP_HOME),
             ("Prestiti", "entrate", None),
         ],
         key=str,
     )
     assert categories.load(file) == (
         categories.Extra("Prestiti", "uscite", "Prestiti"),
-        categories.Extra("Pets", "uscite", "Home"),
+        categories.Extra("Pets", "uscite", categories.GROUP_HOME),
         categories.Extra("Prestiti", "entrate"),
     )
 
@@ -1947,9 +1981,12 @@ def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_inco
     ("wanted", "message"),
     [
         ((" ", "uscite", ""), "a category needs a name"),
-        (("Groceries", "uscite", "Home"), "there is already a category 'Groceries'"),
-        (("Salary", "entrate", ""), "there is already a category 'Salary'"),
-        (("Own transfer", "uscite", ""), "there is already a category 'Own transfer'"),
+        (
+            (categories.GROCERIES, "uscite", categories.GROUP_HOME),
+            "there is already a category 'Groceries'",
+        ),
+        ((categories.SALARY, "entrate", ""), "there is already a category 'Salary'"),
+        ((categories.OWN_TRANSFER, "uscite", ""), "there is already a category 'Own transfer'"),
         (("Pets", "uscite", "Zoo"), "no group of categories named 'Zoo'"),
         (("Pets", "transfer", ""), "a category is added to the expenses or to the income"),
     ],
@@ -1979,7 +2016,7 @@ def test_a_category_the_database_refuses_is_not_left_in_the_file(
 
     monkeypatch.setattr(store, "seed_categories", broken)
     with pytest.raises(sqlite3.OperationalError):
-        staging.add_category(conn, file, name="Pets", side="uscite", group="Home")
+        staging.add_category(conn, file, name="Pets", side="uscite", group=categories.GROUP_HOME)
     assert file.read_text(encoding="utf-8") == "# ours\ncategories:\n  entrate: [Prestiti]\n"
 
 

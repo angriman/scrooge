@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from scrooge import networth, portfolio, query, staging
+from scrooge import categories, networth, portfolio, query, staging
 from scrooge.models import Holding, Kind, TypedHolding
 from scrooge.networth import BILLS, ETFS, PENSION, STOCKS, MissingRateError
 from scrooge.portfolio import Portfolio, Position
@@ -185,7 +185,10 @@ def test_shares_without_any_price_are_not_listed_and_a_note_says_so(
     conn: sqlite3.Connection,
 ) -> None:
     close(
-        conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Own transfer"))
+        conn,
+        ibkr(
+            bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category=categories.OWN_TRANSFER)
+        ),
     )
     conn.execute("UPDATE trades SET price = NULL")
     held = agrees_with_net_worth(conn, None, "USD")

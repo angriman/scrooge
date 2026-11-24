@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from scrooge import networth, query, staging
+from scrooge import categories, networth, query, staging
 from scrooge.models import (
     CashBalance,
     ControlTotal,
@@ -201,7 +201,7 @@ def test_cash_starts_with_the_first_statement_and_follows_its_rows(
     rows = [
         spent("-200", day(10)),
         spent("-50.25", day(10)),
-        spent("3000", day(25), kind=Kind.INCOME, category="Salary"),
+        spent("3000", day(25), kind=Kind.INCOME, category=categories.SALARY),
     ]
     close(conn, account("migros", "Migros", "CHF", "1000", *rows))
     result = networth.run(conn, currency="CHF")
@@ -277,7 +277,7 @@ def test_money_set_aside_inside_an_account_stays_part_of_it(conn: sqlite3.Connec
         account="Revolut EUR",
         currency="EUR",
         kind=Kind.INTEREST,
-        category="Interest",
+        category=categories.INTEREST,
         source_file="savings.tsv",
     )
     savings = statement("revolut_savings", [earned], filename="savings.tsv")
@@ -464,7 +464,7 @@ def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.C
             account="Tastytrade",
             currency="USD",
             kind=Kind.TRANSFER,
-            category="Own transfer",
+            category=categories.OWN_TRANSFER,
             source_file="tasty.csv",
         ),
         spent(
@@ -473,7 +473,7 @@ def test_cash_without_any_statement_balance_adds_up_from_nothing(conn: sqlite3.C
             account="Tastytrade",
             currency="USD",
             kind=Kind.TRADING,
-            category="Trading",
+            category=categories.TRADING,
             source_file="tasty.csv",
         ),
     ]
@@ -624,7 +624,10 @@ def test_shares_moved_in_without_a_price_are_not_counted_and_a_note_says_so(
     conn: sqlite3.Connection,
 ) -> None:
     close(
-        conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Own transfer"))
+        conn,
+        ibkr(
+            bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category=categories.OWN_TRANSFER)
+        ),
     )
     conn.execute("UPDATE trades SET price = NULL")
     result = networth.run(conn, currency="USD")

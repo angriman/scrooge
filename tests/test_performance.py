@@ -9,7 +9,7 @@ from itertools import pairwise
 
 import pytest
 
-from scrooge import performance
+from scrooge import categories, performance
 from scrooge.models import Holding, Kind, Transaction
 from scrooge.performance import Point, base_day, measure, money_weighted, sampled, time_weighted
 from scrooge.storage import db
@@ -202,7 +202,7 @@ def conn() -> Iterator[sqlite3.Connection]:
 def deposit(amount: str, on: date, **fields: object) -> Transaction:
     fields.setdefault("account", "IBKR USD")
     fields.setdefault("currency", "USD")
-    return spent(amount, on, kind=Kind.TRANSFER, category="Own transfer", **fields)
+    return spent(amount, on, kind=Kind.TRANSFER, category=categories.OWN_TRANSFER, **fields)
 
 
 def test_money_put_in_is_set_apart_from_what_the_investments_made(
@@ -217,7 +217,7 @@ def test_money_put_in_is_set_apart_from_what_the_investments_made(
             account="IBKR USD",
             currency="USD",
             kind=Kind.DIVIDEND,
-            category="Dividends",
+            category=categories.DIVIDENDS,
         ),
     )
     close(
@@ -268,10 +268,10 @@ def test_shares_vested_as_salary_are_money_put_in_and_a_bill_repaid_is_not(
 ) -> None:
     plan = {"account": "IBKR USD", "currency": "USD"}
     rows = (
-        spent("1000", day(5), kind=Kind.INCOME, category="Salary", **plan),
+        spent("1000", day(5), kind=Kind.INCOME, category=categories.SALARY, **plan),
         bought("ACME", "10", "-1000", day(5), asset_tab="Stocks"),
-        spent("990", day(8), kind=Kind.INCOME, category="Investments", **plan),
-        spent("-30", day(9), kind=Kind.COMMISSION, category="Fees", **plan),
+        spent("990", day(8), kind=Kind.INCOME, category=categories.INVESTMENTS, **plan),
+        spent("-30", day(9), kind=Kind.COMMISSION, category=categories.FEES, **plan),
     )
     close(conn, ibkr(*rows, opening="0"))
     price(conn, "ACME", day(5), "100")
@@ -284,7 +284,7 @@ def test_shares_vested_as_salary_are_money_put_in_and_a_bill_repaid_is_not(
 def test_shares_moved_in_kind_are_money_put_in_at_the_close_of_their_day(
     conn: sqlite3.Connection,
 ) -> None:
-    moved = bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Own transfer")
+    moved = bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category=categories.OWN_TRANSFER)
     close(conn, ibkr(moved, opening="0"))
     price(conn, "WIDG", day(15), "52")
     price(conn, "WIDG", day(20), "57.2")
@@ -300,7 +300,7 @@ def test_shares_moved_in_on_a_day_they_rise_do_not_hide_what_the_others_made(
     # 10 WIDG held from the 10th; 1000 more moved in on the 20th, when WIDG rises 5%.
     rows = (
         bought("WIDG", "10", "-1000", day(10)),
-        bought("WIDG", "1000", "0", day(20), kind=Kind.TRANSFER, category="Own transfer"),
+        bought("WIDG", "1000", "0", day(20), kind=Kind.TRANSFER, category=categories.OWN_TRANSFER),
     )
     close(conn, ibkr(*rows, opening="1000"))
     price(conn, "WIDG", day(10), "100")
@@ -335,7 +335,7 @@ def test_every_currency_leaves_out_the_same_days(conn: sqlite3.Connection) -> No
     plan = {"account": "Tastytrade", "currency": "CHF"}
     rows = (
         deposit("-995", day(10), **plan),
-        spent("50", day(20), kind=Kind.DIVIDEND, category="Dividends", **plan),
+        spent("50", day(20), kind=Kind.DIVIDEND, category=categories.DIVIDENDS, **plan),
     )
     close(conn, account("tastytrade", "Tastytrade", "CHF", "1000", *rows))
     rate(conn, "JPY", day(1), "0.0055")  # 5 francs are 909 yen
@@ -349,7 +349,7 @@ def test_every_currency_leaves_out_the_same_days(conn: sqlite3.Connection) -> No
 def test_a_broker_s_accounts_in_each_currency_are_one_and_an_exchange_moves_nothing(
     conn: sqlite3.Connection,
 ) -> None:
-    fx = {"kind": Kind.FX, "category": "Own transfer"}
+    fx = {"kind": Kind.FX, "category": categories.OWN_TRANSFER}
     close(
         conn,
         ibkr(spent("-1000", day(10), account="IBKR USD", currency="USD", **fx)),

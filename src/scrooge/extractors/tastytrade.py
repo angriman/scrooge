@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from scrooge.categories import DIVIDENDS, FEES, INTEREST, INVESTMENTS, TRADING
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import (
     day_span,
@@ -45,11 +46,11 @@ _ROUNDING = Decimal("0.01")
 _T_BILL = "Fixed Income Security"
 _SECURITIES = {"Equity", _T_BILL}
 _MONEY_MOVEMENTS = {
-    "Mark to Market": (Kind.TRADING, "Trading"),
-    "Credit Interest": (Kind.INTEREST, "Interest"),
-    "Debit Interest": (Kind.INTEREST, "Interest"),
-    "Dividend": (Kind.DIVIDEND, "Dividends"),
-    "Balance Adjustment": (Kind.COMMISSION, "Fees"),  # regulatory fee adjustments
+    "Mark to Market": (Kind.TRADING, TRADING),
+    "Credit Interest": (Kind.INTEREST, INTEREST),
+    "Debit Interest": (Kind.INTEREST, INTEREST),
+    "Dividend": (Kind.DIVIDEND, DIVIDENDS),
+    "Balance Adjustment": (Kind.COMMISSION, FEES),  # regulatory fee adjustments
     "Deposit": (Kind.TRANSFER, ""),  # wires in: the category is left for review
     "Withdrawal": (Kind.TRANSFER, ""),
 }
@@ -85,7 +86,7 @@ def extract(content: str, source_file: str) -> Extraction:
         day = parse_iso_date(row["Date"], "Tastytrade Date")
         for ref, amount, leg_kind, leg_category in (
             (str(n), gross, kind, category),
-            (f"{n}:fees", charges, Kind.COMMISSION, "Fees"),
+            (f"{n}:fees", charges, Kind.COMMISSION, FEES),
         ):
             if amount != 0:  # expirations and futures opens move no cash
                 txn = Transaction(
@@ -186,12 +187,12 @@ def _classify(row: dict[str, str], n: int) -> tuple[Kind, str]:
             # Principal back. The export has no cost to split the interest out (D13): the
             # database does it from the stored purchases.
             if row["Sub Type"] == "Maturity":
-                return Kind.INCOME, "Investments"
-            return Kind.SECURITY_TRADE, "Investments"
-        return Kind.TRADING, "Trading"
+                return Kind.INCOME, INVESTMENTS
+            return Kind.SECURITY_TRADE, INVESTMENTS
+        return Kind.TRADING, TRADING
     if row["Type"] == "Money Movement" and row["Sub Type"] in _MONEY_MOVEMENTS:
         if row["Sub Type"] == "Deposit" and row["Instrument Type"] == "Equity":
-            return Kind.DIVIDEND, "Dividends"  # small fund distributions arrive as "Deposit"
+            return Kind.DIVIDEND, DIVIDENDS  # small fund distributions arrive as "Deposit"
         return _MONEY_MOVEMENTS[row["Sub Type"]]
     msg = f"Tastytrade row {n}: unsupported row type {row['Type']!r} / {row['Sub Type']!r}"
     raise UnsupportedStatementError(msg)

@@ -17,15 +17,16 @@ from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
-from scrooge import query
+from scrooge import categories, query
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
 from scrooge.storage import store
 from scrooge.storage.money import from_nano
 
 INCOME, EXPENSES, INVESTING = "entrate", "uscite", "investing"
-# The top-level categories, on either side of the taxonomy, that are investing.
-_INVESTING = frozenset({"Investments", "Trading"})
+# The top-level categories, on either side of the taxonomy, that are investing: an income
+# leaf is its own top-level category.
+_INVESTING = frozenset({categories.GROUP_INVESTMENTS, categories.INVESTMENTS, categories.TRADING})
 # Money that only changes place: stored and listed, never income or an expense.
 _NOT_COUNTED = (Kind.TRANSFER, Kind.FX, Kind.INTERNAL)
 

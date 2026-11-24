@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scrooge import rulesfile
+from scrooge import categories, rulesfile
 from scrooge.classification import load_rules
 from scrooge.errors import ConfigError
 
@@ -28,9 +28,9 @@ def _entries(text: str = TEXT) -> tuple[rulesfile.Entry, ...]:
 def test_entries_say_what_each_rule_gives() -> None:
     found = _entries()
     assert [(e.match, e.category, e.direction, e.account) for e in found] == [
-        ("KONSUM|FRISCHMARKT", "Groceries", "", ""),
-        ("ACME, INC", "Salary", "in", ""),
-        (".", "Gifts", "", "Migros"),
+        ("KONSUM|FRISCHMARKT", categories.GROCERIES, "", ""),
+        ("ACME, INC", categories.SALARY, "in", ""),
+        (".", categories.GIFTS, "", "Migros"),
     ]
     first, last = found[0].lines
     assert TEXT[first:last] == "  - {match: 'KONSUM|FRISCHMARKT', category: Groceries}  # food\n"
@@ -73,7 +73,7 @@ def test_two_rules_swapped_leave_what_is_between_them() -> None:
 
 
 def test_recategorized_changes_the_category_alone() -> None:
-    text, count = rulesfile.recategorized(TEXT, _entries(), "Groceries", "Cibo")
+    text, count = rulesfile.recategorized(TEXT, _entries(), categories.GROCERIES, "Cibo")
     assert count == 1
     assert "  - {match: 'KONSUM|FRISCHMARKT', category: \"Cibo\"}  # food\n" in text
 
@@ -144,4 +144,4 @@ def test_a_key_the_rules_do_not_read_is_kept_as_it_is() -> None:
 
 def test_a_category_of_before_is_given_by_its_english_name() -> None:
     (entry,) = _entries("rules:\n  - match: KONSUM\n    category: Spesa\n")
-    assert entry.category == "Groceries"
+    assert entry.category == categories.GROCERIES

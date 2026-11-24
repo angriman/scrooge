@@ -461,11 +461,11 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
         for name in names:
             add(name, side)
     # added by hand: under a group of the taxonomy, and a name of the taxonomy under one's own
-    conn.execute(insert, ("Spedizioni", groups["Transport"], "uscite"))
+    conn.execute(insert, ("Spedizioni", groups[categories.GROUP_TRANSPORT], "uscite"))
     own = conn.execute(insert, ("Prestiti", None, "uscite")).lastrowid
     conn.execute(insert, ("Affitto", own, "uscite"))
     expected += [
-        ("uscite", "Spedizioni", "Transport"),
+        ("uscite", "Spedizioni", categories.GROUP_TRANSPORT),
         ("uscite", "Prestiti", None),
         ("uscite", "Affitto", "Prestiti"),  # not the taxonomy's Affitto: left alone
     ]

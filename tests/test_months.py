@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import months, staging
+from scrooge import categories, months, staging
 from scrooge.models import CashBalance, Kind
 from scrooge.months import Coverage
 from scrooge.router import LABELS
@@ -31,7 +31,9 @@ EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"
 SEP = {"source_file": "migros sep.csv"}
 AUGUST_ROWS = [
     txn("-45.20", date=date(2026, 8, 3), source_ref="1"),
-    txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Salary"),
+    txn(
+        "6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category=categories.SALARY
+    ),
 ]
 SEPTEMBER_ROWS = [
     txn("-80", date=date(2026, 9, 5), source_ref="3", category="", **SEP),
@@ -40,7 +42,9 @@ SEPTEMBER_ROWS = [
     txn("-70", date=date(2026, 9, 8), source_ref="5", kind=Kind.INTERNAL, category="", **SEP),
     txn("-20", date=date(2026, 9, 9), source_ref="6", category="", counterparty="Kiosk", **SEP),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Eating out", **EUR)]
+LUKAS_EUR = [
+    txn("-30", date=date(2026, 8, 5), source_ref="1", category=categories.EATING_OUT, **EUR)
+]
 SEPTEMBER_FILE = 3
 
 
@@ -118,7 +122,7 @@ def test_a_draft_lists_the_staged_statements_and_what_needs_a_category(
     assert first.id != second.id
     assert len(draft.rows) == 3  # not the leg of the card bill, which no category is asked for
     assert draft.totals == (
-        months.CategoryTotal("uscite", "Groceries", "CHF", 1, Decimal(-15)),
+        months.CategoryTotal("uscite", categories.GROCERIES, "CHF", 1, Decimal(-15)),
         months.CategoryTotal("", "", "CHF", 2, Decimal(-100)),  # the waiting rows last
     )
     assert draft.gaps == ()
@@ -197,14 +201,14 @@ def test_a_month_adds_up_what_is_committed_by_booking_date(conn: sqlite3.Connect
         months.File(2, "revolut", "revolut.tsv", AUGUST, date(2026, 8, 31), True, 1),
     )
     assert august.totals == (
-        months.CategoryTotal("uscite", "Groceries", "CHF", 1, Decimal("-45.2")),
-        months.CategoryTotal("uscite", "Eating out", "EUR", 1, Decimal(-30)),
-        months.CategoryTotal("entrate", "Salary", "CHF", 1, Decimal(6000)),
+        months.CategoryTotal("uscite", categories.GROCERIES, "CHF", 1, Decimal("-45.2")),
+        months.CategoryTotal("uscite", categories.EATING_OUT, "EUR", 1, Decimal(-30)),
+        months.CategoryTotal("entrate", categories.SALARY, "CHF", 1, Decimal(6000)),
     )
     assert [row.category for row in august.categorized] == [
-        "Groceries",
-        "Eating out",
-        "Salary",
+        categories.GROCERIES,
+        categories.EATING_OUT,
+        categories.SALARY,
     ]
     assert all(row.changeable and not row.waiting for row in august.categorized)
     # September is staged, not committed: the month shows nothing of it yet.
@@ -218,9 +222,9 @@ def test_the_rows_of_a_month_are_grouped_per_counterparty_direction_and_category
     groups = months.checklist(conn, OWNER, AUGUST).changeable
     found = [(g.name, g.incoming, g.category, [str(row.amount) for row in g.rows]) for g in groups]
     assert found == [
-        ("KONSUM", False, "Groceries", ["-45.2"]),
-        ("KONSUM", False, "Eating out", ["-30"]),
-        ("KONSUM", True, "Salary", ["6000"]),
+        ("KONSUM", False, categories.GROCERIES, ["-45.2"]),
+        ("KONSUM", False, categories.EATING_OUT, ["-30"]),
+        ("KONSUM", True, categories.SALARY, ["6000"]),
     ]
 
 

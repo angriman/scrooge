@@ -5,6 +5,7 @@ from typing import Any
 
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.web import app as webapp
 from tests.fakes import FakeMaturities
 from tests.storage.helpers import PEOPLE
@@ -106,7 +107,7 @@ def test_categories_are_given_and_what_is_staged_is_committed(site: Site) -> Non
 
 def test_a_choice_for_rows_no_longer_staged_changes_nothing(site: Site) -> None:
     _upload(site, "Migros.csv")
-    choices = [{"ids": ["not-a-row"], "category": "Groceries"}]
+    choices = [{"ids": ["not-a-row"], "category": categories.GROCERIES}]
     sent = {"owner": "Lukas", "choices": choices}
     response = site.client.post("/api/import/categories", json=sent, headers=_headers(site))
     assert response.status_code == 409

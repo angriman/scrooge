@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import savings
+from scrooge import categories, savings
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
 from scrooge.savings import Totals
@@ -20,17 +20,23 @@ START, END = date(2025, 1, 1), date(2026, 8, 31)
 JULY = date(2026, 7, 10)
 LUKAS = [
     *salaries("5000", START, 20),
-    *monthly("-1800", 1, "rent", category="Rent"),
-    txn("300", date=JULY, source_ref="1", kind=Kind.TRADING, category="Trading"),
-    txn("-9920", date=JULY, source_ref="2", kind=Kind.SECURITY_TRADE, category="Investments"),
+    *monthly("-1800", 1, "rent", category=categories.RENT),
+    txn("300", date=JULY, source_ref="1", kind=Kind.TRADING, category=categories.TRADING),
+    txn(
+        "-9920",
+        date=JULY,
+        source_ref="2",
+        kind=Kind.SECURITY_TRADE,
+        category=categories.INVESTMENTS,
+    ),
     # A present for her, and her share of the rent from her: each leg also on her side.
-    txn("-200", date=JULY, source_ref="3", category="Gifts", counterparty="ANNA MEIER"),
+    txn("-200", date=JULY, source_ref="3", category=categories.GIFTS, counterparty="ANNA MEIER"),
     txn(
         "900",
         date=JULY,
         source_ref="4",
         kind=Kind.INCOME,
-        category="Refunds",
+        category=categories.REFUNDS,
         counterparty="ANNA MEIER",
     ),
 ]
@@ -42,10 +48,10 @@ ANNA = [
         date=JULY,
         source_ref="2",
         kind=Kind.INCOME,
-        category="Gifts received",
+        category=categories.GIFTS_RECEIVED,
         counterparty="LUKAS MEIER",
     ),
-    txn("-900", date=JULY, source_ref="3", category="Rent", counterparty="LUKAS MEIER"),
+    txn("-900", date=JULY, source_ref="3", category=categories.RENT, counterparty="LUKAS MEIER"),
 ]
 
 

@@ -45,12 +45,12 @@ describe('what moved over the range', () => {
 		]);
 	});
 
-	it('breaks a tie by name, and takes as many as asked', () => {
+	it('keeps the order it was given on a tie, and takes as many as asked', () => {
 		const moved = whatMoved(
 			[category('Viaggi', '200.00', '100.00'), category('Home', '0.00', '100.00')],
 			1
 		);
-		expect(moved.map((each) => each.name)).toEqual(['Home']);
+		expect(moved.map((each) => each.name)).toEqual(['Viaggi']);
 		expect(whatMoved([])).toEqual([]);
 	});
 

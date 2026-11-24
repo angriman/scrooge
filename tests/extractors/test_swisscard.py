@@ -5,6 +5,7 @@ from types import TracebackType
 
 import pytest
 
+from scrooge import categories
 from scrooge.errors import ExtractionError
 from scrooge.extractors import swisscard
 from scrooge.models import CashBalance, ControlTotal, Extraction, Kind
@@ -25,8 +26,8 @@ def test_matches_golden_file(result: Extraction) -> None:
 
 def test_known_september_totals(result: Extraction) -> None:
     # D3: sum(purchases) - cashback == Migros debit
-    cashback = sum(t.amount for t in result.transactions if t.category == "Cashback")
-    purchases = -sum(t.amount for t in result.transactions if t.category != "Cashback")
+    cashback = sum(t.amount for t in result.transactions if t.category == categories.CASHBACK)
+    purchases = -sum(t.amount for t in result.transactions if t.category != categories.CASHBACK)
     assert (purchases, cashback) == (Decimal("1355.98"), Decimal("67.80"))
     assert result.controls == (ControlTotal("Migros", "CHF", Decimal("-1288.18")),)
     check_balances(result)
@@ -79,7 +80,7 @@ def test_classification(result: Extraction) -> None:
     assert by_merchant["CASHBACK"].kind is Kind.INCOME
     assert (by_merchant["REVOLUT**1234*"].kind, by_merchant["REVOLUT**1234*"].category) == (
         Kind.TRANSFER,
-        "Revolut top-up",
+        categories.REVOLUT_TOP_UP,
     )
     assert (by_merchant["AEROSUR"].kind, by_merchant["AEROSUR"].category) == (Kind.EXPENSE, "")
     refund = next(t for t in result.transactions if t.amount == Decimal("2.40"))

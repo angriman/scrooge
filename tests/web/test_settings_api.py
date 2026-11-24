@@ -60,7 +60,7 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
         "owner": OWNER,
         "position": 1,
         "match": "ANNA MEIER",
-        "category": "Gifts",
+        "category": categories.GIFTS,
         "direction": "",
         "account": "",
         "matches": 1,
@@ -155,7 +155,7 @@ def _rule(site: Site, position: int, **fields: object) -> dict[str, object]:
 
 def test_a_rule_is_edited_moved_and_removed(site: Site) -> None:
     shared = site.folder / "rules.yaml"
-    edit = _rule(site, 3, match="KONSUM", category="Groceries", direction="out")
+    edit = _rule(site, 3, match="KONSUM", category=categories.GROCERIES, direction="out")
     assert _post(site, "rules/edit", edit).json() == {"errors": []}
     assert '  - {match: "KONSUM", category: "Groceries", direction: out}\n' in shared.read_text(
         encoding="utf-8"

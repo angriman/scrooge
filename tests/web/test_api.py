@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import networth, overview, staging
+from scrooge import categories, networth, overview, staging
 from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
@@ -214,7 +214,7 @@ def test_a_month_sends_what_was_saved_of_income_and_of_salary(tmp_path: Path) ->
     db.migrate(conn, NOW)
     rows = (
         spent("5000", date(2026, 9, 25), **SALARY),
-        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category="Interest"),
+        spent("1000", date(2026, 9, 26), kind=Kind.INCOME, category=categories.INTEREST),
         spent("-1500", date(2026, 9, 10)),
     )
     close(conn, account("migros", "Migros", "CHF", "1000", *rows))
@@ -457,7 +457,7 @@ def test_a_category_is_changed_with_the_token_of_the_session(writable: TestClien
 
 def test_a_change_without_the_token_or_from_another_site_is_refused(writable: TestClient) -> None:
     row = _changeable(writable)
-    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Rent"}
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": categories.RENT}
     assert writable.post("/api/transactions/category", json=sent).status_code == 403
     token = writable.get("/api/session").json()["token"]
     elsewhere = {"X-Token": token, "Origin": "https://example.com"}
@@ -482,7 +482,7 @@ def test_a_copy_refuses_every_change(database: Path) -> None:
     session = copy.get("/api/session").json()
     assert session["rules"] is False
     row = _changeable(copy)
-    sent = {"owner": row["owner"], "ids": [row["id"]], "category": "Rent"}
+    sent = {"owner": row["owner"], "ids": [row["id"]], "category": categories.RENT}
     headers = {"X-Token": session["token"]}
     assert copy.post("/api/transactions/category", json=sent, headers=headers).status_code == 403
 

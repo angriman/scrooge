@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from scrooge import query, recurring
+from scrooge import categories, query, recurring
 from scrooge.models import Kind, Transaction
 from scrooge.storage import db, store
 from tests.storage.helpers import OWNER, txn
@@ -86,7 +86,7 @@ def test_transfers_and_what_the_two_pay_each_other_are_not_payments(tmp_path: Pa
             date=date(y, m, 5),
             counterparty="Broker",
             kind=Kind.TRANSFER,
-            category="IBKR top-up",
+            category=categories.IBKR_TOP_UP,
             source_ref=f"b{m}",
         )
         for y, m in months

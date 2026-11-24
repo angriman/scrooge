@@ -40,7 +40,7 @@ def test_added_categories_are_saved_under_the_comments_and_read_back(tmp_path: P
     path.write_text(HEADER, encoding="utf-8")
     added = (
         Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", "Home"),
+        Extra("Garden", "uscite", categories.GROUP_HOME),
         Extra("Prestiti", "entrate"),
     )
     for extra in (*added, added[0]):  # saving one twice changes nothing
@@ -107,7 +107,7 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     assert f"new category {number + 1}=Garden (uscite under Home) in {added}" in text
     assert categories.load(added) == (
         Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", "Home"),
+        Extra("Garden", "uscite", categories.GROUP_HOME),
         Extra("Prestiti", "entrate"),
     )
     saved = [line.partition("category: ")[2] for line in rules.read_text("utf-8").splitlines()[1:]]
@@ -124,7 +124,9 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     review.ask_categories([replace(LENT, description="New")], rules, out, lambda _: "q")
     listed = out.getvalue()
     rows = [re.split(r" {2,}", line.strip()) for line in listed.splitlines()]
-    assert next(row for row in rows if row[0] == "Home")[-1] == f"{number + 1} Garden"
+    assert (
+        next(row for row in rows if row[0] == categories.GROUP_HOME)[-1] == f"{number + 1} Garden"
+    )
     assert rows[rows.index(["Income"]) - 1] == ["Prestiti", f"{number} Prestiti"]  # a new group
     assert f"   {number} Prestiti\nTransfers\n" in listed  # the same number on both sides
 
@@ -161,7 +163,7 @@ def test_review_prefers_the_whole_name_to_a_part(tmp_path: Path) -> None:
 
 def test_review_asks_which_one_when_several_categories_match(tmp_path: Path) -> None:
     text, asked, saved = review_one(tmp_path, "top-up", "ibkr")
-    first = categories.ORDER.index("Revolut top-up") + 1
+    first = categories.ORDER.index(categories.REVOLUT_TOP_UP) + 1
     assert f"  'top-up' could be: {first} Revolut top-up   {first + 1} IBKR top-up\n" in text
     assert asked[1] == "  which one -> "
     assert 'category: "IBKR top-up"' in saved
@@ -191,7 +193,7 @@ def test_the_answer_for_a_row_naming_a_person_goes_to_the_owners_own_file(tmp_pa
     pending = [replace(LENT, description="Transfer to ANNA MEIER"), LENT]
     out = io.StringIO()
     personal = (own, [re.compile("anna meier", re.IGNORECASE)])
-    review.ask_categories(pending, rules, out, lambda _: "Gifts", personal)
+    review.ask_categories(pending, rules, out, lambda _: categories.GIFTS, personal)
     assert "ANNA" in own.read_text("utf-8")
     assert len(own.read_text("utf-8").splitlines()) == 2
     assert "Jonas" in rules.read_text("utf-8")
@@ -208,7 +210,7 @@ def test_review_never_saves_a_rule_for_rows_without_text(tmp_path: Path) -> None
 
     def ask(question: str) -> str:
         asked.append(question)
-        return "Gifts"
+        return categories.GIFTS
 
     review.ask_categories([blank, replace(blank, description=" ")], rules, out, ask)
     assert asked == []
@@ -217,8 +219,8 @@ def test_review_never_saves_a_rule_for_rows_without_text(tmp_path: Path) -> None
 
 
 def test_an_italian_name_of_the_taxonomy_means_its_english_one() -> None:
-    assert categories.canonical("Spesa") == "Groceries"
-    assert categories.canonical("Casa") == "Home"
+    assert categories.canonical("Spesa") == categories.GROCERIES
+    assert categories.canonical("Casa") == categories.GROUP_HOME
     assert categories.canonical("Spedizioni") == "Spedizioni"  # added by someone: left alone
     assert set(categories.ITALIAN.values()) <= categories.ALL | set(categories.USCITE)
     assert not set(categories.ITALIAN) & (categories.ALL | set(categories.USCITE))
@@ -232,11 +234,11 @@ def test_a_file_of_before_is_read_and_written_again_with_the_new_keys(tmp_path: 
         encoding="utf-8",
     )
     assert categories.load(path) == (
-        Extra("Spedizioni", "uscite", "Transport"),
+        Extra("Spedizioni", "uscite", categories.GROUP_TRANSPORT),
         Extra("Prestiti", "uscite", "Prestiti"),
         Extra("Prestiti", "entrate"),
     )
-    categories.add(path, Extra("Pets", "uscite", "Home"))
+    categories.add(path, Extra("Pets", "uscite", categories.GROUP_HOME))
     assert path.read_text(encoding="utf-8") == HEADER + (
         "categories:\n  expenses:\n    Transport:\n    - Spedizioni\n    Prestiti:\n"
         "    - Prestiti\n    Home:\n    - Pets\n  income:\n  - Prestiti\n"
@@ -246,7 +248,7 @@ def test_a_file_of_before_is_read_and_written_again_with_the_new_keys(tmp_path: 
 def test_both_names_of_one_side_are_refused_unless_one_is_empty(tmp_path: Path) -> None:
     path = tmp_path / "categories.yaml"
     path.write_text("categories: {expenses: {}, uscite: {Casa: [Pets]}}\n", encoding="utf-8")
-    assert categories.load(path) == (Extra("Pets", "uscite", "Home"),)
+    assert categories.load(path) == (Extra("Pets", "uscite", categories.GROUP_HOME),)
     path.write_text("categories: {income: [A], entrate: [B]}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="'entrate' and the other name of that side"):
         categories.load(path)
@@ -257,4 +259,4 @@ def test_a_rule_naming_a_category_by_its_italian_name_gives_the_english_one(
 ) -> None:
     rules = tmp_path / "rules.yaml"
     rules.write_text("rules:\n  - match: KONSUM\n    category: Spesa\n", encoding="utf-8")
-    assert load_rules([rules])[0].category == "Groceries"
+    assert load_rules([rules])[0].category == categories.GROCERIES
