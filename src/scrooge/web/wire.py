@@ -20,6 +20,7 @@ from scrooge import (
     months,
     networth,
     overview,
+    paidby,
     payouts,
     portfolio,
     query,
@@ -571,6 +572,39 @@ def cashflow_report(shown: report.Report) -> JSON:
             for line in flow.totals
         ],
         "through": day(kept.through),
+        "paid_by": _paid_by(shown.paid_by),
+    }
+
+
+def _paid_by(shown: paidby.PaidBy | None) -> JSON | None:
+    """Who paid what the household spent: each person, before and after settling up, each
+    category split between them, and the net of what they paid each other."""
+    if shown is None:
+        return None
+    return {
+        "spent": number(shown.spent),
+        "people": [
+            {
+                "name": payer.name,
+                "spent": number(payer.spent),
+                "share": _percent(payer.share),
+                "settled": number(payer.settled),
+                "settled_share": _percent(payer.settled_share),
+            }
+            for payer in shown.people
+        ],
+        "categories": [
+            {
+                "name": split.name,
+                "spent": number(split.spent),
+                "by": {name: number(amount) for name, amount in split.by.items()},
+            }
+            for split in shown.categories
+        ],
+        "moves": [
+            {"sender": move.sender, "receiver": move.receiver, "amount": number(move.amount)}
+            for move in shown.moves
+        ],
     }
 
 

@@ -346,3 +346,14 @@ def test_what_was_paid_back_is_not_spending_a_year_later_either() -> None:
     close(connection, OWNER, (START, END), END, ("migros", rows))
     july = spent(connection, first=date(2026, 7, 1), last=date(2026, 7, 31))
     assert [(c.name, c.year_before) for c in july.categories] == [("Alimentari", D(100))]
+
+
+def test_a_category_usually_spent_on_and_not_in_the_range_is_there_at_nothing(
+    conn: sqlite3.Connection,
+) -> None:
+    # The rent is paid on the first: not in these days.
+    result = spent(conn, first=date(2026, 8, 2))
+    rent = next(category for category in result.categories if category.name == "Casa")
+    assert rent == Category("Casa", 0, D(0), D("0.000"), D(0), D(1800), D(0), ())
+    assert result.categories[-1] == rent
+    assert result.parts == ("Alimentari",)

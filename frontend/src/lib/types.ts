@@ -526,6 +526,26 @@ export interface CashFlowReport {
 		total: Amount;
 	}[];
 	through: string | null;
+	/** Who paid what the household spent; null for one person, or with only one. */
+	paid_by: PaidBy | null;
+}
+
+/** Who paid what the household spent over a range (src/scrooge/paidby.py `PaidBy`). */
+export interface PaidBy {
+	spent: Amount;
+	/** Everyone with statements committed, by name; `share` in percent of `spent`. `settled`:
+	 * what they spent, and sent the others, less what the others sent them. */
+	people: {
+		name: string;
+		spent: Amount;
+		share: Amount | null;
+		settled: Amount;
+		settled_share: Amount | null;
+	}[];
+	/** Each top-level category, the largest first, and what each person spent on it. */
+	categories: { name: string; spent: Amount; by: Record<string, Amount> }[];
+	/** The net of what two people paid each other over the range, `amount` above zero. */
+	moves: { sender: string; receiver: string; amount: Amount }[];
 }
 
 export interface CashFlow {

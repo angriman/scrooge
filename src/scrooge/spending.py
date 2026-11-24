@@ -8,7 +8,8 @@ other person stays in its category. For both people together neither is there.
 Each top-level category is set against the median month of the twelve before the range, and
 against the same range a year before, where those months are known. A merchant is the
 counterparty as written, without store numbers, places or addresses; fees, taxes and
-interest are those of the account they were charged on.
+interest are those of the account they were charged on. A category usually spent on and not
+in the range is listed too, at nothing.
 """
 
 from __future__ import annotations
@@ -84,7 +85,7 @@ class Spending:
     paid_back: Decimal  # by the other person: taken off what was spent
     parts: tuple[str, ...]  # what the chart stacks: the largest categories, OTHERS, PAID_BACK
     periods: tuple[Period, ...]
-    categories: tuple[Category, ...]  # the largest first
+    categories: tuple[Category, ...]  # the largest first; those usually spent on, at nothing
     merchants: tuple[Merchant, ...]  # the MERCHANTS largest
     other_merchants: int  # how many more
     other_spent: Decimal  # and what was spent at them
@@ -150,7 +151,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     largest = [category.name for category in categories[:SHOWN] if category.spent > 0]
     parts = (
         *largest,
-        *([OTHERS] if len(categories) > len(largest) else []),
+        *([OTHERS] if sum(1 for c in categories if c.count) > len(largest) else []),
         *([PAID_BACK] if came_back else []),  # even when they net to nothing
     )
     periods = []
@@ -217,6 +218,23 @@ def _categories(
                 ),
             )
         )
+    # A category usually spent on and not at all in the range is there too, at nothing: a rent
+    # that was not paid is a change as much as one that went up.
+    nothing = Decimal(0).quantize(CENT)
+    for name, amount in (usual or {}).items():
+        if name not in by_top and amount > 0:
+            categories.append(
+                Category(
+                    name,
+                    0,
+                    nothing,
+                    analysis.share(nothing, total),
+                    nothing,
+                    amount,
+                    None if year is None else year.get(name, Decimal(0)),
+                    (),
+                )
+            )
     return sorted(categories, key=lambda category: (-category.spent, category.name))
 
 
