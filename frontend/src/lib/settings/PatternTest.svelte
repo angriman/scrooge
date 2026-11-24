@@ -23,6 +23,12 @@ newest of them. Nothing is saved.
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
+		await run();
+	}
+
+	/** Try what the box holds now. */
+	export async function run() {
+		if (!match.trim()) return;
 		trying = true;
 		try {
 			const response = await fetch(`/api/settings/rules/test?${testQuery(match, direction, owner)}`);

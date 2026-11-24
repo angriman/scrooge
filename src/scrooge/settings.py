@@ -127,11 +127,12 @@ def _compiled(match: str) -> re.Pattern[str]:
 
 
 def rules(
-    conn: sqlite3.Connection, files: Sequence[RulesFile]
+    conn: sqlite3.Connection, files: Sequence[RulesFile], owner: str | None = None
 ) -> tuple[list[ListedRule], list[str]]:
-    """Every rule of `files`, in the order they are tried, with the committed rows each one
-    matches; and what could not be read, a sentence for each file."""
-    texts = _texts(query.run(conn, query.Filter()).rows)
+    """Every rule of `files`, in the order they are tried, with the committed rows of `owner`
+    (of everyone without one) each one matches; and what could not be read, a sentence for
+    each file."""
+    texts = _texts(query.run(conn, query.Filter(owner=owner)).rows)
     listed: list[ListedRule] = []
     problems: list[str] = []
     for file in files:

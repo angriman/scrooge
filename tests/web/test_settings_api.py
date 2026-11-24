@@ -75,6 +75,8 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
     assert sent["errors"] == []
     anna = site.client.get("/api/settings/rules", params={"owner": PARTNER}).json()
     assert [f["key"] for f in anna["files"]] == ["rules.anna.yaml", "rules.yaml"]
+    # Anna has no rows: the shared rules match none of hers.
+    assert {r["matches"] for r in anna["rules"]} == {0}
 
 
 def test_rules_of_nobody_are_refused(site: Site) -> None:

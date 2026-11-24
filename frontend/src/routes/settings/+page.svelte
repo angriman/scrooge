@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { send } from '#lib/api.js';
@@ -23,13 +24,15 @@
 	// What the box at the top of the rules tries; a rule's "Try" puts its pattern there.
 	let match = $state('');
 	let direction = $state('');
-	let tester = $state<HTMLElement>();
+	let box = $state<HTMLElement>();
+	let tester = $state<PatternTest>();
 
-	function tryPattern(pattern: string, way: string) {
+	async function tryPattern(pattern: string, way: string) {
 		match = pattern;
 		direction = way;
-		tester?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-		tester?.querySelector('input')?.focus();
+		box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		await tick();
+		await tester?.run();
 	}
 
 	/** Send a change, and load the page again when it is made: what went wrong, or null. */
@@ -60,7 +63,7 @@
 		</p>
 	</header>
 
-	<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+	<div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
 		<Panel title="Categories" note="Built in, then those added. A rename or a merge changes the committed rows and the rules too.">
 			{#each listed.errors as error (error)}
 				<p class="mb-2 text-small text-caution" role="status">{error}</p>
@@ -99,8 +102,8 @@
 				{#each rules.errors as error (error)}
 					<p class="mb-2 text-small text-caution" role="status">{error}</p>
 				{/each}
-				<div bind:this={tester} class="mb-4 rounded-panel bg-sunken p-3">
-					<PatternTest {owner} bind:match bind:direction />
+				<div bind:this={box} class="mb-4 rounded-panel bg-sunken p-3">
+					<PatternTest bind:this={tester} {owner} bind:match bind:direction />
 				</div>
 				{#if !files.length}
 					<p class="text-body text-ink-secondary">This app has no rules files to show.</p>

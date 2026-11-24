@@ -62,7 +62,7 @@ def _rules(request: Request) -> Response:
     shared = _shared(request)
     files = settings.rule_files(shared, people, owner) if shared else []
     with db.reading(request.app.state.database) as conn:
-        listed, problems = settings.rules(conn, files)
+        listed, problems = settings.rules(conn, files, owner)
         found = query.choices(conn)
     return JSONResponse(
         {
