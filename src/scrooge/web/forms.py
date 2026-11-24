@@ -108,8 +108,8 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
     """`from`, `to`, `booking`, `owner`, `account`, `category`, `kind`, `min`, `max`, `text`,
     `merchant`.
 
-    `from` and `to` are a day, a month or a year, as for `scrooge query`. An empty field is
-    the same as a missing one.
+    `from` and `to` are a day, a month or a year, as for `scrooge query`. `kind` may name
+    several kinds, separated by commas. An empty field is the same as a missing one.
     """
     errors: list[str] = []
 
@@ -127,10 +127,12 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
             return None
         return None if number is None else number.copy_abs()
 
-    kind = text("kind")
-    if kind is not None and kind not in set(Kind):
-        errors.append(f"'{kind}' is not a kind of transaction.")
-        kind = None
+    kinds: list[Kind] = []
+    for name in filter(None, (part.strip() for part in (text("kind") or "").split(","))):
+        if name in set(Kind):
+            kinds.append(Kind(name))
+        else:
+            errors.append(f"'{name}' is not a kind of transaction.")
     wanted = query.Filter(
         first=_day(params, "from", 0, errors),
         last=_day(params, "to", 1, errors),
@@ -138,7 +140,8 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
         owner=text("owner"),
         account=text("account"),
         category=text("category"),
-        kind=None if kind is None else Kind(kind),
+        kind=kinds[0] if len(kinds) == 1 else None,
+        kinds=tuple(kinds) if len(kinds) > 1 else (),
         at_least=amount("min"),
         at_most=amount("max"),
         text=text("text") or "",

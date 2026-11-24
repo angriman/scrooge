@@ -145,6 +145,8 @@ def test_owner_account_and_kind_narrow_the_result(conn: sqlite3.Connection) -> N
     assert amounts(query.run(conn, Filter(owner=OWNER, account="Revolut EUR"))) == ["-30"]
     assert amounts(query.run(conn, Filter(kind=Kind.TRANSFER))) == ["-1000"]
     assert amounts(query.run(conn, Filter(kind=Kind.INCOME, owner=OWNER))) == ["6000", "6100"]
+    both = Filter(kinds=(Kind.INCOME, Kind.TRANSFER), owner=OWNER)
+    assert amounts(query.run(conn, both)) == ["6000", "6100", "-1000"]
 
 
 def test_the_amount_range_is_on_the_size_whatever_the_sign(conn: sqlite3.Connection) -> None:

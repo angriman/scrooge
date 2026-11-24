@@ -6,6 +6,7 @@ own currency, so every total is per currency: nothing is converted here.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from collections.abc import Callable, Iterable
@@ -32,11 +33,12 @@ class Filter:
 
     `first` and `last` are both included and are compared with the real date, or with the
     booking date when `booking` is set. `category` is a name at either level of the taxonomy:
-    a top-level category stands for all its leaves. `at_least` and `at_most` bound the size of
-    the amount, whatever its sign. `text` is looked for in the counterparty and the
-    description, ignoring case. `merchant` is who was paid as the cash flow names them
-    (`merchant`), ignoring case, and keeps only what the cash flow counts as spent there: no
-    income, transfer, trade or money paid back.
+    a top-level category stands for all its leaves. `kinds` keeps the rows of any of them, as
+    `kind` does those of one. `at_least` and `at_most` bound the size of the amount, whatever
+    its sign. `text` is looked for in the counterparty and the description, ignoring case.
+    `merchant` is who was paid as the cash flow names them (`merchant`), ignoring case, and
+    keeps only what the cash flow counts as spent there: no income, transfer, trade or money
+    paid back.
     """
 
     first: date | None = None
@@ -46,6 +48,7 @@ class Filter:
     account: str | None = None
     category: str | None = None
     kind: Kind | None = None
+    kinds: tuple[Kind, ...] = ()
     at_least: Decimal | None = None
     at_most: Decimal | None = None
     text: str = ""
@@ -210,6 +213,10 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         ("account = ?", wanted.account),
         ("? IN (category, category_parent)", wanted.category),
         ("kind = ?", wanted.kind and wanted.kind.value),
+        (
+            "kind IN (SELECT value FROM json_each(?))",
+            json.dumps([kind.value for kind in wanted.kinds]) if wanted.kinds else None,
+        ),
         ("abs(amount_nano) >= ?", None if wanted.at_least is None else to_nano(wanted.at_least)),
         ("abs(amount_nano) <= ?", None if wanted.at_most is None else to_nano(wanted.at_most)),
     ]

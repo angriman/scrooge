@@ -34,6 +34,7 @@ const KINDS: Readonly<Record<string, string>> = {
 };
 
 export function kindName(kind: string): string {
+	if (kind.includes(',')) return kind.split(',').map(kindName).join(', ');
 	return KINDS[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1).replaceAll('_', ' ');
 }
 
