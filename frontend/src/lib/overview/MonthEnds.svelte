@@ -9,7 +9,7 @@ sideways, the months staying in sight.
 	import { day } from '#lib/format/date.js';
 	import type { NetWorthMonths } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
-	import { COLUMNS, table, type Way } from './monthEnds.js';
+	import { CHANGE_NOTE, COLUMNS, table, type Way } from './monthEnds.js';
 
 	interface Props {
 		months: Promise<NetWorthMonths>;
@@ -67,6 +67,7 @@ sideways, the months staying in sight.
 											'border-b border-line px-3 py-1.5 text-right font-normal whitespace-nowrap',
 											n === 0 && 'border-l'
 										)}
+										title={column.key === 'total' ? undefined : CHANGE_NOTE}
 									>
 										{column.label}
 									</th>
@@ -107,6 +108,7 @@ sideways, the months staying in sight.
 					</tbody>
 				</table>
 			</div>
+			<p class="px-3 pt-2 text-caption text-ink-muted">{CHANGE_NOTE}</p>
 		{:else if !sent.errors.length}
 			<p class="py-16 text-center text-small text-ink-muted">No month to show yet.</p>
 		{/if}
