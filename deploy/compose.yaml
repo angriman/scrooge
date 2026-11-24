@@ -1,41 +1,55 @@
-# The app on the NAS (Synology Container Manager: Project), the one place the data lives and
-# changes. Steps: README.md, here.
+# The app in Docker, on any machine with Docker Compose: a Linux server, a NAS, a Raspberry Pi
+# (64-bit), a Mac or a Windows PC with Docker Desktop. Steps: README.md, here.
 #
-# Lives on the NAS next to the data folder. The image is built by GitHub
-# (.github/workflows/image.yml) and pulled from its registry. Three things to adapt, all
-# marked PLACEHOLDER. No password here or in the image: its digest is in scrooge.yaml, in
-# the data folder.
+# Copied next to the data folder with .env.example as .env, where what differs between
+# machines is set: the image, the data folder, the user that owns it, the port. Nothing here
+# needs changing. No password here or in the image: its digest is in the config, in the data
+# folder (`scrooge init --container` writes it).
+
+# What both services share: the image, the data and how little they may do.
+x-scrooge: &scrooge
+  # `latest` is the newest release; a tag (`:v1.2.3`) keeps that version until it changes.
+  image: ${SCROOGE_IMAGE:-ghcr.io/angriman/scrooge:latest}
+
+  # The user and group that own the data folder, as numbers (`id -u`, `id -g`). Not root. The
+  # app writes there as this user: the database, its backups, originals/, rules and
+  # categories added from the pages.
+  user: "${SCROOGE_UID:-1000}:${SCROOGE_GID:-1000}"
+
+  volumes:
+    # The data folder, read and written. The folder, not its files, so that SQLite can keep
+    # its journal next to the database.
+    - ${SCROOGE_DATA:-./data}:/data
+
+  restart: unless-stopped
+
+  # The app writes nowhere but /data: not in its own file system, not as anyone more than it
+  # is. Uploads and Tesseract's work files go to /tmp.
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
 
 services:
+  # The pages, over the one database: statements are imported and committed there, or with
+  # `docker compose exec scrooge scrooge <command>`.
   scrooge:
-    # PLACEHOLDER: the owner of the repository, in lower case. `latest` is the newest tag v*;
-    # a tag (`:v1.2.3`) keeps that version until this line changes.
-    image: ghcr.io/<owner>/scrooge:latest
-    container_name: scrooge
-
-    # PLACEHOLDER: the user and group of the NAS that own the data folder, as numbers
-    # (`id <user>` on the NAS). Not root. The app writes there as this user: the database,
-    # its backups, originals/, rules and categories added from the pages.
-    user: "1026:100"
-
-    volumes:
-      # PLACEHOLDER (left of the colon): the data folder, read and written. The folder, not
-      # its files, so that SQLite can keep its journal next to the database.
-      - /volume1/docker/scrooge/data:/data
-
+    <<: *scrooge
     ports:
-      # Every address of the NAS, the tailnet's among them. Put an address in front
-      # ("100.x.y.z:8765:8765") to answer on that one alone.
-      - "8765:8765"
+      # Every address of this machine. SCROOGE_PORT=127.0.0.1:8765 answers on this machine
+      # alone (behind a reverse proxy on it), 100.x.y.z:8765 on that address alone.
+      - "${SCROOGE_PORT:-8765}:8765"
 
-    restart: unless-stopped
-
-    # The app writes nowhere but /data: not in its own file system, not as anyone more than
-    # it is. Uploads and Tesseract's work files go to /tmp.
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+  # The daily closes, splits and exchange rates (`scrooge prices`, the one command that goes
+  # online): as it starts, then every 24 hours. It asks only for the days not stored yet, so a
+  # missed day is caught up the next time. Without it, run that command from the machine's
+  # own scheduler and remove this service.
+  prices:
+    <<: *scrooge
+    command: ["sh", "-c", "while :; do scrooge prices; sleep 86400; done"]
+    init: true # stops at once, not after Docker's ten seconds: sh passes no signal on
+    healthcheck:
+      disable: true # the image's checks the pages, which this one does not serve

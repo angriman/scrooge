@@ -1,5 +1,5 @@
-# The web app's image for the NAS (Synology DS725+, x86-64), built from the Dockerfile and
-# pushed to GitHub's registry, private like the repository:
+# The web app's image, for x86-64 and 64-bit ARM (a Raspberry Pi, an ARM NAS, a Mac), built
+# from the Dockerfile and pushed to GitHub's registry, public like the repository:
 #   ghcr.io/<owner>/scrooge:<tag> and :latest, on a tag `v*` once `make check` passes.
 # Run by hand (Actions > image > Run workflow) on a tag, it does the same; on a branch, it
 # pushes only `sha-<commit>` and leaves `latest` where it is. deploy/README.md: pulling it.
@@ -56,6 +56,9 @@ jobs:
             org.opencontainers.image.title=scrooge
             org.opencontainers.image.description=The scrooge web app (scrooge serve)
 
+      # ARM is built under emulation: slower, but the same Dockerfile.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -68,7 +71,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
