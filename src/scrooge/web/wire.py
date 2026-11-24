@@ -27,6 +27,7 @@ from scrooge import (
     overview,
     paidby,
     payouts,
+    pensions,
     performance,
     portfolio,
     query,
@@ -901,5 +902,41 @@ def performance_report(shown: performance.Performance) -> JSON:
                 **_measured(holder.measured),
             }
             for holder in shown.holders
+        ],
+    }
+
+
+def pensions_report(shown: pensions.Pensions) -> JSON:
+    """The pension accounts, each with what it is worth on `day` and its change over the last
+    twelve months (`1y`) and the year to date (`ytd`). Pillar 3a has its cash and its money paid
+    in, and its returns as the performance view gives them; Pillar 2 the day of the figure it is
+    carried at, and nothing paid in or returned (`null`): a certificate does not tell them
+    apart. `start` is null when nothing was known of the account on `since`."""
+    return {
+        "currency": shown.currency,
+        "day": day(shown.day),
+        "pensions": [
+            {
+                "owner": pension.owner,
+                "account": pension.account,
+                "pillar": pension.pillar,
+                "value": number(pension.value),
+                "cash": number(pension.cash),
+                "stated": day(pension.stated),
+                "typed": pension.typed,
+                "changes": {
+                    change.range: {
+                        "since": change.since.isoformat(),
+                        "start": number(change.start),
+                        "paid_in": number(change.paid_in),
+                        "twr": number(change.twr),
+                        "mwr": number(change.mwr),
+                        "mwr_a_year": change.mwr_a_year,
+                        "twr_since": day(change.twr_since),
+                    }
+                    for change in pension.changes
+                },
+            }
+            for pension in shown.pensions
         ],
     }

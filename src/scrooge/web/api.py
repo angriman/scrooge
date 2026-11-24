@@ -38,6 +38,7 @@ from scrooge import (
     networth,
     overview,
     payouts,
+    pensions,
     performance,
     portfolio,
     query,
@@ -858,6 +859,24 @@ def _networth_months(request: Request) -> Response:
     )
 
 
+def _pensions(request: Request) -> Response:
+    """The pension accounts of `owner`, or of everyone, in `currency`: what each is worth and
+    how it changed. Accounts with a currency without a rate are left out, each such currency
+    said in `errors`."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = pensions.run(conn, owner=asked.owner, currency=asked.currency)
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+    errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
+    if shown.left_out:
+        errors.append(f"Left out for want of a rate: {', '.join(shown.left_out)}.")
+    return JSONResponse({"pensions": wire.pensions_report(shown), "errors": errors})
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
@@ -882,4 +901,5 @@ routes = [
     Route("/import/category", _add_category, methods=["POST"], name="api_add_category"),
     Route("/statements/{number:int}/discard", _discard, methods=["POST"], name="api_discard"),
     Route("/statements/{number:int}/uncommit", _uncommit, methods=["POST"], name="api_uncommit"),
+    Route("/pensions", _pensions, name="api_pensions"),
 ]
