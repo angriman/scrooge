@@ -19,22 +19,22 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from scrooge import analysis, cashflow
+from scrooge import analysis, cashflow, categories
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY
 from scrooge.storage import store
 
+# Where income comes from, as the page shows it: not categories.
 WORK, INVESTMENTS, OTHER = "Work", "Investments", "Other"
 GROUPS = (WORK, INVESTMENTS, OTHER)  # as they are stacked and listed
 # The group of each income leaf; every other leaf is OTHER.
 _GROUP_OF = {
-    "Salary": WORK,
-    "Dividends": INVESTMENTS,
-    "Interest": INVESTMENTS,
-    "Trading": INVESTMENTS,
+    categories.SALARY: WORK,
+    categories.DIVIDENDS: INVESTMENTS,
+    categories.INTEREST: INVESTMENTS,
+    categories.TRADING: INVESTMENTS,  # a leaf on both sides: what was won and what was lost
 }
-_TRADING = "Trading"  # a leaf on both sides: what was won and what was lost
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +73,7 @@ def is_income(row: Counted) -> bool:
     if row.counterparty_owner is not None:
         return False
     if row.investing:
-        return row.leaf == _TRADING
+        return row.leaf == categories.TRADING
     return row.side == cashflow.INCOME
 
 

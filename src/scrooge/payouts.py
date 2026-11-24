@@ -35,10 +35,10 @@ from decimal import Decimal
 from scrooge import analysis, query
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
+from scrooge.categories import DIVIDENDS, INTEREST, WITHHOLDING_TAX
 from scrooge.networth import DEFAULT_CURRENCY, MissingRateError, convert, rates_on
 
-DIVIDENDS, INTEREST, TAX = "Dividends", "Interest", "Withholding tax"
-CATEGORIES = (DIVIDENDS, INTEREST, TAX)
+CATEGORIES = (DIVIDENDS, INTEREST, WITHHOLDING_TAX)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +114,7 @@ class _Sums:
         self.amounts[each.row.leaf] += each.amount
         self.count += 1
         self.any_last = each.day
-        if each.row.leaf != TAX:
+        if each.row.leaf != WITHHOLDING_TAX:
             self.paid_last = each.day
 
     def paid(self) -> Paid:

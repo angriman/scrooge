@@ -24,6 +24,7 @@ from datetime import date
 from decimal import Decimal
 from typing import NamedTuple
 
+from scrooge.categories import DIVIDENDS, OWN_TRANSFER, WITHHOLDING_TAX
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import month_start, parse_us_amount, parse_us_date, share_vest
 from scrooge.extractors.source import Source
@@ -75,18 +76,18 @@ class _CashRow(NamedTuple):
 
 _CASH_ROWS = (
     # Gross, then net of fees: the tax withheld is a row of its own.
-    _CashRow(re.compile(r"Dividend Credit \S+ (\S+)"), Kind.DIVIDEND, "Dividends", "Dividend"),
-    _CashRow(re.compile(r"Withholding Tax (\S+)"), Kind.TAX, "Withholding tax", "Withholding tax"),
+    _CashRow(re.compile(r"Dividend Credit \S+ (\S+)"), Kind.DIVIDEND, DIVIDENDS, "Dividend"),
+    _CashRow(re.compile(r"Withholding Tax (\S+)"), Kind.TAX, WITHHOLDING_TAX, "Withholding tax"),
     _CashRow(
         re.compile(r"Proceeds Disbursement (\S+)"),
         Kind.TRANSFER,
-        "Own transfer",
+        OWN_TRANSFER,
         "Proceeds disbursement",
     ),
     _CashRow(
         re.compile(r"Cancel Proceeds Disb (\S+)"),
         Kind.TRANSFER,
-        "Own transfer",
+        OWN_TRANSFER,
         "Proceeds disbursement cancelled",
     ),
 )
@@ -170,7 +171,7 @@ def _transactions(
                 kind=Kind.TRANSFER,
                 source_file=source_file,
                 source_ref=f"Share Withdrawal:{ref}",
-                category="Own transfer",
+                category=OWN_TRANSFER,
                 ticker=ticker,
                 quantity=quantity,
                 price=None,  # moved in kind: the statement prints no price

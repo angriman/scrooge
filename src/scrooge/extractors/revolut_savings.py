@@ -14,6 +14,7 @@ import re
 from datetime import date, timedelta
 from decimal import Decimal
 
+from scrooge.categories import FEES, INTEREST
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import day_span, month_start, parse_decimal, read_table
 from scrooge.extractors.source import Source, starts_with
@@ -22,8 +23,8 @@ from scrooge.models import Extraction, Kind, Transaction
 _DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b")
 _MONTHS = {name: number for number, name in enumerate(calendar.month_abbr) if name}
 _BOOKED = (
-    (re.compile(r"(Return PAID|Interest PAID)\b"), Kind.INTEREST, "Interest"),
-    (re.compile(r"Service Fee Charged\b"), Kind.COMMISSION, "Fees"),
+    (re.compile(r"(Return PAID|Interest PAID)\b"), Kind.INTEREST, INTEREST),
+    (re.compile(r"Service Fee Charged\b"), Kind.COMMISSION, FEES),
 )
 # Fund movements, incl. interest already counted when PAID and later moved to the current account
 _IGNORED = re.compile(
@@ -57,7 +58,7 @@ def extract(content: str, source_file: str) -> Extraction:
         day = _date(row["Date"])
         days.append(day)
         if n in top_ups:
-            kind, category = Kind.INTEREST, "Interest"
+            kind, category = Kind.INTEREST, INTEREST
         elif _IGNORED.match(description):
             continue
         else:

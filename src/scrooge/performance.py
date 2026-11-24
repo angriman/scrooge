@@ -71,7 +71,7 @@ from scrooge import networth
 from scrooge.cashflow import _INVESTING
 from scrooge.networth import CARD, PENSION, PILLAR2, MissingRateError, Series, convert, rates_on
 from scrooge.storage.money import from_nano
-from scrooge.storage.store import committed_or_typed
+from scrooge.storage.store import committed_or_typed, marks
 
 RANGES = ("1m", "3m", "ytd", "1y", "3y", "all")  # as the overview names them
 DEFAULT_RANGE = "ytd"
@@ -367,7 +367,7 @@ def _flows(conn: sqlite3.Connection, ids: set[int], days: Sequence[date]) -> dic
         "LEFT JOIN categories p ON p.id = c.parent_id "
         f"WHERE {accounts} AND {committed_or_typed('t.statement_file_id')} "
         "AND t.amount_nano <> 0 AND (t.kind = 'transfer' OR (t.kind IN ('income', 'expense') "
-        "AND coalesce(p.name, c.name, '') NOT IN (?, ?)))",
+        f"AND coalesce(p.name, c.name, '') NOT IN ({marks(len(_INVESTING))})))",
         (*within, *sorted(_INVESTING)),
     )
     for account, day, currency, nano in rows:
