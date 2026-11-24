@@ -298,6 +298,9 @@ export interface StatementsAccount extends Account {
 	statements: StatementFile[];
 	/** What it holds by part; null when its balance is not known. */
 	holds: AccountHolds | null;
+	/** The accounts it is booked as elsewhere: a broker's one per currency, whose statements
+	 * it lists together; its own name alone otherwise. */
+	parts: string[];
 }
 
 /** What an account holds now by part, and its balance at the last month-ends. */
@@ -622,6 +625,58 @@ export interface InvestmentIncome {
 	errors: string[];
 }
 
+/** What investment accounts did over a range (src/scrooge/performance.py `Measured`). */
+export interface Measured {
+	/** Worth at the end of the day before the range. */
+	start: Amount;
+	end: Amount;
+	/** Money put in, less what was taken out. */
+	net_flows: Amount;
+	/** The change that is not money put in or taken out. */
+	gain: Amount;
+	/** Time-weighted, in percent over the range; null when nothing was invested. */
+	twr: Amount | null;
+	/** Money-weighted, in percent; null when there is no such rate. */
+	mwr: Amount | null;
+	/** `mwr` is a rate a year (a range of a year or more); else it is over the range. */
+	mwr_a_year: boolean;
+	/** The first day `twr` counts, when it is after the range's first; else null. */
+	twr_since: Day | null;
+}
+
+/** One broker's accounts of one person, in every currency together. */
+export interface MeasuredAccount extends Measured {
+	owner: string;
+	name: string;
+	accounts: string[];
+}
+
+/** One day of the chart: what the accounts were worth, and the start value with what had been
+ * put in since. Daily, or weekly over a long range; the first is the day before the range. */
+export interface InvestedDay {
+	day: Day;
+	value: Amount;
+	invested: Amount;
+}
+
+export interface PerformanceReport {
+	currency: string;
+	range: string;
+	/** The range's first and last day; null when there is no investment account. */
+	first: Day | null;
+	last: Day | null;
+	totals: Measured | null;
+	series: InvestedDay[];
+	accounts: MeasuredAccount[];
+}
+
+/** `/api/performance`. `errors` names each currency whose accounts were left out for want of a
+ * rate, and those accounts. */
+export interface InvestmentPerformance {
+	performance: PerformanceReport;
+	errors: string[];
+}
+
 /** Net worth at a month's end in one currency, and how it moved since the month before, less
  * what accounts brought when they came into view (src/scrooge/networth.py `Figure`). */
 export interface MonthEndFigure {
@@ -634,6 +689,9 @@ export interface MonthEndFigure {
 	 * config names `frozen`. */
 	liquid: Amount;
 	frozen: Amount;
+	/** What accounts held when they were first counted within the month, left out of `change`:
+	 * the two add up to the difference of the totals. Null with `change`. */
+	arrived: Amount | null;
 }
 
 /** The last day of one month there is, and net worth on it by currency. */
@@ -737,5 +795,70 @@ export interface KnownMerchants {
 	merchants: KnownMerchant[];
 	/** The names of the rest, in the same order: typing still finds them. */
 	others: string[];
+	errors: string[];
+}
+
+/** A file of rules: a person's own, tried first, or one everybody shares. */
+export interface RulesFile {
+	key: string;
+	owner: string | null;
+}
+
+/** One rule of `/api/settings/rules`: where it is, and how many committed rows it matches. */
+export interface Rule {
+	file: string;
+	owner: string | null;
+	/** From 1, in its file. */
+	position: number;
+	match: string;
+	category: string;
+	/** `in`, `out`, or empty for both. */
+	direction: string;
+	account: string;
+	/** Committed rows it would match on its own, whatever rule before it takes them first;
+	 * null when its pattern is none. */
+	matches: number | null;
+	/** What a change of it sends back: its lines as shown. */
+	version: string;
+	/** Why it cannot be changed here; null when it can. */
+	fixed: string | null;
+}
+
+export interface SettingsRules {
+	people: string[];
+	files: RulesFile[];
+	rules: Rule[];
+	/** The categories a rule can give. */
+	leaves: Headed[];
+	/** Whether this app can change them: not on a copy, nor without a place for rules. */
+	editable: boolean;
+	errors: string[];
+}
+
+/** What a pattern tried on the committed rows matches; nothing is saved. */
+export interface PatternTest {
+	count: number;
+	/** The newest of them. */
+	rows: Transaction[];
+	errors: string[];
+}
+
+export interface ListedCategory {
+	name: string;
+	side: 'uscite' | 'entrate' | 'transfer';
+	/** The top-level category of an expense. */
+	parent: string | null;
+	built_in: boolean;
+	/** Committed rows that carry it. */
+	rows: number;
+}
+
+export interface SettingsCategories {
+	categories: ListedCategory[];
+	/** What a new expense category can go under. */
+	groups: string[];
+	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
+	unmatched: string | null;
+	editable: boolean;
 	errors: string[];
 }

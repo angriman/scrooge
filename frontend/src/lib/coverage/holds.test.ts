@@ -50,8 +50,8 @@ describe('sparkline', () => {
 
 describe('securitiesQuery', () => {
 	it('opens the holdings of the account’s owner, in the currency the address names', () => {
-		expect(securitiesQuery('Anna Lee', 'USD')).toBe('owner=Anna+Lee&currency=USD');
-		expect(securitiesQuery('Anna', null)).toBe('owner=Anna');
+		expect(securitiesQuery('Anna Lee', 'USD')).toBe('view=holdings&owner=Anna+Lee&currency=USD');
+		expect(securitiesQuery('Anna', null)).toBe('view=holdings&owner=Anna');
 	});
 });
 

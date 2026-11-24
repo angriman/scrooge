@@ -11,8 +11,9 @@ Spending is by category, each against its usual month (`spending`: the median mo
 twelve before).
 
 Which month: the one asked for, else the last month every monthly account's statements
-cover (`months.covered`), so that a month still missing a statement is not shown as if it
-were complete. Nothing here is stored and nothing here writes.
+cover (`months.covered`, a broker's currencies as one account: `together`), so that a month
+still missing a statement is not shown as if it were complete. Nothing here is stored and
+nothing here writes.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from scrooge import months, networth, savings, spending
+from scrooge import months, networth, savings, spending, together
 from scrooge.cashflow import Grouping
 from scrooge.extractors.common import month_end
 
@@ -123,7 +124,7 @@ def run(
     worth = networth.run(conn, owner=owner, currency=currency)
     if not worth.days:
         return None
-    lines = months.coverage(conn, owner)
+    lines = together.lines(conn, owner)  # a broker's currencies as one account
     first, latest = worth.days[0].replace(day=1), worth.days[-1].replace(day=1)
     asked = month.replace(day=1) if month else _complete(months.covered(lines), latest)
     shown = min(max(asked, first), latest)

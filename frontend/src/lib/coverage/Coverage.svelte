@@ -1,6 +1,7 @@
 <!--
 @component
-Every account a source feeds, one row each: what it holds now and a small line of its last
+Every account a source feeds, one row each (a broker's currencies, booked as an account each, in
+one row): what it holds now and a small line of its last
 month-ends, how far its statements go, and the days they cover on a line of time, committed
 solid, staged hatched, a gap left open. The line is the page's one picture: where a statement is
 missing shows as a hole. A row opens to what it holds by part (its cash in each currency, its
@@ -17,6 +18,7 @@ securities), then its statements, newest first, each with the file it came from.
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import { heldLines, securitiesQuery } from './holds.js';
+	import { bookedAs } from './parts.js';
 	import Sparkline from './Sparkline.svelte';
 
 	interface Props {
@@ -204,7 +206,9 @@ securities), then its statements, newest first, each with the file it came from.
 									{/if}
 								{/if}
 								<p class="mb-3 text-small text-ink-muted">
-									{account.label}{#if !account.monthly}<span class="block"
+									{account.label}{#if account.parts.length > 1}<span class="block"
+											>{bookedAs(account.parts)}</span
+										>{/if}{#if !account.monthly}<span class="block"
 											>Reports less often than monthly, so it counts as behind only after a longer wait.</span
 										>{/if}
 								</p>

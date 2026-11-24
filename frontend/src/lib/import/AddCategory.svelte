@@ -8,9 +8,11 @@ in a group of its own, or income. Every import from now on has it.
 		/** The top-level expense categories it can go under. */
 		under: string[];
 		onadd: (name: string, side: string, group: string) => Promise<string | null>;
+		/** What opens the form. */
+		summary?: string;
 	}
 
-	let { under, onadd }: Props = $props();
+	let { under, onadd, summary = 'A row fits no category? Add one' }: Props = $props();
 
 	let name = $state('');
 	let where = $state('uscite:');
@@ -32,7 +34,7 @@ in a group of its own, or income. Every import from now on has it.
 
 <details class="group rounded-panel bg-panel px-4 py-3">
 	<summary class="cursor-pointer text-body text-ink-secondary marker:text-ink-muted hover:text-ink">
-		A row fits no category? Add one
+		{summary}
 	</summary>
 	<form onsubmit={submit} class="mt-3 flex flex-wrap items-end gap-3">
 		<label class="flex flex-col gap-1 text-caption text-ink-secondary">

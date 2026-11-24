@@ -23,12 +23,14 @@ from scrooge import (
     overview,
     paidby,
     payouts,
+    performance,
     portfolio,
     query,
     recap,
     recurring,
     report,
     savings,
+    settings,
 )
 from scrooge.context import Context
 from scrooge.merchants import Merchants
@@ -675,7 +677,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
 
 def month_end(end: networth.MonthEnd) -> JSON:
     """Net worth at a month's end, by currency: its total, how it moved since the month
-    before (`networth.by_month`), and what of it is liquid and what frozen."""
+    before (`networth.by_month`) and what came into view besides, and what of it is liquid and
+    what frozen."""
     return {
         "month": f"{end.month:%Y-%m}",
         "day": day(end.day),
@@ -687,6 +690,7 @@ def month_end(end: networth.MonthEnd) -> JSON:
                 "percent": number(figure.percent),
                 "liquid": number(figure.liquid),
                 "frozen": number(figure.frozen),
+                "arrived": number(figure.arrived),
             }
             for currency, figure in end.values.items()
         },
@@ -799,4 +803,77 @@ def known_merchants(shown: Merchants) -> JSON:
             for merchant in shown.merchants
         ],
         "others": list(shown.others),
+    }
+
+
+def listed_rule(rule: settings.ListedRule) -> JSON:
+    """One rule of the settings page: what it gives, in which file, how many committed rows
+    it would match on its own (null when its pattern is none), what a change of it sends back
+    (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
+    return {
+        "file": rule.file.key,
+        "owner": rule.file.owner,
+        "position": rule.position,
+        "match": rule.match,
+        "category": rule.category,
+        "direction": rule.direction,
+        "account": rule.account,
+        "matches": rule.matches,
+        "version": rule.version,
+        "fixed": rule.fixed or None,
+    }
+
+
+def listed_category(category: settings.ListedCategory) -> JSON:
+    """One category of the settings page, and how many committed rows carry it."""
+    return {
+        "name": category.name,
+        "side": category.side,
+        "parent": category.parent,
+        "built_in": category.built_in,
+        "rows": category.rows,
+    }
+
+
+def _measured(measured: performance.Measured) -> JSON:
+    return {
+        "start": number(measured.start),
+        "end": number(measured.end),
+        "net_flows": number(measured.net_flows),
+        "gain": number(measured.gain),
+        "twr": number(measured.twr),
+        "mwr": number(measured.mwr),
+        "mwr_a_year": measured.a_year,
+        "twr_since": day(measured.since),
+    }
+
+
+def performance_report(shown: performance.Performance) -> JSON:
+    """What the investment accounts returned over a range, in one currency: in all and account
+    by account, and day by day (week by week over a long range) what they were worth against
+    the money put in. `twr` is in percent over the range, from `twr_since` when that is later
+    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise."""
+    return {
+        "currency": shown.currency,
+        "range": shown.range,
+        "first": day(shown.first),
+        "last": day(shown.last),
+        "totals": None if shown.totals is None else _measured(shown.totals),
+        "series": [
+            {
+                "day": point.day.isoformat(),
+                "value": number(point.value),
+                "invested": number(point.invested),
+            }
+            for point in shown.points
+        ],
+        "accounts": [
+            {
+                "owner": holder.owner,
+                "name": holder.name,
+                "accounts": list(holder.accounts),
+                **_measured(holder.measured),
+            }
+            for holder in shown.holders
+        ],
     }

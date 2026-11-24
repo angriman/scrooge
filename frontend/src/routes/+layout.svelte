@@ -5,6 +5,7 @@
 	import Files from '@lucide/svelte/icons/files';
 	import House from '@lucide/svelte/icons/house';
 	import ReceiptText from '@lucide/svelte/icons/receipt-text';
+	import Settings from '@lucide/svelte/icons/settings';
 	import Upload from '@lucide/svelte/icons/upload';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -126,6 +127,15 @@
 					options={data.session.currencies}
 					onchange={(chosen) => show(here(), { currency: chosen })}
 				/>
+				<a
+					href={resolve('/settings') + along}
+					aria-label="Settings: categories and rules"
+					title="Categories and rules"
+					aria-current={page.url.pathname.startsWith(resolve('/settings')) ? 'page' : undefined}
+					class="inline-flex size-8 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink aria-[current=page]:text-brand"
+				>
+					<Settings class="size-4" aria-hidden="true" />
+				</a>
 				{#if !data.session.read_only}
 					<a
 						href={ours('/import').href}

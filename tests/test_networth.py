@@ -841,11 +841,15 @@ def test_each_month_ends_on_its_last_day_in_every_currency_newest_first(
     ]
     october, september, august = ends
     assert list(october.values) == ["USD", "CHF", "EUR"]  # in the order asked for
-    assert october.values["CHF"] == networth.Figure(D(9900), D(1000), D("11.24"), D(9900), D(0))
+    assert october.values["CHF"] == networth.Figure(
+        D(9900), D(1000), D("11.24"), D(9900), D(0), D(0)
+    )
     # 900 francs are fewer dollars at the higher rate of October's last day
-    assert october.values["USD"] == networth.Figure(D(11000), D(-125), D("-1.12"), D(11000), D(0))
-    assert september.values["EUR"] == networth.Figure(D(8900), D(0), D("0.00"), D(8900), D(0))
-    assert august.values["USD"] == networth.Figure(D(11125), None, None, D(11125), D(0))
+    assert october.values["USD"] == networth.Figure(
+        D(11000), D(-125), D("-1.12"), D(11000), D(0), D(0)
+    )
+    assert september.values["EUR"] == networth.Figure(D(8900), D(0), D("0.00"), D(8900), D(0), D(0))
+    assert august.values["USD"] == networth.Figure(D(11125), None, None, D(11125), D(0), None)
     assert networth.month_ends(conn, None, ["CHF"]) == ()
 
 
@@ -867,7 +871,7 @@ def test_a_currency_without_rates_is_left_out_of_the_month_ends_or_raised(
 def test_a_month_ends_with_the_last_day_there_is_even_when_the_history_begins_within_it() -> None:
     [only] = networth.by_month([worth_from(day(20), [100] * 5)])
     assert (only.month, only.day, only.partial) == (day(1), day(24), True)
-    assert only.values == {"CHF": networth.Figure(D(100), None, None, D(100), D(0))}
+    assert only.values == {"CHF": networth.Figure(D(100), None, None, D(100), D(0), None)}
     assert networth.by_month([]) == ()
     assert networth.by_month([networth.NetWorth("CHF", (), (), ())]) == ()
 
@@ -879,13 +883,20 @@ def test_what_arrived_into_view_in_a_month_is_left_out_of_its_change() -> None:
     worth = worth_from(day(29), totals, arrived={day(10, 10): 400})
     october, september = networth.by_month([worth])
     assert september.values["CHF"].change is None
-    assert october.values["CHF"] == networth.Figure(D(600), D(100), D("100.00"), D(600), D(0))
+    figure = october.values["CHF"]
+    assert figure == networth.Figure(D(600), D(100), D("100.00"), D(600), D(0), D(400))
+    # The change and what came into view add up to the difference of the two totals.
+    assert figure.change is not None
+    assert figure.arrived is not None
+    assert figure.change + figure.arrived == figure.total - september.values["CHF"].total
 
 
 @pytest.mark.parametrize("before", [0, -50])
 def test_a_change_from_nothing_or_less_has_no_percent(before: int) -> None:
     october, _ = networth.by_month([worth_from(day(30), [before, 100])])
-    assert october.values["CHF"] == networth.Figure(D(100), D(100 - before), None, D(100), D(0))
+    assert october.values["CHF"] == networth.Figure(
+        D(100), D(100 - before), None, D(100), D(0), D(0)
+    )
 
 
 # ------------------------------------------------------------------------ liquid and frozen

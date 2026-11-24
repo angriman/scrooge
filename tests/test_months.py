@@ -178,7 +178,7 @@ def test_the_timeline_has_the_days_each_account_has_statements_for(
 
 def test_statements_that_overlap_or_follow_on_are_one_run_and_a_gap_is_not() -> None:
     d = date
-    joined = months._joined(
+    joined = months.joined(
         [(d(2026, 3, 1), d(2026, 3, 31)), (d(2026, 1, 1), d(2026, 1, 31)),
          (d(2026, 2, 1), d(2026, 2, 10)), (d(2026, 2, 5), d(2026, 2, 28)),
          (d(2026, 5, 1), d(2026, 5, 31))],
