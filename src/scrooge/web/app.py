@@ -410,6 +410,8 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.clock = clock
     app.state.rules = rules
     app.state.imports = None if read_only else imports
+    # The category of the rows no rule matched, which wait there to be given one; "": none.
+    app.state.unmatched = "" if imports is None else imports.unmatched
     app.state.maturities = maturities
     app.state.currency = currency
     app.state.currencies = tuple(currencies)

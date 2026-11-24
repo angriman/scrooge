@@ -27,6 +27,7 @@ from starlette.routing import Route
 
 from scrooge import (
     analysis,
+    attention,
     categories,
     classification,
     context,
@@ -155,9 +156,13 @@ def _month(request: Request) -> Response:
 
 def _attention(request: Request) -> Response:
     """What waits for `owner`, or for everyone: statements staged and not committed, accounts
-    whose statements end well before the person's others, and lines of statements whose
-    figures differ from those worked out here."""
-    owner = request.query_params.get("owner") or None
+    whose statements end well before the person's others, lines of statements whose figures
+    differ from those worked out here, rows still in the category of those no rule matched,
+    and recurring payments that went up or started lately, in `currency`."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    owner = asked.owner
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
         people = [p for p in query.people(conn) if owner in (None, p.name)]
@@ -167,8 +172,12 @@ def _attention(request: Request) -> Response:
         except networth.MissingRateError as exc:
             errors.append(wire.sentence(exc))
             checks = ()
+        unsorted = attention.uncategorised(conn, owner, request.app.state.unmatched)
+        changed = attention.changes(conn, owner=owner, currency=asked.currency)
+    errors += [wire.sentence(exc) for exc in changed.errors]
     return JSONResponse(
         {
+            **wire.needs_a_look(asked.currency, unsorted, changed),
             "staged": [{"owner": p.name, "count": p.staged} for p in people if p.staged],
             "behind": [
                 wire.account(line)

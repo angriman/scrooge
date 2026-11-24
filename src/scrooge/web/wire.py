@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 from scrooge import (
+    attention,
     importing,
     months,
     networth,
@@ -683,4 +684,29 @@ def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
             for merchant in shown.merchants
         ],
         "balance": number(balance),
+    }
+
+
+def needs_a_look(
+    currency: str,
+    unsorted: Sequence[attention.Uncategorised],
+    changed: attention.Changes,
+) -> JSON:
+    """The rows to categorise, per person, and the recurring payments that went up or are new,
+    what changed in `currency` (as paid, positive; null when a rate is missing)."""
+    return {
+        "currency": currency,
+        "uncategorised": [{"owner": each.owner, "count": each.count} for each in unsorted],
+        "recurring": [
+            {
+                "name": each.found.name,
+                "account": each.found.account,
+                "owner": each.found.owner,
+                "every": each.found.every,
+                "kind": each.kind,
+                "change": number(each.change),
+                "since": day(each.since),
+            }
+            for each in changed.changes
+        ],
     }
