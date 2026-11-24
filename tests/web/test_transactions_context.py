@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -24,7 +25,13 @@ def month(n: int, day: int) -> date:
 LUKAS = [
     *(txn("-100", date=month(n, 5), source_ref=f"f{n}", counterparty=SHOP) for n in range(14)),
     *(
-        txn("6000", date=month(n, 25), source_ref=f"p{n}", kind=Kind.INCOME, category="Salary")
+        txn(
+            "6000",
+            date=month(n, 25),
+            source_ref=f"p{n}",
+            kind=Kind.INCOME,
+            category=categories.SALARY,
+        )
         for n in range(14)
     ),
     txn("-30", date=date(2026, 8, 9), source_ref="1", counterparty="Coop-3 Bern"),
@@ -35,7 +42,7 @@ LUKAS_USD = [
         date=date(2026, 3, 2),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Fees",
+        category=categories.FEES,
         **USD,
     )
 ]
@@ -65,7 +72,7 @@ def asked(client: TestClient, **params: str) -> dict[str, object]:
 def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
     client: TestClient,
 ) -> None:
-    sent = asked(client, owner=OWNER, category="Food")
+    sent = asked(client, owner=OWNER, category=categories.GROUP_FOOD)
     months = sent.pop("months")
     assert isinstance(months, list)
     assert len(months) == 24
@@ -92,7 +99,7 @@ def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
 
 
 def test_an_income_category_is_money_earned(client: TestClient) -> None:
-    sent = asked(client, owner=OWNER, category="Salary")
+    sent = asked(client, owner=OWNER, category=categories.SALARY)
     assert (sent["earned"], sent["usual"], sent["this_month"]) == (True, "6000.00", "6000.00")
 
 
@@ -140,7 +147,7 @@ def test_a_missing_rate_leaves_the_figures_out_and_says_why(client: TestClient) 
     [
         ({}, "Ask for exactly one of category, merchant and account."),
         (
-            {"category": "Home", "merchant": "Coop"},
+            {"category": categories.GROUP_HOME, "merchant": "Coop"},
             "Ask for exactly one of category, merchant and account.",
         ),
         ({"category": "Alimentar"}, "No category named 'Alimentar'."),

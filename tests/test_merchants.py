@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import merchants, query
+from scrooge import categories, merchants, query
 from scrooge.merchants import Merchant
 from scrooge.models import Kind
 from scrooge.networth import MissingRateError
@@ -31,16 +31,22 @@ LUKAS = [
     # Within them, less than the shop.
     txn("-300", date=date(2025, 9, 1), source_ref="5", counterparty="Hotel Adler, Bern"),
     # Neither spent nor a merchant: the salary, a move between his accounts, securities.
-    txn("6000", date=date(2026, 8, 25), source_ref="6", kind=Kind.INCOME, category="Salary"),
     txn(
-        "-900", date=date(2026, 8, 26), source_ref="7", kind=Kind.TRANSFER, category="Own transfer"
+        "6000", date=date(2026, 8, 25), source_ref="6", kind=Kind.INCOME, category=categories.SALARY
+    ),
+    txn(
+        "-900",
+        date=date(2026, 8, 26),
+        source_ref="7",
+        kind=Kind.TRANSFER,
+        category=categories.OWN_TRANSFER,
     ),
     txn(
         "-2000",
         date=date(2026, 8, 3),
         source_ref="8",
         kind=Kind.SECURITY_TRADE,
-        category="Investments",
+        category=categories.INVESTMENTS,
     ),
 ]
 LUKAS_USD = [
@@ -49,7 +55,7 @@ LUKAS_USD = [
         date=date(2026, 2, 1),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Fees",
+        category=categories.FEES,
         counterparty="/ESZ6",
         account="IBKR USD",
         currency="USD",

@@ -51,7 +51,7 @@ def conn(places: settings.Places) -> Iterator[sqlite3.Connection]:
     """Lukas and Anna with August committed; Lukas has rows of two added categories."""
     connection = db.connect(places.database)
     db.migrate(connection, NOW)
-    for name, group in (("Shipping", "Transport"), ("Prestiti", "")):
+    for name, group in (("Shipping", categories.GROUP_TRANSPORT), ("Prestiti", "")):
         staging.add_category(
             connection, places.categories_file, name=name, side="uscite", group=group
         )
@@ -66,7 +66,7 @@ def conn(places: settings.Places) -> Iterator[sqlite3.Connection]:
             source_ref="4",
             description="ACME",
             kind=Kind.INCOME,
-            category="Salary",
+            category=categories.SALARY,
         ),
     ]
     helpers.close(connection, OWNER, AUGUST, AUGUST[1], ("migros", lukas))
@@ -174,7 +174,7 @@ def test_a_rule_edited_keeps_the_comments_of_its_file(places: settings.Places) -
     settings.edit_rule(
         _seen(places, 1),
         match="KONSUM|COOP",
-        category="Eating out",
+        category=categories.EATING_OUT,
         direction="out",
         categories_file=places.categories_file,
     )
@@ -187,10 +187,10 @@ def test_a_rule_edited_keeps_the_comments_of_its_file(places: settings.Places) -
 @pytest.mark.parametrize(
     ("match", "category", "direction", "problem"),
     [
-        (" ", "Groceries", "", "needs a pattern"),
-        ("[", "Groceries", "", "is no pattern"),
+        (" ", categories.GROCERIES, "", "needs a pattern"),
+        ("[", categories.GROCERIES, "", "is no pattern"),
         ("KONSUM", "Nothing", "", "no category 'Nothing'"),
-        ("KONSUM", "Groceries", "sideways", "direction"),
+        ("KONSUM", categories.GROCERIES, "sideways", "direction"),
     ],
 )
 def test_an_edit_that_cannot_be_made_leaves_the_file(
@@ -234,7 +234,7 @@ def test_a_change_that_would_not_load_is_not_saved(places: settings.Places) -> N
         settings.edit_rule(
             _seen(places, 1),
             match="KONSUM",
-            category="Groceries",
+            category=categories.GROCERIES,
             direction="in",
             categories_file=None,
         )
@@ -290,7 +290,11 @@ def test_rules_on_lines_of_their_own_are_changed_only_when_it_is_safe(
     # Comments among its keys: not written again, but moved and removed whole.
     with pytest.raises(settings.SettingsError, match="comments among its keys"):
         settings.edit_rule(
-            _seen(places, 2), match="ACME", category="Groceries", direction="", categories_file=None
+            _seen(places, 2),
+            match="ACME",
+            category=categories.GROCERIES,
+            direction="",
+            categories_file=None,
         )
     assert path.read_text(encoding="utf-8") == BLOCKS
     settings.move_rule(_seen(places, 2), -1, None)
@@ -300,7 +304,7 @@ def test_rules_on_lines_of_their_own_are_changed_only_when_it_is_safe(
     settings.edit_rule(
         _seen(places, 1),
         match="KONSUM",
-        category="Groceries",
+        category=categories.GROCERIES,
         direction="out",
         categories_file=None,
     )
@@ -327,14 +331,14 @@ def test_categories_list_the_taxonomy_then_what_is_added(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
     listed = {(c.name, c.side): c for c in settings.listed_categories(conn, places.categories_file)}
-    assert listed["Groceries", "uscite"].rows == 2
-    assert listed["Groceries", "uscite"].built_in
+    assert listed[categories.GROCERIES, "uscite"].rows == 2
+    assert listed[categories.GROCERIES, "uscite"].built_in
     assert listed["Shipping", "uscite"] == settings.ListedCategory(
-        "Shipping", "uscite", "Transport", False, 1
+        "Shipping", "uscite", categories.GROUP_TRANSPORT, False, 1
     )
     assert listed["Prestiti", "uscite"].parent == "Prestiti"
-    assert listed["Salary", "entrate"].rows == 1
-    assert listed["Own transfer", "transfer"].rows == 0
+    assert listed[categories.SALARY, "entrate"].rows == 1
+    assert listed[categories.OWN_TRANSFER, "transfer"].rows == 0
     assert len(settings.listed_categories(conn, None)) == len(listed) - 2
 
 
@@ -356,9 +360,9 @@ def test_a_category_renamed_follows_on_rows_rules_and_file(
 @pytest.mark.parametrize(
     ("name", "to", "problem"),
     [
-        ("Groceries", "Cibo", "is built in"),
+        (categories.GROCERIES, "Cibo", "is built in"),
         ("Nothing", "Cibo", "no category 'Nothing'"),
-        ("Prestiti", "Groceries", "already a category 'Groceries'"),
+        ("Prestiti", categories.GROCERIES, "already a category 'Groceries'"),
         ("Prestiti", "  ", "needs a name"),
     ],
 )
@@ -385,9 +389,11 @@ def test_a_rename_that_fails_leaves_rows_files_and_no_copy(
 def test_a_category_merged_gives_its_rows_and_rules_the_other(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
-    rows = settings.merge_category(conn, places, name="Shipping", into="Other shopping", now=NOW)
+    rows = settings.merge_category(
+        conn, places, name="Shipping", into=categories.OTHER_SHOPPING, now=NOW
+    )
     assert rows == 1
-    assert ("POSTA", "Other shopping") in _categories_of(conn)
+    assert ("POSTA", categories.OTHER_SHOPPING) in _categories_of(conn)
     assert "Shipping" not in [e.name for e in categories.load(places.categories_file)]
     assert 'category: "Other shopping"}' in _shared(places).read_text(encoding="utf-8")
     assert "# --- Shops" in _shared(places).read_text(encoding="utf-8")
@@ -397,20 +403,31 @@ def test_a_category_merged_gives_its_rows_and_rules_the_other(
 def test_a_built_in_category_merged_stays_empty(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
-    assert settings.merge_category(conn, places, name="Groceries", into="Prestiti", now=NOW) == 2
+    assert (
+        settings.merge_category(conn, places, name=categories.GROCERIES, into="Prestiti", now=NOW)
+        == 2
+    )
     assert [c for d, c in _categories_of(conn) if d == "KONSUM"] == ["Prestiti"]
     listed = settings.listed_categories(conn, places.categories_file)
-    assert ("Groceries", 0) in [(c.name, c.rows) for c in listed]
+    assert (categories.GROCERIES, 0) in [(c.name, c.rows) for c in listed]
 
 
 @pytest.mark.parametrize(
     ("name", "into", "problem"),
     [
-        ("Nothing", "Groceries", "no category 'Nothing'"),
-        ("Groceries", "Groceries", "into another one"),
-        ("Groceries", "Own transfer", "Groceries is an expense and Own transfer is not"),
-        ("Salary", "Groceries", "Salary is income and Groceries is not"),
-        ("Trading", "Groceries", "Trading is income and Groceries is not"),  # on both sides
+        ("Nothing", categories.GROCERIES, "no category 'Nothing'"),
+        (categories.GROCERIES, categories.GROCERIES, "into another one"),
+        (
+            categories.GROCERIES,
+            categories.OWN_TRANSFER,
+            "Groceries is an expense and Own transfer is not",
+        ),
+        (categories.SALARY, categories.GROCERIES, "Salary is income and Groceries is not"),
+        (
+            categories.TRADING,
+            categories.GROCERIES,
+            "Trading is income and Groceries is not",
+        ),  # on both sides
     ],
 )
 def test_a_merge_that_cannot_be_made_says_why(
@@ -436,7 +453,7 @@ def test_an_added_category_nothing_gives_can_be_removed(
 
 @pytest.mark.parametrize(
     ("name", "problem"),
-    [("Shipping", "1 rows carry"), ("Groceries", "is built in")],
+    [("Shipping", "1 rows carry"), (categories.GROCERIES, "is built in")],
 )
 def test_a_category_in_use_is_not_removed(
     conn: sqlite3.Connection, places: settings.Places, name: str, problem: str
@@ -463,7 +480,7 @@ def test_a_category_a_rule_gives_is_not_removed(
             conn, places, name="Prestiti", to="Mutuo", now=NOW
         ),
         lambda conn, places: settings.merge_category(
-            conn, places, name="Prestiti", into="Gifts", now=NOW
+            conn, places, name="Prestiti", into=categories.GIFTS, now=NOW
         ),
         lambda conn, places: settings.remove_category(conn, places, name="Prestiti"),
     ],
@@ -480,12 +497,15 @@ def test_the_category_of_what_no_rule_matches_stays(
 def test_a_category_moved_under_another_keeps_its_rows(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
-    assert settings.move_category(conn, places, name="Prestiti", under="Home", now=NOW) == 1
+    assert (
+        settings.move_category(conn, places, name="Prestiti", under=categories.GROUP_HOME, now=NOW)
+        == 1
+    )
     added = categories.load(places.categories_file)
-    assert categories.Extra("Prestiti", "uscite", "Home") in added
+    assert categories.Extra("Prestiti", "uscite", categories.GROUP_HOME) in added
     assert "Prestiti" not in categories.groups(added)  # the group of its own went
     listed = settings.listed_categories(conn, places.categories_file)
-    assert ("Prestiti", "Home", 1) in [(c.name, c.parent, c.rows) for c in listed]
+    assert ("Prestiti", categories.GROUP_HOME, 1) in [(c.name, c.parent, c.rows) for c in listed]
     found = conn.execute("SELECT count(*) FROM categories WHERE name = 'Prestiti'").fetchone()
     assert found[0] == 1  # the leaf, and no empty group
     settings.move_category(conn, places, name="Prestiti", under=" Debiti ", now=NOW)
@@ -498,11 +518,11 @@ def test_a_category_moved_under_another_keeps_its_rows(
 @pytest.mark.parametrize(
     ("name", "under", "problem"),
     [
-        ("Groceries", "Home", "is built in"),
-        ("Mance", "Home", "is income"),
-        ("Shipping", "Transport", "under Transport already"),
+        (categories.GROCERIES, categories.GROUP_HOME, "is built in"),
+        ("Mance", categories.GROUP_HOME, "is income"),
+        ("Shipping", categories.GROUP_TRANSPORT, "under Transport already"),
         ("Shipping", " ", "which top-level category"),
-        ("Shipping", "Groceries", "a category of its own"),
+        ("Shipping", categories.GROCERIES, "a category of its own"),
     ],
 )
 def test_a_move_that_cannot_be_made_says_why(

@@ -58,7 +58,7 @@ def _trade(ticker: str, asset_tab: str = "") -> SecurityTrade:
         kind=Kind.SECURITY_TRADE,
         source_file="f",
         source_ref="1",
-        category="Investments",
+        category=categories.INVESTMENTS,
         ticker=ticker,
         quantity=Decimal(1),
         price=Decimal(100),
@@ -83,7 +83,12 @@ def test_taxonomy_names_are_unique_where_they_must_be_and_keep_sheet_order() -> 
     # Transfers are neither expenses nor income; a few leaves are both, and only those.
     assert not set(categories.TRANSFERS) & (set(expense_leaves) | set(categories.ENTRATE))
     both = set(expense_leaves) & set(categories.ENTRATE)
-    assert both == {"Trading", "Fees", "Investments", categories.UNSORTED}
+    assert both == {
+        categories.TRADING,
+        categories.FEES,
+        categories.INVESTMENTS,
+        categories.UNSORTED,
+    }
     # ORDER lists every leaf once: a leaf on both sides is written once, where it first appears.
     assert len(categories.ORDER) == len(set(categories.ORDER))
     assert set(categories.ORDER) == set(expense_leaves) | set(categories.ENTRATE) | set(
@@ -92,12 +97,23 @@ def test_taxonomy_names_are_unique_where_they_must_be_and_keep_sheet_order() -> 
     assert len(categories.ORDER) == len(expense_leaves) + len(categories.ENTRATE) + len(
         categories.TRANSFERS
     ) - len(both)
-    assert categories.ORDER[:3] == ("Rent", "Utilities", "Household")
-    assert categories.ORDER.index("Trading") < categories.ORDER.index("Salary")
-    assert categories.ORDER[-1] == "Own transfer"
+    assert categories.ORDER[:3] == (categories.RENT, categories.UTILITIES, categories.HOUSEHOLD)
+    assert categories.ORDER.index(categories.TRADING) < categories.ORDER.index(categories.SALARY)
+    assert categories.ORDER[-1] == categories.OWN_TRANSFER
     assert frozenset(categories.ORDER) == categories.ALL
-    assert {"Electronics", "Flights", "Donations", "Taxes", "Sport"} <= categories.ALL
-    assert {"Trading", "Fees", "Cashback", "IBKR top-up"} <= categories.ALL
+    assert {
+        categories.ELECTRONICS,
+        categories.FLIGHTS,
+        categories.DONATIONS,
+        categories.TAXES,
+        categories.SPORT,
+    } <= categories.ALL
+    assert {
+        categories.TRADING,
+        categories.FEES,
+        categories.CASHBACK,
+        categories.IBKR_TOP_UP,
+    } <= categories.ALL
 
 
 def test_first_matching_rule_wins_and_matching_ignores_case(tmp_path: Path) -> None:
@@ -113,14 +129,14 @@ def test_first_matching_rule_wins_and_matching_ignores_case(tmp_path: Path) -> N
         ]
     )
     out = classify([_txn("FRISCHMARKT ZENTRUM"), _txn("x", counterparty="Konsum-12")], rules)
-    assert [t.category for t in out] == ["Groceries", "Groceries"]
+    assert [t.category for t in out] == [categories.GROCERIES, categories.GROCERIES]
     salary = classify([_txn("ACME AG", "7200", kind=Kind.EXPENSE)], rules)[0]
-    assert (salary.category, salary.kind) == ("Salary", Kind.INCOME)
+    assert (salary.category, salary.kind) == (categories.SALARY, Kind.INCOME)
 
 
 def test_rules_never_touch_categorized_or_internal_rows(tmp_path: Path) -> None:
     rules = load_rules([_rules(tmp_path, "rules:\n  - {match: '.', category: Groceries}\n")])
-    kept = _txn("x", category="Trading", kind=Kind.TRADING)
+    kept = _txn("x", category=categories.TRADING, kind=Kind.TRADING)
     internal = _txn("Swisscard AECS", kind=Kind.INTERNAL)
     assert classify([kept, internal], rules) == (kept, internal)
 
@@ -129,18 +145,18 @@ def test_rule_can_be_limited_to_an_account(tmp_path: Path) -> None:
     text = "rules:\n  - {match: 'x', category: Groceries, account: Revolut EUR}\n"
     rules = load_rules([_rules(tmp_path, text)])
     out = classify([_txn("x"), _txn("x", account="Revolut EUR")], rules)
-    assert [t.category for t in out] == ["", "Groceries"]
+    assert [t.category for t in out] == ["", categories.GROCERIES]
 
 
 def test_earlier_rule_files_take_precedence_and_missing_files_are_skipped(tmp_path: Path) -> None:
     local = _rules(tmp_path, "rules:\n  - {match: 'bar', category: Gifts}\n", "local.yaml")
     shared = _rules(tmp_path, "rules:\n  - {match: 'bar', category: Eating out}\n")
     rules = load_rules([tmp_path / "missing.yaml", local, shared])
-    assert classify([_txn("Bar Sport")], rules)[0].category == "Gifts"
+    assert classify([_txn("Bar Sport")], rules)[0].category == categories.GIFTS
 
 
 def test_uncategorized_lists_rows_that_block_the_write() -> None:
-    rows = [_txn("a"), _txn("b", category="Groceries"), _txn("c", kind=Kind.INTERNAL)]
+    rows = [_txn("a"), _txn("b", category=categories.GROCERIES), _txn("c", kind=Kind.INTERNAL)]
     assert [t.description for t in uncategorized(rows)] == ["a"]
 
 
@@ -178,7 +194,7 @@ def test_instruments_override_the_tab_and_the_sheet_ticker(tmp_path: Path) -> No
         "VT": Instrument(),
         "GOOG": Instrument("Stocks"),
     }
-    plain = _txn("x", category="Groceries")
+    plain = _txn("x", category=categories.GROCERIES)
     out = resolve_instruments(
         [_trade("B26A", "Stocks"), _trade("VT", "ETFs"), _trade("GOOG"), plain], instruments
     )
@@ -278,7 +294,7 @@ def test_rule_can_be_limited_to_a_direction(tmp_path: Path) -> None:
     text = "rules:\n  - {match: 'rossi', category: Refunds, direction: in}\n"
     rules = load_rules([_rules(tmp_path, text)])
     out = classify([_txn("TWINT Rossi", "65"), _txn("TWINT Rossi", "-20")], rules)
-    assert [t.category for t in out] == ["Refunds", ""]
+    assert [t.category for t in out] == [categories.REFUNDS, ""]
     with pytest.raises(ConfigError, match="direction must be 'in' or 'out'"):
         load_rules(
             [_rules(tmp_path, "rules:\n  - {match: x, category: Groceries, direction: up}\n")]
@@ -294,20 +310,20 @@ def test_appended_rules_load_and_match_literally(tmp_path: Path, existing: str |
     if existing is not None:
         path.write_text(existing, encoding="utf-8")
     name = 'SUMUP *CAFÉ (1+1) "X"'
-    append_rule(path, name, "out", "Activities")
-    append_rule(path, "Rossi, Maria", "in", "Refunds")
+    append_rule(path, name, "out", categories.ACTIVITIES)
+    append_rule(path, "Rossi, Maria", "in", categories.REFUNDS)
     rules = load_rules([path])
     assert [(r.category, r.direction) for r in rules[-2:]] == [
-        ("Activities", "out"),
-        ("Refunds", "in"),
+        (categories.ACTIVITIES, "out"),
+        (categories.REFUNDS, "in"),
     ]
-    assert classify([_txn(name)], rules[-2:])[0].category == "Activities"
+    assert classify([_txn(name)], rules[-2:])[0].category == categories.ACTIVITIES
     assert classify([_txn("SUMUP XCAFÉ 111 X")], rules[-2:])[0].category == ""
     # the whole text must match: a reviewed name is not a substring rule
     assert classify([_txn(f"{name} ZURICH")], rules[-2:])[0].category == ""
     # ...but spaces the statement pads the text with do not count
     padded = _txn(f"{name}   ", counterparty=f" {name}  ")
-    assert classify([padded], rules[-2:])[0].category == "Activities"
+    assert classify([padded], rules[-2:])[0].category == categories.ACTIVITIES
 
 
 def test_a_transfer_category_makes_the_row_a_transfer(tmp_path: Path) -> None:
@@ -328,11 +344,11 @@ def test_a_transfer_category_makes_the_row_a_transfer(tmp_path: Path) -> None:
         _txn("shop", "-20", kind=Kind.EXPENSE),
     ]
     assert [(t.category, t.kind) for t in classify(rows, rules)] == [
-        ("Own transfer", Kind.TRANSFER),
-        ("Own transfer", Kind.TRANSFER),
-        ("Own transfer", Kind.FX),
-        ("Withdrawals", Kind.EXPENSE),
-        ("Groceries", Kind.EXPENSE),
+        (categories.OWN_TRANSFER, Kind.TRANSFER),
+        (categories.OWN_TRANSFER, Kind.TRANSFER),
+        (categories.OWN_TRANSFER, Kind.FX),
+        (categories.WITHDRAWALS, Kind.EXPENSE),
+        (categories.GROCERIES, Kind.EXPENSE),
     ]
 
 
@@ -340,9 +356,9 @@ def test_an_appended_rule_loads_whatever_characters_the_name_holds(tmp_path: Pat
     path = tmp_path / "rules.local.yaml"
     # A name encoded twice in the statement holds characters YAML refuses raw.
     name = "B\u00c3\x96R \x7f\ufffe"
-    append_rule(path, name, "out", "Trains")
+    append_rule(path, name, "out", categories.TRAINS)
     rules = load_rules([path])
-    assert classify([_txn(name)], rules)[0].category == "Trains"
+    assert classify([_txn(name)], rules)[0].category == categories.TRAINS
     assert classify([_txn("B\u00c3R")], rules)[0].category == ""
 
 
@@ -361,11 +377,11 @@ def test_each_person_has_a_rules_file_of_their_own_read_first(tmp_path: Path) ->
     hers.write_text("rules:\n  - {match: 'from lukas meier', category: Refunds}\n", "utf-8")
     rows = [_txn("Transfer from LUKAS MEIER", "50", kind=Kind.INCOME), _txn("Konsum")]
     his = classify(rows, load_rules([personal_file(shared, "Lukas"), shared]))
-    assert [t.category for t in his] == ["Revolut top-up", "Groceries"]
+    assert [t.category for t in his] == [categories.REVOLUT_TOP_UP, categories.GROCERIES]
     her = classify(rows, load_rules([hers, shared]))
     assert [(t.category, t.kind) for t in her] == [
-        ("Refunds", Kind.INCOME),
-        ("Groceries", Kind.EXPENSE),
+        (categories.REFUNDS, Kind.INCOME),
+        (categories.GROCERIES, Kind.EXPENSE),
     ]
 
 
@@ -383,9 +399,9 @@ def test_no_rule_makes_a_transfer_of_money_from_the_other_person(tmp_path: Path)
         _txn("Exchanged, ref Anna Meier", "-3", kind=Kind.FX),  # not income or an expense
     ]
     assert [(t.category, t.kind) for t in classify(rows, rules)] == [
-        ("Revolut top-up", Kind.TRANSFER),
-        ("Refunds", Kind.EXPENSE),
-        ("Own transfer", Kind.FX),
+        (categories.REVOLUT_TOP_UP, Kind.TRANSFER),
+        (categories.REFUNDS, Kind.EXPENSE),
+        (categories.OWN_TRANSFER, Kind.FX),
     ]
 
 
@@ -407,9 +423,9 @@ def test_a_rule_can_be_put_before_the_ones_already_there(
     path = tmp_path / "rules.yaml"
     if existing is not None:
         path.write_text(existing, encoding="utf-8")
-    append_rule(path, "KIOSK", "out", "Gifts", first=True)
+    append_rule(path, "KIOSK", "out", categories.GIFTS, first=True)
     assert path.read_text(encoding="utf-8") == expected
-    assert load_rules([path])[0].category == "Gifts"  # the first to match wins
+    assert load_rules([path])[0].category == categories.GIFTS  # the first to match wins
 
 
 def test_unmatched_takes_only_expenses_and_income_no_rule_matched() -> None:
@@ -417,7 +433,7 @@ def test_unmatched_takes_only_expenses_and_income_no_rule_matched() -> None:
         _txn("A SHOP"),
         _txn("A SALARY", "100", kind=Kind.INCOME),
         _txn("DEPOSIT", "1000", kind=Kind.TRANSFER),  # left blank on purpose: review
-        _txn("A BAR", category="Eating out"),
+        _txn("A BAR", category=categories.EATING_OUT),
         _txn("CARD BILL", kind=Kind.INTERNAL),
     )
     filled = unmatched(rows, categories.UNSORTED)
@@ -425,7 +441,7 @@ def test_unmatched_takes_only_expenses_and_income_no_rule_matched() -> None:
         categories.UNSORTED,
         categories.UNSORTED,
         "",
-        "Eating out",
+        categories.EATING_OUT,
         "",
     ]
     assert [t.kind for t in filled] == [t.kind for t in rows]

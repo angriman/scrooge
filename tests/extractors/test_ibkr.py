@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scrooge import categories
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors import ibkr
 from scrooge.models import (
@@ -126,7 +127,7 @@ def test_security_trades_carry_asset_tab_fields(result: Extraction) -> None:
     assert {t.account for t in trades} == {"IBKR USD"}
     # D12: the tab comes from the instrument's type, not from IBKR's "Stocks" asset class
     assert [t.asset_tab for t in trades] == ["Stocks", "ETFs", "Bonds"]
-    assert {t.category for t in trades} == {"Investments"}
+    assert {t.category for t in trades} == {categories.INVESTMENTS}
 
 
 def test_long_asset_category_labels_are_read_as_their_short_form(result: Extraction) -> None:
@@ -165,7 +166,7 @@ def test_t_bill_purchase_is_a_security_trade_with_its_maturity(result: Extractio
         Decimal(-9850),
     )
     assert bill.description == "Buy to Open 10000 912797ZZ1 @ 98.5"
-    assert bill.category == "Investments"
+    assert bill.category == categories.INVESTMENTS
 
 
 def test_maturity_splits_into_principal_and_interest_on_the_ibkr_basis(
@@ -174,8 +175,8 @@ def test_maturity_splits_into_principal_and_interest_on_the_ibkr_basis(
     # D13: principal = proceeds - realized P/L (IBKR's basis, buy commission included)
     rows = [t for t in result.transactions if t.source_ref.startswith("Corporate Actions:")]
     assert [(t.date, t.amount, t.kind, t.category, t.counterparty) for t in rows] == [
-        (date(2026, 9, 17), Decimal("4879.6"), Kind.INCOME, "Investments", "912797YY2"),
-        (date(2026, 9, 17), Decimal("120.4"), Kind.INTEREST, "Interest", "912797YY2"),
+        (date(2026, 9, 17), Decimal("4879.6"), Kind.INCOME, categories.INVESTMENTS, "912797YY2"),
+        (date(2026, 9, 17), Decimal("120.4"), Kind.INTEREST, categories.INTEREST, "912797YY2"),
     ]
 
 
@@ -228,7 +229,11 @@ def test_zero_cash_corporate_actions_are_skipped(result: Extraction) -> None:
 def test_shares_moved_in_change_the_quantity_held_and_no_cash(result: Extraction) -> None:
     [moved] = [t for t in result.transactions if t.source_ref.startswith("Transfers:")]
     assert isinstance(moved, SecurityTrade)
-    assert (moved.kind, moved.category, moved.amount) == (Kind.TRANSFER, "Own transfer", Decimal(0))
+    assert (moved.kind, moved.category, moved.amount) == (
+        Kind.TRANSFER,
+        categories.OWN_TRANSFER,
+        Decimal(0),
+    )
     assert (moved.date, moved.account, moved.ticker) == (date(2026, 9, 29), "IBKR USD", "GOOG")
     # What the shares were worth that day is their cost; the price follows from it.
     assert (moved.quantity, moved.cost, moved.price) == (
@@ -394,7 +399,9 @@ def test_a_futures_position_the_trades_leave_open_is_refused() -> None:
 def test_vat_on_market_data_is_a_commission(result: Extraction) -> None:
     vat = [t for t in result.transactions if t.source_ref.startswith("GST/VAT Details:")]
     assert sum(t.amount for t in vat) == Decimal("-0.10125")
-    assert {(t.account, t.kind, t.category) for t in vat} == {("IBKR CHF", Kind.COMMISSION, "Fees")}
+    assert {(t.account, t.kind, t.category) for t in vat} == {
+        ("IBKR CHF", Kind.COMMISSION, categories.FEES)
+    }
 
 
 def test_referral_credit_is_income_for_review_and_fee_reversals_stay_commissions(
@@ -403,7 +410,7 @@ def test_referral_credit_is_income_for_review_and_fee_reversals_stay_commissions
     credit = next(t for t in result.transactions if t.description.startswith("REFERRER"))
     assert (credit.amount, credit.kind, credit.category) == (Decimal(200), Kind.INCOME, "")
     reversal = next(t for t in result.transactions if t.description.startswith("cancel["))
-    assert (reversal.kind, reversal.category) == (Kind.COMMISSION, "Fees")
+    assert (reversal.kind, reversal.category) == (Kind.COMMISSION, categories.FEES)
 
 
 def test_commission_refund_under_deposits_is_a_commission(result: Extraction) -> None:
@@ -411,7 +418,7 @@ def test_commission_refund_under_deposits_is_a_commission(result: Extraction) ->
     assert (refund.amount, refund.kind, refund.category) == (
         Decimal("0.47"),
         Kind.COMMISSION,
-        "Fees",
+        categories.FEES,
     )
 
 
@@ -438,9 +445,9 @@ def test_cash_settled_options_are_trading_and_late_commissions_commissions() -> 
     settled = ibkr.extract(SETTLED, "settled.csv")
     new = [t for t in settled.transactions if t.source_ref.startswith(("Option", "Commission"))]
     assert [(t.date, t.amount, t.kind, t.category) for t in new] == [
-        (date(2026, 9, 4), Decimal("-0.966"), Kind.COMMISSION, "Fees"),
-        (date(2026, 9, 14), Decimal(482), Kind.TRADING, "Trading"),
-        (date(2026, 9, 14), Decimal(-982), Kind.TRADING, "Trading"),
+        (date(2026, 9, 4), Decimal("-0.966"), Kind.COMMISSION, categories.FEES),
+        (date(2026, 9, 14), Decimal(482), Kind.TRADING, categories.TRADING),
+        (date(2026, 9, 14), Decimal(-982), Kind.TRADING, categories.TRADING),
     ]
     check_balances(settled)
 
@@ -464,8 +471,8 @@ def test_expired_options_produce_no_zero_amount_rows(result: Extraction) -> None
 def test_forex_trade_books_both_legs_and_its_commission_in_chf(result: Extraction) -> None:
     fx = [t for t in result.transactions if t.kind is Kind.FX]
     assert [(t.account, t.amount, t.currency, t.category) for t in fx] == [
-        ("IBKR CHF", Decimal(-2500), "CHF", "Buy USD"),
-        ("IBKR USD", Decimal(3125), "USD", "Buy USD"),
+        ("IBKR CHF", Decimal(-2500), "CHF", categories.buy("USD")),
+        ("IBKR USD", Decimal(3125), "USD", categories.buy("USD")),
     ]
     commission = next(t for t in result.transactions if t.description.endswith("CHF.USD"))
     assert (commission.account, commission.currency) == ("IBKR CHF", "CHF")
@@ -473,11 +480,11 @@ def test_forex_trade_books_both_legs_and_its_commission_in_chf(result: Extractio
 
 def test_deterministic_categories(result: Extraction) -> None:
     expected = {
-        Kind.TRADING: "Trading",
-        Kind.COMMISSION: "Fees",
-        Kind.DIVIDEND: "Dividends",
-        Kind.TAX: "Withholding tax",
-        Kind.INTEREST: "Interest",
+        Kind.TRADING: categories.TRADING,
+        Kind.COMMISSION: categories.FEES,
+        Kind.DIVIDEND: categories.DIVIDENDS,
+        Kind.TAX: categories.WITHHOLDING_TAX,
+        Kind.INTEREST: categories.INTEREST,
     }
     pairs = {(t.kind, t.category) for t in result.transactions if t.kind in expected}
     assert pairs == set(expected.items())  # every row, not just one per kind
@@ -485,8 +492,8 @@ def test_deterministic_categories(result: Extraction) -> None:
 
 def test_transfer_categories_follow_description_and_sign(result: Extraction) -> None:
     by_amount = {t.amount: t.category for t in result.transactions if t.kind is Kind.TRANSFER}
-    assert by_amount[Decimal(3000)] == "IBKR top-up"
-    assert by_amount[Decimal(-400)] == "Withdrawals"
+    assert by_amount[Decimal(3000)] == categories.IBKR_TOP_UP
+    assert by_amount[Decimal(-400)] == categories.WITHDRAWALS
     # Not deterministic: left blank for user review
     assert by_amount[Decimal(25)] == ""
     assert by_amount[Decimal("0.1")] == ""
@@ -596,7 +603,7 @@ def test_sales_tax_comes_from_the_cash_report_without_a_vat_section(result: Extr
     check_balances(fallback)
     tax = [t for t in fallback.transactions if t.source_ref.startswith("Cash Report:")]
     assert [(t.date, t.account, t.amount, t.kind, t.category) for t in tax] == [
-        (date(2026, 9, 30), "IBKR CHF", Decimal("-0.10125"), Kind.COMMISSION, "Fees")
+        (date(2026, 9, 30), "IBKR CHF", Decimal("-0.10125"), Kind.COMMISSION, categories.FEES)
     ]
     assert not any(t.source_ref.startswith("GST/VAT") for t in fallback.transactions)
     assert not any(t.source_ref.startswith("Cash Report:") for t in result.transactions)
@@ -652,7 +659,7 @@ def test_converting_back_into_francs_is_a_move_between_own_accounts() -> None:
     )
     assert content != CSV
     fx = [t for t in ibkr.extract(content, "a.csv").transactions if t.kind is Kind.FX]
-    assert {t.category for t in fx} == {"Own transfer"}
+    assert {t.category for t in fx} == {categories.OWN_TRANSFER}
 
 
 GRANTS = (
@@ -691,7 +698,7 @@ def test_awarded_shares_come_in_when_they_vest_at_what_they_were_worth(result: E
     assert vest.description == "Stock Award Vesting: 1.25 ACME @ 110.5"
     assert (vest.kind, vest.category, vest.source_ref) == (
         Kind.SECURITY_TRADE,
-        "Investments",
+        categories.INVESTMENTS,
         "Grant Activity:3",
     )
 

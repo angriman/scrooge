@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+from scrooge import categories
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors import tastytrade
 from scrooge.models import ControlTotal, Extraction, Kind, SecurityTrade
@@ -42,13 +43,13 @@ def test_control_total_is_the_sum_of_the_total_column(result: Extraction) -> Non
 def test_category_totals_follow_d1(result: Extraction) -> None:
     assert _by_category(result) == {
         # option premiums 234.38 - 125 + 150, futures mark-to-market -2000 and close 1550
-        "Trading": Decimal("-190.62"),
+        categories.TRADING: Decimal("-190.62"),
         # commissions + fees of every row, + 0.01 regulatory fee adjustment
-        "Fees": Decimal("-11.26"),
+        categories.FEES: Decimal("-11.26"),
         # T-bill buy -9851 and maturity 10000, ETF buy -2010.88
-        "Investments": Decimal("-1861.88"),
-        "Interest": Decimal("0.04"),
-        "Dividends": Decimal("39.33"),
+        categories.INVESTMENTS: Decimal("-1861.88"),
+        categories.INTEREST: Decimal("0.04"),
+        categories.DIVIDENDS: Decimal("39.33"),
         "": Decimal("3000.00"),  # wire deposit, left for review
     }
 
@@ -90,7 +91,7 @@ def test_shares_and_bills_are_security_trades_for_the_asset_tabs(result: Extract
         # the export does not say WIDG is an ETF: instruments.yaml decides
         ("WIDG", Decimal(23), Decimal("87.43"), Decimal("2010.88"), ""),
     ]
-    assert {t.category for t in trades} == {"Investments"}
+    assert {t.category for t in trades} == {categories.INVESTMENTS}
     assert {t.maturity for t in trades} == {None}  # not in the export either
 
 
@@ -114,7 +115,11 @@ def test_sales_have_negative_quantities() -> None:
 
 def test_bill_maturity_is_investment_income_that_ends_the_holding(result: Extraction) -> None:
     row = next(t for t in result.transactions if t.source_ref == "11")
-    assert (row.amount, row.kind, row.category) == (Decimal(10000), Kind.INCOME, "Investments")
+    assert (row.amount, row.kind, row.category) == (
+        Decimal(10000),
+        Kind.INCOME,
+        categories.INVESTMENTS,
+    )
     # "Maturity 10.0 912797YY2 @ 1000": the whole face value leaves at 100%, on that day
     assert isinstance(row, SecurityTrade)
     assert (row.ticker, row.quantity, row.price, row.asset_tab, row.maturity) == (
@@ -158,7 +163,11 @@ def test_shares_moved_in_kind_are_refused_not_dropped(sub: str, action: str, qty
 
 def test_fund_distribution_booked_as_deposit_is_a_dividend(result: Extraction) -> None:
     row = next(t for t in result.transactions if t.source_ref == "16")
-    assert (row.kind, row.category, row.counterparty) == (Kind.DIVIDEND, "Dividends", "WIDG")
+    assert (row.kind, row.category, row.counterparty) == (
+        Kind.DIVIDEND,
+        categories.DIVIDENDS,
+        "WIDG",
+    )
 
 
 def test_dates_are_local_trade_dates_and_refs_unique(result: Extraction) -> None:

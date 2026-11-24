@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -16,20 +17,24 @@ from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close
 from tests.web.test_app import text
 
-SALARY = {"kind": Kind.INCOME, "category": "Salary"}
-SHARES = {"kind": Kind.SECURITY_TRADE, "category": "Investments"}
+SALARY = {"kind": Kind.INCOME, "category": categories.SALARY}
+SHARES = {"kind": Kind.SECURITY_TRADE, "category": categories.INVESTMENTS}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
 SITE = "http://127.0.0.1:8765"
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 LUKAS = [
     txn("-45.20", date=date(2026, 7, 3), source_ref="1"),
-    txn("-1850", date=date(2026, 7, 20), source_ref="2", category="Rent"),
+    txn("-1850", date=date(2026, 7, 20), source_ref="2", category=categories.RENT),
     txn("6000", date=date(2026, 7, 25), source_ref="3", **SALARY),
     txn("-500", date=date(2026, 8, 10), source_ref="4", **SHARES),
     txn("6100", date=date(2026, 8, 25), source_ref="5", **SALARY),
-    txn("-200", date=date(2026, 8, 26), source_ref="6", category="Gifts", counterparty=GIFT),
+    txn(
+        "-200", date=date(2026, 8, 26), source_ref="6", category=categories.GIFTS, counterparty=GIFT
+    ),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Eating out", **EUR)]
+LUKAS_EUR = [
+    txn("-30", date=date(2026, 8, 5), source_ref="1", category=categories.EATING_OUT, **EUR)
+]
 ANNA = [
     txn("-60", date=date(2026, 8, 12), source_ref="1"),
     txn(
@@ -37,7 +42,7 @@ ANNA = [
         date=date(2026, 8, 26),
         source_ref="2",
         kind=Kind.INCOME,
-        category="Refunds",
+        category=categories.REFUNDS,
         counterparty="LUKAS MEIER",
     ),
 ]

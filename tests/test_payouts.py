@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scrooge import payouts
+from scrooge import categories, payouts
 from scrooge.models import Kind, Transaction
 from scrooge.payouts import Holding, Paid
 from scrooge.storage import db, store
@@ -15,9 +15,9 @@ from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 START, END = date(2025, 1, 1), date(2026, 8, 31)
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 FUND = {"account": "Finpension", "source_file": "finpension.csv"}
-DIVIDEND = {"kind": Kind.DIVIDEND, "category": "Dividends"}
-INTEREST = {"kind": Kind.INTEREST, "category": "Interest"}
-TAX = {"kind": Kind.TAX, "category": "Withholding tax"}
+DIVIDEND = {"kind": Kind.DIVIDEND, "category": categories.DIVIDENDS}
+INTEREST = {"kind": Kind.INTEREST, "category": categories.INTEREST}
+TAX = {"kind": Kind.TAX, "category": categories.WITHHOLDING_TAX}
 CUSIP, ISIN = "912797ZZ1", "CH0000000001"
 
 
@@ -40,7 +40,7 @@ LUKAS_USD = [
 LUKAS_FUND = [paid("50", date(2026, 4, 10), "1", ISIN, **DIVIDEND, **FUND)]
 LUKAS = [
     paid("5", date(2026, 5, 31), "1", **INTEREST),
-    paid("5000", date(2026, 5, 25), "2", kind=Kind.INCOME, category="Salary"),
+    paid("5000", date(2026, 5, 25), "2", kind=Kind.INCOME, category=categories.SALARY),
     paid("-40", date(2026, 5, 26), "3"),
 ]
 ANNA = [paid("1", date(2026, 2, 28), "1", **INTEREST)]

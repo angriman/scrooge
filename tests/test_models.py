@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from scrooge import categories
 from scrooge.models import Extraction, Kind, SecurityTrade, Transaction
 
 
@@ -49,7 +50,7 @@ def test_a_security_trade_made_from_a_transaction_keeps_every_field_of_it() -> N
     txn = replace(
         _make(Decimal("-12.50")),
         counterparty="Shop",
-        category="Investments",
+        category=categories.INVESTMENTS,
         booking_date=date(2026, 9, 3),
     )
     trade = SecurityTrade.from_transaction(

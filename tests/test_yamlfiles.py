@@ -36,7 +36,9 @@ def test_a_write_that_fails_leaves_the_file_as_it_was(
 @pytest.mark.parametrize(
     "write",
     [
-        lambda folder: classification.append_rule(folder / "rules.yaml", "ACME", "in", "Salary"),
+        lambda folder: classification.append_rule(
+            folder / "rules.yaml", "ACME", "in", categories.SALARY
+        ),
         lambda folder: categories.add(
             folder / categories.FILE, categories.Extra("Mance", "entrate")
         ),

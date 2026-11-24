@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.web.builders import BUILT, SITE, committed_files, file_id, household
@@ -115,7 +116,7 @@ def test_a_copy_refuses_every_form_that_would_change_it(
 ) -> None:
     before = committed_files(database), database.read_bytes()
     good = {"token": client.app.state.token}  # type: ignore[attr-defined]  # the Starlette app
-    form = good | {"id": "x", "category": "Gifts", "remember": "rows", "owner": "Lukas"}
+    form = good | {"id": "x", "category": categories.GIFTS, "remember": "rows", "owner": "Lukas"}
     response = client.post(path, data=form)
     assert response.status_code == 403
     assert response.text == f"{COPY}\n"

@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from scrooge import staging
+from scrooge import categories, staging
 from scrooge.extractors.common import month_start
 from scrooge.models import (
     CashBalance,
@@ -41,7 +41,7 @@ def txn(amount: str, **fields: Any) -> Transaction:
         "kind": Kind.EXPENSE,
         "source_file": "migros.csv",
         "source_ref": "1",
-        "category": "Groceries",
+        "category": categories.GROCERIES,
     }
     return Transaction(amount=Decimal(amount), **(defaults | fields))
 
@@ -55,7 +55,7 @@ def trade(amount: str, ticker: str, quantity: str, **fields: Any) -> SecurityTra
         "kind": Kind.SECURITY_TRADE,
         "source_file": "ibkr.csv",
         "source_ref": "Trades:1",
-        "category": "Investments",
+        "category": categories.INVESTMENTS,
         "price": Decimal("101.25"),
         "asset_tab": "ETFs",
     }

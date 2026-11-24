@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import staging
+from scrooge import categories, staging
 from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PEOPLE, certificate, certified, txn
@@ -209,14 +209,14 @@ def test_a_category_that_was_wrong_in_a_committed_row_is_changed_from_the_page(
     client: TestClient, database: Path
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category="Gifts", remember="rows", owner="Lukas")
+    form = sent(client, id=row, category=categories.GIFTS, remember="rows", owner="Lukas")
     wrong = client.post("/months/Lukas/2026-08/categorize", data=form)  # not said to be a change
     assert wrong.status_code == 409
     assert "those rows are no longer waiting for a category" in wrong.text
     response = client.post("/months/Lukas/2026-08/categorize", data=form | {"change": "1"})
     assert response.status_code == 303
     assert response.headers["location"] == f"{SITE}/months/Lukas/2026-08"
-    assert category_of(database, row) == ("Gifts", "manual")
+    assert category_of(database, row) == (categories.GIFTS, "manual")
     assert '<td data-label="Now">Gifts</td>' in client.get("/months/Lukas/2026-08").text
     # The other pages follow at once.
     assert "Gifts" in client.get("/transactions", params={"owner": "Lukas"}).text
@@ -226,11 +226,11 @@ def test_a_choice_for_committed_rows_that_cannot_be_made_is_said(
     client: TestClient, database: Path
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category="Home", remember="rows", change="1")
+    form = sent(client, id=row, category=categories.GROUP_HOME, remember="rows", change="1")
     response = client.post("/months/Lukas/2026-08/categorize", data=form)
     assert response.status_code == 409
     assert "No category was set: unknown category &#39;Home&#39;." in response.text
-    assert category_of(database, row) == ("Own transfer", "rule")
+    assert category_of(database, row) == (categories.OWN_TRANSFER, "rule")
     gone = client.post("/months/Lukas/2026-08/categorize", data=form | {"id": "gone"})
     assert "those rows cannot be given another category" in gone.text
     forged = client.post("/months/Lukas/2026-08/categorize", data=form | {"token": "x"})
@@ -247,14 +247,14 @@ def test_a_category_to_remember_is_saved_as_a_rule(database: Path, tmp_path: Pat
     page = client.get("/months/Lukas/2026-08").text
     assert '<input type="radio" name="remember" value="rule" checked>' in page
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
-    form = sent(client, id=row, category="Gifts", remember="rule", change="1")
+    form = sent(client, id=row, category=categories.GIFTS, remember="rule", change="1")
     assert (
         client.post(
             "/months/Lukas/2026-08/categorize", data=form, follow_redirects=False
         ).status_code
         == 303
     )
-    assert category_of(database, row) == ("Gifts", "manual")
+    assert category_of(database, row) == (categories.GIFTS, "manual")
     assert rules.shared.read_text(encoding="utf-8").startswith("rules:\n")
 
 
@@ -295,13 +295,13 @@ def test_a_form_without_the_token_of_these_pages_changes_nothing(
 ) -> None:
     row = row_id(database, "Lukas", "SAVINGS TOPUP AUG")
     url = "/months/Lukas/2026-08/categorize"
-    fields = {"id": row, "category": "Gifts", "change": "1"}
+    fields = {"id": row, "category": categories.GIFTS, "change": "1"}
     assert client.post(url).status_code == 403
     assert client.post(url, data={"token": "guessed"}).status_code == 403
     good = sent(client, **fields)
     elsewhere = client.post(url, data=good, headers={"origin": "https://evil.example"})
     assert elsewhere.status_code == 403
-    assert category_of(database, row) == ("Own transfer", "rule")
+    assert category_of(database, row) == (categories.OWN_TRANSFER, "rule")
     form = {"content-type": "application/x-www-form-urlencoded"}
     assert client.post(url, content=b"token=\xff", headers=form).status_code == 400
     assert client.post(url, data=good, headers={"origin": SITE}).status_code == 303
