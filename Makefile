@@ -6,15 +6,18 @@ UV ?= $(if $(wildcard .local/bin/uv),./uv,uv)
 # The Tesseract of ./tesseract (make ocr), once installed, whichever uv runs: the OCR tests and
 # make dev-db read scans with it. .local/ocr holds that one program.
 export PATH := $(CURDIR)/.local/ocr:$(PATH)
-# A Host of ~/.ssh/config: the NAS's name, port and user (deploy/README.md).
-NAS ?= nas
-NAS_DIR ?= /volume1/docker/scrooge
-# By its path: a command run by ssh has no login shell, and DSM's docker is not on its PATH.
-NAS_DOCKER ?= /usr/local/bin/docker
+# Where `make deploy-update` runs the app (deploy/README.md): a Host of ~/.ssh/config, the
+# folder of its compose.yaml there, its docker (by its path where ssh finds no other, as on a
+# Synology NAS) and `sudo` where docker needs it. Set them in Makefile.local, git-ignored.
+DEPLOY_HOST ?= scrooge
+DEPLOY_DIR ?= scrooge
+DEPLOY_DOCKER ?= docker
+DEPLOY_SUDO ?=
+-include Makefile.local
 DEV_DB ?= output/dev
 
 .DEFAULT_GOAL := help
-.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons web web-dev web-check
+.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release deploy-update dev-db icons web web-dev web-check
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -91,8 +94,8 @@ release: ## Tag what is pushed to main as VERSION (make release VERSION=v1.2.3),
 		[ -n "$$run" ] && exec gh run watch --exit-status "$$run"; sleep 2; \
 	done; echo "release: no image run for $(VERSION) yet: see GitHub > Actions"; exit 1
 
-nas-update: ## Run the newest image on the NAS: pull it and restart (sudo asks the DSM password)
-	ssh -t $(NAS) 'cd $(NAS_DIR) && sudo $(NAS_DOCKER) compose pull && sudo $(NAS_DOCKER) compose up -d && sudo $(NAS_DOCKER) image prune -f'
+deploy-update: ## Run the newest image where the app is (DEPLOY_HOST): pull it and restart
+	ssh -t $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose pull && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose up -d && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) image prune -f'
 
 dev-db: ## (Re)build output/dev/scrooge.db from the fixtures, for two invented people
 	$(UV) run python -m tests.make_dev_db $(DEV_DB)
