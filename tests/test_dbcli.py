@@ -83,6 +83,15 @@ class Run:
         finally:
             conn.close()
 
+    def id_of(self, filename: str) -> str:
+        """The number `scrooge statements` lists the statement by."""
+        conn = db.connect(self.database)
+        try:
+            query = "SELECT id FROM statement_files WHERE filename = ?"
+            return str(conn.execute(query, (filename,)).fetchone()[0])
+        finally:
+            conn.close()
+
     def count(self, table: str) -> int:
         conn = db.connect(self.database)
         try:
@@ -141,7 +150,7 @@ def test_commit_saves_a_copy_first_and_uncommit_undoes_it(run: Run) -> None:
     assert "differs" not in run.output
     assert "Next:" not in run.output
     assert run.count("committed_transactions") == staged + 1
-    assert run("uncommit", "3") == dbcli.OK
+    assert run("uncommit", run.id_of("Migros.csv")) == dbcli.OK
     assert run.output == "Migros.csv is staged again for Lukas.\n"
     assert run.count("committed_transactions") < staged + 1
     assert run.load() == dbcli.OK  # the statement it took back is found in the folder again
@@ -156,16 +165,22 @@ def test_statements_are_listed_staged_first_with_the_numbers_to_act_on(run: Run)
     run.load()
     assert run("statements") == dbcli.OK
     lines = run.output.splitlines()
+    card = run.id_of("swisscard.pdf")
     assert (
-        lines[0] == "    6  staged     2026-08-05 to 2026-09-04  Swisscard invoice: swisscard.pdf"
+        lines[0]
+        == f"{card:>5}  staged     2026-08-05 to 2026-09-04  Swisscard invoice: swisscard.pdf"
     )
     assert len(lines) == 7
     assert {line.split()[1] for line in lines} == {"staged"}
     run("commit")
-    run("uncommit", "2")
+    ibkr = run.id_of("IBKR.csv")
+    run("uncommit", ibkr)
     assert run("statements") == dbcli.OK
     first, *rest = run.output.splitlines()
-    assert first == "    2  staged     2026-09-01 to 2026-09-30  IBKR activity statement: IBKR.csv"
+    assert (
+        first
+        == f"{ibkr:>5}  staged     2026-09-01 to 2026-09-30  IBKR activity statement: IBKR.csv"
+    )
     assert {line.split()[1] for line in rest} == {"committed"}
 
 
