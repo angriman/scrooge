@@ -75,4 +75,12 @@ describe('the month-end table', () => {
 		]);
 		expect(cells(undefined).map((cell) => cell.text)).toEqual(['–', '–', '–']);
 	});
+
+	it('shows dashes in the columns of a currency without values, the others kept', () => {
+		const { CHF, USD } = sent.months[0].values;
+		const partly = table({ ...sent, months: [{ ...sent.months[0], values: { CHF, USD } }] }, 'EUR');
+		const [euros, francs] = partly.rows[0].groups;
+		expect(euros.map((cell) => cell.text)).toEqual(['–', '–', '–']);
+		expect(francs[0].text).toBe('9’900');
+	});
 });

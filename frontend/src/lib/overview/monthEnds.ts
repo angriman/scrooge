@@ -14,6 +14,10 @@ export const COLUMNS = [
 	{ key: 'percent', label: 'Change %' }
 ] as const satisfies readonly { key: keyof MonthEndFigure; label: string }[];
 
+/** What a change leaves out, said under the table and on its change columns: a user taking
+ * one month's total from the next's would otherwise think the table wrong. */
+export const CHANGE_NOTE = 'Change leaves out what accounts held when they were first imported.';
+
 /** Which way a figure went: its colour, `gain` or `loss`; `flat` and `none` stay plain. */
 export type Way = 'gain' | 'loss' | 'flat' | 'none';
 

@@ -10,7 +10,7 @@ from scrooge import networth
 from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.storage.helpers import PARTNER
-from tests.test_networth import NOW, rate
+from tests.test_networth import NOW, account, close, rate
 from tests.test_overview import household
 
 SITE = "http://127.0.0.1:8765"
@@ -76,11 +76,41 @@ def test_one_person_is_their_month_ends_alone(database: Path) -> None:
     assert anna["months"][0]["values"]["CHF"]["total"] != everyone["total"]
 
 
-def test_a_currency_without_rates_is_said_and_no_month_is_sent(database: Path) -> None:
+def test_a_currency_without_rates_is_said_and_left_out_the_others_still_sent(
+    database: Path,
+) -> None:
     sent = months(database, currencies=("CHF", "JPY")).get("/api/networth/months").json()
     assert sent["currencies"] == ["CHF", "JPY", "EUR"]
+    [error] = sent["errors"]
+    assert error.startswith("No exchange rate is stored for JPY")
+    assert len(sent["months"]) == 3
+    assert all(list(month["values"]) == ["CHF", "EUR"] for month in sent["months"])
+
+
+def test_when_no_currency_has_rates_each_is_said_and_no_month_is_sent(database: Path) -> None:
+    client = months(database, currency="JPY", currencies=("JPY", "GBP"))
+    sent = client.get("/api/networth/months").json()
+    assert sent["currencies"] == ["JPY", "GBP"]
     assert sent["months"] == []
-    assert sent["errors"][0].startswith("No exchange rate is stored for JPY")
+    assert [error.split(":")[0] for error in sent["errors"]] == [
+        "No exchange rate is stored for JPY",
+        "No exchange rate is stored for GBP",
+    ]
+
+
+def test_an_account_held_in_a_currency_without_rates_is_said_once(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    household(conn)
+    rate(conn, "USD", date(2026, 10, 15), "0.9")
+    close(conn, account("revolut", "ACME JPY", "JPY", "1000"), owner=PARTNER)
+    conn.close()
+    sent = months(path).get("/api/networth/months").json()
+    # Every currency fails alike, for want of a rate for the account's own
+    [error] = sent["errors"]
+    assert error.startswith("No exchange rate is stored for JPY")
+    assert sent["months"] == []
 
 
 def test_an_unreadable_currency_is_refused(database: Path) -> None:

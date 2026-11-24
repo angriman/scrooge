@@ -739,9 +739,14 @@ def _networth_months(request: Request) -> Response:
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
         valued = networth.value(conn, asked.owner)
-        ends = wire.unless_rate_missing(
-            errors, lambda: networth.month_ends(conn, valued, currencies), ()
-        )
+
+        def unconverted(exc: networth.MissingRateError) -> None:
+            # A currency without rates is said and left out; the others are still sent. An
+            # account held in such a currency fails every one alike: that is said once.
+            if (said := wire.sentence(exc)) not in errors:
+                errors.append(said)
+
+        ends = networth.month_ends(conn, valued, currencies, unconverted)
     return JSONResponse(
         {
             "currencies": currencies,
