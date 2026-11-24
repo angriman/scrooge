@@ -9,6 +9,7 @@
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
 	import { rangeName } from '#lib/cashflow/names.js';
+	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
 	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
 	import * as returns from '#lib/investments/performance.js';
@@ -23,9 +24,12 @@
 	let { data }: PageProps = $props();
 
 	const held = $derived(data.held?.holdings);
-	const errors = $derived(
-		data.held?.errors ?? data.income?.errors ?? data.performance?.errors ?? []
-	);
+	const errors = $derived([
+		...new Set([
+			...(data.held?.errors ?? data.income?.errors ?? data.performance?.errors ?? []),
+			...(data.costs?.errors ?? [])
+		])
+	]);
 	const owner = $derived(page.url.searchParams.get('owner'));
 	const people = $derived(data.session.people.length > 1 && !owner);
 	const title = $derived(
@@ -154,6 +158,7 @@
 			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
 			{owner}
 		/>
+		{#if data.costs}<Costs costs={data.costs.costs} {owner} />{/if}
 	{/if}
 {:else if !held || !held.day}
 	{#if !errors.length}
