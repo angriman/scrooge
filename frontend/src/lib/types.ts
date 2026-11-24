@@ -733,7 +733,9 @@ export interface KnownMerchants {
 	since: Day | null;
 	through: Day | null;
 	/** Those spent at in the twelve months first, the largest first; then the others, the
-	 * latest first. */
+	 * latest first. As many as the chip lists at once. */
 	merchants: KnownMerchant[];
+	/** The names of the rest, in the same order: typing still finds them. */
+	others: string[];
 	errors: string[];
 }

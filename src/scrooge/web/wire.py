@@ -798,4 +798,5 @@ def known_merchants(shown: Merchants) -> JSON:
             }
             for merchant in shown.merchants
         ],
+        "others": list(shown.others),
     }

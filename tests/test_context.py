@@ -182,10 +182,11 @@ def test_an_account_counts_every_row_of_it_in_and_out(conn: sqlite3.Connection) 
     found = shown(conn, "account", "Migros")
     # The salary less the rent and the shops: less in the months of both shops.
     assert amounts(found)[:2] == [Decimal(3360), Decimal(3400)]
-    # July 2026: the refund, what went to and came back from Anna, and the securities bought.
-    assert amounts(found)[-2] == Decimal(3360 + 20 - 200 + 900 - 9920)
+    # July 2026: the refund, what went to and came back from Anna; the securities bought stay
+    # inside the account, which holds them.
+    assert amounts(found)[-2] == Decimal(3360 + 20 - 200 + 900)
     assert amounts(found)[-1] == Decimal(-1600)  # August: no salary yet
-    assert found.usual == Decimal(3380)  # between the months with one shop and with two
+    assert found.usual == Decimal(3400)
     assert (found.name, found.this_month) == ("Migros", Decimal(-1600))
 
 
@@ -233,6 +234,39 @@ def test_a_name_the_database_does_not_have_is_refused(conn: sqlite3.Connection) 
         shown(conn, "shop", "Coop")
     with pytest.raises(MissingRateError, match="GBP"):
         context.run(conn, "category", "Alimentari", owner=OWNER, currency="GBP")
+
+
+def test_an_exchange_nets_to_its_spread_and_trading_stays_inside() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    # An account holds one currency: an exchange is a row out of one and a row into another.
+    francs = {"account": "Revolut CHF", "source_file": "revolut.csv", "category": "Acquisto EUR"}
+    euros = francs | {"account": "Revolut EUR", "currency": "EUR", "source_file": "eur.csv"}
+    out = [txn("-1000", date=date(2026, 7, 3), source_ref="1", kind=Kind.FX, **francs)]
+    rows = [
+        txn("1050", date=date(2026, 7, 3), source_ref="2", kind=Kind.FX, **euros),
+        # The results of trading stay inside the account.
+        txn(
+            "-75",
+            date=date(2026, 7, 9),
+            source_ref="3",
+            kind=Kind.TRADING,
+            **euros | {"category": "Trading"},
+        ),
+    ]
+    july_days = (date(2026, 7, 1), date(2026, 7, 31))
+    close(connection, OWNER, july_days, july_days[1], ("revolut", out), ("eur", rows))
+    store.set_rate(connection, date(2026, 7, 1), "EUR", Decimal("0.95"), source="fetched:yahoo")
+
+    def july(account: str) -> Decimal:
+        found = context.run(connection, "account", account, owner=OWNER, currency="CHF")
+        assert found.this_month is not None
+        return found.this_month
+
+    assert (july("Revolut CHF"), july("Revolut EUR")) == (Decimal(-1000), Decimal("997.50"))
+    # Both together: the spread, 1050 euros at 0.95 for 1000 francs.
+    assert july("Revolut CHF") + july("Revolut EUR") == Decimal("-2.50")
+    connection.close()
 
 
 def test_nothing_committed_has_no_months() -> None:

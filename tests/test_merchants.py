@@ -82,6 +82,15 @@ def test_every_merchant_spent_at_the_largest_first(conn: sqlite3.Connection) -> 
     )
 
 
+def test_only_the_first_come_with_their_figures_the_rest_by_name(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(merchants, "SHOWN", 2)
+    found = merchants.run(conn, owner=OWNER, currency="CHF")
+    assert [each.name for each in found.merchants] == ["KONSUM ZUERICH", "Hotel Adler"]
+    assert found.others == ("IBKR USD", "Jelmoli", "Coop Bern")
+
+
 def test_each_name_lists_the_rows_the_merchant_filter_finds(conn: sqlite3.Connection) -> None:
     for merchant in merchants.run(conn, owner=OWNER, currency="CHF").merchants:
         listed = query.run(conn, query.Filter(owner=OWNER, merchant=merchant.name))
@@ -104,7 +113,19 @@ def test_what_cannot_be_read(conn: sqlite3.Connection) -> None:
         merchants.run(conn, owner=OWNER, currency="GBP")
 
 
+def test_only_the_twelve_months_are_converted() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    yen = {"account": "Card JPY", "currency": "JPY", "source_file": "jpy.csv"}
+    rows = [txn("-9000", date=date(2024, 5, 3), source_ref="1", counterparty="Ryokan", **yen)]
+    close(connection, OWNER, (date(2024, 5, 1), END), END, ("jpy", rows), ("migros", LUKAS[-4:]))
+    found = merchants.run(connection, owner=OWNER, currency="CHF")
+    # No rate is stored for yen: the ryokan is only named, nothing of it is converted.
+    assert found.merchants[-1] == Merchant("Ryokan", Decimal(0), 0, date(2024, 5, 3))
+    connection.close()
+
+
 def test_nothing_committed_lists_nobody() -> None:
     connection = db.connect(":memory:")
     db.migrate(connection, CLOSED_AT)
-    assert merchants.run(connection) == merchants.Merchants("EUR", None, None, ())
+    assert merchants.run(connection) == merchants.Merchants("EUR", None, None, (), ())

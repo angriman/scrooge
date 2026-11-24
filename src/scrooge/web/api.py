@@ -787,7 +787,7 @@ def _transactions_merchants(request: Request) -> Response:
             shown = wire.unless_rate_missing(
                 errors,
                 lambda: merchants.run(conn, owner=asked.owner, currency=asked.currency),
-                merchants.Merchants(asked.currency, None, None, ()),
+                merchants.Merchants(asked.currency, None, None, (), ()),
             )
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))

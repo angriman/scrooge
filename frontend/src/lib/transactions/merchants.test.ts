@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { KnownMerchant } from '#lib/types.js';
-import { fold, narrow, typedName } from './merchants.js';
+import { fold, narrow, offered, typedName } from './merchants.js';
 
 const known = (...names: string[]): KnownMerchant[] =>
 	names.map((name, index) => ({ name, spent: String(1000 - index * 100), count: 1, last: '2026-08-01' }));
 
-const names = (merchants: KnownMerchant[]) => merchants.map((merchant) => merchant.name);
+const names = (merchants: { name: string }[]) => merchants.map((merchant) => merchant.name);
 
 describe('the merchants the chip offers', () => {
 	const merchants = known('Hotel Adler', 'KONSUM ZUERICH', 'Coop Bern', 'Café Zürich', 'Coop Pronto');
@@ -42,6 +42,23 @@ describe('the merchants the chip offers', () => {
 		const many = known(...Array.from({ length: 80 }, (_, n) => `Shop ${'abcdefghij'[n % 10]}${n}`));
 		expect(narrow(many, 'shop')).toHaveLength(50);
 		expect(narrow(many, 'shop', 5)).toHaveLength(5);
+	});
+});
+
+describe('the merchants sent', () => {
+	it('are those with figures first, then those named alone, all of them found by typing', () => {
+		const all = offered({
+			currency: 'CHF',
+			since: '2025-09-01',
+			through: '2026-08-31',
+			merchants: known('Coop Bern'),
+			others: ['Jelmoli', 'Coop Pronto'],
+			errors: []
+		});
+		expect(all).toEqual([...known('Coop Bern'), { name: 'Jelmoli' }, { name: 'Coop Pronto' }]);
+		expect(names(narrow(all, 'coop'))).toEqual(['Coop Bern', 'Coop Pronto']);
+		expect(typedName(all, 'jelmoli')).toBeNull();
+		expect(offered(null)).toEqual([]);
 	});
 });
 

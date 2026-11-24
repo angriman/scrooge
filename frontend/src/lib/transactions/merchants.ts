@@ -2,7 +2,16 @@
 // text typed itself when it names none of them. The names are the API's, as the merchant
 // filter reads them.
 
-import type { KnownMerchant } from '#lib/types.js';
+import type { KnownMerchant, KnownMerchants } from '#lib/types.js';
+
+/** A merchant offered: with its figures, or by its name alone past the first ones sent. */
+export type Offered = Pick<KnownMerchant, 'name'> & Partial<KnownMerchant>;
+
+/** Every merchant `known` names, those with figures first, in the order sent. */
+export function offered(known: KnownMerchants | null): Offered[] {
+	if (!known) return [];
+	return [...known.merchants, ...known.others.map((name) => ({ name }))];
+}
 
 /** At most this many merchants are listed at once: typing narrows the rest. */
 export const LISTED = 50;
@@ -23,15 +32,11 @@ export function fold(text: string): string {
  * starts with what is typed first, then those with a word that starts with its first word,
  * then the others, each in the order given (the largest first). Nothing typed: the first
  * `most`. */
-export function narrow(
-	merchants: readonly KnownMerchant[],
-	typed: string,
-	most = LISTED
-): KnownMerchant[] {
+export function narrow<T extends Offered>(merchants: readonly T[], typed: string, most = LISTED): T[] {
 	const wanted = fold(typed);
 	if (!wanted) return merchants.slice(0, most);
 	const words = wanted.split(' ');
-	const ranked: KnownMerchant[][] = [[], [], []];
+	const ranked: T[][] = [[], [], []];
 	for (const merchant of merchants) {
 		const name = fold(merchant.name);
 		if (!words.every((word) => name.includes(word))) continue;
@@ -44,7 +49,7 @@ export function narrow(
 
 /** What is typed, offered as a merchant of its own: its spaces tidied, unless it is nothing or
  * already one of the merchants known. */
-export function typedName(merchants: readonly KnownMerchant[], typed: string): string | null {
+export function typedName(merchants: readonly Offered[], typed: string): string | null {
 	const name = typed.trim().split(/\s+/).join(' ');
 	if (!name) return null;
 	const wanted = fold(name);

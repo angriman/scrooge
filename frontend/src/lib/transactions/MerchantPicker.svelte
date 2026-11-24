@@ -8,14 +8,16 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	import Check from '@lucide/svelte/icons/check';
 	import Search from '@lucide/svelte/icons/search';
 	import { Command } from 'bits-ui';
+	import { untrack } from 'svelte';
 	import { month } from '#lib/format/date.js';
 	import type { KnownMerchants } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
-	import { narrow, typedName } from './merchants.js';
+	import { narrow, offered, typedName } from './merchants.js';
 
 	interface Props {
 		/** The merchant the transactions are cut to; empty when none. */
 		current: string;
+		/** The merchants of the owner and currency shown, loaded once for each. */
 		load: () => Promise<KnownMerchants>;
 		onpick: (name: string) => void;
 	}
@@ -25,9 +27,10 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	let typed = $state('');
 	let known = $state<KnownMerchants | null>(null);
 	let unloaded = $state(false);
+	// Loaded as the chip opens, once: what the address changes to while it is open is not.
 	$effect(() => {
 		let gone = false;
-		load().then(
+		untrack(load).then(
 			(sent) => {
 				if (!gone) known = sent;
 			},
@@ -38,7 +41,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 		return () => (gone = true);
 	});
 
-	const merchants = $derived(known?.merchants ?? []);
+	const merchants = $derived(offered(known));
 	const shown = $derived(narrow(merchants, typed));
 	const own = $derived(typedName(merchants, typed));
 	const OWN = '\u0000typed'; // the value of the typed name's item: no merchant is named so
@@ -76,14 +79,15 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 			{#each shown as merchant (merchant.name)}
 				<Command.Item value={merchant.name} onSelect={() => onpick(merchant.name)} class={item}>
 					<span class="min-w-0 flex-1 truncate">{merchant.name}</span>
-					{#if merchant.count}
+					{#if merchant.count && merchant.spent}
 						<span class="text-caption text-ink-muted">{merchant.count}×</span>
 						<Amount value={merchant.spent} places={0} />
-					{:else}
+					{:else if merchant.last}
 						<span class="text-caption text-ink-muted">Last {month(merchant.last)}</span>
 					{/if}
 					{#if merchant.name.toLowerCase() === current.toLowerCase()}
-						<Check class="size-3.5 shrink-0 self-center text-brand" aria-label="Chosen" />
+						<Check class="size-3.5 shrink-0 self-center text-brand" aria-hidden="true" />
+						<span class="sr-only">(chosen)</span>
 					{/if}
 				</Command.Item>
 			{/each}

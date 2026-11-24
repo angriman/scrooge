@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import merchants
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -72,6 +73,7 @@ def test_the_merchants_spent_at_the_largest_first(client: TestClient) -> None:
             # Not spent at in the twelve months: still offered, after the others.
             {"name": "Jelmoli", "spent": "0.00", "count": 0, "last": "2025-07-09"},
         ],
+        "others": [],
         "errors": [],
     }
 
@@ -89,6 +91,17 @@ def test_each_name_cuts_the_transactions_to_what_was_spent_there(client: TestCli
     for merchant in names:
         listed = client.get("/api/transactions", params={"merchant": merchant["name"]}).json()
         assert listed["rows"][0]["date"] == merchant["last"]  # the latest first
+
+
+def test_past_the_first_ones_only_names_are_sent(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(merchants, "SHOWN", 1)
+    sent = asked(client, owner=OWNER)
+    shown = sent["merchants"]
+    assert isinstance(shown, list)
+    assert [each["name"] for each in shown] == ["KONSUM ZUERICH"]
+    assert sent["others"] == ["Coop Bern", "IBKR USD", "Jelmoli"]
 
 
 def test_a_missing_rate_lists_nobody_and_says_why(client: TestClient) -> None:

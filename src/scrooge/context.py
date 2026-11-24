@@ -5,9 +5,11 @@ For a category or a merchant the rows are those the cash-flow page counts, each 
 the rate of its own day into one currency (plan decision 34), and are read as the cash flow
 reads them: for a category of expenses or a merchant, money spent, a refund lowering it; for a
 category of income, money earned. A merchant is named as the cash flow names it
-(`query.merchant`). An account is its net flow instead: money in less money out, every row of
-it counted, moves between one's own accounts and exchanges too, each converted at the rate of
-its day. A month above nothing is money put aside in it; one below, money taken out.
+(`query.merchant`). An account is its net flow instead: money moved into it less money moved
+out, every row of it counted, moves between one's own accounts and exchanges too, each
+converted at the rate of its day. Buying and selling securities and the results of trading in
+it are left out: that money stays inside the account, which holds what it bought. A month
+above nothing is money put aside in it; one below, money taken out.
 
 The months run up to the one of the last day committed, which is partial until its last day
 is: statements come in after their month is over, so the month of today would read as
@@ -29,12 +31,15 @@ from scrooge import analysis, income, networth, query, spending
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted
 from scrooge.extractors.common import month_end
+from scrooge.models import Kind
 from scrooge.networth import DEFAULT_CURRENCY
 
 KINDS = ("category", "merchant", "account")  # what the transactions can be cut to
 MONTHS = 24  # shown, the last one included
 MERCHANTS = 5  # listed for a category, the largest first
 _EARNED = "entrate"  # the side of the taxonomy whose categories are money earned
+# Rows of an account whose money stays inside it: its net flow leaves them out.
+_INSIDE = frozenset({Kind.SECURITY_TRADE, Kind.TRADING})
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +114,7 @@ def run(
     written: str = name
     merchants: tuple[Merchant, ...] | None = None
     if kind == "account":
-        flows = _flows(conn, name, owner, currency)
+        flows = _flows(conn, name, owner, currency, (starts[0], found.through))
     else:
         counts = _matches(kind, name, earned=earned)
 
@@ -173,15 +178,22 @@ def _matches(kind: str, name: str, *, earned: bool) -> Callable[[Counted], bool]
 
 
 def _flows(
-    conn: sqlite3.Connection, account: str, owner: str | None, currency: str
+    conn: sqlite3.Connection,
+    account: str,
+    owner: str | None,
+    currency: str,
+    days: tuple[date, date],
 ) -> list[tuple[date, Decimal]]:
-    """Every committed row of `account` (of `owner`, or of everyone who has an account of that
-    name), oldest first: its day and its amount in `currency`, at the rate of that day, signed
-    as stored: money in above nothing, money out below."""
-    rows = query.run(conn, query.Filter(owner=owner, account=account)).rows
+    """The committed rows of `account` (of `owner`, or of everyone who has an account of that
+    name) from the first to the last of `days` that move money in or out of it, oldest first:
+    each day and amount in `currency`, at the rate of that day, signed as stored: money in
+    above nothing, money out below. Only those days are converted, so that a rate missing
+    before them leaves the chart alone."""
+    wanted = query.Filter(first=days[0], last=days[1], owner=owner, account=account)
     by_currency: dict[str, list[query.Row]] = defaultdict(list)
-    for row in rows:
-        by_currency[row.currency].append(row)
+    for row in query.run(conn, wanted).rows:
+        if row.kind not in _INSIDE:
+            by_currency[row.currency].append(row)
     flows: list[tuple[date, Decimal]] = []
     for native, members in by_currency.items():
         rates = networth.rates_on(conn, [row.date for row in members])
