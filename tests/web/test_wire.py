@@ -1,9 +1,11 @@
 """The one way the pages and the JSON take a currency that has no stored rate: the figure
-is left out, the reason is said, and nothing else is lost."""
+is left out, the reason is said, and nothing else is lost. And a person as the JSON sends them."""
+
+from datetime import date
 
 import pytest
 
-from scrooge import networth
+from scrooge import networth, query
 from scrooge.web import wire
 
 
@@ -29,3 +31,9 @@ def test_any_other_error_is_not_swallowed() -> None:
 
     with pytest.raises(ValueError, match="a bug"):
         wire.unless_rate_missing([], broken, None)
+
+
+def test_a_person_is_sent_without_a_day_covered_unless_one_is_given() -> None:
+    anna = query.Person("Anna", committed=0, first=None, last=None, staged=0, transactions=0)
+    assert wire.person(anna)["covered"] is None
+    assert wire.person(anna, date(2026, 9, 30))["covered"] == "2026-09-30"

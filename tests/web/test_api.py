@@ -63,6 +63,20 @@ def test_the_session_says_up_to_which_day_each_persons_statements_are_in(tmp_pat
     assert covered == {OWNER: "2026-08-31", PARTNER: "2026-09-30"}
 
 
+def test_someone_whose_only_account_is_not_monthly_has_no_day_covered(tmp_path: Path) -> None:
+    """A broker that reports quarterly says nothing of a month: there is no day up to which
+    Anna's statements are all in, so the page shows no "Complete up to" for her."""
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    close(conn, account("migros", "Migros", "CHF", "1000"))
+    close(conn, account("morganstanley", "Morgan Stanley", "USD", "5000"), owner=PARTNER)
+    conn.close()
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    covered = {p["name"]: p["covered"] for p in client.get("/api/session").json()["people"]}
+    assert covered == {OWNER: "2026-09-30", PARTNER: None}
+
+
 def test_the_overview_is_the_services_figures_as_text(client: TestClient, database: Path) -> None:
     sent = client.get("/api/overview").json()
     with db.reading(database) as conn:
@@ -244,7 +258,8 @@ def spa(tmp_path: Path) -> Path:
 
 def test_every_address_under_app_is_its_page_or_one_of_its_files(database: Path, spa: Path) -> None:
     client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
-    for address in ("/app", "/app/", "/app/holdings"):
+    # The old addresses too: their pages are sent on to the new ones in the browser.
+    for address in ("/app", "/app/", "/app/investments", "/app/accounts", "/app/holdings"):
         assert client.get(address).text == SHELL
     assert client.get("/app/_app/start.js").text == "export {}"
     assert client.get("/app/..%2Fsecret.txt").text == SHELL  # never a file outside it
@@ -259,7 +274,8 @@ def test_the_page_may_run_its_own_script_and_no_other(database: Path, spa: Path)
         "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
     )
     assert client.get("/app").headers["content-security-policy"] == policy
-    assert client.get("/app/holdings").headers["content-security-policy"] == policy
+    for address in ("/app/investments", "/app/accounts", "/app/holdings"):
+        assert client.get(address).headers["content-security-policy"] == policy
     assert client.get("/app/_app/start.js").headers["content-security-policy"] == policy
 
 

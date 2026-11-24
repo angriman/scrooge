@@ -58,8 +58,9 @@ def unless_rate_missing(errors: list[str], compute: Callable[[], _T], fallback: 
         return fallback
 
 
-def person(shown: query.Person, covered: date | None) -> JSON:
-    """`covered`: the day up to which every monthly account of theirs is committed."""
+def person(shown: query.Person, covered: date | None = None) -> JSON:
+    """`covered`: the day up to which every monthly account of theirs is committed; None when
+    not known, or when none of their accounts reports monthly."""
     return {
         "name": shown.name,
         "committed": shown.committed,
