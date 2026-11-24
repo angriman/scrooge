@@ -134,7 +134,7 @@ def category_of(database: Path, row: str) -> tuple[str | None, str | None]:
     """The category of a row and where it came from."""
     conn = sqlite3.connect(database)
     (found,) = conn.execute(
-        "SELECT c.name, t.category_source FROM transactions t "
+        "SELECT c.key, t.category_source FROM transactions t "
         "LEFT JOIN categories c ON c.id = t.category_id WHERE t.id = ?",
         (row,),
     ).fetchall()

@@ -438,7 +438,7 @@ def test_every_choice_of_one_button_is_given_or_none_is(client: TestClient, data
     sent = form(client) | {
         "ids:0": kiosk,
         "group:0": categories.GIFTS,
-        f"category:{bakery}": categories.GROUP_HOME,
+        f"category:{bakery}": categories.label(categories.GROUP_HOME),  # as the form sends it
     }
     response = client.post("/import/save", data=sent)
     assert response.status_code == 409
@@ -455,7 +455,9 @@ def test_every_choice_of_one_button_is_given_or_none_is(client: TestClient, data
 def test_a_group_choice_that_cannot_be_made_is_said(client: TestClient, database: Path) -> None:
     kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
     base = form(client) | {"ids:0": kiosk, "remember:0": "rows"}
-    unknown = client.post("/import/save", data=base | {"group:0": categories.GROUP_HOME})
+    unknown = client.post(
+        "/import/save", data=base | {"group:0": categories.label(categories.GROUP_HOME)}
+    )
     assert unknown.status_code == 409
     assert "No category was set: unknown category &#39;Home&#39;." in unknown.text
     gone = client.post("/import/save", data=base | {"group:0": categories.GIFTS, "ids:0": "gone"})

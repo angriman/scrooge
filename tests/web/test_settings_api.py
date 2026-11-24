@@ -29,7 +29,7 @@ def site(folder: Path) -> Site:
     rows = [
         txn("-45", date=day, source_ref="1"),
         txn("-15", date=day, source_ref="2"),
-        txn("-300", date=day, source_ref="3", description="ANNA MEIER", category="Prestiti"),
+        txn("-300", date=day, source_ref="3", description="ANNA MEIER", category="prestiti"),
     ]
     close(conn, OWNER, AUGUST_DAYS, ("migros", rows))
     conn.close()
@@ -60,7 +60,7 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
         "owner": OWNER,
         "position": 1,
         "match": "ANNA MEIER",
-        "category": categories.GIFTS,
+        "category": categories.label(categories.GIFTS),
         "direction": "",
         "account": "",
         "matches": 1,
@@ -236,8 +236,8 @@ def test_categories_are_added_renamed_merged_and_removed(site: Site) -> None:
 def test_a_rename_the_database_cannot_take_is_refused(site: Site) -> None:
     conn = sqlite3.connect(site.database)
     conn.execute(
-        "INSERT INTO categories (name, parent_id, side, sort_order) SELECT 'Mutuo', id, "
-        "'uscite', 999 FROM categories WHERE name = 'Prestiti' AND parent_id IS NULL"
+        "INSERT INTO categories (key, name, parent_id, side, sort_order) SELECT 'mutuo', "
+        "'Mutuo', id, 'uscite', 999 FROM categories WHERE key = 'prestiti' AND parent_id IS NULL"
     )
     conn.commit()
     conn.close()

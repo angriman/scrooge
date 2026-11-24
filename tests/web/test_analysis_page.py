@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import spending
+from scrooge import categories, spending
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -18,13 +18,15 @@ from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
 
 SITE = "http://127.0.0.1:8765"
-TRADE = {"kind": Kind.TRADING, "category": "Trading"}
+TRADE = {"kind": Kind.TRADING, "category": categories.TRADING}
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 LUKAS = [
     *salaries("5000", date(2025, 1, 1), 20),
     txn("500", date=date(2026, 2, 10), source_ref="1", **TRADE),
     txn("-300", date=date(2026, 5, 10), source_ref="2", **TRADE),  # a month that lost
-    txn("15", date=date(2026, 7, 5), source_ref="3", kind=Kind.INCOME, category="Cashback"),
+    txn(
+        "15", date=date(2026, 7, 5), source_ref="3", kind=Kind.INCOME, category=categories.CASHBACK
+    ),
 ]
 LUKAS_USD = [
     txn(
@@ -32,7 +34,7 @@ LUKAS_USD = [
         date=date(2026, 3, 16),
         source_ref="1",
         kind=Kind.DIVIDEND,
-        category="Dividends",
+        category=categories.DIVIDENDS,
         **USD,
     )
 ]
@@ -168,7 +170,7 @@ def spender(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     path: Path = tmp_path_factory.mktemp("spending") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    bill = txn("-90", date=date(2026, 7, 3), source_ref="bill", category="Utilities")
+    bill = txn("-90", date=date(2026, 7, 3), source_ref="bill", category=categories.UTILITIES)
     lukas = (("migros", [*spent.LUKAS, bill]), ("ibkr", spent.LUKAS_USD))
     close(conn, OWNER, (spent.START, spent.END), *lukas)
     close(conn, PARTNER, (date(2026, 7, 1), spent.END), ("migros", spent.ANNA))

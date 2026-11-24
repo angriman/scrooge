@@ -53,7 +53,7 @@
             <div class="date">{{ row.date }} · {{ row.account }} · {{ row.amount|money }} {{ row.currency }}</div>
             {%- endfor %}
           </td>
-          <td data-label="Now">{{ group.category }}</td>
+          <td data-label="Now">{{ label(group.category) }}</td>
           <td class="wide">{{ choose(group, true, url_for('categorize', owner=month.owner, month=month.month.strftime('%Y-%m')), month.owner, token, choices, can_remember) }}</td>
         </tr>
         {%- endfor %}
@@ -78,7 +78,7 @@
     <tbody>
       {%- for line in month.totals %}
       <tr>
-        <td>{{ line.category }}{% if line.side == "transfer" %}<small>transfer</small>{% endif %}</td>
+        <td>{{ label(line.category) }}{% if line.side == "transfer" %}<small>transfer</small>{% endif %}</td>
         <td class="number">{{ line.total|money }} {{ line.currency }}</td>
         <td class="number">{{ line.count }}</td>
       </tr>
