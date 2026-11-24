@@ -23,6 +23,7 @@ from scrooge import (
     overview,
     paidby,
     payouts,
+    performance,
     portfolio,
     query,
     recap,
@@ -779,5 +780,49 @@ def needs_a_look(
                 "alone": each.alone,
             }
             for each in changed.changes
+        ],
+    }
+
+
+def _measured(measured: performance.Measured) -> JSON:
+    return {
+        "start": number(measured.start),
+        "end": number(measured.end),
+        "net_flows": number(measured.net_flows),
+        "gain": number(measured.gain),
+        "twr": number(measured.twr),
+        "mwr": number(measured.mwr),
+        "mwr_a_year": measured.a_year,
+        "twr_since": day(measured.since),
+    }
+
+
+def performance_report(shown: performance.Performance) -> JSON:
+    """What the investment accounts returned over a range, in one currency: in all and account
+    by account, and day by day (week by week over a long range) what they were worth against
+    the money put in. `twr` is in percent over the range, from `twr_since` when that is later
+    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise."""
+    return {
+        "currency": shown.currency,
+        "range": shown.range,
+        "first": day(shown.first),
+        "last": day(shown.last),
+        "totals": None if shown.totals is None else _measured(shown.totals),
+        "series": [
+            {
+                "day": point.day.isoformat(),
+                "value": number(point.value),
+                "invested": number(point.invested),
+            }
+            for point in shown.points
+        ],
+        "accounts": [
+            {
+                "owner": holder.owner,
+                "name": holder.name,
+                "accounts": list(holder.accounts),
+                **_measured(holder.measured),
+            }
+            for holder in shown.holders
         ],
     }

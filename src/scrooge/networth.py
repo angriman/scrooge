@@ -642,6 +642,15 @@ def _closes(conn: sqlite3.Connection) -> dict[int, list[tuple[date, int, Decimal
     }
 
 
+def closes_on(conn: sqlite3.Connection, days: Sequence[date]) -> dict[int, list[Decimal]]:
+    """instrument -> the close it is valued at on each of `days`, as for net worth: the last
+    one on or before the day, the first standing in before it."""
+    return {
+        instrument: _carried([(day, close) for day, _, close in points], days)
+        for instrument, points in _closes(conn).items()
+    }
+
+
 def _carried(points: Sequence[tuple[date, _T]], days: Sequence[date]) -> list[_T]:
     """For each day the value of the last of `points` on or before it; the first one stands
     in for the days before it. There must be a point."""
