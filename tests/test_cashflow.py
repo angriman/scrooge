@@ -82,8 +82,8 @@ def test_a_month_is_income_and_expenses_by_top_level_category(conn: sqlite3.Conn
     may = cashflow.run(conn, first=date(2025, 5, 1), last=date(2025, 5, 31), owner=OWNER)
     assert may.lines == (
         line("2025-05 CHF entrate", "Salary", 1, "6000"),
-        line("2025-05 CHF uscite", "Eating out", 1, "-80"),
         line("2025-05 CHF uscite", "Food", 2, "-25.2"),  # the refund lowers it
+        line("2025-05 CHF uscite", "Eating out", 1, "-80"),  # the taxonomy's order, not by name
     )
     assert may.balances == (balance("2025-05", "CHF", "6000", "-105.2"),)
     assert may.balances[0].net == Decimal("5894.8")
@@ -121,8 +121,8 @@ def test_securities_and_trading_are_investing_not_income_or_expenses(
     august = cashflow.run(conn, first=date(2026, 8, 1), last=END)
     assert august.lines == (
         line("2026-08 CHF entrate", "Interest", 1, "80"),
-        line("2026-08 CHF investing", "Investments", 2, "0"),
         line("2026-08 CHF investing", "Trading", 1, "-35"),
+        line("2026-08 CHF investing", "Investments", 2, "0"),
     )
     (month,) = august.balances
     assert month == Balance("2026-08", "CHF", Decimal(80), Decimal(0), Decimal(-35))
@@ -133,9 +133,9 @@ def test_the_whole_range_is_added_up_per_category(conn: sqlite3.Connection) -> N
     result = cashflow.run(conn, first=date(2025, 1, 1), last=date(2025, 12, 31), owner=OWNER)
     assert result.totals == (
         line(" CHF entrate", "Salary", 1, "6000"),
-        line(" CHF uscite", "Eating out", 1, "-80"),
-        line(" CHF uscite", "Food", 2, "-25.2"),
         line(" CHF uscite", "Home", 1, "-1850"),
+        line(" CHF uscite", "Food", 2, "-25.2"),
+        line(" CHF uscite", "Eating out", 1, "-80"),
     )
 
 
@@ -146,7 +146,7 @@ def test_a_row_counts_on_the_day_it_really_happened(conn: sqlite3.Connection) ->
 
 def test_both_ends_of_the_range_are_included(conn: sqlite3.Connection) -> None:
     result = cashflow.run(conn, first=date(2025, 5, 3), last=date(2025, 5, 20))
-    assert [str(item.total) for item in result.lines] == ["-80", "-45.2"]
+    assert [str(item.total) for item in result.lines] == ["-45.2", "-80"]
 
 
 @pytest.mark.parametrize(

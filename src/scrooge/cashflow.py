@@ -67,7 +67,8 @@ class Balance:
 
 @dataclass(frozen=True, slots=True)
 class CashFlow:
-    lines: tuple[Line, ...]  # by period, currency, side (income first) and category
+    # By period, currency, side (income first) and category, in the taxonomy's order.
+    lines: tuple[Line, ...]
     balances: tuple[Balance, ...]  # by period and currency; periods without rows are absent
     totals: tuple[Line, ...]  # the lines of the whole range: their period is ""
 
@@ -153,14 +154,22 @@ def run(
     for row in counted(conn, owner):
         if (first and row.day < first) or (last and row.day > last):
             continue
-        # They sort as they are shown: "entrate" < "investing" < "uscite". Investing is named
-        # by the leaf, which is the same whether money went in or came out.
+        # The sides sort as they are shown: "entrate" < "investing" < "uscite". Investing is
+        # named by the leaf, which is the same whether money went in or came out.
         where, category = (INVESTING, row.leaf) if row.investing else (row.side, row.top)
         for name in (period(row.day, grouping), ""):
             key = (name, row.currency, where, category)
             count, total = sums.get(key, (0, 0))
             sums[key] = (count + 1, total + row.amount_nano)
-    every = [Line(*key, count, from_nano(total)) for key, (count, total) in sorted(sums.items())]
+    ranks = store.category_ranks(conn)
+
+    def placed(key: tuple[str, str, str, str]) -> tuple[str, str, str, int]:
+        name, currency, where, category = key
+        if where == INVESTING:  # a leaf, of the expenses first: where the taxonomy puts it
+            return name, currency, where, ranks.leaf(category, EXPENSES, INCOME)
+        return name, currency, where, ranks.top(category, where)
+
+    every = [Line(*key, sums[key][0], from_nano(sums[key][1])) for key in sorted(sums, key=placed)]
     lines = tuple(line for line in every if line.period)
     sides: dict[tuple[str, str], dict[str, Decimal]] = {}
     for line in lines:

@@ -296,6 +296,7 @@ def _transactions(request: Request) -> Response:
             return _refused((wire.sentence(exc),))
         every = query.recurring(query.run(conn, query.Filter(owner=wanted.owner)).rows)
         found = query.choices(conn, wanted.owner)
+        ranks = store.category_ranks(conn)
     offset = _count(params, "offset", 0, len(result.rows))
     limit = _count(params, "limit", _PAGE, _MOST)
     newest = result.rows[::-1][offset : offset + limit]
@@ -314,7 +315,7 @@ def _transactions(request: Request) -> Response:
                     "count": c.count,
                     "total": wire.number(c.total),
                 }
-                for c in query.by_category(result.rows)
+                for c in query.by_category(result.rows, ranks)
             ],
             "rows": [wire.transaction(row, every.get(row.id)) for row in newest],
             "choices": wire.choices(found),

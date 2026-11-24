@@ -271,18 +271,13 @@ def draft(conn: sqlite3.Connection, owner: str) -> Draft:
 
 def _totals(conn: sqlite3.Connection, rows: tuple[Pending, ...]) -> tuple[CategoryTotal, ...]:
     """Per category and currency in the order of the taxonomy, the waiting rows last."""
-    order = {
-        (r[0], r[1]): n
-        for n, r in enumerate(
-            conn.execute("SELECT side, name FROM categories ORDER BY sort_order, id")
-        )
-    }
+    ranks = store.category_ranks(conn)
     sums: dict[tuple[str, str, str], tuple[int, Decimal]] = {}
     for row in rows:
         key = (row.side, row.category, row.currency)
         count, total = sums.get(key, (0, Decimal(0)))
         sums[key] = (count + 1, total + row.amount)
-    ranked = sorted(sums, key=lambda k: (not k[1], order.get((k[0], k[1]), len(order)), k[2]))
+    ranked = sorted(sums, key=lambda k: (not k[1], ranks.leaf(k[1], k[0]), k[2]))
     return tuple(
         CategoryTotal(side, name, cur, *sums[side, name, cur]) for side, name, cur in ranked
     )
@@ -494,9 +489,10 @@ def checklist(conn: sqlite3.Connection, owner: str, month: date) -> Checklist:
         "SELECT c.side, c.name, t.currency, count(*), sum(t.amount_nano) "  # noqa: S608  # only fixed text is interpolated
         "FROM transactions t JOIN accounts a ON a.id = t.account_id "
         "JOIN categories c ON c.id = t.category_id "
+        "LEFT JOIN categories p ON p.id = c.parent_id "
         "LEFT JOIN statement_files f ON f.id = t.statement_file_id "
         f"WHERE a.owner_id = ? AND t.booking_date BETWEEN ? AND ? AND {committed} "
-        "GROUP BY c.id, t.currency ORDER BY c.sort_order, c.id, t.currency",
+        f"GROUP BY c.id, t.currency ORDER BY {store.TAXONOMY_ORDER}, t.currency",
         (owner_id, *span),
     ).fetchall()
     return Checklist(

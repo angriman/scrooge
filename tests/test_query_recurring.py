@@ -6,6 +6,7 @@ from decimal import Decimal
 from scrooge import query
 from scrooge.models import Kind
 from scrooge.query import CategorySum, Row
+from scrooge.storage import store
 
 D = Decimal
 
@@ -91,7 +92,7 @@ def test_rows_add_up_by_top_level_category_and_currency_largest_first() -> None:
         _row(4, date(2026, 9, 4), "-10", "Coop", category="Groceries", parent=None, currency="EUR"),
         _row(5, date(2026, 9, 5), "200", "Savings", kind=Kind.INTERNAL, category=None, parent=None),
     ]
-    assert query.by_category(rows) == (
+    assert query.by_category(rows, store.Ranks({}, {})) == (
         CategorySum("Home", "CHF", 1, D("-1850")),
         CategorySum(query.TRANSFERS, "CHF", 1, D("200")),
         CategorySum("Groceries", "CHF", 2, D("-50")),

@@ -17,6 +17,7 @@ from itertools import pairwise
 
 from scrooge.extractors.common import month_end
 from scrooge.models import CERTIFICATE_SOURCES, Kind
+from scrooge.storage import store
 from scrooge.storage.money import from_nano, to_nano
 
 # Inside `Row`, `date` names the field: later annotations need another name for the type.
@@ -170,8 +171,8 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         (owner,),
     ).fetchall()
     found = conn.execute(
-        "SELECT c.name, c.side, p.name AS parent FROM categories c "
-        "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.sort_order, c.id"
+        "SELECT c.name, c.side, p.name AS parent FROM categories c "  # noqa: S608  # only fixed text is interpolated
+        f"LEFT JOIN categories p ON p.id = c.parent_id ORDER BY {store.TAXONOMY_ORDER}"
     ).fetchall()
     groups: dict[str, list[str]] = {}
     leaves: dict[str, list[str]] = {}
@@ -332,8 +333,9 @@ class CategorySum:
 TRANSFERS = "Transfers"  # what the rows of kind `internal`, which have no category, are summed as
 
 
-def by_category(rows: Iterable[Row]) -> tuple[CategorySum, ...]:
-    """What `rows` add up to by top-level category and currency, the largest first."""
+def by_category(rows: Iterable[Row], ranks: store.Ranks) -> tuple[CategorySum, ...]:
+    """What `rows` add up to by top-level category and currency, the largest first; equal
+    ones in the taxonomy's order (`ranks`)."""
     sums: dict[tuple[str, str], tuple[int, Decimal]] = {}
     for row in rows:
         key = (row.category_parent or row.category or TRANSFERS, row.currency)
@@ -342,7 +344,7 @@ def by_category(rows: Iterable[Row]) -> tuple[CategorySum, ...]:
     return tuple(
         sorted(
             (CategorySum(name, currency, *sums[name, currency]) for name, currency in sums),
-            key=lambda found: (-abs(found.total), found.name, found.currency),
+            key=lambda found: (-abs(found.total), ranks.top(found.name), found.currency),
         )
     )
 
