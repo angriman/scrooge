@@ -841,11 +841,11 @@ def test_each_month_ends_on_its_last_day_in_every_currency_newest_first(
     ]
     october, september, august = ends
     assert list(october.values) == ["USD", "CHF", "EUR"]  # in the order asked for
-    assert october.values["CHF"] == networth.Figure(D(9900), D(1000), D("11.24"))
+    assert october.values["CHF"] == networth.Figure(D(9900), D(1000), D("11.24"), D(9900), D(0))
     # 900 francs are fewer dollars at the higher rate of October's last day
-    assert october.values["USD"] == networth.Figure(D(11000), D(-125), D("-1.12"))
-    assert september.values["EUR"] == networth.Figure(D(8900), D(0), D("0.00"))
-    assert august.values["USD"] == networth.Figure(D(11125), None, None)
+    assert october.values["USD"] == networth.Figure(D(11000), D(-125), D("-1.12"), D(11000), D(0))
+    assert september.values["EUR"] == networth.Figure(D(8900), D(0), D("0.00"), D(8900), D(0))
+    assert august.values["USD"] == networth.Figure(D(11125), None, None, D(11125), D(0))
     assert networth.month_ends(conn, None, ["CHF"]) == ()
 
 
@@ -867,7 +867,7 @@ def test_a_currency_without_rates_is_left_out_of_the_month_ends_or_raised(
 def test_a_month_ends_with_the_last_day_there_is_even_when_the_history_begins_within_it() -> None:
     [only] = networth.by_month([worth_from(day(20), [100] * 5)])
     assert (only.month, only.day, only.partial) == (day(1), day(24), True)
-    assert only.values == {"CHF": networth.Figure(D(100), None, None)}
+    assert only.values == {"CHF": networth.Figure(D(100), None, None, D(100), D(0))}
     assert networth.by_month([]) == ()
     assert networth.by_month([networth.NetWorth("CHF", (), (), ())]) == ()
 
@@ -879,13 +879,143 @@ def test_what_arrived_into_view_in_a_month_is_left_out_of_its_change() -> None:
     worth = worth_from(day(29), totals, arrived={day(10, 10): 400})
     october, september = networth.by_month([worth])
     assert september.values["CHF"].change is None
-    assert october.values["CHF"] == networth.Figure(D(600), D(100), D("100.00"))
+    assert october.values["CHF"] == networth.Figure(D(600), D(100), D("100.00"), D(600), D(0))
 
 
 @pytest.mark.parametrize("before", [0, -50])
 def test_a_change_from_nothing_or_less_has_no_percent(before: int) -> None:
     october, _ = networth.by_month([worth_from(day(30), [before, 100])])
-    assert october.values["CHF"] == networth.Figure(D(100), D(100 - before), None)
+    assert october.values["CHF"] == networth.Figure(D(100), D(100 - before), None, D(100), D(0))
+
+
+# ------------------------------------------------------------------------ liquid and frozen
+
+
+def deposit_and_pensions(conn: sqlite3.Connection) -> None:
+    """Lukas: 1000 francs at the bank, a rent deposit of 3000, a bill and a third pillar of
+    500; a second pillar of 20000 from 10 September. A dollar is 0.80 francs, and 0.90 from
+    15 October, where the days end: October is not over."""
+    close(
+        conn,
+        account("migros", "ACME Bank", "CHF", "1000"),
+        account("migros", "Rent deposit", "CHF", "3000"),
+        account("finpension", "Pillar 3a", "CHF", "500"),
+        ibkr(bill("1000", "-985", day(15)), opening="985"),
+    )
+    staging.stage(conn, certified(certificate(day(10), "20000")), NOW)
+    staging.commit(conn, owner=OWNER, now=NOW)
+    rate(conn, "USD", day(1), "0.8")
+    rate(conn, "USD", day(15, 10), "0.9")
+
+
+DEPOSIT = networth.FrozenAccount("Rent deposit")
+
+
+def test_the_pensions_are_frozen_and_the_rest_liquid_bills_included(
+    conn: sqlite3.Connection,
+) -> None:
+    deposit_and_pensions(conn)
+    result = networth.run(conn, currency="CHF")
+    reach = {(x.asset, x.liquidity) for x in result.lines}
+    assert reach == {
+        (CASH, networth.LIQUID),
+        (BILLS, networth.LIQUID),
+        (PILLAR2, networth.FROZEN),
+        (PENSION, networth.FROZEN),
+    }
+    cut = result.by("liquidity")
+    assert list(cut) == list(networth.LIQUIDITY)
+    at = result.days.index(day(30))
+    assert cut[networth.FROZEN][at] == D(20500)
+    assert cut[networth.LIQUID][at] == D("4789.80")  # 4000 francs, and 987.25 dollars at 0.80
+    assert all(
+        liquid + frozen == total
+        for liquid, frozen, total in zip(*cut.values(), result.total, strict=True)
+    )
+
+
+def test_what_came_into_view_is_set_apart_by_liquidity_too(conn: sqlite3.Connection) -> None:
+    deposit_and_pensions(conn)
+    result = networth.run(conn, currency="CHF", frozen=[DEPOSIT])
+    came = result.by("liquidity", arrivals=True)
+    # The second pillar comes into view with its first certificate; the accounts with their
+    # first statement, on the first day of all, which is no arrival.
+    assert list(came) == [networth.FROZEN]
+    assert {d: v for d, v in zip(result.days, came[networth.FROZEN], strict=True) if v} == {
+        day(10): D(20000)
+    }
+    assert came[networth.FROZEN] == result.arrived
+
+
+def test_an_account_the_config_names_frozen_is_frozen_apart_from_the_rest_of_its_asset(
+    conn: sqlite3.Connection,
+) -> None:
+    deposit_and_pensions(conn)
+    plain = networth.run(conn, currency="CHF")
+    result = networth.run(conn, currency="CHF", frozen=[DEPOSIT])
+    cash = [(x.liquidity, x.values[-1]) for x in result.lines if x.asset == CASH]
+    assert cash == [(networth.LIQUID, D(1000)), (networth.FROZEN, D(3000))]
+    assert result.by("asset") == plain.by("asset")  # the types add up as before
+    assert result.total == plain.total
+    frozen = result.by("liquidity")[networth.FROZEN]
+    assert frozen[-1] == plain.by("liquidity")[networth.FROZEN][-1] + 3000
+    assert networth.frozen_notes(conn, [DEPOSIT]) == []
+
+
+def test_a_name_several_people_have_freezes_each_and_says_so_unless_an_owner_is_named(
+    conn: sqlite3.Connection,
+) -> None:
+    deposit_and_pensions(conn)
+    close(conn, account("migros", "Rent deposit", "CHF", "2000"), owner=PARTNER)
+
+    def frozen_cash(*named: networth.FrozenAccount) -> dict[str, D]:
+        worth = networth.run(conn, currency="CHF", frozen=named)
+        return {
+            x.owner: x.values[-1]
+            for x in worth.lines
+            if (x.asset, x.liquidity)
+            == (
+                CASH,
+                networth.FROZEN,
+            )
+        }
+
+    assert frozen_cash(DEPOSIT) == {OWNER: D(3000), PARTNER: D(2000)}
+    [said] = networth.frozen_notes(conn, [DEPOSIT])
+    assert said == (
+        f"{PARTNER} and {OWNER} each have an account called Rent deposit, and 'frozen' in "
+        f"scrooge.yaml freezes them all: write {{{PARTNER}: Rent deposit}} there to freeze one "
+        "alone."
+    )
+    hers = networth.FrozenAccount("Rent deposit", PARTNER)
+    assert frozen_cash(hers) == {PARTNER: D(2000)}
+    assert networth.frozen_notes(conn, [hers]) == []
+
+
+def test_a_name_no_account_has_is_said_and_freezes_nothing(conn: sqlite3.Connection) -> None:
+    deposit_and_pensions(conn)
+    named = [networth.FrozenAccount("Rent depot"), networth.FrozenAccount("ACME Bank", PARTNER)]
+    assert networth.frozen_notes(conn, named) == [
+        "No account is called Rent depot, which 'frozen' in scrooge.yaml names: write it as "
+        "the pages name the account.",
+        f"{PARTNER} has no account called ACME Bank, which 'frozen' in scrooge.yaml names: "
+        "write it as the pages name the account.",
+    ]
+    assert networth.run(conn, currency="CHF", frozen=named) == networth.run(conn, currency="CHF")
+
+
+def test_each_month_end_says_what_is_liquid_and_what_frozen(conn: sqlite3.Connection) -> None:
+    deposit_and_pensions(conn)
+    valued = networth.value(conn, None)
+    ends = networth.month_ends(conn, valued, ["USD", "CHF"], frozen=[DEPOSIT])
+    october, september, august = ends
+    assert october.partial
+    for end in ends:
+        for figure in end.values.values():
+            assert figure.liquid + figure.frozen == figure.total
+    assert september.values["CHF"].frozen == D(23500)  # both pillars and the deposit
+    assert october.values["USD"].frozen == D("26111.11")  # 23500 francs at 0.90
+    assert august.values["CHF"].frozen == D(3500)  # no second pillar before its certificate
 
 
 # -------------------------------------------------------------------------------- people

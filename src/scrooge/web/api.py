@@ -127,14 +127,20 @@ def _overview(request: Request) -> Response:
 
 
 def _networth(request: Request) -> Response:
-    """Net worth day by day for `owner` in `currency`, cut by `by` (total, asset or owner)."""
+    """Net worth day by day for `owner` in `currency`, cut by `by` (total, asset, owner or
+    liquidity)."""
     asked = forms.networth_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
+    frozen: tuple[networth.FrozenAccount, ...] = request.app.state.frozen
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
+        if asked.by == "liquidity":
+            errors += networth.frozen_notes(conn, frozen)
         worth = wire.unless_rate_missing(
-            errors, lambda: networth.run(conn, owner=asked.owner, currency=asked.currency), None
+            errors,
+            lambda: networth.run(conn, owner=asked.owner, currency=asked.currency, frozen=frozen),
+            None,
         )
     series = None if worth is None else wire.series(worth, asked.by)
     return JSONResponse({"series": series, "errors": errors})
@@ -780,8 +786,10 @@ def _networth_months(request: Request) -> Response:
         return _refused(asked.errors)
     configured: tuple[str, ...] = request.app.state.currencies
     currencies = [*configured, *(() if asked.currency in configured else (asked.currency,))]
+    frozen: tuple[networth.FrozenAccount, ...] = request.app.state.frozen
     errors: list[str] = []
     with db.reading(request.app.state.database) as conn:
+        errors += networth.frozen_notes(conn, frozen)
         valued = networth.value(conn, asked.owner)
 
         def unconverted(exc: networth.MissingRateError) -> None:
@@ -790,7 +798,7 @@ def _networth_months(request: Request) -> Response:
             if (said := wire.sentence(exc)) not in errors:
                 errors.append(said)
 
-        ends = networth.month_ends(conn, valued, currencies, unconverted)
+        ends = networth.month_ends(conn, valued, currencies, unconverted, frozen=frozen)
     return JSONResponse(
         {
             "currencies": currencies,

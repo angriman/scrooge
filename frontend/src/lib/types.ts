@@ -616,6 +616,10 @@ export interface MonthEndFigure {
 	change: Amount | null;
 	/** In percent of the month before; null unless that was above zero. */
 	percent: Amount | null;
+	/** What of `total` can be reached, and what is frozen: the pensions and the accounts the
+	 * config names `frozen`. */
+	liquid: Amount;
+	frozen: Amount;
 }
 
 /** The last day of one month there is, and net worth on it by currency. */

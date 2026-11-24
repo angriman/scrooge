@@ -27,6 +27,10 @@ held at the latest prices, not at those of the last statement.
 - **Bills** have no quoted price: each lot runs in a straight line from what it cost on the
   day it was bought to its face value at maturity.
 - **Options and futures are not assets**: their premiums are cash, nothing else is counted.
+
+**Liquid and frozen** (decided 2026-11-24): what is in a pension, of the second pillar or the
+third, is frozen until retirement, and so is what an account the config names `frozen` holds
+(a rent deposit). Everything else is liquid, bills included: they are sold or mature soon.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from __future__ import annotations
 import sqlite3
 from bisect import bisect_right
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -58,6 +62,9 @@ ASSETS = (CASH, ETFS, STOCKS, BILLS, PILLAR2, PENSION, CARD)  # in the order the
 # From the bottom of a stacked chart up: what moves least first, so that the swings of the
 # rest do not shake it. A card is only ever owed: it comes last and hangs below zero.
 STACK = (CASH, BILLS, PILLAR2, PENSION, ETFS, STOCKS, CARD)
+LIQUID, FROZEN = "Liquid", "Frozen"
+LIQUIDITY = (LIQUID, FROZEN)  # in the order they are listed
+FROZEN_ASSETS = (PILLAR2, PENSION)  # frozen whichever account holds them
 _PENSION_SOURCE = "finpension"
 _CARRIED_FLAT = "manual"  # the kind of an account without rows: typed, or a pension fund's
 _BY_TYPE = {"etf": ETFS, "stock": STOCKS, "bill": BILLS, "bond": BILLS, "fund": PENSION}
@@ -74,19 +81,33 @@ class MissingRateError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class FrozenAccount:
+    """An account the config names `frozen`, by its name as the pages show it: of `owner`
+    alone, or without one, every account so called, whoever's it is."""
+
+    account: str
+    owner: str | None = None
+
+    def names(self, owner: str, account: str) -> bool:
+        return self.account == account and self.owner in (None, owner)
+
+
+@dataclass(frozen=True, slots=True)
 class Line:
-    """What one person holds of one kind of asset, day by day, in the currency asked for."""
+    """What one person holds of one kind of asset, day by day, in the currency asked for: of
+    what can be reached, or of what is frozen."""
 
     owner: str
     asset: str
     values: tuple[Decimal, ...]  # one per day of `NetWorth.days`, to the cent
+    liquidity: str = LIQUID  # one of LIQUIDITY
 
 
 @dataclass(frozen=True, slots=True)
 class NetWorth:
     currency: str
     days: tuple[date, ...]  # every day from the first anything is known for, oldest first
-    lines: tuple[Line, ...]  # by owner and asset; kinds a person never held are absent
+    lines: tuple[Line, ...]  # by owner, asset and liquidity; what a person never held is absent
     notes: tuple[str, ...]  # what the reader must know about how a figure came about
     # What came into view, by owner and asset: the balance a cash series starts with, before its
     # first day's rows, and the shares a statement says were held at its start (`Series.arrival`),
@@ -104,8 +125,8 @@ class NetWorth:
         return _added(line.values for line in self.arrivals) or (Decimal(0),) * len(self.days)
 
     def by(self, attribute: str, *, arrivals: bool = False) -> dict[str, tuple[Decimal, ...]]:
-        """The lines (their arrivals) added up by "owner" or by "asset", in the order they are
-        listed."""
+        """The lines (their arrivals) added up by "owner", "asset" or "liquidity", in the order
+        they are listed."""
         groups: dict[str, list[tuple[Decimal, ...]]] = {}
         for line in self.arrivals if arrivals else self.lines:
             groups.setdefault(getattr(line, attribute), []).append(line.values)
@@ -744,10 +765,15 @@ def convert(
 
 
 def run(
-    conn: sqlite3.Connection, *, owner: str | None = None, currency: str = DEFAULT_CURRENCY
+    conn: sqlite3.Connection,
+    *,
+    owner: str | None = None,
+    currency: str = DEFAULT_CURRENCY,
+    frozen: Collection[FrozenAccount] = (),
 ) -> NetWorth:
-    """Net worth of `owner`, or of everyone, on every day, in `currency` (see `value`)."""
-    return worth_of(conn, value(conn, owner), currency)
+    """Net worth of `owner`, or of everyone, on every day, in `currency` (see `value`); what
+    the accounts `frozen` names hold is frozen (see `worth_of`)."""
+    return worth_of(conn, value(conn, owner), currency, frozen=frozen)
 
 
 def worth_of(
@@ -755,36 +781,79 @@ def worth_of(
     valued: Valued | None,
     currency: str,
     rates: Mapping[str, Sequence[Decimal]] | None = None,
+    *,
+    frozen: Collection[FrozenAccount] = (),
 ) -> NetWorth:
     """`run` for what `value` already worked out: a page that shows more than net worth
     values everything once. `rates` are those `rates_on` read for `valued.days`, for who
-    converts into several currencies; they are read here without them."""
+    converts into several currencies; they are read here without them. A line is frozen when
+    its asset is a pension (`FROZEN_ASSETS`) or one of `frozen` names its account, and liquid
+    otherwise."""
     if valued is None:
         return NetWorth(currency, (), (), ())
     if rates is None:
         rates = rates_on(conn, valued.days)
-    sums: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
-    came: dict[tuple[str, str], list[list[Decimal]]] = defaultdict(list)
+    names = _account_names(conn) if frozen else {}
+    sums: dict[tuple[str, str, str], list[list[Decimal]]] = defaultdict(list)
+    came: dict[tuple[str, str, str], list[list[Decimal]]] = defaultdict(list)
     first = valued.days[0]
     for series in valued.series:
         converted = convert(series.values, series.currency, currency, rates)
-        sums[series.owner, series.asset].append(converted)
+        name = names.get(series.account_id, "")
+        held = series.asset in FROZEN_ASSETS or any(f.names(series.owner, name) for f in frozen)
+        key = (series.owner, series.asset, FROZEN if held else LIQUID)
+        sums[key].append(converted)
         if series.arrival is None or series.arrival[0] <= first:
             continue
         index = (series.arrival[0] - first).days
         native = [Decimal(0)] * len(converted)
         native[index] = series.arrival[1]
-        came[series.owner, series.asset].append(convert(native, series.currency, currency, rates))
+        came[key].append(convert(native, series.currency, currency, rates))
 
-    def ordered(groups: Mapping[tuple[str, str], list[list[Decimal]]]) -> tuple[Line, ...]:
+    def ordered(groups: Mapping[tuple[str, str, str], list[list[Decimal]]]) -> tuple[Line, ...]:
         return tuple(
-            Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)))
-            for (owner_name, asset), parts in sorted(
-                groups.items(), key=lambda item: (item[0][0], ASSETS.index(item[0][1]))
+            Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)), reach)
+            for (owner_name, asset, reach), parts in sorted(
+                groups.items(),
+                key=lambda item: (
+                    item[0][0],
+                    ASSETS.index(item[0][1]),
+                    LIQUIDITY.index(item[0][2]),
+                ),
             )
         )
 
     return NetWorth(currency, valued.days, ordered(sums), valued.notes, ordered(came))
+
+
+def _account_names(conn: sqlite3.Connection) -> dict[int, str]:
+    return {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
+
+
+def frozen_notes(conn: sqlite3.Connection, frozen: Iterable[FrozenAccount]) -> list[str]:
+    """What the reader must know of the config's `frozen`: an entry that names no account,
+    which a name mistyped there would quietly leave liquid, and a bare name that freezes the
+    accounts of several people, which may be meant for one of them alone."""
+    rows = conn.execute(
+        "SELECT o.name, a.name FROM accounts a JOIN owners o ON o.id = a.owner_id"
+    ).fetchall()
+    held = {(str(owner), str(account)) for owner, account in rows}
+    notes: list[str] = []
+    for entry in frozen:
+        owners = sorted({owner for owner, account in held if entry.names(owner, account)})
+        if not owners:
+            whose = f"{entry.owner} has no account" if entry.owner else "No account is"
+            notes.append(
+                f"{whose} called {entry.account}, which 'frozen' in scrooge.yaml names: write "
+                "it as the pages name the account."
+            )
+        elif len(owners) > 1:
+            notes.append(
+                f"{', '.join(owners[:-1])} and {owners[-1]} each have an account called "
+                f"{entry.account}, and 'frozen' in scrooge.yaml freezes them all: write "
+                f"{{{owners[0]}: {entry.account}}} there to freeze one alone."
+            )
+    return notes
 
 
 def balances(
@@ -794,7 +863,7 @@ def balances(
     `currency` at that day's rates, to the cent; by its owner and name."""
     if valued is None:
         return {}
-    names = {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
+    names = _account_names(conn)
     rates = rates_on(conn, valued.days[-1:])
     sums: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
     for series in valued.series:
@@ -808,11 +877,14 @@ def balances(
 
 @dataclass(frozen=True, slots=True)
 class Figure:
-    """Net worth at a month's end in one currency, and how it moved since the month before."""
+    """Net worth at a month's end in one currency, how it moved since the month before, and
+    what of it is liquid and what frozen that day."""
 
     total: Decimal
     change: Decimal | None  # None: the history starts within the month
     percent: Decimal | None  # `change` in percent of the month before; None unless that is above 0
+    liquid: Decimal
+    frozen: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -834,19 +906,21 @@ def month_ends(
     valued: Valued | None,
     currencies: Sequence[str],
     unconverted: Callable[[MissingRateError], object] | None = None,
+    *,
+    frozen: Collection[FrozenAccount] = (),
 ) -> tuple[MonthEnd, ...]:
     """Net worth at the end of every month of `valued.days` in each of `currencies`, newest
     first (see `by_month`). Everything is valued once and the rates are read once: only the
     conversion is done for each currency. With `unconverted`, a currency without rates is
     left out of every month and its error handed there, so the others are still worked
-    out; without it, the error is raised."""
+    out; without it, the error is raised. The accounts `frozen` names are frozen (`worth_of`)."""
     if valued is None:
         return ()
     rates = rates_on(conn, valued.days)
     worths: list[NetWorth] = []
     for currency in currencies:
         try:
-            worths.append(worth_of(conn, valued, currency, rates))
+            worths.append(worth_of(conn, valued, currency, rates, frozen=frozen))
         except MissingRateError as exc:
             if unconverted is None:
                 raise
@@ -862,7 +936,7 @@ def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
     between (`NetWorth.arrived`), which the month's recap sets apart too: an account whose
     first statement is imported brings what it held, and that was not made in the month. So
     a change is not always the difference of two totals. The first month has nothing before
-    it to change from.
+    it to change from. What is liquid and what frozen is that of the month's last day.
     """
     if not worths or not worths[0].days:
         return ()
@@ -872,20 +946,24 @@ def by_month(worths: Sequence[NetWorth]) -> tuple[MonthEnd, ...]:
         for index, day in enumerate(days)
         if index == len(days) - 1 or days[index + 1].month != day.month
     ]
+    nothing = (Decimal(0).quantize(_CENT),) * len(days)
+    reach = [worth.by("liquidity") for worth in worths]
     found: list[MonthEnd] = []
     for at, index in enumerate(ends):
         before = ends[at - 1] if at else None
         values: dict[str, Figure] = {}
-        for worth in worths:
+        for worth, parts in zip(worths, reach, strict=True):
             total = worth.total[index]
+            liquid = parts.get(LIQUID, nothing)[index]
+            frozen = parts.get(FROZEN, nothing)[index]
             if before is None:
-                values[worth.currency] = Figure(total, None, None)
+                values[worth.currency] = Figure(total, None, None, liquid, frozen)
                 continue
             was = worth.total[before]
             arrived = sum(worth.arrived[before + 1 : index + 1], Decimal(0))
             change = (total - was - arrived).quantize(_CENT)
             percent = (change * 100 / was).quantize(_CENT) if was > 0 else None
-            values[worth.currency] = Figure(total, change, percent)
+            values[worth.currency] = Figure(total, change, percent, liquid, frozen)
         found.append(MonthEnd(days[index].replace(day=1), days[index], values))
     return tuple(reversed(found))
 

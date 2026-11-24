@@ -15,6 +15,14 @@ export const ASSET_SLOTS: Readonly<Record<string, Slot>> = {
 	Bills: 6
 };
 
+/** What can be reached and what cannot, `networth.LIQUIDITY`. Liquid holds shares and bills as
+ * well as cash: it wears a slot no type of asset does, not cash's, which would read as cash
+ * beside the allocation. Frozen wears the second pillar's, which is most of it. */
+export const LIQUIDITY_SLOTS: Readonly<Record<string, Slot>> = {
+	Liquid: 7,
+	Frozen: 5
+};
+
 /** The income groups of `income.GROUPS`. */
 export const INCOME_SLOTS: Readonly<Record<string, Slot>> = {
 	Lavoro: 4,
@@ -30,6 +38,11 @@ export function color(slot: Slot | null | undefined): string {
 /** The colour of an asset type, as every chart and list draws it. */
 export function assetColor(name: string): string {
 	return name === 'Card' ? 'var(--loss)' : color(ASSET_SLOTS[name]);
+}
+
+/** The colour of what is liquid and of what is frozen. */
+export function liquidityColor(name: string): string {
+	return color(LIQUIDITY_SLOTS[name]);
 }
 
 /** The colour of each of `names` in the order they come: the first eight get a slot of their

@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import overview, staging
+from scrooge import networth, overview, staging
 from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.storage.helpers import OCTOBER, OWNER, PARTNER, batch
 from tests.test_income import SALARY
-from tests.test_networth import NOW, account, close, spent
+from tests.test_networth import NOW, account, close, deposit_and_pensions, spent
 from tests.test_overview import household
 from tests.web import builders
 from tests.web.test_login import STORED
@@ -118,6 +118,28 @@ def test_net_worth_runs_day_by_day_with_its_parts(client: TestClient) -> None:
     assert [part["name"] for part in series["parts"]] == sorted([OWNER, PARTNER])
     assert all(len(part["values"]) == len(series["total"]) for part in series["parts"])
     assert client.get("/api/networth", params={"by": "total"}).json()["series"]["parts"] == []
+
+
+def test_net_worth_is_cut_into_what_is_liquid_and_what_frozen(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    deposit_and_pensions(conn)
+    conn.close()
+    named = (networth.FrozenAccount("Rent deposit"), networth.FrozenAccount("Rent depot"))
+    client = TestClient(webapp.create_app(path, currency="CHF", frozen=named), base_url=SITE)
+    sent = client.get("/api/networth", params={"by": "liquidity"}).json()
+    [error] = sent["errors"]
+    assert error.startswith("No account is called Rent depot")
+    series = sent["series"]
+    assert [part["name"] for part in series["parts"]] == ["Frozen", "Liquid"]  # frozen below
+    frozen, liquid = series["parts"]
+    assert (frozen["values"][-1], liquid["values"][-1]) == ("23500.00", "1890.55")
+    # The second pillar came into view on 10 September, the tenth day after 31 August.
+    assert (frozen["arrived"], liquid["arrived"]) == ({"10": "20000.00"}, {})
+    assert series["arrived"] == frozen["arrived"]
+    # Only the cut by liquidity is about what is frozen: the others say nothing of it.
+    assert client.get("/api/networth", params={"by": "asset"}).json()["errors"] == []
 
 
 def test_an_empty_database_has_nothing_to_show(tmp_path: Path) -> None:

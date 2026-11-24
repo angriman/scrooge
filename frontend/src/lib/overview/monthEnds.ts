@@ -6,17 +6,39 @@ import { month, monthName } from '#lib/format/date.js';
 import { MINUS, money, percent, signed, signedPercent } from '#lib/format/number.js';
 import type { MonthEndFigure, NetWorthMonths } from '#lib/types.js';
 
-/** The columns of each currency, in order. Liquid and frozen net worth would join them here,
- * once the API sends them in each figure. */
+export interface Column {
+	key: keyof MonthEndFigure;
+	label: string;
+}
+
+/** The columns of each currency, in order. */
 export const COLUMNS = [
 	{ key: 'total', label: 'Net worth' },
 	{ key: 'change', label: 'Change' },
 	{ key: 'percent', label: 'Change %' }
-] as const satisfies readonly { key: keyof MonthEndFigure; label: string }[];
+] as const satisfies readonly Column[];
+
+/** What of net worth can be reached and what is frozen: after the columns of the header's
+ * currency alone, so that the table stays narrow. */
+export const SPLIT = [
+	{ key: 'liquid', label: 'Liquid' },
+	{ key: 'frozen', label: 'Frozen' }
+] as const satisfies readonly Column[];
 
 /** What a change leaves out, said under the table and on its change columns: a user taking
  * one month's total from the next's would otherwise think the table wrong. */
 export const CHANGE_NOTE = 'Change leaves out what accounts held when they were first imported.';
+
+/** What counts as frozen, said under the table and on the columns of the split. */
+export const FROZEN_NOTE =
+	'Frozen is Pillar 2, Pillar 3a and the accounts scrooge.yaml names frozen; the rest is liquid.';
+
+/** What a column's heading says when pointed at, if anything. */
+export function noteOf(key: Column['key']): string | undefined {
+	if (key === 'change' || key === 'percent') return CHANGE_NOTE;
+	if (key === 'liquid' || key === 'frozen') return FROZEN_NOTE;
+	return undefined;
+}
 
 /** Which way a figure went: its colour, `gain` or `loss`; `flat` and `none` stay plain. */
 export type Way = 'gain' | 'loss' | 'flat' | 'none';
@@ -60,28 +82,41 @@ function moved(value: string | null, write: (text: string) => string, zero: stri
 	return { text: way === 'flat' ? zero : written, way };
 }
 
-/** The cells of one currency's group, in the order of `COLUMNS`. */
-export function cells(figure: MonthEndFigure | undefined): Cell[] {
-	if (!figure) return COLUMNS.map(() => ({ text: '–', way: 'none' }));
+/** The cells of one currency's group, in the order of `COLUMNS`, then of `SPLIT` with `split`. */
+export function cells(figure: MonthEndFigure | undefined, split = false): Cell[] {
+	const columns: readonly Column[] = split ? [...COLUMNS, ...SPLIT] : COLUMNS;
+	if (!figure) return columns.map(() => ({ text: '–', way: 'none' }));
+	const parts: Cell[] = SPLIT.map((column) => ({
+		text: money(figure[column.key], 0),
+		way: 'none'
+	}));
 	return [
 		{ text: money(figure.total, 0), way: 'none' },
 		moved(figure.change, (text) => signed(text, 0), '0'),
-		moved(figure.percent, (text) => signedPercent(text), percent('0'))
+		moved(figure.percent, (text) => signedPercent(text), percent('0')),
+		...(split ? parts : [])
 	];
 }
 
-/** The table of what the API sent, with `shown` (the header's currency) leading. */
-export function table(sent: NetWorthMonths, shown: string): { currencies: string[]; rows: Row[] } {
+/** The table of what the API sent, with `shown` (the header's currency) leading: it alone is
+ * also split into what is liquid and what frozen. `columns` are each currency's, in the order
+ * of `currencies`. */
+export function table(
+	sent: NetWorthMonths,
+	shown: string
+): { currencies: string[]; columns: Column[][]; rows: Row[] } {
 	const currencies = inOrder(sent.currencies, shown);
+	const split = currencies.map((currency) => currency === shown);
 	return {
 		currencies,
+		columns: split.map((both) => [...COLUMNS, ...(both ? SPLIT : [])]),
 		rows: sent.months.map((end) => ({
 			month: end.month,
 			label: monthName(end.month),
 			short: month(`${end.month}-01`),
 			partial: end.partial,
 			day: end.day,
-			groups: currencies.map((currency) => cells(end.values[currency]))
+			groups: currencies.map((currency, n) => cells(end.values[currency], split[n]))
 		}))
 	};
 }

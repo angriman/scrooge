@@ -129,7 +129,7 @@ def test_net_worth_is_in_euros_and_by_asset_type_unless_asked() -> None:
 
 def test_a_breakdown_that_cannot_be_read_is_reported_and_asset_type_shown() -> None:
     assert forms.networth_view({"by": "shape"}) == forms.NetWorthView(
-        None, "EUR", "asset", ("'shape' is not total, asset or owner.",)
+        None, "EUR", "asset", ("'shape' is not total, asset, owner or liquidity.",)
     )
 
 

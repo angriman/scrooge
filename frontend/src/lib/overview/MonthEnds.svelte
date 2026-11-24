@@ -1,15 +1,16 @@
 <!--
 @component
 Net worth at the end of every month, newest first, in several currencies side by side: for each
-its total, how it moved since the month before and by how much in percent. What accounts
-brought when they came into view is left out of a change. On a phone the table scrolls
-sideways, the months staying in sight.
+its total, how it moved since the month before and by how much in percent; for the header's
+currency also what of it is liquid and what frozen. What accounts brought when they came into
+view is left out of a change. On a phone the table scrolls sideways, the months staying in
+sight.
 -->
 <script lang="ts">
 	import { day } from '#lib/format/date.js';
 	import type { NetWorthMonths } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
-	import { CHANGE_NOTE, COLUMNS, table, type Way } from './monthEnds.js';
+	import { CHANGE_NOTE, FROZEN_NOTE, noteOf, table, type Way } from './monthEnds.js';
 
 	interface Props {
 		months: Promise<NetWorthMonths>;
@@ -48,9 +49,9 @@ sideways, the months staying in sight.
 							>
 								Month
 							</th>
-							{#each shown.currencies as code (code)}
+							{#each shown.currencies as code, g (code)}
 								<th
-									colspan={COLUMNS.length}
+									colspan={shown.columns[g].length}
 									scope="colgroup"
 									class="border-l border-line px-3 pt-1.5 text-left font-medium text-ink-secondary"
 								>
@@ -59,15 +60,15 @@ sideways, the months staying in sight.
 							{/each}
 						</tr>
 						<tr>
-							{#each shown.currencies as code (code)}
-								{#each COLUMNS as column, n (column.key)}
+							{#each shown.currencies as code, g (code)}
+								{#each shown.columns[g] as column, n (column.key)}
 									<th
 										scope="col"
 										class={cn(
 											'border-b border-line px-3 py-1.5 text-right font-normal whitespace-nowrap',
 											n === 0 && 'border-l'
 										)}
-										title={column.key === 'total' ? undefined : CHANGE_NOTE}
+										title={noteOf(column.key)}
 									>
 										{column.label}
 									</th>
@@ -91,7 +92,7 @@ sideways, the months staying in sight.
 									{/if}
 								</th>
 								{#each row.groups as group, g (shown.currencies[g])}
-									{#each group as cell, n (COLUMNS[n].key)}
+									{#each group as cell, n (shown.columns[g][n].key)}
 										<td
 											class={cn(
 												'border-b border-line px-3 py-1.5 text-right whitespace-nowrap',
@@ -108,7 +109,7 @@ sideways, the months staying in sight.
 					</tbody>
 				</table>
 			</div>
-			<p class="px-3 pt-2 text-caption text-ink-muted">{CHANGE_NOTE}</p>
+			<p class="px-3 pt-2 text-caption text-ink-muted">{CHANGE_NOTE} {FROZEN_NOTE}</p>
 		{:else if !sent.errors.length}
 			<p class="py-16 text-center text-small text-ink-muted">No month to show yet.</p>
 		{/if}

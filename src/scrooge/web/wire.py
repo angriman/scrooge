@@ -142,12 +142,15 @@ def _days_of(values: Sequence[Decimal]) -> dict[str, str | None]:
 
 def series(worth: networth.NetWorth, by: str) -> JSON:
     """Net worth day by day from `first`, and its parts by `by` ("asset" in the order of
-    `networth.STACK`, "owner" by name, "total" none). `arrived` is what came into view on the
-    days anything did (`networth.NetWorth.arrivals`), by the index of the day."""
+    `networth.STACK`, "liquidity" frozen first, which moves least, "owner" by name, "total"
+    none). `arrived` is what came into view on the days anything did
+    (`networth.NetWorth.arrivals`), by the index of the day."""
     parts = worth.by(by) if by != "total" else {}
     came = worth.by(by, arrivals=True) if by != "total" else {}
     if by == "asset":
         names: Sequence[str] = [name for name in networth.STACK if name in parts]
+    elif by == "liquidity":
+        names = [name for name in reversed(networth.LIQUIDITY) if name in parts]
     else:
         names = sorted(parts)
     return {
@@ -648,8 +651,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
 
 
 def month_end(end: networth.MonthEnd) -> JSON:
-    """Net worth at a month's end, by currency: its total, and how it moved since the month
-    before (`networth.by_month`)."""
+    """Net worth at a month's end, by currency: its total, how it moved since the month
+    before (`networth.by_month`), and what of it is liquid and what frozen."""
     return {
         "month": f"{end.month:%Y-%m}",
         "day": day(end.day),
@@ -659,6 +662,8 @@ def month_end(end: networth.MonthEnd) -> JSON:
                 "total": number(figure.total),
                 "change": number(figure.change),
                 "percent": number(figure.percent),
+                "liquid": number(figure.liquid),
+                "frozen": number(figure.frozen),
             }
             for currency, figure in end.values.items()
         },

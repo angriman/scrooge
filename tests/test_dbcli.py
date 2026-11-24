@@ -1790,6 +1790,47 @@ def test_currencies_the_table_cannot_show_are_refused(run: Run, named: str) -> N
     )
 
 
+@pytest.mark.parametrize(
+    ("named", "frozen"),
+    [
+        ("", ()),
+        (
+            "frozen: [Rent deposit, ' ACME Bank', {Anna: Savings}, Rent deposit]\n",
+            (
+                networth.FrozenAccount("Rent deposit"),
+                networth.FrozenAccount("ACME Bank"),
+                networth.FrozenAccount("Savings", "Anna"),
+            ),
+        ),
+    ],
+)
+def test_the_pages_freeze_the_accounts_the_config_names(
+    run: Run,
+    monkeypatch: pytest.MonkeyPatch,
+    named: str,
+    frozen: tuple[networth.FrozenAccount, ...],
+) -> None:
+    run.config.write_text(run.config.read_text(encoding="utf-8") + named, encoding="utf-8")
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert run("serve") == dbcli.OK
+    assert served[-1].state.frozen == frozen
+
+
+@pytest.mark.parametrize(
+    "named", ["Rent deposit", "[1]", "['']", "{a: b}", "[{Anna: 1}]", "[{Anna: a, Lukas: b}]"]
+)
+def test_frozen_accounts_not_listed_by_name_are_refused(run: Run, named: str) -> None:
+    run.config.write_text(
+        run.config.read_text(encoding="utf-8") + f"frozen: {named}\n", encoding="utf-8"
+    )
+    assert run("serve") == dbcli.FAILED
+    assert run.output.endswith(
+        f"error: {run.config}: 'frozen' must list accounts as the pages name them, or as "
+        "{owner: account}\n"
+    )
+
+
 @pytest.mark.parametrize("broken", ["owners: [\n", "owners: {a: b\ncurrency: CHF\n"])
 def test_a_config_that_is_no_yaml_is_refused_with_its_file_and_line(run: Run, broken: str) -> None:
     run.config.write_text(broken, encoding="utf-8")
