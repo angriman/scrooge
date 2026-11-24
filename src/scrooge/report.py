@@ -13,7 +13,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
-from scrooge import analysis, cashflow, income, query, savings, spending
+from scrooge import analysis, cashflow, income, paidby, query, savings, spending
 from scrooge.cashflow import Grouping
 from scrooge.networth import DEFAULT_CURRENCY
 
@@ -34,6 +34,7 @@ class Report:
     income: income.Income
     cashflow: cashflow.CashFlow  # in each currency as stored: nothing is converted
     shortcuts: tuple[Shortcut, ...]
+    paid_by: paidby.PaidBy | None  # who paid, for both people together only
 
 
 def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
@@ -45,7 +46,8 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     grouping: Grouping = Grouping.MONTH,
     currency: str = DEFAULT_CURRENCY,
 ) -> Report:
-    """The three views of `owner` (of everyone) from `first` to `last`, in `currency`."""
+    """The three views of `owner` (of everyone) from `first` to `last`, in `currency`; for
+    everyone, who paid too."""
     query.check_names(conn, query.Filter(owner=owner))
     through = analysis.through(conn, owner)
     if first is None and last is None and through is not None:
@@ -60,6 +62,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
         income.run(conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency),
         cashflow.run(conn, first=first, last=last, owner=owner, grouping=grouping),
         _shortcuts(conn, owner, through),
+        None if owner else paidby.run(conn, first=first, last=last, currency=currency),
     )
 
 

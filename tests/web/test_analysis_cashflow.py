@@ -204,3 +204,22 @@ def test_the_twelve_months_are_measured_against_income_and_salary(years: TestCli
     )
     month = years.get("/api/month", params={**params, "month": "2026-07"}).json()["month"]
     assert (month["rate_year"], month["rate_salary_year"]) == ("65.300", "65.700")
+
+
+def test_the_household_is_sent_who_paid(client: TestClient) -> None:
+    # What the two paid each other stays in the household; his 30 EUR count at 0.95.
+    params = {"from": "2026-07", "currency": "CHF"}
+    sent: dict[str, Any] = client.get("/api/cashflow", params=params).json()
+    paid = sent["report"]["paid_by"]
+    assert paid["spent"] == sent["report"]["totals"]["spent"] == "1983.70"
+    assert paid["people"] == [
+        {"name": "Anna", "spent": "60.00", "share": "3.000"},
+        {"name": "Lukas", "spent": "1923.70", "share": "97.000"},
+    ]
+    assert paid["categories"][0] == {
+        "name": "Casa",
+        "spent": "1850.00",
+        "by": {"Anna": "0.00", "Lukas": "1850.00"},
+    }
+    alone = client.get("/api/cashflow", params={**params, "owner": OWNER}).json()
+    assert alone["report"]["paid_by"] is None
