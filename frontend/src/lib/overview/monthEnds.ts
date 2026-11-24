@@ -25,9 +25,17 @@ export const SPLIT = [
 	{ key: 'frozen', label: 'Frozen' }
 ] as const satisfies readonly Column[];
 
+/** What accounts held when they were first counted in a month, left out of its change: after
+ * the change of the header's currency alone, and only when some month has any. */
+export const ARRIVED = { key: 'arrived', label: 'Came into view' } as const satisfies Column;
+
 /** What a change leaves out, said under the table and on its change columns: a user taking
  * one month's total from the next's would otherwise think the table wrong. */
 export const CHANGE_NOTE = 'Change leaves out what accounts held when they were first imported.';
+
+/** The same said when the table shows what came into view: then the two add up. */
+export const ARRIVED_NOTE =
+	'Change leaves out what came into view, what accounts held when they were first imported: a month’s total change is the two added up.';
 
 /** What counts as frozen, said under the table and on the columns of the split. */
 export const FROZEN_NOTE =
@@ -36,6 +44,7 @@ export const FROZEN_NOTE =
 /** What a column's heading says when pointed at, if anything. */
 export function noteOf(key: Column['key']): string | undefined {
 	if (key === 'change' || key === 'percent') return CHANGE_NOTE;
+	if (key === 'arrived') return ARRIVED_NOTE;
 	if (key === 'liquid' || key === 'frozen') return FROZEN_NOTE;
 	return undefined;
 }
@@ -82,41 +91,55 @@ function moved(value: string | null, write: (text: string) => string, zero: stri
 	return { text: way === 'flat' ? zero : written, way };
 }
 
-/** The cells of one currency's group, in the order of `COLUMNS`, then of `SPLIT` with `split`. */
-export function cells(figure: MonthEndFigure | undefined, split = false): Cell[] {
-	const columns: readonly Column[] = split ? [...COLUMNS, ...SPLIT] : COLUMNS;
-	if (!figure) return columns.map(() => ({ text: '–', way: 'none' }));
-	const parts: Cell[] = SPLIT.map((column) => ({
-		text: money(figure[column.key], 0),
-		way: 'none'
-	}));
-	return [
-		{ text: money(figure.total, 0), way: 'none' },
-		moved(figure.change, (text) => signed(text, 0), '0'),
-		moved(figure.percent, (text) => signedPercent(text), percent('0')),
-		...(split ? parts : [])
-	];
+/** The cell of `figure` in the column `key`. What came into view is neither a gain nor a loss:
+ * it is written plain, like a total. */
+function cellOf(figure: MonthEndFigure, key: Column['key']): Cell {
+	if (key === 'change') return moved(figure.change, (text) => signed(text, 0), '0');
+	if (key === 'percent') return moved(figure.percent, (text) => signedPercent(text), percent('0'));
+	const value = figure[key];
+	return { text: value === null ? '–' : money(value, 0), way: 'none' };
 }
 
-/** The table of what the API sent, with `shown` (the header's currency) leading: it alone is
- * also split into what is liquid and what frozen. `columns` are each currency's, in the order
- * of `currencies`. */
+/** The cells of one currency's group, a cell for each of `columns`. */
+export function cells(
+	figure: MonthEndFigure | undefined,
+	columns: readonly Column[] = COLUMNS
+): Cell[] {
+	return columns.map((column) =>
+		figure ? cellOf(figure, column.key) : { text: '–', way: 'none' }
+	);
+}
+
+/** Whether something came into view in `currency` in any month sent: otherwise the column of
+ * what did would be zeros and dashes only. */
+export function anyArrived(sent: NetWorthMonths, currency: string): boolean {
+	return sent.months.some((end) => /[1-9]/.test(end.values[currency]?.arrived ?? ''));
+}
+
+/** The table of what the API sent, with `shown` (the header's currency) leading: it alone also
+ * has what came into view, when anything did, and is split into what is liquid and what frozen.
+ * `columns` are each currency's, in the order of `currencies`; `note` says what a change leaves
+ * out. */
 export function table(
 	sent: NetWorthMonths,
 	shown: string
-): { currencies: string[]; columns: Column[][]; rows: Row[] } {
+): { currencies: string[]; columns: Column[][]; rows: Row[]; note: string } {
 	const currencies = inOrder(sent.currencies, shown);
-	const split = currencies.map((currency) => currency === shown);
+	const arrived = anyArrived(sent, shown);
+	const columns = currencies.map((currency): Column[] =>
+		currency === shown ? [...COLUMNS, ...(arrived ? [ARRIVED] : []), ...SPLIT] : [...COLUMNS]
+	);
 	return {
 		currencies,
-		columns: split.map((both) => [...COLUMNS, ...(both ? SPLIT : [])]),
+		columns,
+		note: arrived ? ARRIVED_NOTE : CHANGE_NOTE,
 		rows: sent.months.map((end) => ({
 			month: end.month,
 			label: monthName(end.month),
 			short: month(`${end.month}-01`),
 			partial: end.partial,
 			day: end.day,
-			groups: currencies.map((currency, n) => cells(end.values[currency], split[n]))
+			groups: currencies.map((currency, n) => cells(end.values[currency], columns[n]))
 		}))
 	};
 }
