@@ -1,5 +1,6 @@
 """The recurring payments of the cash-flow page and what they cost a month."""
 
+import sqlite3
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -105,19 +106,33 @@ def test_transfers_and_what_the_two_pay_each_other_are_not_payments(tmp_path: Pa
         lukas = recurring.run(conn, owner=OWNER, currency="CHF")
     assert [p.found.name for p in everyone.active] == ["Landlord AG"]
     assert everyone.monthly == D(1500)
-    # In one person's view too, what they pay the other each month for the household is the
-    # two people's money moving, not a subscription.
-    assert [p.found.name for p in lukas.active] == ["Landlord AG"]
-    assert lukas.monthly == D(1500)
+    # In one person's view, what they pay the other is money spent, as cash flow counts it.
+    assert [p.found.name for p in lukas.active] == ["Landlord AG", "Anna Meier"]
+    assert lukas.monthly == D(1800)
 
 
-def test_the_merchant_filter_lists_each_payment_s_rows(database: Path) -> None:
+def _listed(conn: sqlite3.Connection, payment: recurring.Payment) -> set[str]:
+    """The rows the line of `payment` opens: its merchant, account and person."""
+    found = payment.found
+    wanted = query.Filter(merchant=found.name, account=found.account, owner=found.owner)
+    return {row.id for row in query.run(conn, wanted).rows}
+
+
+def test_a_payment_opens_exactly_its_own_rows(database: Path) -> None:
     with db.reading(database) as conn:
         found = recurring.run(conn, owner=None, currency="CHF")
         for each in (*found.active, *found.ended):
-            wanted = query.Filter(merchant=each.found.name, account=each.found.account)
-            listed = {row.id for row in query.run(conn, wanted).rows}
-            assert {row.id for row in each.found.rows} <= listed, each.found.name
+            assert each.alone, each.found.name
+            assert _listed(conn, each) == {row.id for row in each.found.rows}, each.found.name
+
+
+def _database(path: Path, rows: list[Transaction]) -> Path:
+    conn = db.connect(path)
+    db.migrate(conn, BUILT)
+    close(conn, OWNER, SPAN, ("migros", rows), now=BUILT)
+    conn.commit()
+    conn.close()
+    return path
 
 
 def test_a_currency_without_a_rate_leaves_its_cost_and_the_total_unknown(tmp_path: Path) -> None:
@@ -134,24 +149,36 @@ def test_costs_are_converted_at_the_rate_of_the_last_day(database: Path) -> None
     assert found.monthly == D(1562) / D("0.80")
 
 
-def test_two_payments_of_the_same_name_are_both_listed(tmp_path: Path) -> None:
+def test_two_payments_of_the_same_name_are_both_listed_and_open_nothing(tmp_path: Path) -> None:
     months = [(2026, m) for m in range(5, 11)]
     rows = [
         *_monthly("Streamio 1", [(y, m, "-12") for y, m in months], "a"),
         *_monthly("Streamio 2", [(y, m, "-30") for y, m in months], "b"),
     ]
-    conn = db.connect(tmp_path / "scrooge.db")
-    db.migrate(conn, BUILT)
-    close(conn, OWNER, SPAN, ("migros", rows), now=BUILT)
-    conn.commit()
-    conn.close()
-    with db.reading(tmp_path / "scrooge.db") as conn:
+    with db.reading(_database(tmp_path / "scrooge.db", rows)) as conn:
         found = recurring.run(conn, owner=None, currency="CHF")
-    assert [(p.found.name, p.monthly) for p in found.active] == [
-        ("Streamio", D(30)),
-        ("Streamio", D(12)),
+    assert [(p.found.name, p.monthly, p.alone) for p in found.active] == [
+        ("Streamio", D(30), False),
+        ("Streamio", D(12), False),
     ]
     assert len({p.found.id for p in found.active}) == 2
+
+
+def test_a_payment_named_by_its_account_opens_nothing(tmp_path: Path) -> None:
+    # A counterparty of only digits is named by its account, as is every expense that names
+    # nobody: the account's name would open those too.
+    months = [(2026, m) for m in range(5, 11)]
+    rows = [
+        *_monthly("12345", [(y, m, "-40") for y, m in months], "n"),
+        txn("-7", date=date(2026, 9, 12), counterparty="", source_ref="kiosk"),
+        *_monthly("Landlord AG", [(y, m, "-1500") for y, m in months], "r"),
+    ]
+    with db.reading(_database(tmp_path / "scrooge.db", rows)) as conn:
+        found = recurring.run(conn, owner=None, currency="CHF")
+    assert [(p.found.name, p.alone) for p in found.active] == [
+        ("Landlord AG", True),
+        ("Migros", False),
+    ]
 
 
 def test_nobody_s_payments_are_empty(tmp_path: Path) -> None:

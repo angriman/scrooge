@@ -16,6 +16,7 @@ const payment = (fields: Partial<RecurringPayment>): RecurringPayment => ({
 	last: '2026-10-03',
 	next: '2026-11-03',
 	monthly: '12',
+	alone: true,
 	...fields
 });
 

@@ -57,13 +57,13 @@
 		for (const [name, value] of Object.entries(changes)) query.set(name, value);
 		return `${resolve('/transactions')}?${query}`;
 	};
-	// The transactions of a recurring payment: all of them, whenever they were, of the same
-	// person and in the same currency.
+	// The transactions of a recurring payment: all of them, whenever they were, in the same
+	// currency, and of the same person unless the payment names its own.
 	const allTransactions = (changes: Record<string, string>) => {
 		const query = new URLSearchParams(changes);
 		for (const name of ['owner', 'currency']) {
 			const value = page.url.searchParams.get(name);
-			if (value) query.set(name, value);
+			if (value && !query.has(name)) query.set(name, value);
 		}
 		return `${resolve('/transactions')}?${query}`;
 	};

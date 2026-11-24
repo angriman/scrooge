@@ -2,7 +2,8 @@
 @component
 The payments that come back at a steady pace, subscriptions among them: what the active ones
 cost a month together, then each, the most a month first, with when it is next due and whether
-its price changed. Those that stopped are folded below. Each opens its transactions.
+its price changed. Those that stopped are folded below. Each opens its transactions, when its
+name finds them alone.
 -->
 <script lang="ts">
 	import { dayOfYear, day } from '#lib/format/date.js';
@@ -24,9 +25,16 @@ its price changed. Those that stopped are folded below. Each opens its transacti
 {#snippet line(payment: RecurringPayment, stopped: boolean)}
 	{@const change = priceChange(payment)}
 	<li>
-		<a
-			href={transactions({ merchant: payment.name, account: payment.account })}
-			class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-control px-1 py-2 hover:bg-sunken"
+		<!-- A name other payees of the account share would list their rows too: no link then. -->
+		<svelte:element
+			this={payment.alone ? 'a' : 'div'}
+			href={payment.alone
+				? transactions({ merchant: payment.name, account: payment.account, owner: payment.owner })
+				: undefined}
+			class={[
+				'grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-control px-1 py-2',
+				payment.alone && 'hover:bg-sunken'
+			]}
 		>
 			<span class="flex min-w-0 items-center gap-2 text-body text-ink">
 				<span class="truncate">{payment.name}</span>
@@ -50,7 +58,7 @@ its price changed. Those that stopped are folded below. Each opens its transacti
 					{everyName(payment.every)}
 				{/if}
 			</span>
-		</a>
+		</svelte:element>
 	</li>
 {/snippet}
 

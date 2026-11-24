@@ -559,6 +559,9 @@ export interface RecurringPayment {
 	next: string;
 	/** The latest amount over a month, in `Recurring.currency`; null when a rate is missing. */
 	monthly: Amount | null;
+	/** Whether the `merchant` filter, with `account` and `owner`, lists its rows and no other
+	 * payee's: the line opens them only then. */
+	alone: boolean;
 }
 
 export interface Recurring {

@@ -605,6 +605,7 @@ def recurring_payment(shown: recurring.Payment) -> JSON:
         "last": day(found.last),
         "next": day(found.next),
         "monthly": number(shown.monthly),
+        "alone": shown.alone,
     }
 
 
