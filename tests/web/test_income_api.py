@@ -72,14 +72,15 @@ def test_the_last_twelve_months_are_sent_unless_a_range_is_asked(client: TestCli
         "name": "ACME Corp",
         "symbol": "ACME",
         "account": None,
+        "owner": None,
         "dividends": "180.00",
         "interest": "0.00",
         "tax": "-13.50",
         "count": 3,
         "last": "2026-06-15",
     }
-    accounts = [h["account"] for h in shown["holdings"] if h["account"]]
-    assert accounts == ["IBKR USD", "Migros"]
+    accounts = [(h["name"], h["owner"]) for h in shown["holdings"] if h["account"]]
+    assert accounts == [("IBKR USD", None), ("Migros", None)]
     assert list(sent["logos"]) == ["ACME"]
     assert [r["label"] for r in sent["ranges"]] == ["Year to date", "Last 12 months", "2025", "All"]
 
@@ -103,6 +104,18 @@ def test_a_range_is_compared_with_the_year_before_and_the_last_twelve_months_sen
         "tax": "-18.00",
         "net": "307.00",
     }
+
+
+def test_for_everyone_each_person_s_account_of_a_shared_name_is_a_line(
+    client: TestClient,
+) -> None:
+    shown = client.get("/api/income", params={"from": "2026-01"}).json()["income"]
+    accounts = [(h["name"], h["account"], h["owner"]) for h in shown["holdings"] if h["account"]]
+    assert accounts == [
+        ("IBKR USD", "IBKR USD", None),
+        (f"Migros ({OWNER})", "Migros", OWNER),
+        (f"Migros ({PARTNER})", "Migros", PARTNER),
+    ]
 
 
 def test_rows_without_a_rate_are_left_out_and_said(client: TestClient) -> None:

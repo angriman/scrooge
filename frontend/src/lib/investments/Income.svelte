@@ -199,7 +199,7 @@ each holding, what paid the most first, opening its transactions.
 			<span class="text-right">Last paid</span>
 		</div>
 		<ul class="rounded-panel bg-panel">
-			{#each income.holdings as holding (holding.key + (holding.account ?? ''))}
+			{#each income.holdings as holding (`${holding.key}/${holding.account ?? ''}/${holding.owner ?? ''}`)}
 				{@const logo = holding.symbol ? logos[holding.symbol] : undefined}
 				<li class="border-t border-line first:border-t-0">
 					<a
