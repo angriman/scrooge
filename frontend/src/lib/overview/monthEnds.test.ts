@@ -1,16 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import type { MonthEndFigure, NetWorthMonths } from '#lib/types.js';
-import { cells, COLUMNS, inOrder, table } from './monthEnds.js';
+import {
+	anyArrived,
+	ARRIVED_NOTE,
+	cells,
+	CHANGE_NOTE,
+	COLUMNS,
+	inOrder,
+	SPLIT,
+	table
+} from './monthEnds.js';
 
-/** A month-end's figure, its split written out as the API sends it. */
+/** A month-end's figure, its split written out as the API sends it; nothing came into view
+ * unless `arrived` says so, and nothing can have before the first month. */
 function figure(
 	total: string,
 	change: string | null,
 	percent: string | null,
 	liquid: string,
-	frozen: string
+	frozen: string,
+	arrived: string | null = change === null ? null : '0.00'
 ): MonthEndFigure {
-	return { total, change, percent, liquid, frozen };
+	return { total, change, percent, liquid, frozen, arrived };
 }
 
 const sent: NetWorthMonths = {
@@ -33,7 +44,7 @@ const sent: NetWorthMonths = {
 			values: {
 				CHF: figure('8900.00', null, null, '8900.00', '0.00'),
 				USD: figure('11125.00', null, null, '11125.00', '0.00'),
-				EUR: figure('8900.00', null, null, '8900.00', '0.00')
+				EUR: figure('9899.60', null, null, '9899.60', '0.00')
 			}
 		}
 	],
@@ -97,7 +108,9 @@ describe('the month-end table', () => {
 			widths,
 			widths
 		]);
-		expect(cells(undefined, true).map((cell) => cell.text)).toEqual(Array(5).fill('–'));
+		expect(cells(undefined, [...COLUMNS, ...SPLIT]).map((cell) => cell.text)).toEqual(
+			Array(5).fill('–')
+		);
 	});
 
 	it('has no change for the first month, and dashes for a currency not sent', () => {
@@ -114,5 +127,63 @@ describe('the month-end table', () => {
 		const [euros, francs] = partly.rows[0].groups;
 		expect(euros.map((cell) => cell.text)).toEqual(['–', '–', '–', '–', '–']);
 		expect(francs[0].text).toBe('9’900');
+	});
+});
+
+describe('what came into view in the month-end table', () => {
+	const came = {
+		...sent,
+		months: [
+			{
+				...sent.months[0],
+				values: {
+					...sent.months[0].values,
+					USD: figure('11000.00', '-2625.00', '-23.60', '5444.44', '5555.56', '2500.00')
+				}
+			},
+			sent.months[1]
+		]
+	};
+
+	it('is a column of the header’s currency when some month has any', () => {
+		const shown = table(came, 'USD');
+		expect(shown.columns.map((columns) => columns.map((column) => column.label))).toEqual([
+			['Net worth', 'Change', 'Change %', 'Came into view', 'Liquid', 'Frozen'],
+			['Net worth', 'Change', 'Change %'],
+			['Net worth', 'Change', 'Change %']
+		]);
+		const [october, september] = shown.rows.map((row) => row.groups[0]);
+		// Neither a gain nor a loss: written plain, and a dash before the first change.
+		expect(october[COLUMNS.length]).toEqual({ text: '2’500', way: 'none' });
+		expect(september[COLUMNS.length]).toEqual({ text: '–', way: 'none' });
+		expect(october.slice(COLUMNS.length + 1).map((cell) => cell.text)).toEqual(['5’444', '5’556']);
+		expect(shown.note).toBe(ARRIVED_NOTE);
+	});
+
+	it('is not a column when nothing came into view in the header’s currency', () => {
+		expect(table(sent, 'USD').columns[0].map((column) => column.key)).not.toContain('arrived');
+		expect(table(sent, 'USD').note).toBe(CHANGE_NOTE);
+		// What came into view in another currency alone is not what the header shows.
+		expect(table(came, 'CHF').columns.every((columns) => columns.length !== 6)).toBe(true);
+	});
+
+	it('is not a column when what came into view is written 0, a few cents', () => {
+		const cents = (change: string, arrived: string): NetWorthMonths => ({
+			...sent,
+			months: [
+				{
+					...sent.months[0],
+					values: {
+						...sent.months[0].values,
+						EUR: figure('9900.00', change, '0.00', '4900.00', '5000.00', arrived)
+					}
+				},
+				sent.months[1]
+			]
+		});
+		expect(anyArrived(cents('0.00', '0.40'), 'EUR')).toBe(false);
+		expect(anyArrived(cents('0.80', '-0.40'), 'EUR')).toBe(false);
+		expect(table(cents('0.00', '0.40'), 'EUR').note).toBe(CHANGE_NOTE);
+		expect(anyArrived(cents('-0.20', '0.60'), 'EUR')).toBe(true);
 	});
 });

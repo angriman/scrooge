@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from scrooge import context, networth, query
+from scrooge import context, networth, performance, query
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
 from scrooge.storage import money
@@ -221,3 +221,23 @@ def month_view(params: Mapping[str, str]) -> MonthView:
         except ValueError:
             errors.append(f"'{asked}' is not a month written as 2026-10.")
     return MonthView(_text(params, "owner"), currency, month, tuple(errors))
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceView:
+    owner: str | None
+    currency: str
+    range: str  # one of `performance.RANGES`
+    errors: tuple[str, ...]
+
+
+def performance_view(params: Mapping[str, str]) -> PerformanceView:
+    """`owner`, `currency` (euros when left out) and `range` (1m, 3m, ytd, 1y, 3y or all, as
+    the overview offers them; the year to date when left out)."""
+    errors: list[str] = []
+    currency = _currency(params, errors)
+    asked = (_text(params, "range") or performance.DEFAULT_RANGE).lower()
+    if asked not in performance.RANGES:
+        errors.append(f"'{asked}' is not one of {', '.join(performance.RANGES)}.")
+        asked = performance.DEFAULT_RANGE
+    return PerformanceView(_text(params, "owner"), currency, asked, tuple(errors))

@@ -2,15 +2,15 @@
 @component
 Net worth at the end of every month, newest first, in several currencies side by side: for each
 its total, how it moved since the month before and by how much in percent; for the header's
-currency also what of it is liquid and what frozen. What accounts brought when they came into
-view is left out of a change. On a phone the table scrolls sideways, the months staying in
-sight.
+currency also what came into view, when anything did, and what of it is liquid and what frozen.
+What accounts brought when they came into view is left out of a change. On a phone the table
+scrolls sideways, the months staying in sight.
 -->
 <script lang="ts">
 	import { day } from '#lib/format/date.js';
 	import type { NetWorthMonths } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
-	import { CHANGE_NOTE, FROZEN_NOTE, noteOf, table, type Way } from './monthEnds.js';
+	import { FROZEN_NOTE, noteOf, table, type Way } from './monthEnds.js';
 
 	interface Props {
 		months: Promise<NetWorthMonths>;
@@ -109,7 +109,7 @@ sight.
 					</tbody>
 				</table>
 			</div>
-			<p class="px-3 pt-2 text-caption text-ink-muted">{CHANGE_NOTE} {FROZEN_NOTE}</p>
+			<p class="px-3 pt-2 text-caption text-ink-muted">{shown.note} {FROZEN_NOTE}</p>
 		{:else if !sent.errors.length}
 			<p class="py-16 text-center text-small text-ink-muted">No month to show yet.</p>
 		{/if}

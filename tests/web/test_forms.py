@@ -141,3 +141,11 @@ def test_a_context_is_of_exactly_one_category_merchant_or_account() -> None:
         refused = forms.context_view(params)
         assert (refused.kind, refused.name) == ("", "")
         assert refused.errors == ("Ask for exactly one of category, merchant and account.",)
+
+
+def test_performance_is_over_the_year_to_date_unless_another_range_is_asked() -> None:
+    assert forms.performance_view({}) == forms.PerformanceView(None, "EUR", "ytd", ())
+    asked = forms.performance_view({"owner": "Anna", "currency": "usd", "range": "3Y"})
+    assert asked == forms.PerformanceView("Anna", "USD", "3y", ())
+    wrong = forms.performance_view({"range": "5y"})
+    assert (wrong.range, wrong.errors) == ("ytd", ("'5y' is not one of 1m, 3m, ytd, 1y, 3y, all.",))

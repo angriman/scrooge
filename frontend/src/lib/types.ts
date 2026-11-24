@@ -298,6 +298,9 @@ export interface StatementsAccount extends Account {
 	statements: StatementFile[];
 	/** What it holds by part; null when its balance is not known. */
 	holds: AccountHolds | null;
+	/** The accounts it is booked as elsewhere: a broker's one per currency, whose statements
+	 * it lists together; its own name alone otherwise. */
+	parts: string[];
 }
 
 /** What an account holds now by part, and its balance at the last month-ends. */
@@ -622,6 +625,58 @@ export interface InvestmentIncome {
 	errors: string[];
 }
 
+/** What investment accounts did over a range (src/scrooge/performance.py `Measured`). */
+export interface Measured {
+	/** Worth at the end of the day before the range. */
+	start: Amount;
+	end: Amount;
+	/** Money put in, less what was taken out. */
+	net_flows: Amount;
+	/** The change that is not money put in or taken out. */
+	gain: Amount;
+	/** Time-weighted, in percent over the range; null when nothing was invested. */
+	twr: Amount | null;
+	/** Money-weighted, in percent; null when there is no such rate. */
+	mwr: Amount | null;
+	/** `mwr` is a rate a year (a range of a year or more); else it is over the range. */
+	mwr_a_year: boolean;
+	/** The first day `twr` counts, when it is after the range's first; else null. */
+	twr_since: Day | null;
+}
+
+/** One broker's accounts of one person, in every currency together. */
+export interface MeasuredAccount extends Measured {
+	owner: string;
+	name: string;
+	accounts: string[];
+}
+
+/** One day of the chart: what the accounts were worth, and the start value with what had been
+ * put in since. Daily, or weekly over a long range; the first is the day before the range. */
+export interface InvestedDay {
+	day: Day;
+	value: Amount;
+	invested: Amount;
+}
+
+export interface PerformanceReport {
+	currency: string;
+	range: string;
+	/** The range's first and last day; null when there is no investment account. */
+	first: Day | null;
+	last: Day | null;
+	totals: Measured | null;
+	series: InvestedDay[];
+	accounts: MeasuredAccount[];
+}
+
+/** `/api/performance`. `errors` names each currency whose accounts were left out for want of a
+ * rate, and those accounts. */
+export interface InvestmentPerformance {
+	performance: PerformanceReport;
+	errors: string[];
+}
+
 /** Net worth at a month's end in one currency, and how it moved since the month before, less
  * what accounts brought when they came into view (src/scrooge/networth.py `Figure`). */
 export interface MonthEndFigure {
@@ -634,6 +689,9 @@ export interface MonthEndFigure {
 	 * config names `frozen`. */
 	liquid: Amount;
 	frozen: Amount;
+	/** What accounts held when they were first counted within the month, left out of `change`:
+	 * the two add up to the difference of the totals. Null with `change`. */
+	arrived: Amount | null;
 }
 
 /** The last day of one month there is, and net worth on it by currency. */

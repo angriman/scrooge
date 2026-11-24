@@ -84,10 +84,10 @@ export function trend(months: readonly { day: string; balance: Amount }[], curre
 }
 
 /** The query of Investments' holdings of `owner`, in the `currency` the address names (none:
- * the one the app uses): where an account's securities are listed. The holdings are that
- * page's first view, so no view is named. */
+ * the one the app uses): where an account's securities are listed. That page opens on its
+ * returns, so the holdings are named. */
 export function securitiesQuery(owner: string, currency: string | null): string {
-	const query = new URLSearchParams({ owner });
+	const query = new URLSearchParams({ view: 'holdings', owner });
 	if (currency) query.set('currency', currency);
 	return query.toString();
 }
