@@ -33,6 +33,7 @@ from scrooge.cashflow import Counted
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
 from scrooge.networth import DEFAULT_CURRENCY
+from scrooge.storage import store
 
 KINDS = ("category", "merchant", "account")  # what the transactions can be cut to
 MONTHS = 24  # shown, the last one included
@@ -58,7 +59,7 @@ class Merchant:
 @dataclass(frozen=True, slots=True)
 class Context:
     kind: str  # one of KINDS
-    name: str  # as asked; for a merchant, as last written
+    name: str  # as asked; a category by its key, a merchant as last written
     currency: str
     earned: bool  # the amounts are money earned, not spent
     months: tuple[Month, ...]  # MONTHS of them, oldest first; none when nothing is committed
@@ -103,6 +104,8 @@ def run(
             category=name if kind == "category" else None,
         ),
     )
+    if kind == "category":  # named by its key or its label
+        name = store.category_key(conn, name)
     earned = kind == "category" and _is_earned(conn, name)
     # Every counted row, so that the months known are those of the history, not only those
     # of the rows that match.
@@ -163,7 +166,7 @@ def balance(
 def _is_earned(conn: sqlite3.Connection, category: str) -> bool:
     """Whether `category` is one of income: what it adds up to is then money earned."""
     found = conn.execute(
-        "SELECT 1 FROM categories WHERE name = ? AND side = ?", (category, _EARNED)
+        "SELECT 1 FROM categories WHERE key = ? AND side = ?", (category, _EARNED)
     ).fetchone()
     return found is not None
 

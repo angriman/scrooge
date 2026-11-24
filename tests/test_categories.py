@@ -40,15 +40,17 @@ def test_added_categories_are_saved_under_the_comments_and_read_back(tmp_path: P
     path.write_text(HEADER, encoding="utf-8")
     added = (
         Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", categories.GROUP_HOME),
+        Extra("Garden", "uscite", "Home"),
         Extra("Prestiti", "entrate"),
     )
     for extra in (*added, added[0]):  # saving one twice changes nothing
         categories.add(path, extra)
     assert path.read_text(encoding="utf-8").startswith(HEADER + "categories:\n  expenses:\n")
     assert categories.load(path) == added
-    assert categories.names(added) == (*categories.ORDER, "Prestiti", "Garden")
-    assert categories.groups(added) == (*categories.USCITE, "Prestiti")
+    assert categories.names(added) == (*categories.ORDER, "prestiti", "garden")
+    assert categories.groups(added) == (*categories.USCITE, "prestiti")
+    assert categories.Labels.of(added)("garden") == "Garden"
+    assert categories.Labels.of(added)(categories.GROUP_HOME) == "Home"
 
 
 def test_a_rule_may_name_an_added_category(tmp_path: Path) -> None:
@@ -57,7 +59,7 @@ def test_a_rule_may_name_an_added_category(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="unknown category 'Prestiti'"):
         load_rules([rules])
     known = categories.names((Extra("Prestiti", "entrate"),))
-    assert load_rules([rules], known)[0].category == "Prestiti"
+    assert load_rules([rules], known)[0].category == "prestiti"
 
 
 @pytest.mark.parametrize(
@@ -107,7 +109,7 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     assert f"new category {number + 1}=Garden (uscite under Home) in {added}" in text
     assert categories.load(added) == (
         Extra("Prestiti", "uscite", "Prestiti"),
-        Extra("Garden", "uscite", categories.GROUP_HOME),
+        Extra("Garden", "uscite", "Home"),
         Extra("Prestiti", "entrate"),
     )
     saved = [line.partition("category: ")[2] for line in rules.read_text("utf-8").splitlines()[1:]]
@@ -124,9 +126,7 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     review.ask_categories([replace(LENT, description="New")], rules, out, lambda _: "q")
     listed = out.getvalue()
     rows = [re.split(r" {2,}", line.strip()) for line in listed.splitlines()]
-    assert (
-        next(row for row in rows if row[0] == categories.GROUP_HOME)[-1] == f"{number + 1} Garden"
-    )
+    assert next(row for row in rows if row[0] == "Home")[-1] == f"{number + 1} Garden"
     assert rows[rows.index(["Income"]) - 1] == ["Prestiti", f"{number} Prestiti"]  # a new group
     assert f"   {number} Prestiti\nTransfers\n" in listed  # the same number on both sides
 
@@ -185,7 +185,7 @@ def test_the_list_of_categories_fits_the_screen() -> None:
     assert "Income" in lines
     assert "Transfers" in lines
     for n, name in enumerate(categories.ORDER, start=1):
-        assert any(f" {n} {name}" in line for line in lines)
+        assert any(f" {n} {categories.LABELS_EN[name]}" in line for line in lines)
 
 
 def test_the_answer_for_a_row_naming_a_person_goes_to_the_owners_own_file(tmp_path: Path) -> None:
@@ -218,15 +218,44 @@ def test_review_never_saves_a_rule_for_rows_without_text(tmp_path: Path) -> None
     assert "2 rows have no text to match" in out.getvalue()
 
 
-def test_an_italian_name_of_the_taxonomy_means_its_english_one() -> None:
-    assert categories.canonical("Spesa") == categories.GROCERIES
-    assert categories.canonical("Casa") == categories.GROUP_HOME
-    assert categories.canonical("Spedizioni") == "Spedizioni"  # added by someone: left alone
-    assert set(categories.ITALIAN.values()) <= categories.ALL | set(categories.USCITE)
-    assert not set(categories.ITALIAN) & (categories.ALL | set(categories.USCITE))
+def test_a_category_is_named_by_its_key_its_english_label_or_its_italian_name() -> None:
+    for name in ("groceries", "Groceries", "Spesa", " Spesa "):
+        assert categories.key(name) == categories.GROCERIES
+    assert categories.key("Casa") == categories.GROUP_HOME
+    assert categories.key("Spedizioni") == "spedizioni"  # added by someone: its slug
+    assert categories.key("Attività extra!") == "attivita_extra"
+    assert categories.key("?!") == ""
+    for name in categories.LABELS_EN:
+        assert categories.key(name) == name  # a key means itself
 
 
-def test_a_file_of_before_is_read_and_written_again_with_the_new_keys(tmp_path: Path) -> None:
+@pytest.mark.parametrize("language", sorted(categories.LABELS))
+def test_every_key_has_a_label_in_every_language(language: str) -> None:
+    table = categories.LABELS[language]
+    assert set(table) == categories.ALL | categories.GROUPS
+    assert all(label.strip() for label in table.values())
+    for key in categories.ALL | categories.GROUPS:
+        assert categories.key(table[key]) == key  # no label of one key means another
+
+
+def test_each_key_is_the_slug_of_its_english_label() -> None:
+    for key, label in categories.LABELS_EN.items():
+        assert categories.slug(label) == key
+
+
+def test_labels_show_a_key_by_its_label_and_an_added_one_by_its_name() -> None:
+    label = categories.Labels({"spedizioni": "Spedizioni", "groceries_2": "Groceries"})
+    assert label(categories.GROCERIES) == "Groceries"
+    assert label("spedizioni") == "Spedizioni"
+    assert label("unknown_key") == "unknown_key"
+    assert label(None) == label("") == ""
+    assert categories.Labels(language="it")(categories.GROCERIES) == "Spesa"
+    assert label.written(categories.GROCERIES) == "Groceries"
+    assert label.written("spedizioni") == "Spedizioni"
+    assert label.written("groceries_2") == "groceries_2"  # its name would mean the built-in one
+
+
+def test_a_file_of_before_is_read_and_written_again_with_the_new_side_names(tmp_path: Path) -> None:
     path = tmp_path / "categories.yaml"
     path.write_text(
         HEADER + "categories:\n  uscite:\n    Trasporti: [Spedizioni]\n    Prestiti: [Prestiti]\n"
@@ -234,21 +263,23 @@ def test_a_file_of_before_is_read_and_written_again_with_the_new_keys(tmp_path: 
         encoding="utf-8",
     )
     assert categories.load(path) == (
-        Extra("Spedizioni", "uscite", categories.GROUP_TRANSPORT),
+        Extra("Spedizioni", "uscite", "Trasporti"),
         Extra("Prestiti", "uscite", "Prestiti"),
         Extra("Prestiti", "entrate"),
     )
-    categories.add(path, Extra("Pets", "uscite", categories.GROUP_HOME))
-    assert path.read_text(encoding="utf-8") == HEADER + (
-        "categories:\n  expenses:\n    Transport:\n    - Spedizioni\n    Prestiti:\n"
-        "    - Prestiti\n    Home:\n    - Pets\n  income:\n  - Prestiti\n"
+    assert categories.load(path)[0].group_key == categories.GROUP_TRANSPORT
+    categories.add(path, Extra("Pets", "uscite", "Home"))
+    categories.add(path, Extra("Couriers", "uscite", "Transport"))  # under the one of its key
+    assert path.read_text(encoding="utf-8") == HEADER + (  # the names stay as written
+        "categories:\n  expenses:\n    Trasporti:\n    - Spedizioni\n    - Couriers\n"
+        "    Prestiti:\n    - Prestiti\n    Home:\n    - Pets\n  income:\n  - Prestiti\n"
     )
 
 
 def test_both_names_of_one_side_are_refused_unless_one_is_empty(tmp_path: Path) -> None:
     path = tmp_path / "categories.yaml"
     path.write_text("categories: {expenses: {}, uscite: {Casa: [Pets]}}\n", encoding="utf-8")
-    assert categories.load(path) == (Extra("Pets", "uscite", categories.GROUP_HOME),)
+    assert categories.load(path) == (Extra("Pets", "uscite", "Casa"),)
     path.write_text("categories: {income: [A], entrate: [B]}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="'entrate' and the other name of that side"):
         categories.load(path)

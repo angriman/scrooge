@@ -15,6 +15,9 @@ all.
 
 How many committed rows a rule matches is counted with its pattern, account and direction
 alone, whatever rule before it takes them first: what it would match on its own.
+
+A category is asked for by its key or its label (`categories.key`), and shown and written into
+the files by its label (`categories.Labels`).
 """
 
 from __future__ import annotations
@@ -60,7 +63,7 @@ class ListedRule:
     file: RulesFile
     position: int  # from 1, in its file
     match: str
-    category: str
+    category: str  # its key
     direction: str
     account: str
     matches: int | None  # committed rows it would match on its own; None: no pattern
@@ -70,9 +73,10 @@ class ListedRule:
 
 @dataclass(frozen=True, slots=True)
 class ListedCategory:
-    name: str
+    key: str
+    name: str  # its label
     side: str  # uscite | entrate | transfer
-    parent: str | None  # the top-level category of an expense
+    parent: str | None  # the label of the top-level category of an expense
     built_in: bool
     rows: int  # committed rows that carry it
 
@@ -247,9 +251,13 @@ def _kept(paths: Iterable[Path]) -> Iterator[None]:
         raise
 
 
+def _extras(categories_file: Path | None) -> tuple[categories.Extra, ...]:
+    return categories.load(categories_file) if categories_file else ()
+
+
 def _known(categories_file: Path | None) -> tuple[str, ...]:
-    extras = categories.load(categories_file) if categories_file else ()
-    return categories.names(extras)
+    """The key of every category a rule may give."""
+    return categories.names(_extras(categories_file))
 
 
 def _write_rules(path: Path, text: str, known: Sequence[str]) -> None:
@@ -297,10 +305,11 @@ def edit_rule(
     """Give the rule `seen` another pattern, category or direction ("" for both)."""
     _compiled(match)
     _direction(direction)
-    if category not in _known(categories_file):
+    if categories.key(category) not in _known(categories_file):
         msg = f"there is no category {category!r}"
         raise SettingsError(msg)
-    changes = {"match": match, "category": category, "direction": direction}
+    written = categories.Labels.of(_extras(categories_file)).written(categories.key(category))
+    changes = {"match": match, "category": written, "direction": direction}
     _change_rule(
         seen,
         categories_file,
@@ -337,13 +346,13 @@ def move_rule(seen: Seen, by: int, categories_file: Path | None) -> None:
 
 
 def _taxonomy(extras: Sequence[categories.Extra]) -> list[tuple[str, str, str | None, bool]]:
-    """Name, side, parent and whether it is built in, of every leaf category."""
+    """Key, side, the key of its parent and whether it is built in, of every leaf category."""
     uscite = categories.USCITE.items()
     built = [
         *((leaf, "uscite", group, True) for group, leaves in uscite for leaf in leaves),
-        *((e.name, "uscite", e.group, False) for e in extras if e.side == "uscite"),
+        *((e.key, "uscite", e.group_key, False) for e in extras if e.side == "uscite"),
         *((name, "entrate", None, True) for name in categories.ENTRATE),
-        *((e.name, "entrate", None, False) for e in extras if e.side == "entrate"),
+        *((e.key, "entrate", None, False) for e in extras if e.side == "entrate"),
         *((name, "transfer", None, True) for name in categories.TRANSFERS),
     ]
     return list(dict.fromkeys(built))
@@ -353,10 +362,13 @@ def listed_categories(
     conn: sqlite3.Connection, categories_file: Path | None
 ) -> list[ListedCategory]:
     """The taxonomy, then what `categories.yaml` adds, with the committed rows of each."""
-    extras = categories.load(categories_file) if categories_file else ()
+    extras = _extras(categories_file)
+    label = categories.Labels.of(extras)
     rows = Counter((r.category, r.category_parent) for r in query.run(conn, query.Filter()).rows)
     return [
-        ListedCategory(name, side, parent, built_in, rows[name, parent])
+        ListedCategory(
+            name, label(name), side, parent and label(parent), built_in, rows[name, parent]
+        )
         for name, side, parent, built_in in _taxonomy(extras)
     ]
 
@@ -371,13 +383,20 @@ class Places:
     unmatched: str = ""  # the category the config gives rows no rule matches
 
 
+def _label(places: Places) -> categories.Labels:
+    return categories.Labels.of(categories.load(places.categories_file))
+
+
 def _added(places: Places, name: str) -> categories.Extra:
-    """The added category `name`; the taxonomy's own cannot be changed in place."""
+    """The added category `name` (its key or its name); the taxonomy's own cannot be changed in
+    place."""
     extras = categories.load(places.categories_file)
-    if name in categories.ALL:
-        msg = f"{name} is built in: it cannot be renamed, moved or removed, only merged"
+    wanted = categories.key(name)
+    if wanted in categories.ALL:
+        shown = _label(places)(wanted)
+        msg = f"{shown} is built in: it cannot be renamed, moved or removed, only merged"
         raise SettingsError(msg)
-    found = next((extra for extra in extras if extra.name == name), None)
+    found = next((extra for extra in extras if extra.key == wanted), None)
     if found is None:
         msg = f"there is no category {name!r}"
         raise SettingsError(msg)
@@ -387,16 +406,17 @@ def _added(places: Places, name: str) -> categories.Extra:
 def _not_unmatched(places: Places, name: str) -> None:
     """Refuse to take away the category the config gives what no rule matches: every import
     would then fail."""
-    if name == places.unmatched:
+    if name == categories.key(places.unmatched):
         msg = (
-            f"{name} is what scrooge.yaml gives rows no rule matches ('unmatched'): "
-            "change it there first"
+            f"{_label(places)(name)} is what scrooge.yaml gives rows no rule matches "
+            "('unmatched'): change it there first"
         )
         raise SettingsError(msg)
 
 
 def _recategorize(places: Places, old: str, new: str) -> int:
-    """Have every rule that gives `old` give `new`. Returns how many there were."""
+    """Have every rule that gives the key `old` give `new`, as written. Returns how many there
+    were."""
     changed = 0
     for path in places.rule_files:
         try:
@@ -433,11 +453,12 @@ def _with_copy(
 
 def _fresh_name(places: Places, name: str) -> str:
     name = " ".join(name.split())
-    if not name:
-        msg = "a category needs a name"
+    if not categories.key(name):
+        msg = "a category needs a name, with a letter or a digit"
         raise SettingsError(msg)
-    if name in _known(places.categories_file):
-        msg = f"there is already a category {name!r}: merge into it instead"
+    if categories.key(name) in _known(places.categories_file):
+        shown = _label(places)(categories.key(name))
+        msg = f"there is already a category {shown!r}: merge into it instead"
         raise SettingsError(msg)
     return name
 
@@ -446,9 +467,9 @@ def rename_category(
     conn: sqlite3.Connection, places: Places, *, name: str, to: str, now: datetime
 ) -> int:
     """Call the added category `name` `to`, in `categories.yaml`, in every rule that gives it
-    and on every row that carries it. Returns how many rows do."""
+    and on every row that carries it: its key becomes that of `to`. Returns how many rows do."""
     with yamlfiles.LOCK:
-        _added(places, name)
+        name = _added(places, name).key
         _not_unmatched(places, name)
         new = _fresh_name(places, to)
 
@@ -462,6 +483,7 @@ def rename_category(
 
 
 def _sides(places: Places, name: str) -> set[str]:
+    """The sides the category of key `name` is on."""
     extras = categories.load(places.categories_file)
     return {side for each, side, _, _ in _taxonomy(extras) if each == name}
 
@@ -474,25 +496,28 @@ def merge_category(
     is on: income is not merged into an expense, nor money between accounts into either.
     Returns how many rows moved."""
     with yamlfiles.LOCK:
-        source, target = _sides(places, name), _sides(places, into)
+        asked = {name: categories.key(name), into: categories.key(into)}
+        source, target = _sides(places, asked[name]), _sides(places, asked[into])
         for each, sides in ((name, source), (into, target)):
             if not sides:
                 msg = f"there is no category {each!r}"
                 raise SettingsError(msg)
+        label = _label(places)
+        name, into = asked[name], asked[into]
         if name == into:
             msg = "a category is merged into another one"
             raise SettingsError(msg)
         if not source <= target:
             words = {"uscite": "an expense", "entrate": "income", "transfer": "a transfer"}
             missing = ", ".join(words[side] for side in sorted(source - target))
-            msg = f"{name} is {missing} and {into} is not: they cannot be merged"
+            msg = f"{label(name)} is {missing} and {label(into)} is not: they cannot be merged"
             raise SettingsError(msg)
         _not_unmatched(places, name)
         added = name not in categories.ALL
 
         def act() -> int:
             moved = taxonomy.merge(conn, name, into)
-            _recategorize(places, name, into)
+            _recategorize(places, name, label.written(into))
             if added:
                 taxonomy.drop(conn, name)
                 categories.drop(places.categories_file, name)
@@ -508,19 +533,24 @@ def move_category(
     is or a new one. Its rows and rules keep it. Returns how many rows carry it."""
     with yamlfiles.LOCK:
         extra = _added(places, name)
+        name = extra.key
         if extra.side != "uscite":
-            msg = f"{name} is income: only an expense sits under a top-level category"
+            msg = f"{extra.name} is income: only an expense sits under a top-level category"
             raise SettingsError(msg)
         group = " ".join(under.split())
-        if not group:
+        if not categories.key(group):
             msg = "say which top-level category it goes under"
             raise SettingsError(msg)
-        if group == extra.group:
-            msg = f"{name} is under {group} already"
+        if categories.key(group) == extra.group_key:
+            msg = f"{extra.name} is under {_label(places)(extra.group_key)} already"
             raise SettingsError(msg)
-        if group != name and group in _known(places.categories_file):
+        if categories.key(group) != name and categories.key(group) in _known(
+            places.categories_file
+        ):
             msg = f"{group} is a category of its own, not one that others go under"
             raise SettingsError(msg)
+        built = categories.key(group) in categories.GROUPS
+        group = _label(places)(categories.key(group)) if built else group
 
         def act() -> int:
             rows = taxonomy.move(conn, name, group)
@@ -533,7 +563,7 @@ def move_category(
 def remove_category(conn: sqlite3.Connection, places: Places, *, name: str) -> None:
     """Take out the added category `name`, which no row and no rule gives."""
     with yamlfiles.LOCK:
-        _added(places, name)
+        name = _added(places, name).key
         _not_unmatched(places, name)
         rules_giving = sum(
             1
@@ -543,11 +573,12 @@ def remove_category(conn: sqlite3.Connection, places: Places, *, name: str) -> N
         )
         with _kept([places.categories_file]), db.transaction(conn):
             rows = taxonomy.carried(conn, name)
+            shown = _label(places)(name)
             if rows:
-                msg = f"{rows} rows carry {name}: merge it into another category instead"
+                msg = f"{rows} rows carry {shown}: merge it into another category instead"
                 raise SettingsError(msg)
             if rules_giving:
-                msg = f"{rules_giving} rules give {name}: change them first, or merge it"
+                msg = f"{rules_giving} rules give {shown}: change them first, or merge it"
                 raise SettingsError(msg)
             taxonomy.drop(conn, name)
             categories.drop(places.categories_file, name)

@@ -267,16 +267,16 @@ def test_categories_follow_the_sign_and_fall_back_to_the_other_side(
     sides = dict(
         rows(
             conn,
-            "SELECT t.description, c.side || '/' || c.name FROM transactions t "
+            "SELECT t.description, c.side || '/' || c.key FROM transactions t "
             "JOIN categories c ON c.id = t.category_id",
         )
     )
     assert sides == {
-        "expense": "uscite/Trading",
-        "income": "entrate/Trading",
-        "refund": "uscite/Groceries",
-        "clawback": "entrate/Salary",
-        "transfer": "transfer/Revolut top-up",
+        "expense": f"uscite/{categories.TRADING}",
+        "income": f"entrate/{categories.TRADING}",
+        "refund": f"uscite/{categories.GROCERIES}",
+        "clawback": f"entrate/{categories.SALARY}",
+        "transfer": f"transfer/{categories.REVOLUT_TOP_UP}",
     }
     assert rows(conn, "SELECT DISTINCT category_source FROM transactions") == [("rule",)]
 
@@ -294,8 +294,8 @@ def test_the_taxonomy_is_seeded_once(conn: sqlite3.Connection) -> None:
     assert rows(conn, "SELECT * FROM categories ORDER BY id") == before
     tree = rows(
         conn,
-        "SELECT c.name, p.name FROM categories c JOIN categories p ON p.id = c.parent_id "
-        "WHERE c.name IN ('Gifts', 'Flights') ORDER BY 1",
+        "SELECT c.key, p.key FROM categories c JOIN categories p ON p.id = c.parent_id "
+        "WHERE c.key IN ('gifts', 'flights') ORDER BY 1",
     )
     assert tree == [
         (categories.FLIGHTS, categories.GROUP_TRANSPORT),
@@ -309,21 +309,23 @@ def test_added_categories_are_stored_with_the_taxonomy(conn: sqlite3.Connection)
         Extra("Garden", "uscite", categories.GROUP_HOME),
         Extra("Prestiti", "entrate"),
     )
-    lent = batch(migros("0", "-1", category="Prestiti"))
+    lent = batch(migros("0", "-1", category=added[0].key))  # a row carries the key
     staging.stage(conn, replace(lent, categories=added), NOW)
     tree = rows(
         conn,
-        "SELECT c.name, c.side, p.name FROM categories c LEFT JOIN categories p "
-        "ON p.id = c.parent_id WHERE c.name IN ('Prestiti', 'Garden') ORDER BY c.id",
+        "SELECT c.key, c.side, p.key FROM categories c LEFT JOIN categories p "
+        "ON p.id = c.parent_id WHERE c.key IN ('prestiti', 'garden') ORDER BY c.id",
     )
     assert tree == [
-        ("Garden", "uscite", categories.GROUP_HOME),
-        ("Prestiti", "uscite", None),
-        ("Prestiti", "uscite", "Prestiti"),
-        ("Prestiti", "entrate", None),
+        ("garden", "uscite", categories.GROUP_HOME),
+        ("prestiti", "uscite", None),
+        ("prestiti", "uscite", "prestiti"),
+        ("prestiti", "entrate", None),
     ]
-    used = "SELECT c.side, p.name FROM transactions t JOIN categories c ON c.id = t.category_id "
-    assert rows(conn, used + "JOIN categories p ON p.id = c.parent_id") == [("uscite", "Prestiti")]
+    used = "SELECT c.side, p.key FROM transactions t JOIN categories c ON c.id = t.category_id "
+    assert rows(conn, used + "JOIN categories p ON p.id = c.parent_id") == [("uscite", "prestiti")]
+    names = rows(conn, "SELECT DISTINCT name FROM categories WHERE key IN ('prestiti', 'garden')")
+    assert sorted(names) == [("Garden",), ("Prestiti",)]  # an added category's label
 
 
 def test_money_between_the_two_of_us_is_marked(conn: sqlite3.Connection) -> None:
@@ -517,7 +519,7 @@ def test_trades_and_instruments(conn: sqlite3.Connection) -> None:
 def test_a_manual_category_survives_a_new_import(conn: sqlite3.Connection) -> None:
     staging.stage(conn, batch(migros("0", "-30", "-8")), NOW)
     (txn_id,) = rows(conn, "SELECT id FROM transactions WHERE amount_nano = -30000000000")[0]
-    (flights,) = rows(conn, "SELECT id FROM categories WHERE name = 'Flights'")[0]
+    (flights,) = rows(conn, "SELECT id FROM categories WHERE key = 'flights'")[0]
     conn.execute(
         "INSERT INTO overrides (transaction_id, category_id, created_at) VALUES (?, ?, 'x')",
         (txn_id, flights),
@@ -530,7 +532,7 @@ def test_a_manual_category_survives_a_new_import(conn: sqlite3.Connection) -> No
     staging.stage(conn, batch(migros("0", "-30", "-8")), LATER)
     kept = rows(
         conn,
-        "SELECT t.amount_nano, c.name, t.category_source, t.kind FROM transactions t "
+        "SELECT t.amount_nano, c.key, t.category_source, t.kind FROM transactions t "
         "JOIN categories c ON c.id = t.category_id ORDER BY 1",
     )
     assert kept == [
@@ -1350,7 +1352,7 @@ def test_the_fixture_bill_is_split_into_cost_and_interest(
     stage_september(conn, folder)
     parts = rows(
         conn,
-        "SELECT t.description, t.amount_nano, t.kind, c.name, t.split_of IS NOT NULL "
+        "SELECT t.description, t.amount_nano, t.kind, c.key, t.split_of IS NOT NULL "
         "FROM transactions t JOIN categories c ON c.id = t.category_id "
         "WHERE t.description LIKE 'Maturity%' ORDER BY t.amount_nano DESC",
     )
@@ -1404,7 +1406,7 @@ def test_lots_are_closed_first_in_first_out(conn: sqlite3.Connection) -> None:
     assert staging.stage(conn, september, NOW).gaps == ()
     parts = rows(
         conn,
-        "SELECT t.date, t.kind, c.name, t.amount_nano FROM transactions t "
+        "SELECT t.date, t.kind, c.key, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.booking_date >= ? ORDER BY 1, 4 DESC",
         FIRST,
     )
@@ -1432,7 +1434,7 @@ def test_a_manual_category_on_the_interest_survives(conn: sqlite3.Connection) ->
     staging.stage(conn, tastytrade(bill("-4950", "5000", date(2026, 8, 3)), month=AUGUST), NOW)
     sale = tastytrade(bill("4980", "-5000", date(2026, 9, 2)))
     staging.stage(conn, sale, NOW)
-    (dividends,) = rows(conn, "SELECT id FROM categories WHERE name = 'Dividends'")[0]
+    (dividends,) = rows(conn, "SELECT id FROM categories WHERE key = 'dividends'")[0]
     conn.execute(
         "INSERT INTO overrides (transaction_id, category_id, created_at) "
         "SELECT id, ?, 'x' FROM transactions WHERE split_of IS NOT NULL",
@@ -1441,7 +1443,7 @@ def test_a_manual_category_on_the_interest_survives(conn: sqlite3.Connection) ->
     staging.stage(conn, sale, LATER)
     kept = rows(
         conn,
-        "SELECT c.name, t.category_source, t.amount_nano FROM transactions t "
+        "SELECT c.key, t.category_source, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.split_of IS NOT NULL",
     )
     assert kept == [(categories.DIVIDENDS, "manual", 30_000_000_000)]
@@ -1474,7 +1476,7 @@ def test_a_bill_sold_at_ibkr_is_split_the_same_way(conn: sqlite3.Connection) -> 
     assert staged.gaps == ()
     parts = rows(
         conn,
-        "SELECT t.description, c.name, t.amount_nano FROM transactions t "
+        "SELECT t.description, c.key, t.amount_nano FROM transactions t "
         "JOIN categories c ON c.id = t.category_id WHERE t.booking_date >= ? "
         "ORDER BY t.date, 3 DESC",
         FIRST,
@@ -1618,7 +1620,7 @@ def choose(
 def category_of(conn: sqlite3.Connection, txn_id: str) -> tuple[Any, ...]:
     (found,) = rows(
         conn,
-        "SELECT c.name, c.side, t.category_source, t.kind FROM transactions t "
+        "SELECT c.key, c.side, t.category_source, t.kind FROM transactions t "
         "LEFT JOIN categories c ON c.id = t.category_id WHERE t.id = ?",
         txn_id,
     )
@@ -1948,8 +1950,8 @@ def test_a_committed_row_can_be_given_another_category(conn: sqlite3.Connection)
 def added(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
     return rows(
         conn,
-        "SELECT c.name, c.side, p.name FROM categories c "
-        "LEFT JOIN categories p ON p.id = c.parent_id WHERE c.name IN ('Prestiti', 'Pets')",
+        "SELECT c.key, c.side, p.key FROM categories c "
+        "LEFT JOIN categories p ON p.id = c.parent_id WHERE c.key IN ('prestiti', 'pets')",
     )
 
 
@@ -1963,16 +1965,16 @@ def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_inco
     staging.add_category(conn, file, name="Prestiti", side="entrate", group="")
     assert sorted(added(conn), key=str) == sorted(
         [
-            ("Prestiti", "uscite", None),  # the group
-            ("Prestiti", "uscite", "Prestiti"),  # and its one leaf
-            ("Pets", "uscite", categories.GROUP_HOME),
-            ("Prestiti", "entrate", None),
+            ("prestiti", "uscite", None),  # the group
+            ("prestiti", "uscite", "prestiti"),  # and its one leaf
+            ("pets", "uscite", categories.GROUP_HOME),
+            ("prestiti", "entrate", None),
         ],
         key=str,
     )
     assert categories.load(file) == (
         categories.Extra("Prestiti", "uscite", "Prestiti"),
-        categories.Extra("Pets", "uscite", categories.GROUP_HOME),
+        categories.Extra("Pets", "uscite", "Home"),  # the group by its label, posted by its key
         categories.Extra("Prestiti", "entrate"),
     )
 
@@ -1981,12 +1983,11 @@ def test_a_category_can_be_added_under_a_group_of_its_own_an_old_one_or_the_inco
     ("wanted", "message"),
     [
         ((" ", "uscite", ""), "a category needs a name"),
-        (
-            (categories.GROCERIES, "uscite", categories.GROUP_HOME),
-            "there is already a category 'Groceries'",
-        ),
-        ((categories.SALARY, "entrate", ""), "there is already a category 'Salary'"),
-        ((categories.OWN_TRANSFER, "uscite", ""), "there is already a category 'Own transfer'"),
+        (("Groceries", "uscite", categories.GROUP_HOME), "there is already a category 'Groceries'"),
+        (("Spesa", "uscite", ""), "there is already a category 'Spesa'"),  # its Italian name
+        ((categories.SALARY, "entrate", ""), "there is already a category 'salary'"),
+        (("Own transfer", "uscite", ""), "there is already a category 'Own transfer'"),
+        (("?!", "uscite", ""), "a category needs a name, with a letter or a digit"),
         (("Pets", "uscite", "Zoo"), "no group of categories named 'Zoo'"),
         (("Pets", "transfer", ""), "a category is added to the expenses or to the income"),
     ],

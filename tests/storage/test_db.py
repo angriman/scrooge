@@ -296,11 +296,14 @@ def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     monkeypatch.undo()
     # pairing is of the schema of today (migration 0007) and nothing here is paired
     monkeypatch.setattr(pairs, "mark", lambda conn: 0)
+    # the categories are found by their key since 0011: it is there while today's code stages
+    conn.execute("ALTER TABLE categories ADD COLUMN key TEXT NOT NULL DEFAULT ''")
     rows = _revolut_rows()
     revolut = statement(
         "revolut", rows, [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(8))]
     )
     staging.stage(conn, batch(revolut, migros("100", "-1", description=TWICE)), CLOSED_AT)
+    conn.execute("ALTER TABLE categories DROP COLUMN key")
     monkeypatch.undo()
     return conn
 
@@ -443,13 +446,13 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
     conn = db.connect(":memory:")
     assert _migrate_up_to(conn, monkeypatch, 9) == list(range(1, 10))
     monkeypatch.undo()
-    italian = {new: old for old, new in categories.ITALIAN.items()}
+    italian, english = categories.LABELS_IT, categories.LABELS_EN
     insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
     expected: list[tuple[str, str, str | None]] = []
 
-    def add(name: str, side: str, parent: int | None = None, group: str | None = None) -> int:
-        expected.append((side, name, group))
-        row = conn.execute(insert, (italian.get(name, name), parent, side)).lastrowid
+    def add(key: str, side: str, parent: int | None = None, group: str | None = None) -> int:
+        expected.append((side, english[key], group and english[group]))
+        row = conn.execute(insert, (italian[key], parent, side)).lastrowid
         assert row is not None
         return row
 
@@ -465,7 +468,7 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
     own = conn.execute(insert, ("Prestiti", None, "uscite")).lastrowid
     conn.execute(insert, ("Affitto", own, "uscite"))
     expected += [
-        ("uscite", "Spedizioni", categories.GROUP_TRANSPORT),
+        ("uscite", "Spedizioni", english[categories.GROUP_TRANSPORT]),
         ("uscite", "Prestiti", None),
         ("uscite", "Affitto", "Prestiti"),  # not the taxonomy's Affitto: left alone
     ]
@@ -476,10 +479,109 @@ def test_migration_0010_gives_the_taxonomy_its_english_names(
         "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.id"
     )
     assert [tuple(row) for row in tree] == expected
+    conn.close()
+
+
+def _italian_taxonomy(conn: sqlite3.Connection) -> dict[str, int]:
+    """The taxonomy as a database had it before 0010, by the Italian names: id of each key,
+    a top-level category of the expenses under `group:` and its key."""
+    insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
+    ids: dict[str, int] = {}
+    for group, leaves in categories.USCITE.items():
+        top = conn.execute(insert, (categories.LABELS_IT[group], None, "uscite")).lastrowid
+        assert top is not None
+        ids[f"group:{group}"] = top
+        for leaf in leaves:
+            row = conn.execute(insert, (categories.LABELS_IT[leaf], top, "uscite")).lastrowid
+            assert row is not None
+            ids[f"uscite:{leaf}"] = row
+    for side, names in (("entrate", categories.ENTRATE), ("transfer", categories.TRANSFERS)):
+        for name in names:
+            row = conn.execute(insert, (categories.LABELS_IT[name], None, side)).lastrowid
+            assert row is not None
+            ids[f"{side}:{name}"] = row
+    return ids
+
+
+def test_migration_0011_gives_each_category_a_key_and_the_rows_their_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    # as the database of the NAS: at schema 6, then every migration since in one go
+    assert _migrate_up_to(conn, monkeypatch, 6) == list(range(1, 7))
+    ids = _italian_taxonomy(conn)
+    insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
+
+    def added(name: str, side: str = "uscite", parent: int | None = None) -> int:
+        row = conn.execute(insert, (name, parent, side)).lastrowid
+        assert row is not None
+        return row
+
+    transport = ids[f"group:{categories.GROUP_TRANSPORT}"]
+    own = added("Prestiti")
+    mine = {
+        "Spedizioni": added("Spedizioni", parent=transport),  # added in categories.yaml
+        "Corriere espresso": added("Corriere espresso", parent=transport),  # renamed on a page
+        "Prestiti": added("Prestiti", parent=own),  # a leaf of its group's name
+        "Spesa": added("Spesa", parent=own),  # a name of the taxonomy under a group of one's own
+        "Groceries": added("Groceries", parent=own),  # in English, the same
+        "Car-wash": added("Car-wash", parent=transport),
+        "Car wash": added("Car wash", parent=transport),  # another name, the same key
+        "Attività extra": added("Attività extra", parent=own),
+        "?!": added("?!", parent=own),  # no letter at all
+        "Affitti": added("Affitti", "entrate"),
+    }
+    conn.executescript(
+        """
+        INSERT INTO owners (id, name) VALUES (1, 'Lukas');
+        INSERT INTO currencies (code, decimals) VALUES ('CHF', 2);
+        INSERT INTO accounts (id, owner_id, name, kind, currency, source)
+            VALUES (1, 1, 'Migros', 'bank', 'CHF', 'migros');
+        """
+    )
+    carried = (ids[f"uscite:{categories.GROCERIES}"], mine["Spedizioni"])
+    for n, category in enumerate(carried):
+        conn.execute(
+            "INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency, "
+            "description, kind, category_id, category_source) VALUES (?, 1, '2026-09-01', "
+            "'2026-09-01', -1, 'CHF', 'x', 'expense', ?, 'rule')",
+            (f"t{n}", category),
+        )
+
+    assert _migrate_up_to(conn, monkeypatch, 11) == list(range(7, 12))
+    keys = {row["id"]: row["key"] for row in conn.execute("SELECT id, key FROM categories")}
+    for name, number in ids.items():
+        assert keys[number] == name.partition(":")[2]  # every built-in one found where it is
+    assert {name: keys[number] for name, number in mine.items()} == {
+        "Spedizioni": "spedizioni",
+        "Corriere espresso": "corriere_espresso",
+        "Prestiti": "prestiti",
+        "Spesa": "spesa",
+        "Groceries": "groceries_2",  # never mistaken for the taxonomy's
+        "Car-wash": "car_wash",
+        "Car wash": "car_wash_2",
+        "Attività extra": "attivita_extra",
+        "?!": f"category_{mine['?!']}",
+        "Affitti": "affitti",
+    }
+    assert keys[own] == "prestiti"
+    names = conn.execute("SELECT name FROM categories WHERE id = ?", (mine["Car wash"],))
+    assert names.fetchone()[0] == "Car wash"  # an added category keeps its name: its label
+    shown = conn.execute("SELECT id, category, category_parent FROM committed_transactions")
+    assert [tuple(row) for row in shown] == [
+        ("t0", categories.GROCERIES, categories.GROUP_FOOD),
+        ("t1", "spedizioni", categories.GROUP_TRANSPORT),
+    ]
+    with pytest.raises(sqlite3.IntegrityError):  # a key is unique where the name was
+        conn.execute(
+            "INSERT INTO categories (key, name, parent_id, side) VALUES ('spedizioni', 'Ship', ?, "
+            "'uscite')",
+            (transport,),
+        )
     monkeypatch.undo()
     db.migrate(conn, NOW)
     count = "SELECT count(*) FROM categories"
     before = conn.execute(count).fetchone()[0]
-    store.seed_categories(conn)  # the taxonomy of today finds every name it has
+    store.seed_categories(conn)  # the taxonomy of today finds every key it has
     assert conn.execute(count).fetchone()[0] == before
     conn.close()

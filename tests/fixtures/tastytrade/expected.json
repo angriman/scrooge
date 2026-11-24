@@ -9,7 +9,7 @@
     "source_file": "transactions.csv",
     "source_ref": "1",
     "counterparty": "/ZBZ6",
-    "category": "Trading",
+    "category": "trading",
     "confidence": "1",
     "booking_date": "2026-09-30"
   },
@@ -23,7 +23,7 @@
     "source_file": "transactions.csv",
     "source_ref": "1:fees",
     "counterparty": "/ZBZ6",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-30"
   },
@@ -37,7 +37,7 @@
     "source_file": "transactions.csv",
     "source_ref": "2",
     "counterparty": "/ESZ6",
-    "category": "Trading",
+    "category": "trading",
     "confidence": "1",
     "booking_date": "2026-09-28"
   },
@@ -51,7 +51,7 @@
     "source_file": "transactions.csv",
     "source_ref": "2:fees",
     "counterparty": "/ESZ6",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-28"
   },
@@ -65,7 +65,7 @@
     "source_file": "transactions.csv",
     "source_ref": "4:fees",
     "counterparty": "/ZBZ6",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-25"
   },
@@ -79,7 +79,7 @@
     "source_file": "transactions.csv",
     "source_ref": "5:fees",
     "counterparty": "/GCZ6",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-23"
   },
@@ -93,7 +93,7 @@
     "source_file": "transactions.csv",
     "source_ref": "6:fees",
     "counterparty": "/GCZ6",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-23"
   },
@@ -107,7 +107,7 @@
     "source_file": "transactions.csv",
     "source_ref": "7",
     "counterparty": "/GCZ6",
-    "category": "Trading",
+    "category": "trading",
     "confidence": "1",
     "booking_date": "2026-09-24"
   },
@@ -121,7 +121,7 @@
     "source_file": "transactions.csv",
     "source_ref": "8",
     "counterparty": "/GCZ6",
-    "category": "Trading",
+    "category": "trading",
     "confidence": "1",
     "booking_date": "2026-09-25"
   },
@@ -135,7 +135,7 @@
     "source_file": "transactions.csv",
     "source_ref": "8:fees",
     "counterparty": "/GCZ6",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-25"
   },
@@ -149,7 +149,7 @@
     "source_file": "transactions.csv",
     "source_ref": "9",
     "counterparty": "ACME",
-    "category": "Trading",
+    "category": "trading",
     "confidence": "1",
     "booking_date": "2026-09-18"
   },
@@ -163,7 +163,7 @@
     "source_file": "transactions.csv",
     "source_ref": "9:fees",
     "counterparty": "ACME",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-18"
   },
@@ -177,7 +177,7 @@
     "source_file": "transactions.csv",
     "source_ref": "10",
     "counterparty": "912797ZZ1",
-    "category": "Investments",
+    "category": "investments",
     "confidence": "1",
     "booking_date": "2026-09-17",
     "ticker": "912797ZZ1",
@@ -198,7 +198,7 @@
     "source_file": "transactions.csv",
     "source_ref": "11",
     "counterparty": "912797YY2",
-    "category": "Investments",
+    "category": "investments",
     "confidence": "1",
     "booking_date": "2026-09-16",
     "ticker": "912797YY2",
@@ -219,7 +219,7 @@
     "source_file": "transactions.csv",
     "source_ref": "12",
     "counterparty": "",
-    "category": "Interest",
+    "category": "interest",
     "confidence": "1",
     "booking_date": "2026-09-16"
   },
@@ -233,7 +233,7 @@
     "source_file": "transactions.csv",
     "source_ref": "13",
     "counterparty": "",
-    "category": "Interest",
+    "category": "interest",
     "confidence": "1",
     "booking_date": "2026-09-16"
   },
@@ -261,7 +261,7 @@
     "source_file": "transactions.csv",
     "source_ref": "15",
     "counterparty": "WIDG",
-    "category": "Dividends",
+    "category": "dividends",
     "confidence": "1",
     "booking_date": "2026-09-10"
   },
@@ -275,7 +275,7 @@
     "source_file": "transactions.csv",
     "source_ref": "16",
     "counterparty": "WIDG",
-    "category": "Dividends",
+    "category": "dividends",
     "confidence": "1",
     "booking_date": "2026-09-09"
   },
@@ -289,7 +289,7 @@
     "source_file": "transactions.csv",
     "source_ref": "17",
     "counterparty": "",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-07"
   },
@@ -303,7 +303,7 @@
     "source_file": "transactions.csv",
     "source_ref": "18",
     "counterparty": "WIDG",
-    "category": "Investments",
+    "category": "investments",
     "confidence": "1",
     "booking_date": "2026-09-04",
     "ticker": "WIDG",
@@ -324,7 +324,7 @@
     "source_file": "transactions.csv",
     "source_ref": "18:fees",
     "counterparty": "WIDG",
-    "category": "Fees",
+    "category": "fees",
     "confidence": "1",
     "booking_date": "2026-09-04"
   }

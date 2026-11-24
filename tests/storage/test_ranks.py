@@ -72,22 +72,22 @@ def test_what_categories_yaml_adds_comes_after_the_taxonomy_it_joins(
         categories.RENT,
         categories.UTILITIES,
         categories.HOUSEHOLD,
-        "Loans",
+        "loans",
         categories.HEALTH_INSURANCE,
         categories.DENTIST,
         categories.DOCTOR,
-        "Vet",  # last of its group, though its sort_order was given before Groceries had one
+        "vet",  # last of its group, though its sort_order was given before Groceries had one
     ]
-    assert leaves[-1] == "Pets food"
-    assert _tops(ranks, "uscite") == [*categories.USCITE, "Pets"]
-    assert _leaves(ranks, "entrate") == [*categories.ENTRATE, "Rental income"]
+    assert leaves[-1] == "pets_food"
+    assert _tops(ranks, "uscite") == [*categories.USCITE, "pets"]
+    assert _leaves(ranks, "entrate") == [*categories.ENTRATE, "rental_income"]
 
 
 def test_a_group_made_by_moving_a_category_is_the_last_of_the_expenses(
     conn: sqlite3.Connection,
 ) -> None:
     store.seed_categories(conn, (Extra("Loans", "uscite", categories.GROUP_HOME),))
-    taxonomy.move(conn, "Loans", "Debts")
+    taxonomy.move(conn, "loans", "Debts")
     ranks = store.category_ranks(conn)
-    assert _tops(ranks, "uscite") == [*categories.USCITE, "Debts"]
-    assert ranks.top("Debts", "uscite") < ranks.top(categories.SALARY, "entrate")
+    assert _tops(ranks, "uscite") == [*categories.USCITE, "debts"]
+    assert ranks.top("debts", "uscite") < ranks.top(categories.SALARY, "entrate")

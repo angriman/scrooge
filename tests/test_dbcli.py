@@ -283,7 +283,7 @@ def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
     conn = db.connect(run.database)
     query = (
         "SELECT count(*) FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE c.name = 'Prestiti'"
+        "WHERE c.key = 'prestiti'"
     )
     assert conn.execute(query).fetchone()[0] > 0
     conn.close()
@@ -295,7 +295,7 @@ def test_an_unmatched_category_of_before_is_read_by_its_english_name(run: Run) -
     config = run.config.read_text(encoding="utf-8")
     run.config.write_text(config + "unmatched: Unicorni\n", encoding="utf-8")
     assert run.load() == dbcli.FAILED
-    assert "unmatched: 'Unicorni' is no category" in run.output
+    assert "unmatched: 'unicorni' is no category" in run.output  # by its key
     run.config.write_text(config + "unmatched: Non classificato\n", encoding="utf-8")
     assert run.load() == dbcli.NEEDS_REVIEW  # the transfers: no expense or income is left
     assert "\n4 transactions need a category" in run.output

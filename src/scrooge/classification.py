@@ -129,7 +129,9 @@ def _load(path: Path, key: str) -> object:
 def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -> tuple[Rule, ...]:
     """Read rules from each existing file, in order: earlier files take precedence.
 
-    `known` is every category a rule may name: the taxonomy plus what `categories.yaml` adds.
+    `known` is the key of every category a rule may name: the taxonomy plus what
+    `categories.yaml` adds. A rule may name one by its key, its English label or its Italian
+    name (`categories.key`); the rule keeps its key.
     """
     rules: list[Rule] = []
     for path in paths:
@@ -144,9 +146,9 @@ def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -
             if not isinstance(entry, dict) or not {"match", "category"} <= entry.keys():
                 msg = f"{where}: needs 'match' and 'category'"
                 raise ConfigError(msg)
-            category = categories.canonical(str(entry["category"]))
+            category = categories.key(str(entry["category"]))
             if category not in known:
-                msg = f"{where}: unknown category {category!r}"
+                msg = f"{where}: unknown category {str(entry['category'])!r}"
                 raise ConfigError(msg)
             try:
                 pattern = re.compile(str(entry["match"]), re.IGNORECASE)

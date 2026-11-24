@@ -551,7 +551,7 @@ def _unmatched(config: dict[str, object], path: Path) -> str:
     if not isinstance(named, str):
         msg = f"{path}: 'unmatched' must be the name of a category"
         raise ConfigError(msg)
-    return categories.canonical(named.strip())
+    return categories.key(named)
 
 
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
@@ -947,7 +947,7 @@ def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> i
     )
     result = query.run(conn, wanted)
     if not args.summary:
-        _print_rows(result.rows, out, booking=args.booking)
+        _print_rows(result.rows, out, store.category_labels(conn), booking=args.booking)
     out.write(f"{len(result.rows)} transaction{'' if len(result.rows) == 1 else 's'}\n")
     _print_sums("Total", result.totals, out)
     for title, sums in (("By year", result.by_year), ("By month", result.by_month)):
@@ -956,8 +956,11 @@ def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> i
     return OK
 
 
-def _print_rows(rows: Sequence[query.Row], out: TextIO, *, booking: bool) -> None:
-    """One line per transaction, in columns as wide as their longest value."""
+def _print_rows(
+    rows: Sequence[query.Row], out: TextIO, label: categories.Labels, *, booking: bool
+) -> None:
+    """One line per transaction, in columns as wide as their longest value, each category by
+    its label."""
     lines = [
         (
             (row.booking_date if booking else row.date).isoformat(),
@@ -965,7 +968,7 @@ def _print_rows(rows: Sequence[query.Row], out: TextIO, *, booking: bool) -> Non
             row.account,
             f"{row.amount:,.2f}",
             row.currency,
-            row.category or "",
+            label(row.category),
             row.counterparty or row.description,
         )
         for row in rows

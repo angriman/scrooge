@@ -60,7 +60,7 @@ def test_one_person_gets_a_setup_that_imports_and_commits_without_review(here: P
     iban = r"C\s?H\s?9\s?3\s?0\s?0\s?7\s?6\s?2\s?0\s?1\s?1\s?6\s?2\s?3\s?8\s?5\s?2\s?9\s?5\s?7"
     assert config["owners"] == {"Lukas": {"match": ["LUKAS\\ MEIER", iban]}}
     assert config["currency"] == "CHF"  # the default
-    assert config["unmatched"] == categories.UNSORTED
+    assert categories.key(str(config["unmatched"])) == categories.UNSORTED
     for name in onboarding.STARTERS:
         text = (STARTER / name).read_text(encoding="utf-8")
         assert (home / name).read_text(encoding="utf-8") == text
@@ -164,7 +164,7 @@ def test_the_starter_config_holds_every_answer() -> None:
     assert loaded["owners"] == {"A": {"match": ["A\\.B"]}, 'C "D"': {"match": ["E"]}}
     # The rest is comments.
     assert loaded["currency"] == "JPY"
-    assert loaded["unmatched"] == categories.UNSORTED
+    assert categories.key(loaded["unmatched"]) == categories.UNSORTED
     keys = {"database", "rules", "instruments", "owner", "owners", "currency", "unmatched"}
     assert loaded.keys() == keys
 

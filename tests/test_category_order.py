@@ -68,22 +68,19 @@ def test_cash_flow_lines_follow_the_taxonomy(conn: sqlite3.Connection) -> None:
     assert expenses == [name for name in categories.USCITE if name in expenses]
 
 
-def test_the_order_is_the_same_in_another_language() -> None:
+def test_labels_in_another_language_change_no_line_and_no_stored_row() -> None:
     connection = db.connect(":memory:")
     db.migrate(connection, CLOSED_AT)
     close(connection, OWNER, JANUARY, JANUARY[1], ("migros", _rows(1)))
     english = _january_lines(connection)
-    for italian, name in categories.ITALIAN.items():
-        if name == categories.INVESTMENTS:  # what is investing is told by its English name
-            continue
-        connection.execute("UPDATE categories SET name = ? WHERE name = ?", (italian, name))
-    renamed = _january_lines(connection)
-    assert [(side, categories.canonical(name)) for side, name in renamed] == english
-    assert renamed[-3:] == [
-        ("uscite", "Casa"),
-        ("uscite", "Alimentari"),
-        ("uscite", "Ristoranti e bar"),
-    ]
+    stored = "SELECT * FROM transactions ORDER BY id"
+    rows = [tuple(row) for row in connection.execute(stored)]
+    for key, italian in categories.LABELS_IT.items():
+        connection.execute("UPDATE categories SET name = ? WHERE key = ?", (italian, key))
+    assert _january_lines(connection) == english  # the lines name keys, in the same order
+    assert [tuple(row) for row in connection.execute(stored)] == rows
+    label = categories.Labels(language="it")  # what the pages would show in Italian
+    assert [label(name) for _, name in english[-3:]] == ["Casa", "Alimentari", "Ristoranti e bar"]
     connection.close()
 
 
