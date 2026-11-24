@@ -49,6 +49,14 @@ def test_every_field_is_read() -> None:
     )
 
 
+def test_several_kinds_are_read_apart_by_commas() -> None:
+    parsed = forms.transactions_filter({"kind": "dividend, tax,interest"})
+    assert parsed == forms.Parsed(Filter(kinds=(Kind.DIVIDEND, Kind.TAX, Kind.INTEREST)), ())
+    refused = forms.transactions_filter({"kind": "dividend,gift"})
+    assert refused.wanted == Filter(kind=Kind.DIVIDEND)
+    assert refused.errors == ("'gift' is not a kind of transaction.",)
+
+
 def test_a_year_or_a_day_works_as_either_end_and_a_size_has_no_sign() -> None:
     parsed = forms.transactions_filter({"from": "2025", "to": "2026-02-03", "min": "-1,000"})
     assert parsed.wanted == Filter(date(2025, 1, 1), date(2026, 2, 3), at_least=Decimal(1000))

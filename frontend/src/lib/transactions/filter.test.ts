@@ -49,5 +49,6 @@ describe('the filter of the transactions page', () => {
 	it('names every kind of row in words', () => {
 		expect(kindName('internal')).toBe('Between own accounts');
 		expect(kindName('something_new')).toBe('Something new');
+		expect(kindName('dividend,interest,tax')).toBe('Dividends, Interest, Taxes');
 	});
 });

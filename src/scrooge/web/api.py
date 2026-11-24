@@ -34,6 +34,7 @@ from scrooge import (
     months,
     networth,
     overview,
+    payouts,
     portfolio,
     query,
     recap,
@@ -673,6 +674,34 @@ def _cashflow(request: Request) -> Response:
     )
 
 
+def _income(request: Request) -> Response:
+    """What investments paid from `from` to `to`, in `currency`: the twelve months up to the
+    last day committed when no range is asked for. Rows in a currency without a rate are left
+    out, each such currency said in `errors`."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            query.check_names(conn, query.Filter(owner=asked.owner))
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        through = analysis.through(conn, asked.owner)
+        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
+        shown = payouts.run(
+            conn, first=asked.first, last=asked.last, owner=asked.owner, currency=asked.currency
+        )
+        found = logos(request, conn)
+    return JSONResponse(
+        {
+            "income": wire.payouts_report(shown),
+            "logos": found,
+            "ranges": _ranges(through, min(firsts).year) if through and firsts else [],
+            "errors": [wire.sentence(networth.MissingRateError(why)) for why in shown.missing],
+        }
+    )
+
+
 def _recurring(request: Request) -> Response:
     """The payments that come back at a steady pace for `owner`, or for everyone, and what
     they cost a month in `currency`."""
@@ -769,6 +798,7 @@ routes = [
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
     Route("/transactions/context", _transactions_context, name="api_transactions_context"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
+    Route("/income", _income, name="api_income"),
     Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),

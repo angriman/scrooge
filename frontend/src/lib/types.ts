@@ -512,6 +512,52 @@ export interface CashFlow {
 	errors: string[];
 }
 
+/** What was paid, and withheld, over a range or in a month (src/scrooge/payouts.py `Paid`).
+ * Tax withheld is negative, as stored. */
+export interface Payout {
+	dividends: Amount;
+	interest: Amount;
+	tax: Amount;
+}
+
+/** What one holding, or one account's rows that name none, paid (payouts.py `Holding`). */
+export interface PayingHolding extends Payout {
+	/** The counterparty the rows are grouped by, or the account's name. */
+	key: string;
+	name: string;
+	/** As the instruments (and the logos) have it; null when no instrument has it. */
+	symbol: string | null;
+	/** The account, for rows that name nothing; else null. */
+	account: string | null;
+	count: number;
+	last: Day;
+}
+
+/** What investments paid over a range (wire.py `payouts_report`). */
+export interface PayoutsReport {
+	currency: string;
+	/** The range shown; null when nothing is committed. */
+	first: Day | null;
+	last: Day | null;
+	through: Day | null;
+	totals: Payout & { net: Amount };
+	/** The same months a year earlier; null when they are not all known. */
+	year_before: (Payout & { net: Amount }) | null;
+	/** The twelve months up to `through`, whatever the range. */
+	trailing: Payout & { net: Amount };
+	months: (Payout & { month: string })[];
+	holdings: PayingHolding[];
+}
+
+/** `/api/income`: what investments paid, and the ranges offered. `errors` names each currency
+ * whose rows were left out for want of a rate. */
+export interface InvestmentIncome {
+	income: PayoutsReport;
+	logos: Record<string, string>;
+	ranges: { label: string; from: string; to: string }[];
+	errors: string[];
+}
+
 /** Net worth at a month's end in one currency, and how it moved since the month before, less
  * what accounts brought when they came into view (src/scrooge/networth.py `Figure`). */
 export interface MonthEndFigure {
