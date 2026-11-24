@@ -783,8 +783,9 @@ def needs_a_look(
 
 
 def listed_rule(rule: settings.ListedRule) -> JSON:
-    """One rule of the settings page: what it gives, in which file, and how many committed
-    rows it matches (null when its pattern is none)."""
+    """One rule of the settings page: what it gives, in which file, how many committed rows
+    it would match on its own (null when its pattern is none), what a change of it sends back
+    (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
     return {
         "file": rule.file.key,
         "owner": rule.file.owner,
@@ -794,6 +795,8 @@ def listed_rule(rule: settings.ListedRule) -> JSON:
         "direction": rule.direction,
         "account": rule.account,
         "matches": rule.matches,
+        "version": rule.version,
+        "fixed": rule.fixed or None,
     }
 
 

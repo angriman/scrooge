@@ -7,12 +7,18 @@ begins and ends, never by reading the file and writing all of it out again. Movi
 swaps its lines with those of its neighbour, and the comments around them stay where they are.
 
 A rule is named by its place in the file, counted from 1 as `load_rules` counts them in its
-messages, and by the pattern and category it had when the page showed it: a file changed
-since is refused rather than the wrong rule changed.
+messages, and by a digest of its lines as the page showed them (`Entry.version`): a rule
+changed since in any way is refused rather than the wrong rule changed.
+
+What cannot be changed line by line without harm is said, not done: a rule whose dash stands
+on a line of its own (taking its lines would leave the dash behind) is changed in the file by
+hand, and so is the text of one with comments among its keys (written again, it would lose
+them); such a rule is still removed or moved whole.
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +48,17 @@ class Entry:
     # Each key, and `key: value` as it goes back between braces: as it is in a rule written
     # between them already, quoted again from one whose keys are on lines of their own.
     pairs: tuple[tuple[str, str], ...]
+    version: str  # a digest of its lines: what the page sends back to say which rule it saw
+    lone: bool = False  # its dash is on a line of its own: its lines are not all its own
+    comments: bool = False  # comments stand among its keys, which writing it again would lose
+
+    def refusal(self, *, editing: bool) -> str:
+        """Why this rule cannot be changed here ("": it can), removed or moved, or `editing`."""
+        if self.lone:
+            return "its dash stands on a line of its own: write it as '  - {match: ...}' first"
+        if editing and self.comments:
+            return "it has comments among its keys, which would be lost: edit it in the file"
+        return ""
 
 
 class StaleRuleError(ConfigError):
@@ -99,9 +116,14 @@ def _entry(text: str, path: Path, n: int, item: Node) -> Entry:
         raise ConfigError(msg)
     start = item.start_mark.index
     end = item.end_mark.index if item.flow_style else item.value[-1][1].end_mark.index
-    # In a block list each rule begins a line of its own, after its dash.
     first = text.rfind("\n", 0, start) + 1
     last = text.find("\n", end)
+    lines = (first, len(text) if last == -1 else last + 1)
+    # What lies between its keys, outside them: spaces, commas, colons, or comments.
+    bounds = [(key.start_mark.index, value.end_mark.index) for key, value in item.value]
+    ends = [start, *(after for _, after in bounds)]
+    starts = [*(before for before, _ in bounds), end]
+    gaps = [text[a:b] for a, b in zip(ends, starts, strict=True)]
     return Entry(
         match=values["match"],
         category=values["category"],
@@ -109,9 +131,12 @@ def _entry(text: str, path: Path, n: int, item: Node) -> Entry:
         account=values.get("account", ""),
         kind=values.get("kind", ""),
         span=(start, end),
-        lines=(first, len(text) if last == -1 else last + 1),
+        lines=lines,
         named=named,
         pairs=tuple(pairs),
+        version=hashlib.sha256(text[lines[0] : lines[1]].encode()).hexdigest()[:16],
+        lone=text[first:start].strip() != "-",
+        comments=any("#" in gap for gap in gaps),
     )
 
 
@@ -123,18 +148,18 @@ def read(path: Path) -> tuple[str, tuple[Entry, ...]]:
     return text, entries(text, path)
 
 
-def find(path: Path, position: int, match: str, category: str) -> tuple[str, Entry]:
-    """The text of `path` and its rule at `position`, which must still match `match` and
-    give `category`, as the page showed it."""
+def find(path: Path, position: int, version: str) -> tuple[str, tuple[Entry, ...], Entry]:
+    """The text of `path`, its rules and the one at `position`, which must still be as the
+    page showed it (`version`). The file is read once."""
     text, found = read(path)
     if not 1 <= position <= len(found):
         msg = f"{path.name} has no rule {position} any more: load the page again"
         raise StaleRuleError(msg)
     entry = found[position - 1]
-    if (entry.match, entry.category) != (match, category):
+    if entry.version != version:
         msg = f"rule {position} of {path.name} changed since the page was shown: load it again"
         raise StaleRuleError(msg)
-    return text, entry
+    return text, found, entry
 
 
 def rewritten(text: str, entry: Entry, changes: Mapping[str, str]) -> str:

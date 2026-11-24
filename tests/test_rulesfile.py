@@ -81,13 +81,30 @@ def test_recategorized_changes_the_category_alone() -> None:
 def test_find_refuses_a_rule_that_changed(tmp_path: Path) -> None:
     path = tmp_path / "rules.yaml"
     path.write_text(TEXT.rstrip("\n"), encoding="utf-8")  # no newline at the end
-    text, entry = rulesfile.find(path, 3, ".", "Regali")
+    versions = [entry.version for entry in _entries()]
+    assert len(set(versions)) == 3
+    text, found, entry = rulesfile.find(path, 3, versions[2])
     assert text.endswith("\n")
-    assert entry.account == "Migros"
+    assert (len(found), entry.account) == (3, "Migros")
     with pytest.raises(rulesfile.StaleRuleError, match="changed since"):
-        rulesfile.find(path, 1, "KONSUM", "Spesa")
+        rulesfile.find(path, 1, versions[2])
     with pytest.raises(rulesfile.StaleRuleError, match="no rule 4"):
-        rulesfile.find(path, 4, ".", "Regali")
+        rulesfile.find(path, 4, versions[2])
+
+
+def test_what_cannot_be_changed_line_by_line_is_said() -> None:
+    text = (
+        "rules:\n  -\n    match: A\n    category: Spesa\n"
+        "  - match: B  # why\n    category: Spesa\n"
+        "  - {match: C,  # why\n     category: Spesa}\n"
+        "  - {match: D, category: '#1'}\n"
+    )
+    lone, commented, flow, quoted = _entries(text)
+    assert lone.refusal(editing=False).startswith("its dash stands on a line of its own")
+    assert commented.refusal(editing=False) == ""
+    assert "comments among its keys" in commented.refusal(editing=True)
+    assert flow.comments
+    assert not quoted.comments  # a '#' inside a value is no comment
 
 
 @pytest.mark.parametrize(

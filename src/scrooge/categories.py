@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from scrooge import yamlfiles
 from scrooge.errors import ConfigError
 
 # What `unmatched` in the config may give the expenses and income no rule matches, when
@@ -101,31 +102,48 @@ def groups(extras: tuple[Extra, ...]) -> tuple[str, ...]:
 
 def add(path: Path, extra: Extra) -> None:
     """Save one more category in `path` (created if missing), keeping its leading comments."""
-    uscite, entrate = _read(path)
-    leaves = uscite.setdefault(extra.group, []) if extra.side == "uscite" else entrate
-    if extra.name not in leaves:
-        leaves.append(extra.name)
-    _write(path, uscite, entrate)
+    with yamlfiles.LOCK:
+        uscite, entrate = _read(path)
+        leaves = uscite.setdefault(extra.group, []) if extra.side == "uscite" else entrate
+        if extra.name not in leaves:
+            leaves.append(extra.name)
+        _write(path, uscite, entrate)
 
 
 def rename(path: Path, old: str, new: str) -> None:
     """Call the added category `old` `new` in `path`, everywhere it is added, and so the group
     of its own it was added with, if it was; the order stays as it was."""
-    uscite, entrate = _read(path)
-    swap = {old: new}
-    uscite = {
-        group if group in USCITE else swap.get(group, group): [swap.get(n, n) for n in leaves]
-        for group, leaves in uscite.items()
-    }
-    _write(path, uscite, [swap.get(name, name) for name in entrate])
+    with yamlfiles.LOCK:
+        uscite, entrate = _read(path)
+        swap = {old: new}
+        uscite = {
+            group if group in USCITE else swap.get(group, group): [swap.get(n, n) for n in leaves]
+            for group, leaves in uscite.items()
+        }
+        _write(path, uscite, [swap.get(name, name) for name in entrate])
 
 
 def drop(path: Path, name: str) -> None:
     """Take the added category `name` out of `path`, and the group it leaves empty with it."""
-    uscite, entrate = _read(path)
+    with yamlfiles.LOCK:
+        uscite, entrate = _read(path)
+        _write(path, _without(uscite, name), [entry for entry in entrate if entry != name])
+
+
+def move(path: Path, name: str, group: str) -> None:
+    """Put the added expense category `name` under `group` in `path` (a new group when there
+    is none of that name), at its end; the group it leaves empty goes."""
+    with yamlfiles.LOCK:
+        uscite, entrate = _read(path)
+        moved = _without(uscite, name)
+        moved.setdefault(group, []).append(name)
+        _write(path, moved, entrate)
+
+
+def _without(uscite: dict[str, list[str]], name: str) -> dict[str, list[str]]:
+    """The groups without the leaf `name`; a group it leaves empty is left out."""
     kept = {group: [leaf for leaf in leaves if leaf != name] for group, leaves in uscite.items()}
-    groups = {group: leaves for group, leaves in kept.items() if leaves or not uscite[group]}
-    _write(path, groups, [entry for entry in entrate if entry != name])
+    return {group: leaves for group, leaves in kept.items() if leaves or not uscite[group]}
 
 
 def _write(path: Path, uscite: dict[str, list[str]], entrate: list[str]) -> None:
@@ -137,7 +155,7 @@ def _write(path: Path, uscite: dict[str, list[str]], entrate: list[str]) -> None
         allow_unicode=True,
         sort_keys=False,
     )
-    path.write_text(header + body, encoding="utf-8")
+    yamlfiles.write(path, header + body)
 
 
 def _read(path: Path) -> tuple[dict[str, list[str]], list[str]]:

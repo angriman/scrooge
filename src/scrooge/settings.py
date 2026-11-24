@@ -3,9 +3,15 @@
 YAML stays where they are kept: `rules.yaml` and each person's `rules.<owner>.yaml`, which
 every import reads again, and `categories.yaml`, which adds to the built-in taxonomy. A rule
 is changed in its file in place (`rulesfile`); the next import classifies with it, as nothing
-keeps the rules in memory. A category renamed or merged changes the rows that carry it too, in
-one database transaction, after the copy of the database that a commit also makes; when
-anything fails, the database and every file are left as they were.
+keeps the rules in memory. A rules file written here is read back as an import reads it, and
+put back as it was when it would not load.
+
+A category renamed, merged or moved changes the rows that carry it too, in one database
+transaction, after the copy of the database that a commit also makes. When anything fails, the
+database and every file are left as they were; when a file cannot be put back, the copy is
+kept and the error says where. Every change holds the lock of the writers of these files
+(`yamlfiles`) from its first read to its last write, and each file is written whole or not at
+all.
 
 How many committed rows a rule matches is counted with its pattern, account and direction
 alone, whatever rule before it takes them first: what it would match on its own.
@@ -15,6 +21,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -23,13 +30,15 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from scrooge import categories, classification, query, rulesfile, staging
+from scrooge import categories, classification, query, rulesfile, staging, yamlfiles
 from scrooge.classification import Rule
 from scrooge.errors import ConfigError
 from scrooge.models import Transaction
 from scrooge.storage import db, store, taxonomy
 
 SHOWN = 50  # rows a test of a pattern lists; how many match is counted all the same
+LONGEST = 200  # characters of a pattern tried or saved here
+BUDGET = 2.0  # seconds a pattern is tried for, newest rows first
 DIRECTIONS = ("", "in", "out")
 
 
@@ -54,7 +63,9 @@ class ListedRule:
     category: str
     direction: str
     account: str
-    matches: int | None  # committed rows it matches; None when its pattern is no pattern
+    matches: int | None  # committed rows it would match on its own; None: no pattern
+    version: str  # what a change of it sends back (`rulesfile.Entry.version`)
+    fixed: str  # why it cannot be changed here at all; "" when it can
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,16 +93,16 @@ def rule_files(shared: Sequence[Path], people: Iterable[str], owner: str | None)
 
 
 def _transaction(row: query.Row) -> Transaction:
-    """A committed row as a rule reads it."""
+    """What a rule reads of a committed row: its text, its account, whether money came in."""
     return Transaction(
-        date=row.date,
+        date=row.date.min,
         account=row.account,
-        amount=row.amount,
-        currency=row.currency,
+        amount=Decimal(1 if row.amount > 0 else -1),
+        currency="",
         description=row.description,
         kind=row.kind,
         source_file="",
-        source_ref=row.id,
+        source_ref="",
         counterparty=row.counterparty,
     )
 
@@ -99,26 +110,16 @@ def _transaction(row: query.Row) -> Transaction:
 def _texts(rows: Iterable[query.Row]) -> Counter[tuple[str, Transaction]]:
     """Owner and what a rule reads of a row -> how many rows read the same: shops come back,
     so each text is matched once."""
-    return Counter(
-        (
-            row.owner,
-            Transaction(
-                date=row.date.min,
-                account=row.account,
-                amount=Decimal(1 if row.amount > 0 else -1),
-                currency="",
-                description=row.description,
-                kind=row.kind,
-                source_file="",
-                source_ref="",
-                counterparty=row.counterparty,
-            ),
-        )
-        for row in rows
-    )
+    return Counter((row.owner, _transaction(row)) for row in rows)
 
 
 def _compiled(match: str) -> re.Pattern[str]:
+    if not match.strip():
+        msg = "a rule needs a pattern"
+        raise SettingsError(msg)
+    if len(match) > LONGEST:
+        msg = f"a pattern is at most {LONGEST} characters long"
+        raise SettingsError(msg)
     try:
         return re.compile(match, re.IGNORECASE)
     except re.error as exc:
@@ -126,12 +127,19 @@ def _compiled(match: str) -> re.Pattern[str]:
         raise SettingsError(msg) from None
 
 
+def _direction(direction: str) -> str:
+    if direction not in DIRECTIONS:
+        msg = f"the direction is 'in' or 'out', not {direction!r}"
+        raise SettingsError(msg)
+    return direction
+
+
 def rules(
     conn: sqlite3.Connection, files: Sequence[RulesFile], owner: str | None = None
 ) -> tuple[list[ListedRule], list[str]]:
     """Every rule of `files`, in the order they are tried, with the committed rows of `owner`
-    (of everyone without one) each one matches; and what could not be read, a sentence for
-    each file."""
+    (of everyone without one) each one would match on its own; and what could not be read, a
+    sentence for each file."""
     texts = _texts(query.run(conn, query.Filter(owner=owner)).rows)
     listed: list[ListedRule] = []
     problems: list[str] = []
@@ -143,15 +151,16 @@ def rules(
             continue
         for position, entry in enumerate(found, start=1):
             try:
-                pattern = _compiled(entry.match)
-                rule = Rule(pattern, entry.category, None, entry.account, entry.direction)
-                matches: int | None = sum(
-                    count
-                    for (owner, txn), count in texts.items()
-                    if file.owner in (None, owner) and rule.matches(txn)
-                )
-            except SettingsError:
+                pattern = re.compile(entry.match, re.IGNORECASE)
+            except re.error:
                 matches = None
+            else:
+                rule = Rule(pattern, entry.category, None, entry.account, entry.direction)
+                matches = sum(
+                    count
+                    for (whose, txn), count in texts.items()
+                    if file.owner in (None, whose) and rule.matches(txn)
+                )
             listed.append(
                 ListedRule(
                     file,
@@ -161,40 +170,80 @@ def rules(
                     entry.direction,
                     entry.account,
                     matches,
+                    entry.version,
+                    entry.refusal(editing=False),
                 )
             )
     return listed, problems
 
 
-def try_pattern(
-    conn: sqlite3.Connection, match: str, *, direction: str = "", owner: str | None = None
-) -> tuple[int, list[query.Row]]:
-    """How many committed rows of `owner` (of everyone without one) the pattern `match`
-    matches in `direction`, and the newest `SHOWN` of them. Nothing is saved."""
-    if not match.strip():
-        msg = "write a pattern to look for"
-        raise SettingsError(msg)
-    if direction not in DIRECTIONS:
-        msg = f"the direction is 'in' or 'out', not {direction!r}"
-        raise SettingsError(msg)
-    rule = Rule(_compiled(match), "", direction=direction)
+@dataclass(frozen=True, slots=True)
+class Tried:
+    """What a pattern matches among the committed rows."""
+
+    count: int
+    rows: list[query.Row]  # the newest `SHOWN` of them
+    tried: int  # rows it was tried on, newest first
+    complete: bool  # False when time ran out before the oldest
+
+
+def try_pattern(  # noqa: PLR0913  # the pattern, whose rows, and how long it may take
+    conn: sqlite3.Connection,
+    match: str,
+    *,
+    direction: str = "",
+    owner: str | None = None,
+    budget: float = BUDGET,
+    clock: Callable[[], float] = time.monotonic,
+) -> Tried:
+    """The committed rows of `owner` (of everyone without one) that the pattern `match`
+    matches in `direction`, newest first, within `budget` seconds. Nothing is saved."""
+    rule = Rule(_compiled(match), "", direction=_direction(direction))
     rows = query.run(conn, query.Filter(owner=owner)).rows
-    found = [row for row in reversed(rows) if rule.matches(_transaction(row))]
-    return len(found), found[:SHOWN]
+    started = clock()
+    seen: dict[Transaction, bool] = {}
+    found: list[query.Row] = []
+    tried = 0
+    for row in reversed(rows):
+        if clock() - started > budget:
+            return Tried(len(found), found[:SHOWN], tried, False)
+        read = _transaction(row)
+        if read not in seen:
+            seen[read] = rule.matches(read)
+        if seen[read]:
+            found.append(row)
+        tried += 1
+    return Tried(len(found), found[:SHOWN], tried, True)
+
+
+class _UnrestoredError(SettingsError):
+    """A change failed, and a file it had written could not be put back."""
+
+
+def _put_back(before: dict[Path, str | None]) -> None:
+    for path, text in before.items():
+        if text is None:
+            path.unlink(missing_ok=True)
+        else:
+            yamlfiles.write(path, text)
 
 
 @contextmanager
 def _kept(paths: Iterable[Path]) -> Iterator[None]:
-    """Whatever raises inside, `paths` are put back as they were (gone, if they were)."""
+    """Whatever raises inside, `paths` are put back as they were (gone, if they were). When
+    one cannot be, `_UnrestoredError` says which failure left what. The caller holds the lock."""
     before = {path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths}
     try:
         yield
-    except BaseException:
-        for path, text in before.items():
-            if text is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_text(text, encoding="utf-8")
+    except BaseException as exc:
+        try:
+            _put_back(before)
+        except OSError as failed:
+            msg = (
+                f"{exc}; and the files could not all be put back as they were ({failed}): "
+                f"check {', '.join(path.name for path in before)}"
+            )
+            raise _UnrestoredError(msg) from exc
         raise
 
 
@@ -204,73 +253,100 @@ def _known(categories_file: Path | None) -> tuple[str, ...]:
 
 
 def _write_rules(path: Path, text: str, known: Sequence[str]) -> None:
-    """Write `text` to the rules file `path`, unless it would not load as it is."""
+    """Write `text` to the rules file `path`, unless it would not load as an import reads it."""
     with _kept([path]):
-        path.write_text(text, encoding="utf-8")
+        yamlfiles.write(path, text)
         try:
             classification.load_rules([path], known)
         except ConfigError as exc:
-            msg = f"the rule was not saved: {exc}"
+            msg = f"the rules file was left as it was: {exc}"
             raise SettingsError(msg) from None
 
 
 @dataclass(frozen=True, slots=True)
 class Seen:
-    """A rule as the page showed it: where, and what it said then."""
+    """A rule as the page showed it: where, and the digest of its lines then."""
 
     file: Path
     position: int
-    match: str
-    category: str
+    version: str
 
 
-def _found(seen: Seen) -> tuple[str, rulesfile.Entry]:
-    try:
-        return rulesfile.find(seen.file, seen.position, seen.match, seen.category)
-    except ConfigError as exc:
-        raise SettingsError(str(exc)) from None
+Change = Callable[[str, tuple[rulesfile.Entry, ...], rulesfile.Entry], str]
+
+
+def _change_rule(
+    seen: Seen, categories_file: Path | None, change: Change, *, editing: bool = False
+) -> None:
+    """Make `change` of the text of the rule `seen`'s file, read once, under the lock."""
+    with yamlfiles.LOCK:
+        try:
+            text, found, entry = rulesfile.find(seen.file, seen.position, seen.version)
+        except ConfigError as exc:
+            raise SettingsError(str(exc)) from None
+        refusal = entry.refusal(editing=editing)
+        if refusal:
+            msg = f"rule {seen.position} of {seen.file.name} cannot be changed here: {refusal}"
+            raise SettingsError(msg)
+        _write_rules(seen.file, change(text, found, entry), _known(categories_file))
 
 
 def edit_rule(
     seen: Seen, *, match: str, category: str, direction: str, categories_file: Path | None
 ) -> None:
     """Give the rule `seen` another pattern, category or direction ("" for both)."""
-    known = _known(categories_file)
-    if not match.strip():
-        msg = "a rule needs a pattern"
-        raise SettingsError(msg)
     _compiled(match)
-    if category not in known:
+    _direction(direction)
+    if category not in _known(categories_file):
         msg = f"there is no category {category!r}"
         raise SettingsError(msg)
-    if direction not in DIRECTIONS:
-        msg = f"the direction is 'in' or 'out', not {direction!r}"
-        raise SettingsError(msg)
-    text, entry = _found(seen)
     changes = {"match": match, "category": category, "direction": direction}
-    _write_rules(seen.file, rulesfile.rewritten(text, entry, changes), known)
+    _change_rule(
+        seen,
+        categories_file,
+        lambda text, _, entry: rulesfile.rewritten(text, entry, changes),
+        editing=True,
+    )
 
 
-def remove_rule(seen: Seen) -> None:
+def remove_rule(seen: Seen, categories_file: Path | None) -> None:
     """Take the rule `seen` out of its file."""
-    text, entry = _found(seen)
-    seen.file.write_text(rulesfile.removed(text, entry), encoding="utf-8")
+    _change_rule(seen, categories_file, lambda text, _, entry: rulesfile.removed(text, entry))
 
 
-def move_rule(seen: Seen, by: int) -> None:
+def move_rule(seen: Seen, by: int, categories_file: Path | None) -> None:
     """Move the rule `seen` one place up (`by` -1) or down (1) in its file: of two rules that
-    both match a row, the one tried first gives the category."""
+    both match a row, the one tried first gives the category. A rule stays in its file."""
     if by not in {-1, 1}:
         msg = "a rule moves one place up or down"
         raise SettingsError(msg)
-    text, entry = _found(seen)
-    _, found = rulesfile.read(seen.file)
-    other = seen.position - 1 + by
-    if not 0 <= other < len(found):
-        msg = f"rule {seen.position} is the {'first' if by < 0 else 'last'} of {seen.file.name}"
-        raise SettingsError(msg)
-    upper, lower = (found[other], entry) if by < 0 else (entry, found[other])
-    seen.file.write_text(rulesfile.swapped(text, upper, lower), encoding="utf-8")
+
+    def swap(text: str, found: tuple[rulesfile.Entry, ...], entry: rulesfile.Entry) -> str:
+        at = seen.position - 1 + by
+        if not 0 <= at < len(found):
+            where = "first" if by < 0 else "last"
+            msg = f"rule {seen.position} is the {where} of {seen.file.name}"
+            raise SettingsError(msg)
+        if found[at].refusal(editing=False):
+            msg = f"rule {at + 1} of {seen.file.name}, next to it, cannot be moved here"
+            raise SettingsError(msg)
+        upper, lower = (found[at], entry) if by < 0 else (entry, found[at])
+        return rulesfile.swapped(text, upper, lower)
+
+    _change_rule(seen, categories_file, swap)
+
+
+def _taxonomy(extras: Sequence[categories.Extra]) -> list[tuple[str, str, str | None, bool]]:
+    """Name, side, parent and whether it is built in, of every leaf category."""
+    uscite = categories.USCITE.items()
+    built = [
+        *((leaf, "uscite", group, True) for group, leaves in uscite for leaf in leaves),
+        *((e.name, "uscite", e.group, False) for e in extras if e.side == "uscite"),
+        *((name, "entrate", None, True) for name in categories.ENTRATE),
+        *((e.name, "entrate", None, False) for e in extras if e.side == "entrate"),
+        *((name, "transfer", None, True) for name in categories.TRANSFERS),
+    ]
+    return list(dict.fromkeys(built))
 
 
 def listed_categories(
@@ -279,20 +355,9 @@ def listed_categories(
     """The taxonomy, then what `categories.yaml` adds, with the committed rows of each."""
     extras = categories.load(categories_file) if categories_file else ()
     rows = Counter((r.category, r.category_parent) for r in query.run(conn, query.Filter()).rows)
-    built: list[tuple[str, str, str | None, bool]] = [
-        *(
-            (leaf, "uscite", group, True)
-            for group, leaves in categories.USCITE.items()
-            for leaf in leaves
-        ),
-        *((e.name, "uscite", e.group, False) for e in extras if e.side == "uscite"),
-        *((name, "entrate", None, True) for name in categories.ENTRATE),
-        *((e.name, "entrate", None, False) for e in extras if e.side == "entrate"),
-        *((name, "transfer", None, True) for name in categories.TRANSFERS),
-    ]
     return [
         ListedCategory(name, side, parent, built_in, rows[name, parent])
-        for name, side, parent, built_in in dict.fromkeys(built)
+        for name, side, parent, built_in in _taxonomy(extras)
     ]
 
 
@@ -303,19 +368,31 @@ class Places:
     database: Path
     categories_file: Path
     rule_files: Sequence[Path]
+    unmatched: str = ""  # the category the config gives rows no rule matches
 
 
 def _added(places: Places, name: str) -> categories.Extra:
     """The added category `name`; the taxonomy's own cannot be changed in place."""
     extras = categories.load(places.categories_file)
     if name in categories.ALL:
-        msg = f"{name} is built in: it cannot be renamed or removed, only merged into another"
+        msg = f"{name} is built in: it cannot be renamed, moved or removed, only merged"
         raise SettingsError(msg)
     found = next((extra for extra in extras if extra.name == name), None)
     if found is None:
         msg = f"there is no category {name!r}"
         raise SettingsError(msg)
     return found
+
+
+def _not_unmatched(places: Places, name: str) -> None:
+    """Refuse to take away the category the config gives what no rule matches: every import
+    would then fail."""
+    if name == places.unmatched:
+        msg = (
+            f"{name} is what scrooge.yaml gives rows no rule matches ('unmatched'): "
+            "change it there first"
+        )
+        raise SettingsError(msg)
 
 
 def _recategorize(places: Places, old: str, new: str) -> int:
@@ -329,7 +406,7 @@ def _recategorize(places: Places, old: str, new: str) -> int:
             raise SettingsError(msg) from None
         text, count = rulesfile.recategorized(text, found, old, new)
         if count:
-            path.write_text(text, encoding="utf-8")
+            yamlfiles.write(path, text)
             changed += count
     return changed
 
@@ -337,16 +414,21 @@ def _recategorize(places: Places, old: str, new: str) -> int:
 def _with_copy(
     conn: sqlite3.Connection, places: Places, now: datetime, change: Callable[[], int]
 ) -> int:
-    """Make `change` in one transaction, after a copy of the database (dropped when it fails),
-    and with every file put back when anything raises."""
-    copy = staging.copy_before(conn, places.database, now)
-    try:
-        with _kept([places.categories_file, *places.rule_files]), db.transaction(conn):
-            store.seed_categories(conn, categories.load(places.categories_file))
-            return change()
-    except BaseException:
-        copy.unlink()
-        raise
+    """Make `change` in one transaction, after a copy of the database, with every file put
+    back when anything raises and the lock held throughout. The copy is dropped when the change
+    fails and everything was put back; it is kept, and named, when a file could not be."""
+    with yamlfiles.LOCK:
+        copy = staging.copy_before(conn, places.database, now)
+        try:
+            with _kept([places.categories_file, *places.rule_files]), db.transaction(conn):
+                store.seed_categories(conn, categories.load(places.categories_file))
+                return change()
+        except _UnrestoredError as exc:
+            msg = f"{exc}; the database as it was before is kept in {copy}"
+            raise SettingsError(msg) from exc
+        except BaseException:
+            copy.unlink()
+            raise
 
 
 def _fresh_name(places: Places, name: str) -> str:
@@ -365,63 +447,107 @@ def rename_category(
 ) -> int:
     """Call the added category `name` `to`, in `categories.yaml`, in every rule that gives it
     and on every row that carries it. Returns how many rows do."""
-    _added(places, name)
-    new = _fresh_name(places, to)
+    with yamlfiles.LOCK:
+        _added(places, name)
+        _not_unmatched(places, name)
+        new = _fresh_name(places, to)
 
-    def act() -> int:
-        rows = taxonomy.rename(conn, name, new)
-        categories.rename(places.categories_file, name, new)
-        _recategorize(places, name, new)
-        return rows
+        def act() -> int:
+            rows = taxonomy.rename(conn, name, new)
+            categories.rename(places.categories_file, name, new)
+            _recategorize(places, name, new)
+            return rows
 
-    return _with_copy(conn, places, now, act)
+        return _with_copy(conn, places, now, act)
+
+
+def _sides(places: Places, name: str) -> set[str]:
+    extras = categories.load(places.categories_file)
+    return {side for each, side, _, _ in _taxonomy(extras) if each == name}
 
 
 def merge_category(
     conn: sqlite3.Connection, places: Places, *, name: str, into: str, now: datetime
 ) -> int:
     """Give the rows and the rules of `name` the category `into`, and take `name` out when it
-    was added (one of the taxonomy stays, with nothing in it). Returns how many rows moved."""
-    known = _known(places.categories_file)
-    for each in (name, into):
-        if each not in known:
-            msg = f"there is no category {each!r}"
+    was added (one of the taxonomy stays, with nothing in it). `into` is on every side `name`
+    is on: income is not merged into an expense, nor money between accounts into either.
+    Returns how many rows moved."""
+    with yamlfiles.LOCK:
+        source, target = _sides(places, name), _sides(places, into)
+        for each, sides in ((name, source), (into, target)):
+            if not sides:
+                msg = f"there is no category {each!r}"
+                raise SettingsError(msg)
+        if name == into:
+            msg = "a category is merged into another one"
             raise SettingsError(msg)
-    if name == into:
-        msg = "a category is merged into another one"
-        raise SettingsError(msg)
-    if (name in categories.TRANSFERS) != (into in categories.TRANSFERS):
-        msg = f"{name} and {into} cannot be merged: one is money between accounts, one is not"
-        raise SettingsError(msg)
-    added = name not in categories.ALL
+        if not source <= target:
+            words = {"uscite": "an expense", "entrate": "income", "transfer": "a transfer"}
+            missing = ", ".join(words[side] for side in sorted(source - target))
+            msg = f"{name} is {missing} and {into} is not: they cannot be merged"
+            raise SettingsError(msg)
+        _not_unmatched(places, name)
+        added = name not in categories.ALL
 
-    def act() -> int:
-        moved = taxonomy.merge(conn, name, into)
-        _recategorize(places, name, into)
-        if added:
-            taxonomy.drop(conn, name)
-            categories.drop(places.categories_file, name)
-        return moved
+        def act() -> int:
+            moved = taxonomy.merge(conn, name, into)
+            _recategorize(places, name, into)
+            if added:
+                taxonomy.drop(conn, name)
+                categories.drop(places.categories_file, name)
+            return moved
 
-    return _with_copy(conn, places, now, act)
+        return _with_copy(conn, places, now, act)
+
+
+def move_category(
+    conn: sqlite3.Connection, places: Places, *, name: str, under: str, now: datetime
+) -> int:
+    """Put the added expense category `name` under the top-level category `under`, one there
+    is or a new one. Its rows and rules keep it. Returns how many rows carry it."""
+    with yamlfiles.LOCK:
+        extra = _added(places, name)
+        if extra.side != "uscite":
+            msg = f"{name} is income: only an expense sits under a top-level category"
+            raise SettingsError(msg)
+        group = " ".join(under.split())
+        if not group:
+            msg = "say which top-level category it goes under"
+            raise SettingsError(msg)
+        if group == extra.group:
+            msg = f"{name} is under {group} already"
+            raise SettingsError(msg)
+        if group != name and group in _known(places.categories_file):
+            msg = f"{group} is a category of its own, not one that others go under"
+            raise SettingsError(msg)
+
+        def act() -> int:
+            rows = taxonomy.move(conn, name, group)
+            categories.move(places.categories_file, name, group)
+            return rows
+
+        return _with_copy(conn, places, now, act)
 
 
 def remove_category(conn: sqlite3.Connection, places: Places, *, name: str) -> None:
     """Take out the added category `name`, which no row and no rule gives."""
-    _added(places, name)
-    rules_giving = sum(
-        1
-        for path in places.rule_files
-        for entry in rulesfile.read(path)[1]
-        if entry.category == name
-    )
-    with _kept([places.categories_file]), db.transaction(conn):
-        rows = taxonomy.carried(conn, name)
-        if rows:
-            msg = f"{rows} rows carry {name}: merge it into another category instead"
-            raise SettingsError(msg)
-        if rules_giving:
-            msg = f"{rules_giving} rules give {name}: change them first, or merge it into another"
-            raise SettingsError(msg)
-        taxonomy.drop(conn, name)
-        categories.drop(places.categories_file, name)
+    with yamlfiles.LOCK:
+        _added(places, name)
+        _not_unmatched(places, name)
+        rules_giving = sum(
+            1
+            for path in places.rule_files
+            for entry in rulesfile.read(path)[1]
+            if entry.category == name
+        )
+        with _kept([places.categories_file]), db.transaction(conn):
+            rows = taxonomy.carried(conn, name)
+            if rows:
+                msg = f"{rows} rows carry {name}: merge it into another category instead"
+                raise SettingsError(msg)
+            if rules_giving:
+                msg = f"{rules_giving} rules give {name}: change them first, or merge it"
+                raise SettingsError(msg)
+            taxonomy.drop(conn, name)
+            categories.drop(places.categories_file, name)

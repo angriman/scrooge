@@ -56,17 +56,40 @@ def rename(conn: sqlite3.Connection, old: str, new: str) -> int:
 
 
 def merge(conn: sqlite3.Connection, source: str, target: str) -> int:
-    """Give every row of `source` the category `target`: the one on its own side, else the
-    other. Choices made by hand follow. Returns how many rows were moved."""
+    """Give every row of `source` the category `target` on the same side, which the caller
+    made sure it has. Choices made by hand follow. Returns how many rows were moved."""
     into = _leaves(conn, target)
     moved = 0
     for side, number in _leaves(conn, source).items():
-        other = into.get(side, next(iter(into.values())))
         moved += conn.execute(
-            "UPDATE transactions SET category_id = ? WHERE category_id = ?", (other, number)
+            "UPDATE transactions SET category_id = ? WHERE category_id = ?", (into[side], number)
         ).rowcount
-        conn.execute("UPDATE overrides SET category_id = ? WHERE category_id = ?", (other, number))
+        conn.execute(
+            "UPDATE overrides SET category_id = ? WHERE category_id = ?", (into[side], number)
+        )
     return moved
+
+
+def move(conn: sqlite3.Connection, name: str, group: str) -> int:
+    """Put the expense category `name` under the top-level category `group`, made when there
+    is none, and take out the added group it leaves empty. Returns how many rows carry it."""
+    leaf, before = conn.execute(
+        "SELECT id, parent_id FROM categories WHERE side = 'uscite' AND parent_id IS NOT NULL "
+        "AND name = ?",
+        (name,),
+    ).fetchone()
+    conn.execute(
+        "INSERT OR IGNORE INTO categories (name, parent_id, side, sort_order) "
+        "SELECT ?, NULL, 'uscite', coalesce(max(sort_order), 0) + 1 FROM categories",
+        (group,),
+    )
+    (parent,) = conn.execute(
+        "SELECT id FROM categories WHERE side = 'uscite' AND parent_id IS NULL AND name = ?",
+        (group,),
+    ).fetchone()
+    conn.execute("UPDATE categories SET parent_id = ? WHERE id = ?", (parent, leaf))
+    _drop_if_empty(conn, before)
+    return carried(conn, name)
 
 
 def drop(conn: sqlite3.Connection, name: str) -> None:
@@ -78,8 +101,13 @@ def drop(conn: sqlite3.Connection, name: str) -> None:
         (name,),
     )
     for group in groups:
-        conn.execute(
-            "DELETE FROM categories WHERE id = ? AND name NOT IN (SELECT value FROM json_each(?)) "
-            "AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.parent_id = categories.id)",
-            (group, _groups()),
-        )
+        _drop_if_empty(conn, group)
+
+
+def _drop_if_empty(conn: sqlite3.Connection, group: int) -> None:
+    """Take out the top-level category `group` when it was added and has nothing under it."""
+    conn.execute(
+        "DELETE FROM categories WHERE id = ? AND name NOT IN (SELECT value FROM json_each(?)) "
+        "AND NOT EXISTS (SELECT 1 FROM categories c WHERE c.parent_id = categories.id)",
+        (group, _groups()),
+    )

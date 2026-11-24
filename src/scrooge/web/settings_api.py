@@ -1,17 +1,21 @@
 """The JSON of the settings page of the app (`/api/settings`): the rules every import applies
 and the categories, to see and to change (`settings.py`).
 
-What is read is read like every other route of `web/api.py`; what changes something is
-refused like every change there: from another site, without the token of these pages, or on
-a copy of the database. Without the place of the rules (`create_app`'s `rules`) there is
-nothing to show or change but the built-in categories.
+The lists are read like every other route of `web/api.py`; what changes something is refused
+like every change there: from another site, without the token of these pages, or on a copy of
+the database. Trying a pattern changes nothing, but runs what the address says: it too wants
+the token (`X-Token`), so that no other site can make a browser run one, and is allowed on a
+copy. Without the place of the rules (`create_app`'s `rules`) there is nothing to show or
+change but the built-in categories.
 """
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
@@ -54,7 +58,8 @@ def _editable(request: Request) -> bool:
 
 def _rules(request: Request) -> Response:
     """Every rule `owner`'s imports try (everyone's without it), in the order they are tried,
-    with how many committed rows each one matches; and the categories a rule can give."""
+    with how many committed rows each would match on its own; and the categories a rule can
+    give."""
     people = _people(request)
     owner = request.query_params.get("owner") or None
     if owner is not None and owner not in people:
@@ -76,22 +81,44 @@ def _rules(request: Request) -> Response:
     )
 
 
+def _from_these_pages(request: Request) -> None:
+    """Refuse what another site sent, or what comes without the token of these pages."""
+    state = request.app.state
+    origin = request.headers.get("origin", "null")
+    if origin != "null" and urlsplit(origin).hostname not in state.hosts:
+        raise HTTPException(403)
+    token = request.headers.get("x-token", "")
+    if not secrets.compare_digest(token.encode(), state.token.encode()):
+        raise HTTPException(403)
+
+
 def _test(request: Request) -> Response:
     """The committed rows of `owner` (of everyone) that the pattern `match` matches in
-    `direction`, newest first, as a rule with it would: nothing is saved."""
+    `direction`, newest first, as a rule with it would: nothing is saved. Tried for a while
+    (`settings.BUDGET`); what time left untried is said in `errors`."""
+    _from_these_pages(request)
     params = request.query_params
     owner = params.get("owner") or None
     if owner is not None and owner not in _people(request):
         return _refused((f"{owner} is nobody the config names.",))
     with db.reading(request.app.state.database) as conn:
         try:
-            count, rows = settings.try_pattern(
-                conn, params.get("match", ""), direction=params.get("direction", ""), owner=owner
+            tried = settings.try_pattern(
+                conn,
+                params.get("match", ""),
+                direction=params.get("direction", ""),
+                owner=owner,
+                budget=settings.BUDGET,
             )
         except settings.SettingsError as exc:
             return _refused((wire.sentence(exc),))
+    cut = f"It took too long: only the {tried.tried} newest rows were tried."
     return JSONResponse(
-        {"count": count, "rows": [wire.transaction(row, None) for row in rows], "errors": []}
+        {
+            "count": tried.count,
+            "rows": [wire.transaction(row, None) for row in tried.rows],
+            "errors": [] if tried.complete else [cut],
+        }
     )
 
 
@@ -127,7 +154,7 @@ def _text(sent: dict[str, object], name: str) -> str:
 
 
 def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
-    """The rule a change is about: its file, its place there, and what it said when shown."""
+    """The rule a change is about: its file, its place there, and its lines as shown."""
     key, position = _text(sent, "file"), sent.get("position")
     files = settings.rule_files(_shared(request), _people(request), None)
     path = next((file.path for file in files if file.key == key), None)
@@ -137,12 +164,12 @@ def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
     if not isinstance(position, int) or isinstance(position, bool):
         msg = "Send the place of the rule in its file as a number."
         raise _Unreadable(msg)
-    return settings.Seen(path, position, _text(sent, "was_match"), _text(sent, "was_category"))
+    return settings.Seen(path, position, _text(sent, "version"))
 
 
 async def _edit_rule(request: Request) -> Response:
-    """Give a rule another pattern, category or direction: `{"file", "position", "was_match",
-    "was_category", "match", "category", "direction"}`."""
+    """Give a rule another pattern, category or direction: `{"file", "position", "version",
+    "match", "category", "direction"}`."""
 
     def act(sent: dict[str, object]) -> None:
         settings.edit_rule(
@@ -157,8 +184,12 @@ async def _edit_rule(request: Request) -> Response:
 
 
 async def _remove_rule(request: Request) -> Response:
-    """Take a rule out of its file: `{"file", "position", "was_match", "was_category"}`."""
-    return await _change(request, lambda sent: settings.remove_rule(_seen(request, sent)))
+    """Take a rule out of its file: `{"file", "position", "version"}`."""
+
+    def act(sent: dict[str, object]) -> None:
+        settings.remove_rule(_seen(request, sent), _categories_file(request))
+
+    return await _change(request, act)
 
 
 async def _move_rule(request: Request) -> Response:
@@ -166,7 +197,8 @@ async def _move_rule(request: Request) -> Response:
 
     def act(sent: dict[str, object]) -> None:
         by = sent.get("by")
-        settings.move_rule(_seen(request, sent), by if isinstance(by, int) else 0)
+        steps = by if isinstance(by, int) and not isinstance(by, bool) else 0
+        settings.move_rule(_seen(request, sent), steps, _categories_file(request))
 
     return await _change(request, act)
 
@@ -181,6 +213,7 @@ def _listed_categories(request: Request) -> Response:
         {
             "categories": [wire.listed_category(category) for category in listed],
             "groups": list(categories.groups(categories.load(file) if file else ())),
+            "unmatched": request.app.state.unmatched or None,
             "editable": _editable(request),
             "errors": [],
         }
@@ -188,11 +221,13 @@ def _listed_categories(request: Request) -> Response:
 
 
 def _places(request: Request) -> settings.Places:
+    state = request.app.state
     files = settings.rule_files(_shared(request), _people(request), None)
     return settings.Places(
-        request.app.state.database,
-        request.app.state.rules.shared.with_name(categories.FILE),
+        state.database,
+        state.rules.shared.with_name(categories.FILE),
         [file.path for file in files],
+        state.unmatched,
     )
 
 
@@ -224,42 +259,42 @@ async def _add_category(request: Request) -> Response:
     return await _change(request, act)
 
 
-async def _rename_category(request: Request) -> Response:
-    """Call an added category otherwise, on its rows and in its rules too: `{"name", "to"}`."""
+def _rows_after(
+    request: Request,
+    change: Callable[..., int],
+    fields: dict[str, str],
+) -> Callable[[dict[str, object]], object]:
+    """What a change of a category does with what was sent: `fields` maps each argument of
+    `change` to the field it is sent in. The answer says how many rows it concerned."""
 
     def act(sent: dict[str, object]) -> object:
-        def rename(conn: sqlite3.Connection) -> object:
-            rows = settings.rename_category(
-                conn,
-                _places(request),
-                name=_text(sent, "name"),
-                to=_text(sent, "to"),
-                now=request.app.state.clock(),
-            )
+        given = {argument: _text(sent, field) for argument, field in fields.items()}
+
+        def run(conn: sqlite3.Connection) -> object:
+            rows = change(conn, _places(request), now=request.app.state.clock(), **given)
             return {"rows": rows}
 
-        return _writing(request, rename)
+        return _writing(request, run)
 
-    return await _change(request, act)
+    return act
+
+
+async def _rename_category(request: Request) -> Response:
+    """Call an added category otherwise, on its rows and in its rules too: `{"name", "to"}`."""
+    fields = {"name": "name", "to": "to"}
+    return await _change(request, _rows_after(request, settings.rename_category, fields))
 
 
 async def _merge_category(request: Request) -> Response:
     """Give the rows and rules of one category another: `{"name", "into"}`."""
+    fields = {"name": "name", "into": "into"}
+    return await _change(request, _rows_after(request, settings.merge_category, fields))
 
-    def act(sent: dict[str, object]) -> object:
-        def merge(conn: sqlite3.Connection) -> object:
-            rows = settings.merge_category(
-                conn,
-                _places(request),
-                name=_text(sent, "name"),
-                into=_text(sent, "into"),
-                now=request.app.state.clock(),
-            )
-            return {"rows": rows}
 
-        return _writing(request, merge)
-
-    return await _change(request, act)
+async def _move_category(request: Request) -> Response:
+    """Put an added expense category under another top-level category: `{"name", "under"}`."""
+    fields = {"name": "name", "under": "under"}
+    return await _change(request, _rows_after(request, settings.move_category, fields))
 
 
 async def _remove_category(request: Request) -> Response:
@@ -284,5 +319,6 @@ routes = [
     Route("/categories/add", _add_category, methods=["POST"], name="api_settings_add"),
     Route("/categories/rename", _rename_category, methods=["POST"], name="api_settings_rename"),
     Route("/categories/merge", _merge_category, methods=["POST"], name="api_settings_merge"),
+    Route("/categories/move", _move_category, methods=["POST"], name="api_settings_move"),
     Route("/categories/remove", _remove_category, methods=["POST"], name="api_settings_remove"),
 ]

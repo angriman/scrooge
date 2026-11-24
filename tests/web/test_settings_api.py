@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import categories, staging
+from scrooge import categories, settings, staging
 from scrooge.storage import db
 from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE, txn
@@ -64,6 +64,8 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
         "direction": "",
         "account": "",
         "matches": 1,
+        "version": sent["rules"][0]["version"],
+        "fixed": None,
     }
     assert [(r["match"], r["matches"]) for r in sent["rules"][1:4]] == [
         ("Hans Muster", 0),
@@ -79,9 +81,18 @@ def test_the_rules_are_listed_in_the_order_they_are_tried(site: Site) -> None:
     assert {r["matches"] for r in anna["rules"]} == {0}
 
 
+def _try(site: Site, client: TestClient | None = None, **params: str) -> Any:
+    headers = {"x-token": site.token}
+    return (client or site.client).get("/api/settings/rules/test", params=params, headers=headers)
+
+
 def test_rules_of_nobody_are_refused(site: Site) -> None:
     for path in ("rules", "rules/test"):
-        refused = site.client.get(f"/api/settings/{path}", params={"owner": "Bob", "match": "a"})
+        refused = site.client.get(
+            f"/api/settings/{path}",
+            params={"owner": "Bob", "match": "a"},
+            headers={"x-token": site.token},
+        )
         assert refused.status_code == 400
         assert refused.json()["errors"] == ["Bob is nobody the config names."]
 
@@ -103,12 +114,33 @@ def test_a_broken_rules_file_is_said(site: Site) -> None:
 
 
 def test_a_pattern_is_tried_on_the_committed_rows(site: Site) -> None:
-    sent = site.client.get("/api/settings/rules/test", params={"match": "anna"}).json()
-    assert sent["count"] == 1
+    sent = _try(site, match="anna").json()
+    assert (sent["count"], sent["errors"]) == (1, [])
     assert sent["rows"][0]["category"] == "Prestiti"
-    refused = site.client.get("/api/settings/rules/test", params={"match": "("})
+    refused = _try(site, match="(")
     assert refused.status_code == 400
     assert refused.json()["errors"][0].startswith("'(' is no pattern")
+    # A copy only shown here tries patterns too.
+    assert _try(site, _app(site, read_only=True), match="anna").json()["count"] == 1
+
+
+def test_a_pattern_is_tried_only_for_these_pages(site: Site) -> None:
+    answer = site.client.get("/api/settings/rules/test", params={"match": "(a+)+$"})
+    assert answer.status_code == 403
+    elsewhere = site.client.get(
+        "/api/settings/rules/test",
+        params={"match": "a"},
+        headers={"x-token": site.token, "origin": "https://example.com"},
+    )
+    assert elsewhere.status_code == 403
+
+
+def test_a_pattern_tried_too_long_says_how_far_it_got(
+    site: Site, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "BUDGET", -1.0)
+    sent = _try(site, match="konsum").json()
+    assert sent["errors"] == ["It took too long: only the 0 newest rows were tried."]
 
 
 def _rule(site: Site, position: int, **fields: object) -> dict[str, object]:
@@ -116,8 +148,7 @@ def _rule(site: Site, position: int, **fields: object) -> dict[str, object]:
     return {
         "file": rule["file"],
         "position": rule["position"],
-        "was_match": rule["match"],
-        "was_category": rule["category"],
+        "version": rule["version"],
         **fields,
     }
 
@@ -148,7 +179,7 @@ def test_a_rule_is_edited_moved_and_removed(site: Site) -> None:
         ({"file": 1}, 400, "Send 'file' as text."),
         ([1], 400, "Send the change as JSON."),
         (
-            {"file": "rules.yaml", "position": 1, "was_match": "x", "was_category": "Spesa"},
+            {"file": "rules.yaml", "position": 1, "version": "0"},
             409,
             "Rule 1 of rules.yaml changed since",
         ),
@@ -214,3 +245,17 @@ def test_a_rename_the_database_cannot_take_is_refused(site: Site) -> None:
     assert refused.status_code == 409
     assert refused.json()["errors"] == ["The database already has a category of that name."]
     assert "Prestiti" in (site.folder / categories.FILE).read_text(encoding="utf-8")
+
+
+def test_a_category_is_moved_under_another(site: Site) -> None:
+    moved = _post(site, "categories/move", {"name": "Prestiti", "under": "Casa"})
+    assert moved.json() == {"rows": 1, "errors": []}
+    listed = site.client.get("/api/settings/categories").json()
+    found = [c for c in listed["categories"] if c["name"] == "Prestiti"]
+    assert [(c["parent"], c["rows"]) for c in found] == [("Casa", 1)]
+    assert listed["unmatched"] is None
+    refused = _post(site, "categories/merge", {"name": "Stipendio", "into": "Spesa"})
+    assert refused.status_code == 409
+    assert refused.json()["errors"] == [
+        "Stipendio is income and Spesa is not: they cannot be merged."
+    ]
