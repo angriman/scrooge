@@ -20,6 +20,7 @@ from typing import TypeVar
 from scrooge import (
     attention,
     categories,
+    costs,
     holds,
     importing,
     months,
@@ -901,5 +902,43 @@ def performance_report(shown: performance.Performance) -> JSON:
                 **_measured(holder.measured),
             }
             for holder in shown.holders
+        ],
+    }
+
+
+def _cost(cost: costs.Cost) -> JSON:
+    return {
+        "commissions": number(cost.commissions),
+        "tax": number(cost.tax),
+        "total": number(cost.total),
+    }
+
+
+def costs_report(shown: costs.Costs) -> JSON:
+    """What investing cost, year by year, every year together and account by account, in one
+    currency: commissions and tax withheld above zero. `tax_share` is the tax in percent of
+    what investments paid (`paid`); a year is `whole` unless it is counted so far."""
+    return {
+        "currency": shown.currency,
+        "through": day(shown.through),
+        "years": [
+            {
+                "year": year.year,
+                **_cost(year.cost),
+                "paid": number(year.paid),
+                "tax_share": _percent(year.tax_share),
+                "last": day(year.last),
+                "whole": year.whole,
+            }
+            for year in shown.years
+        ],
+        "totals": {
+            **_cost(shown.totals),
+            "paid": number(shown.paid),
+            "tax_share": _percent(shown.tax_share),
+        },
+        "accounts": [
+            {"owner": each.owner, "account": each.account, "name": each.name, **_cost(each.cost)}
+            for each in shown.accounts
         ],
     }
