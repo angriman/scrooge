@@ -71,7 +71,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 		<form onsubmit={save} class="flex flex-wrap items-end gap-2">
 			<label class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary">
 				Pattern
-				<input bind:value={draft.match} required spellcheck="false" class="{field} w-full font-mono" />
+				<input bind:value={draft.match} required maxlength="200" spellcheck="false" class="{field} w-full font-mono" />
 			</label>
 			<label class="flex flex-col gap-1 text-caption text-ink-secondary">
 				Category
@@ -122,11 +122,14 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					{directionName(rule.direction)}{rule.account ? ` · ${rule.account} only` : ''} ·
 					<span class={rule.matches === null ? 'text-caution' : ''}>{matchesName(rule.matches)}</span>
 				</p>
+				{#if editable && rule.fixed}
+					<p class="text-caption text-caution">Change it in the file: {rule.fixed}.</p>
+				{/if}
 			</div>
 			<button type="button" class={icon} aria-label={`Try ${rule.match}`} title="Try its pattern" onclick={() => ontry(rule.match, rule.direction)}>
 				<span class="text-caption">Try</span>
 			</button>
-			{#if editable}
+			{#if editable && !rule.fixed}
 				<button type="button" class={icon} aria-label={`Edit the rule ${rule.match}`} title="Edit" onclick={edit}>
 					<Pencil class="size-4" aria-hidden="true" />
 				</button>

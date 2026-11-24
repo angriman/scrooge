@@ -8,7 +8,16 @@
 	import PatternTest from '#lib/settings/PatternTest.svelte';
 	import RuleRow from '#lib/settings/RuleRow.svelte';
 	import { categoryKey, mergeInto, sections } from '#lib/settings/categories.js';
-	import { byFile, edited, fileNote, fileTitle, ruleKey, seen, type Draft } from '#lib/settings/rules.js';
+	import {
+		byFile,
+		edited,
+		fileNote,
+		fileTitle,
+		ruleKey,
+		seen,
+		STAY,
+		type Draft
+	} from '#lib/settings/rules.js';
 	import type { Rule } from '#lib/types.js';
 	import Panel from '#lib/ui/Panel.svelte';
 	import type { PageProps } from './$types';
@@ -77,9 +86,12 @@
 								<CategoryRow
 									{category}
 									into={mergeInto(listed.categories, category)}
+									groups={listed.groups}
+									unmatched={listed.unmatched}
 									editable={listed.editable}
 									onrename={(to) => change('categories/rename', { name: category.name, to })}
 									onmerge={(into) => change('categories/merge', { name: category.name, into })}
+									onmove={(under) => change('categories/move', { name: category.name, under })}
 									onremove={() => change('categories/remove', { name: category.name })}
 								/>
 							{/each}
@@ -99,11 +111,12 @@
 					? `Those tried on ${owner}'s rows, in the order they are tried: the first that matches gives the category.`
 					: 'In the order they are tried: the first that matches gives the category.'}
 			>
+				{#if rules.editable}<p class="mb-3 text-small text-ink-secondary">{STAY}</p>{/if}
 				{#each rules.errors as error (error)}
 					<p class="mb-2 text-small text-caution" role="status">{error}</p>
 				{/each}
 				<div bind:this={box} class="mb-4 rounded-panel bg-sunken p-3">
-					<PatternTest bind:this={tester} {owner} bind:match bind:direction />
+					<PatternTest bind:this={tester} {owner} {token} bind:match bind:direction />
 				</div>
 				{#if !files.length}
 					<p class="text-body text-ink-secondary">This app has no rules files to show.</p>

@@ -24,7 +24,9 @@ const rule = (file: RulesFile, position: number, match = 'KONSUM'): Rule => ({
 	category: 'Spesa',
 	direction: '',
 	account: '',
-	matches: 2
+	matches: 2,
+	version: `v${position}`,
+	fixed: null
 });
 
 describe('byFile', () => {
@@ -50,9 +52,9 @@ describe('names', () => {
 		expect(directionName('out')).toBe('money out');
 		expect(directionName('')).toBe('in and out');
 		expect(matchesName(null)).toBe('not a pattern');
-		expect(matchesName(0)).toBe('no rows');
-		expect(matchesName(1)).toBe('1 row');
-		expect(matchesName(12)).toBe('12 rows');
+		expect(matchesName(0)).toBe('would match no rows');
+		expect(matchesName(1)).toBe('would match 1 row on its own');
+		expect(matchesName(12)).toBe('would match 12 rows on its own');
 	});
 
 	it('keys a rule by its file and place', () => {
@@ -72,8 +74,7 @@ describe('a change', () => {
 		expect(edited(rule(shared, 2), draft)).toEqual({
 			file: 'rules.yaml',
 			position: 2,
-			was_match: 'KONSUM',
-			was_category: 'Spesa',
+			version: 'v2',
 			...draft
 		});
 	});

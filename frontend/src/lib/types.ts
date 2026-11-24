@@ -729,8 +729,13 @@ export interface Rule {
 	/** `in`, `out`, or empty for both. */
 	direction: string;
 	account: string;
-	/** Null when its pattern is none. */
+	/** Committed rows it would match on its own, whatever rule before it takes them first;
+	 * null when its pattern is none. */
 	matches: number | null;
+	/** What a change of it sends back: its lines as shown. */
+	version: string;
+	/** Why it cannot be changed here; null when it can. */
+	fixed: string | null;
 }
 
 export interface SettingsRules {
@@ -766,6 +771,8 @@ export interface SettingsCategories {
 	categories: ListedCategory[];
 	/** What a new expense category can go under. */
 	groups: string[];
+	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
+	unmatched: string | null;
 	editable: boolean;
 	errors: string[];
 }

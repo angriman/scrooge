@@ -12,11 +12,13 @@ newest of them. Nothing is saved.
 	interface Props {
 		/** Whose rows: everyone's when empty. */
 		owner: string;
+		/** The token of these pages, which a pattern tried needs. */
+		token: string;
 		match?: string;
 		direction?: string;
 	}
 
-	let { owner, match = $bindable(''), direction = $bindable('') }: Props = $props();
+	let { owner, token, match = $bindable(''), direction = $bindable('') }: Props = $props();
 
 	let found = $state<PatternTest | null>(null);
 	let trying = $state(false);
@@ -31,7 +33,9 @@ newest of them. Nothing is saved.
 		if (!match.trim()) return;
 		trying = true;
 		try {
-			const response = await fetch(`/api/settings/rules/test?${testQuery(match, direction, owner)}`);
+			const response = await fetch(`/api/settings/rules/test?${testQuery(match, direction, owner)}`, {
+				headers: { 'x-token': token }
+			});
 			found = await response.json();
 		} catch {
 			found = { count: 0, rows: [], errors: ['The app could not be reached: try again.'] };
@@ -50,6 +54,7 @@ newest of them. Nothing is saved.
 		<input
 			bind:value={match}
 			required
+			maxlength="200"
 			placeholder="KONSUM|FRISCHMARKT"
 			spellcheck="false"
 			class="{field} w-full font-mono"

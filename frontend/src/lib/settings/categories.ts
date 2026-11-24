@@ -35,12 +35,24 @@ export function rowsName(rows: number): string {
 	return rows === 1 ? '1 row' : `${rows} rows`;
 }
 
-/** What `category` can be merged into, under their headings: another of its kind (money
- * between accounts with its own, the rest with the rest), each name once. */
+/** The sides each name is on: a few are on both (Trading). */
+function sidesOf(listed: readonly ListedCategory[]): Map<string, Set<string>> {
+	const sides = new Map<string, Set<string>>();
+	for (const each of listed) sides.set(each.name, (sides.get(each.name) ?? new Set()).add(each.side));
+	return sides;
+}
+
+/** What `category` can be merged into, under their headings: another on every side it is on
+ * (income is not merged into an expense, nor money between accounts into either), each name
+ * once. */
 export function mergeInto(listed: readonly ListedCategory[], category: ListedCategory): Headed[] {
-	const between = category.side === 'transfer';
+	const sides = sidesOf(listed);
+	const own = sides.get(category.name) ?? new Set([category.side]);
 	const others = listed.filter(
-		(other) => other.name !== category.name && (other.side === 'transfer') === between
+		(other) =>
+			other.name !== category.name &&
+			own.has(other.side) &&
+			[...own].every((side) => sides.get(other.name)?.has(side))
 	);
 	const seen = new Set<string>();
 	return sections(others)
@@ -53,8 +65,15 @@ export function mergeInto(listed: readonly ListedCategory[], category: ListedCat
 		.filter((group) => group.names.length);
 }
 
-/** Whether `category` can be renamed or taken out: only what was added, the taxonomy's own is
- * merged instead. Taken out only when no row carries it. */
-export const renamable = (category: ListedCategory): boolean => !category.built_in;
-export const removable = (category: ListedCategory): boolean =>
-	!category.built_in && category.rows === 0;
+/** Whether `category` can be renamed, moved or taken out: only what was added, the taxonomy's
+ * own is merged instead; and not what the config gives rows no rule matches (`unmatched`),
+ * which every import needs. Moved: an expense. Taken out: only when no row carries it. */
+export const renamable = (category: ListedCategory, unmatched: string | null = null): boolean =>
+	!category.built_in && category.name !== unmatched;
+export const movable = (category: ListedCategory): boolean =>
+	!category.built_in && category.side === 'uscite';
+export const removable = (category: ListedCategory, unmatched: string | null = null): boolean =>
+	renamable(category, unmatched) && category.rows === 0;
+/** Whether it can be merged away into another. */
+export const mergeable = (category: ListedCategory, unmatched: string | null = null): boolean =>
+	category.name !== unmatched;

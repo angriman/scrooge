@@ -32,6 +32,10 @@ export function fileNote(file: RulesFile): string {
 		: `${file.key}: for everybody's rows.`;
 }
 
+/** Why rules stay in their file. */
+export const STAY =
+	"A rule moves up or down within its file only: to make a person's rule a shared one, or the other way round, change the files themselves.";
+
 /** A rule's key among all: its file and place. */
 export const ruleKey = (rule: Rule): string => `${rule.file}#${rule.position}`;
 
@@ -42,11 +46,12 @@ export function directionName(direction: string): string {
 	return 'in and out';
 }
 
-/** How many committed rows it matches, in words. */
+/** How many committed rows it would match on its own, in words: a rule before it may take
+ * some of them first. */
 export function matchesName(matches: number | null): string {
 	if (matches === null) return 'not a pattern';
-	if (matches === 0) return 'no rows';
-	return matches === 1 ? '1 row' : `${matches} rows`;
+	if (matches === 0) return 'would match no rows';
+	return `would match ${matches === 1 ? '1 row' : `${matches} rows`} on its own`;
 }
 
 /** A draft of `rule` as it is. */
@@ -65,14 +70,9 @@ export function changes(rule: Rule, draft: Draft): boolean {
 	);
 }
 
-/** Which rule a change is about, as it was shown: a file changed since is refused. */
+/** Which rule a change is about, as it was shown: a rule changed since is refused. */
 export function seen(rule: Rule) {
-	return {
-		file: rule.file,
-		position: rule.position,
-		was_match: rule.match,
-		was_category: rule.category
-	};
+	return { file: rule.file, position: rule.position, version: rule.version };
 }
 
 /** What `/api/settings/rules/edit` takes. */

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ListedCategory } from '#lib/types.js';
-import { categoryKey, mergeInto, removable, renamable, rowsName, sections } from './categories.js';
+import {
+	categoryKey,
+	mergeable,
+	mergeInto,
+	movable,
+	removable,
+	renamable,
+	rowsName,
+	sections
+} from './categories.js';
 
 const category = (
 	name: string,
@@ -32,12 +41,13 @@ describe('sections', () => {
 });
 
 describe('mergeInto', () => {
-	it('offers the others of its kind, each name once', () => {
+	it('offers the others on every side it is on, each name once', () => {
 		expect(mergeInto(LISTED, LISTED[2])).toEqual([
 			{ heading: 'Alimentari', names: ['Spesa'] },
-			{ heading: 'Investimenti', names: ['Trading'] },
-			{ heading: 'Income', names: ['Stipendio'] }
+			{ heading: 'Investimenti', names: ['Trading'] }
 		]);
+		expect(mergeInto(LISTED, LISTED[3])).toEqual([{ heading: 'Income', names: ['Trading'] }]);
+		expect(mergeInto(LISTED, LISTED[1])).toEqual([]); // Trading is on both sides
 		expect(mergeInto(LISTED, LISTED[5])).toEqual([
 			{ heading: 'Between accounts', names: ['Topup Revolut'] }
 		]);
@@ -51,6 +61,15 @@ describe('what can be done', () => {
 		expect(removable(LISTED[2])).toBe(true);
 		expect(removable({ ...LISTED[2], rows: 1 })).toBe(false);
 		expect(removable(LISTED[0])).toBe(false);
+		expect(movable(LISTED[2])).toBe(true);
+		expect(movable(LISTED[0])).toBe(false);
+	});
+
+	it('keeps the category of what no rule matches', () => {
+		expect(renamable(LISTED[2], 'Prestiti')).toBe(false);
+		expect(removable(LISTED[2], 'Prestiti')).toBe(false);
+		expect(mergeable(LISTED[2], 'Prestiti')).toBe(false);
+		expect(mergeable(LISTED[2], null)).toBe(true);
 	});
 
 	it('names rows and keys a category by its side', () => {
