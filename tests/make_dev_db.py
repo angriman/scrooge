@@ -184,16 +184,17 @@ def can_read_scans() -> bool:
     return shutil.which(ocr.PROGRAM) is not None
 
 
-def _check(folder: Path, real: Iterable[Path]) -> None:
+def _check(folder: Path, real: Iterable[Path], mark: str = MARK) -> None:
     """Refuse the real data's folders, and any folder with something in it this script did
-    not make: what is there is never removed."""
+    not make (no `mark` in it): what is there is never removed."""
     for path in real:
         place = path.expanduser().resolve()
         if folder == place or folder in place.parents or place in folder.parents:
             msg = f"{folder}: the real data is kept at {place}: the dev database goes elsewhere"
             raise RefusedError(msg)
-    if folder.exists() and (not folder.is_dir() or _foreign(folder)):
-        msg = f"{folder}: not made by make dev-db (no {MARK} in it): nothing is removed"
+    if folder.exists() and (not folder.is_dir() or _foreign(folder, mark)):
+        maker = mark.removeprefix(".made-by-").replace("-", " ", 1)
+        msg = f"{folder}: not made by {maker} (no {mark} in it): nothing is removed"
         raise RefusedError(msg)
 
 
@@ -207,8 +208,8 @@ def _configured(config: Path) -> list[Path]:
     return [(ROOT / Path(str(database)).expanduser()).parent] if database else []
 
 
-def _foreign(folder: Path) -> bool:
-    return any(folder.iterdir()) and not (folder / MARK).is_file()
+def _foreign(folder: Path, mark: str) -> bool:
+    return any(folder.iterdir()) and not (folder / mark).is_file()
 
 
 def _files(folder: Path) -> Built:

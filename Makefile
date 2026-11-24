@@ -12,9 +12,10 @@ NAS_DIR ?= /volume1/docker/scrooge
 # By its path: a command run by ssh has no login shell, and DSM's docker is not on its PATH.
 NAS_DOCKER ?= /usr/local/bin/docker
 DEV_DB ?= output/dev
+DEMO_DB ?= output/demo
 
 .DEFAULT_GOAL := help
-.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db icons web web-dev web-check
+.PHONY: all help setup ocr check fix lint type test strict-cover hooks hooks-run sync clean release nas-update dev-db demo icons web web-dev web-check
 
 help: ## Show available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -96,6 +97,9 @@ nas-update: ## Run the newest image on the NAS: pull it and restart (sudo asks t
 
 dev-db: ## (Re)build output/dev/scrooge.db from the fixtures, for two invented people
 	$(UV) run python -m tests.make_dev_db $(DEV_DB)
+
+demo: ## (Re)build output/demo/scrooge.db: two years of invented history, for screenshots
+	$(UV) run python -m tests.make_demo_db $(DEMO_DB)
 
 clean: ## Remove caches and coverage artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
