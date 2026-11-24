@@ -31,6 +31,7 @@ from scrooge import (
     savings,
 )
 from scrooge.context import Context
+from scrooge.merchants import Merchants
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -778,5 +779,23 @@ def needs_a_look(
                 "alone": each.alone,
             }
             for each in changed.changes
+        ],
+    }
+
+
+def known_merchants(shown: Merchants) -> JSON:
+    """`shown` as `/api/transactions/merchants` sends it."""
+    return {
+        "currency": shown.currency,
+        "since": day(shown.since),
+        "through": day(shown.through),
+        "merchants": [
+            {
+                "name": merchant.name,
+                "spent": number(merchant.spent),
+                "count": merchant.count,
+                "last": day(merchant.last),
+            }
+            for merchant in shown.merchants
         ],
     }

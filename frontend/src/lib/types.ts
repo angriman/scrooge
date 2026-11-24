@@ -714,3 +714,26 @@ export interface TransactionsContext {
 	balance: Amount | null;
 	errors: string[];
 }
+
+/** A merchant money was spent at, as the merchant filter names them
+ * (`/api/transactions/merchants`). */
+export interface KnownMerchant {
+	name: string;
+	/** Over the twelve months up to the last day committed, a refund lowering it. */
+	spent: Amount;
+	/** Rows over those twelve months. */
+	count: number;
+	/** The day of its last row, whenever it was. */
+	last: Day;
+}
+
+export interface KnownMerchants {
+	currency: string;
+	/** The first day of the twelve months; null when nothing is committed. */
+	since: Day | null;
+	through: Day | null;
+	/** Those spent at in the twelve months first, the largest first; then the others, the
+	 * latest first. */
+	merchants: KnownMerchant[];
+	errors: string[];
+}
