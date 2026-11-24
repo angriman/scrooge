@@ -74,7 +74,7 @@ class Holding:
     name: str  # the instrument's name, else its symbol, else the key
     symbol: str | None  # as `instruments` has it; None when no instrument has it
     account: str | None  # the account, for rows that name nothing; else None
-    owner: str | None  # whose the account is, for rows that name nothing; else None
+    owner: str | None  # whose the account is, when two people have one of its name; else None
     paid: Paid
     count: int  # rows, tax withheld included
     last: date  # the last day it paid; the last day tax was withheld when it only had that
@@ -207,12 +207,14 @@ def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Hold
     holdings = []
     for (key, account, owner), sums in groups.items():
         symbol, name = named.get(key, (None, "")) if account is None else (None, "")
-        if account is not None and len(owners[account]) > 1:
+        shared = account is not None and len(owners[account]) > 1
+        if shared:
             name = f"{account} ({owner})"
         last = sums.paid_last or sums.any_last
+        whose = owner if shared else None
         holdings.append(
             Holding(
-                key, name or symbol or key, symbol, account, owner, sums.paid(), sums.count, last
+                key, name or symbol or key, symbol, account, whose, sums.paid(), sums.count, last
             )
         )
     holdings.sort(key=lambda holding: (-holding.paid.paid, holding.name))

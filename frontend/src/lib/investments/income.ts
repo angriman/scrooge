@@ -66,8 +66,9 @@ export function kindsOf(holding: PayingHolding): ('dividend' | 'interest' | 'tax
 
 /** The filter of the transactions behind a holding over the range: its kinds, so the tax
  * withheld shows beside what was paid, and the name its rows give, or the account of those
- * that name nothing and the person whose account it is, since two people may each have an
- * account of that name. */
+ * that name nothing. An account two people each have one of is named after its owner, and
+ * opens that person's rows; any other keeps the person shown, since `owner` chooses whose
+ * figures every page shows. */
 export function transactionsOf(
 	holding: PayingHolding,
 	range: { first: string | null; last: string | null },

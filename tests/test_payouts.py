@@ -127,18 +127,11 @@ def test_holdings_are_grouped_by_counterparty_what_paid_the_most_first(
         Holding(
             ISIN, "ACME Global Fund", ISIN, None, None, amounts("50", "0"), 1, date(2026, 4, 10)
         ),
-        # Rows that name nothing are the account's, and its owner's.
+        # Rows that name nothing are the account's.
         Holding(
-            "IBKR USD",
-            "IBKR USD",
-            None,
-            "IBKR USD",
-            OWNER,
-            amounts("0", "18"),
-            1,
-            date(2026, 7, 1),
+            "IBKR USD", "IBKR USD", None, "IBKR USD", None, amounts("0", "18"), 1, date(2026, 7, 1)
         ),
-        Holding("Migros", "Migros", None, "Migros", OWNER, amounts("0", "5"), 1, date(2026, 5, 31)),
+        Holding("Migros", "Migros", None, "Migros", None, amounts("0", "5"), 1, date(2026, 5, 31)),
         # Only tax withheld, under a name no instrument has: last is when it was withheld.
         Holding("WIDG", "WIDG", None, None, None, amounts("0", "0", "-4.50"), 1, date(2026, 8, 3)),
     )
@@ -172,7 +165,7 @@ def test_both_people_together(conn: sqlite3.Connection) -> None:
     }
     # Both have an account called Migros: each is a line of its own, named after its owner.
     assert accounts == {
-        ("IBKR USD", OWNER): Decimal(18),
+        ("IBKR USD", None): Decimal(18),
         (f"Migros ({OWNER})", OWNER): Decimal(5),
         (f"Migros ({PARTNER})", PARTNER): Decimal(1),
     }
@@ -273,7 +266,10 @@ def test_a_symbol_with_its_isin_in_brackets_is_the_same_holding(lone: sqlite3.Co
     assert holdings["WIDG"].symbol is None
 
 
-def test_for_everyone_a_holding_both_have_is_one_and_their_accounts_of_a_name_two() -> None:
+@pytest.fixture
+def household() -> Iterator[sqlite3.Connection]:
+    """A database of two people who both hold ACME and both have an account called Migros,
+    and one of whom has an account no one else has."""
     connection = db.connect(":memory:")
     db.migrate(connection, CLOSED_AT)
     span = (date(2026, 1, 1), date(2026, 6, 30))
@@ -297,22 +293,29 @@ def test_for_everyone_a_holding_both_have_is_one_and_their_accounts_of_a_name_tw
         ("revolut", [paid("1", date(2026, 4, 30), "1", **INTEREST, **cash)]),
     )
     store.instrument_id(connection, "ACME", "Stocks", "CHF", name="ACME Corp")
+    yield connection
+    connection.close()
+
+
+def test_for_everyone_a_holding_both_have_is_one_and_their_accounts_of_a_name_two(
+    household: sqlite3.Connection,
+) -> None:
     lines = {
         holding.name: (holding.key, holding.account, holding.owner, holding.paid)
-        for holding in his(connection, owner=None).holdings
+        for holding in his(household, owner=None).holdings
     }
     assert lines == {
         # What a symbol names is the household's, whoever holds it.
         "ACME Corp": ("ACME", None, None, amounts("150", "0")),
         f"Migros ({PARTNER})": ("Migros", "Migros", PARTNER, amounts("0", "20")),
         f"Migros ({OWNER})": ("Migros", "Migros", OWNER, amounts("0", "10")),
-        # A name only one person has needs no one's name after it.
-        "Revolut": ("Revolut", "Revolut", PARTNER, amounts("0", "1")),
+        # A name only one person has needs no one's name after it, nor its link anyone's.
+        "Revolut": ("Revolut", "Revolut", None, amounts("0", "1")),
     }
     # One person's view is as it was: their accounts, without their name.
-    assert [holding.name for holding in his(connection, owner=PARTNER).holdings] == [
-        "ACME Corp",
-        "Migros",
-        "Revolut",
+    hers = his(household, owner=PARTNER).holdings
+    assert [(holding.name, holding.owner) for holding in hers] == [
+        ("ACME Corp", None),
+        ("Migros", None),
+        ("Revolut", None),
     ]
-    connection.close()

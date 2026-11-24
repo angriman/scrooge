@@ -80,7 +80,7 @@ def test_the_last_twelve_months_are_sent_unless_a_range_is_asked(client: TestCli
         "last": "2026-06-15",
     }
     accounts = [(h["name"], h["owner"]) for h in shown["holdings"] if h["account"]]
-    assert accounts == [("IBKR USD", OWNER), ("Migros", OWNER)]
+    assert accounts == [("IBKR USD", None), ("Migros", None)]
     assert list(sent["logos"]) == ["ACME"]
     assert [r["label"] for r in sent["ranges"]] == ["Year to date", "Last 12 months", "2025", "All"]
 
@@ -112,7 +112,7 @@ def test_for_everyone_each_person_s_account_of_a_shared_name_is_a_line(
     shown = client.get("/api/income", params={"from": "2026-01"}).json()["income"]
     accounts = [(h["name"], h["account"], h["owner"]) for h in shown["holdings"] if h["account"]]
     assert accounts == [
-        ("IBKR USD", "IBKR USD", OWNER),
+        ("IBKR USD", "IBKR USD", None),
         (f"Migros ({OWNER})", "Migros", OWNER),
         (f"Migros ({PARTNER})", "Migros", PARTNER),
     ]
