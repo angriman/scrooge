@@ -123,8 +123,9 @@ def test_review_adds_categories_on_the_side_the_money_went(tmp_path: Path) -> No
     out = io.StringIO()
     review.ask_categories([replace(LENT, description="New")], rules, out, lambda _: "q")
     listed = out.getvalue()
-    assert f"   3 Household   {number + 1} Garden\n" in listed
-    assert f"\n  Prestiti             {number} Prestiti\nIncome\n" in listed
+    rows = [re.split(r" {2,}", line.strip()) for line in listed.splitlines()]
+    assert next(row for row in rows if row[0] == "Home")[-1] == f"{number + 1} Garden"
+    assert rows[rows.index(["Income"]) - 1] == ["Prestiti", f"{number} Prestiti"]  # a new group
     assert f"   {number} Prestiti\nTransfers\n" in listed  # the same number on both sides
 
 
@@ -168,7 +169,7 @@ def test_review_asks_which_one_when_several_categories_match(tmp_path: Path) -> 
 
 def test_review_lists_the_categories_again_on_a_question_mark(tmp_path: Path) -> None:
     text, asked, saved = review_one(tmp_path, "?", "999", "q")
-    assert text.count("  Home                 1 Rent   2 Utilities   3 Household\n") == 2
+    assert text.count(f"\n{review.menu(())}\n") == 2
     assert text.count("  ?            list the categories again\n") == 2
     assert asked[0] == asked[1]  # the same row is asked again
     assert asked[2] == "  unknown category '999', try again (? lists them) -> "
