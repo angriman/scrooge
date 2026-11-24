@@ -33,9 +33,10 @@ export const ARRIVED = { key: 'arrived', label: 'Came into view' } as const sati
  * one month's total from the next's would otherwise think the table wrong. */
 export const CHANGE_NOTE = 'Change leaves out what accounts held when they were first imported.';
 
-/** The same said when the table shows what came into view: then the two add up. */
+/** The same said when the table shows what came into view: then the two add up, to the
+ * cent; rounded to whole units each, as the table shows them, they can be 1 apart. */
 export const ARRIVED_NOTE =
-	'Change leaves out what came into view, what accounts held when they were first imported: a month’s total change is the two added up.';
+	'Change leaves out what came into view, what accounts held when they were first imported: to the cent, a month’s total change is the two added up.';
 
 /** What counts as frozen, said under the table and on the columns of the split. */
 export const FROZEN_NOTE =
@@ -110,10 +111,14 @@ export function cells(
 	);
 }
 
-/** Whether something came into view in `currency` in any month sent: otherwise the column of
- * what did would be zeros and dashes only. */
+/** Whether something came into view in `currency` in any month sent, as the table writes it
+ * (to whole units): otherwise the column of what did would be zeros and dashes only. */
 export function anyArrived(sent: NetWorthMonths, currency: string): boolean {
-	return sent.months.some((end) => /[1-9]/.test(end.values[currency]?.arrived ?? ''));
+	return sent.months.some((end) => {
+		const arrived = end.values[currency]?.arrived;
+		// A few cents are written `0` (or `−0`): no digit but zeros.
+		return arrived != null && /[1-9]/.test(money(arrived, 0));
+	});
 }
 
 /** The table of what the API sent, with `shown` (the header's currency) leading: it alone also

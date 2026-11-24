@@ -3,8 +3,8 @@
 Net worth at the end of every month, newest first, in several currencies side by side: for each
 its total, how it moved since the month before and by how much in percent; for the header's
 currency also what came into view, when anything did, and what of it is liquid and what frozen.
-What accounts brought when they came into view is left out of a change. On a phone the table scrolls sideways, the months staying in
-sight.
+What accounts brought when they came into view is left out of a change. On a phone the table
+scrolls sideways, the months staying in sight.
 -->
 <script lang="ts">
 	import { day } from '#lib/format/date.js';

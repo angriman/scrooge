@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MonthEndFigure, NetWorthMonths } from '#lib/types.js';
 import {
+	anyArrived,
 	ARRIVED_NOTE,
 	cells,
 	CHANGE_NOTE,
@@ -43,7 +44,7 @@ const sent: NetWorthMonths = {
 			values: {
 				CHF: figure('8900.00', null, null, '8900.00', '0.00'),
 				USD: figure('11125.00', null, null, '11125.00', '0.00'),
-				EUR: figure('8900.00', null, null, '8900.00', '0.00')
+				EUR: figure('9899.60', null, null, '9899.60', '0.00')
 			}
 		}
 	],
@@ -137,7 +138,7 @@ describe('what came into view in the month-end table', () => {
 				...sent.months[0],
 				values: {
 					...sent.months[0].values,
-					USD: figure('11000.00', '-125.00', '-1.12', '5444.44', '5555.56', '2500.00')
+					USD: figure('11000.00', '-2625.00', '-23.60', '5444.44', '5555.56', '2500.00')
 				}
 			},
 			sent.months[1]
@@ -164,5 +165,25 @@ describe('what came into view in the month-end table', () => {
 		expect(table(sent, 'USD').note).toBe(CHANGE_NOTE);
 		// What came into view in another currency alone is not what the header shows.
 		expect(table(came, 'CHF').columns.every((columns) => columns.length !== 6)).toBe(true);
+	});
+
+	it('is not a column when what came into view is written 0, a few cents', () => {
+		const cents = (change: string, arrived: string): NetWorthMonths => ({
+			...sent,
+			months: [
+				{
+					...sent.months[0],
+					values: {
+						...sent.months[0].values,
+						EUR: figure('9900.00', change, '0.00', '4900.00', '5000.00', arrived)
+					}
+				},
+				sent.months[1]
+			]
+		});
+		expect(anyArrived(cents('0.00', '0.40'), 'EUR')).toBe(false);
+		expect(anyArrived(cents('0.80', '-0.40'), 'EUR')).toBe(false);
+		expect(table(cents('0.00', '0.40'), 'EUR').note).toBe(CHANGE_NOTE);
+		expect(anyArrived(cents('-0.20', '0.60'), 'EUR')).toBe(true);
 	});
 });
