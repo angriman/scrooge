@@ -124,6 +124,7 @@ import uvicorn
 import yaml
 
 from scrooge import (
+    benchmark,
     categories,
     classification,
     importing,
@@ -565,6 +566,18 @@ def _currencies(config: dict[str, object], path: Path) -> tuple[str, ...]:
     return tuple(dict.fromkeys(codes))  # each once, in the order named
 
 
+def _benchmarks(config: dict[str, object], path: Path) -> tuple[str, ...]:
+    """`benchmarks`: the symbols, as Yahoo knows them, of what the investments are compared
+    with; VT and VOO without it, none when it is empty."""
+    named = config.get("benchmarks", list(benchmark.DEFAULT))
+    if not isinstance(named, list) or not all(
+        isinstance(symbol, str) and symbol.strip() for symbol in named
+    ):
+        msg = f"{path}: 'benchmarks' must list symbols as Yahoo knows them, like [VT, VOO]"
+        raise ConfigError(msg)
+    return tuple(dict.fromkeys(symbol.strip().upper() for symbol in named))
+
+
 def _frozen(config: dict[str, object], path: Path) -> tuple[networth.FrozenAccount, ...]:
     """`frozen: [<account>, {<owner>: <account>}, ...]`: the accounts, as the pages name them,
     whose money cannot be reached (a rent deposit); a bare name is every account so called,
@@ -665,6 +678,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _currency(config, args.config),
             _currencies(config, args.config),
             _frozen(config, args.config),
+            _benchmarks(config, args.config),
         )
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
@@ -887,6 +901,7 @@ class _Pages:
     currency: str  # what the figures are shown in until another is chosen
     currencies: tuple[str, ...]  # the columns of the month-end table
     frozen: tuple[networth.FrozenAccount, ...]  # the accounts whose money cannot be reached
+    benchmarks: tuple[str, ...]  # the symbols of what the investments are compared with
 
 
 def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
@@ -909,6 +924,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         currency=pages.currency,
         currencies=pages.currencies,
         frozen=pages.frozen,
+        benchmarks=pages.benchmarks,
         spa=webapp.SPA,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
@@ -973,6 +989,7 @@ def _prices(
         now=now,
         symbols={symbol: entry.price_symbol for symbol, entry in typed.items()},
         currencies=networth.CURRENCIES,
+        benchmarks=_benchmarks(config, args.config),
     )
     out = console.out
     out.write(
