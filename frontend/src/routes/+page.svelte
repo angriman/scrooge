@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isRedirect } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { page } from '$app/state';
@@ -6,7 +7,8 @@
 	import { assetColor, inOrder, liquidityColor } from '#lib/design/data.js';
 	import { addDays } from '#lib/format/date.js';
 	import Allocation from '#lib/overview/Allocation.svelte';
-	import Holdings from '#lib/overview/Holdings.svelte';
+	import Investments from '#lib/overview/Investments.svelte';
+	import { incomeQuery, returnsQuery } from '#lib/overview/investments.js';
 	import MonthSection from '#lib/overview/MonthSection.svelte';
 	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
@@ -52,6 +54,19 @@
 		series?.first ? addDays(series.first, series.total.length - 1) : null
 	);
 	const back = $derived(lastDay ? daysBack(range, lastDay) : null);
+
+	// The investments card follows the range: each is asked once, when first chosen. Signed out
+	// meanwhile, the card says so and the page goes to sign in, as a load of the page would.
+	const returned = $derived(data.returnsOver(range));
+	$effect(() => {
+		returned.catch((failure) => {
+			if (isRedirect(failure)) location.assign(failure.location);
+		});
+	});
+	const investments = (query: URLSearchParams) =>
+		resolve('/investments') + (query.size ? `?${query}` : '');
+	const returnsHref = $derived(investments(returnsQuery(here(), range)));
+	const incomeHref = $derived(investments(incomeQuery(here())));
 
 	const breakdowns = $derived([
 		{ value: 'asset', label: 'By type' },
@@ -126,7 +141,7 @@
 			<MonthSection recap={data.month.month} />
 		{/if}
 
-		<div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+		<div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
 			<Allocation
 				assets={figures.assets}
 				held={figures.held}
@@ -135,7 +150,7 @@
 				label={rangeLabel(range, series.first)}
 				{currency}
 			/>
-			<Holdings top={figures.top} rest={figures.rest} logos={data.shown.logos} {currency} />
+			<Investments {returned} paid={data.paid} {range} {returnsHref} {incomeHref} />
 		</div>
 	</div>
 

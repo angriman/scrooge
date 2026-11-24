@@ -33,14 +33,6 @@ export interface Part {
 	then: (Amount | null)[];
 }
 
-export interface Holding {
-	symbol: string;
-	name: string;
-	asset: string;
-	value: Amount;
-	share: Amount | null;
-}
-
 export interface Change {
 	days: number;
 	before: Amount | null;
@@ -57,8 +49,6 @@ export interface Summary {
 	assets: Part[];
 	held: Part[];
 	people: Part[];
-	top: Holding[];
-	rest: { count: number; value: Amount; share: Amount | null } | null;
 	securities: Part;
 }
 
@@ -76,7 +66,6 @@ export interface Check {
 export interface Overview {
 	overview: Summary | null;
 	checks: Check[];
-	logos: Record<string, string>;
 	errors: string[];
 }
 

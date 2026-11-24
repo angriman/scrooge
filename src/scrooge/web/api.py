@@ -111,20 +111,16 @@ def _overview(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         shown = wire.unless_rate_missing(
             errors,
-            lambda: overview.run(
-                conn, owner=asked.owner, currency=asked.currency, top=overview.TOP
-            ),
+            lambda: overview.run(conn, owner=asked.owner, currency=asked.currency),
             None,
         )
         checks = wire.unless_rate_missing(
             errors, lambda: networth.checks(conn, owner=asked.owner), ()
         )
-        found = logos(request, conn)
     return JSONResponse(
         {
             "overview": None if shown is None else wire.summary(shown),
             "checks": [wire.check(check) for check in checks],
-            "logos": found,
             "errors": errors,
         }
     )

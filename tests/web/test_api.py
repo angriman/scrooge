@@ -88,9 +88,12 @@ def test_the_overview_is_the_services_figures_as_text(client: TestClient, databa
     assert figures["day"] == shown.day.isoformat()
     assert figures["total"] == format(shown.total, "f")
     assert [part["name"] for part in figures["assets"]] == [part.name for part in shown.assets]
-    assert [holding["symbol"] for holding in figures["top"]] == [h.symbol for h in shown.top]
+    assert figures["securities"]["value"] == format(shown.securities.value, "f")
     assert [part["name"] for part in figures["people"]] == sorted([OWNER, PARTNER])
     assert isinstance(sent["checks"], list)
+    # The holdings are the investments page's: the overview sends none of them.
+    assert set(sent) == {"overview", "checks", "errors"}
+    assert "top" not in figures
 
 
 def test_one_persons_overview_has_no_people(client: TestClient) -> None:
@@ -150,7 +153,7 @@ def test_an_empty_database_has_nothing_to_show(tmp_path: Path) -> None:
     client = TestClient(webapp.create_app(path), base_url=SITE)
     figures = client.get("/api/overview").json()["overview"]
     assert figures["day"] is None
-    assert figures["top"] == []
+    assert figures["assets"] == []
     series = client.get("/api/networth").json()["series"]
     assert series == {
         "currency": "EUR",

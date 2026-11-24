@@ -87,16 +87,6 @@ def _part(part: overview.Part) -> JSON:
     }
 
 
-def _holding(holding: overview.Holding) -> JSON:
-    return {
-        "symbol": holding.symbol,
-        "name": holding.name,
-        "asset": holding.asset,
-        "value": number(holding.value),
-        "share": number(holding.share),
-    }
-
-
 def _change(change: overview.Change) -> JSON:
     return {
         "days": change.days,
@@ -108,7 +98,6 @@ def _change(change: overview.Change) -> JSON:
 
 def summary(shown: overview.Overview) -> JSON:
     """The first page's figures; the days behind them are `series`'."""
-    rest = shown.rest
     return {
         "currency": shown.currency,
         "day": day(shown.day),
@@ -118,10 +107,6 @@ def summary(shown: overview.Overview) -> JSON:
         "assets": [_part(part) for part in shown.assets],
         "held": [_part(part) for part in shown.held],
         "people": [_part(part) for part in shown.people],
-        "top": [_holding(holding) for holding in shown.top],
-        "rest": None
-        if rest is None
-        else {"count": rest.count, "value": number(rest.value), "share": number(rest.share)},
         "securities": _part(shown.securities),
     }
 
