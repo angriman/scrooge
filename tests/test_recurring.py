@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scrooge import recurring
+from scrooge import query, recurring
 from scrooge.models import Kind, Transaction
 from scrooge.storage import db, store
 from tests.storage.helpers import OWNER, txn
@@ -27,7 +27,7 @@ def _monthly(name: str, amounts: list[tuple[int, int, str]], ref: str) -> list[T
 def _rows() -> list[Transaction]:
     months = [(2026, m) for m in range(5, 11)]
     rent = _monthly("Landlord AG, Bern", [(y, m, "-1500") for y, m in months], "r")
-    stream = _monthly("Streamio 123", [(y, m, "-10" if m < 9 else "-12") for y, m in months], "s")
+    stream = _monthly("Streamio 123", [(y, m, "-10" if m < 10 else "-12") for y, m in months], "s")
     gym = _monthly("Gym", [(2026, m, "-80") for m in (3, 4, 5, 6)], "g")
     salary = [
         txn("5000", date=date(y, m, 25), counterparty="ACME", kind=Kind.INCOME, source_ref=f"p{m}")
@@ -105,8 +105,19 @@ def test_transfers_and_what_the_two_pay_each_other_are_not_payments(tmp_path: Pa
         lukas = recurring.run(conn, owner=OWNER, currency="CHF")
     assert [p.found.name for p in everyone.active] == ["Landlord AG"]
     assert everyone.monthly == D(1500)
-    # In one person's view, what they pay the other is money spent, as cash flow counts it.
-    assert [p.found.name for p in lukas.active] == ["Landlord AG", "Anna Meier"]
+    # In one person's view too, what they pay the other each month for the household is the
+    # two people's money moving, not a subscription.
+    assert [p.found.name for p in lukas.active] == ["Landlord AG"]
+    assert lukas.monthly == D(1500)
+
+
+def test_the_merchant_filter_lists_each_payment_s_rows(database: Path) -> None:
+    with db.reading(database) as conn:
+        found = recurring.run(conn, owner=None, currency="CHF")
+        for each in (*found.active, *found.ended):
+            wanted = query.Filter(merchant=each.found.name, account=each.found.account)
+            listed = {row.id for row in query.run(conn, wanted).rows}
+            assert {row.id for row in each.found.rows} <= listed, each.found.name
 
 
 def test_a_currency_without_a_rate_leaves_its_cost_and_the_total_unknown(tmp_path: Path) -> None:
@@ -123,6 +134,26 @@ def test_costs_are_converted_at_the_rate_of_the_last_day(database: Path) -> None
     assert found.monthly == D(1562) / D("0.80")
 
 
+def test_two_payments_of_the_same_name_are_both_listed(tmp_path: Path) -> None:
+    months = [(2026, m) for m in range(5, 11)]
+    rows = [
+        *_monthly("Streamio 1", [(y, m, "-12") for y, m in months], "a"),
+        *_monthly("Streamio 2", [(y, m, "-30") for y, m in months], "b"),
+    ]
+    conn = db.connect(tmp_path / "scrooge.db")
+    db.migrate(conn, BUILT)
+    close(conn, OWNER, SPAN, ("migros", rows), now=BUILT)
+    conn.commit()
+    conn.close()
+    with db.reading(tmp_path / "scrooge.db") as conn:
+        found = recurring.run(conn, owner=None, currency="CHF")
+    assert [(p.found.name, p.monthly) for p in found.active] == [
+        ("Streamio", D(30)),
+        ("Streamio", D(12)),
+    ]
+    assert len({p.found.id for p in found.active}) == 2
+
+
 def test_nobody_s_payments_are_empty(tmp_path: Path) -> None:
     path = tmp_path / "scrooge.db"
     conn = db.connect(path)
@@ -130,4 +161,4 @@ def test_nobody_s_payments_are_empty(tmp_path: Path) -> None:
     conn.close()
     with db.reading(path) as conn:
         found = recurring.run(conn, owner=None, currency="CHF")
-    assert (found.active, found.ended, found.monthly) == ((), (), D(0))
+    assert (found.through, found.active, found.ended, found.monthly) == (None, (), (), D(0))

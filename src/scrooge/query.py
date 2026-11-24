@@ -351,9 +351,11 @@ def _paced(gaps: list[int], pace: range) -> bool:
 class Recurrence:
     """Payments that come back at a steady pace: those of one person and account to one name.
 
-    `name` is the counterparty as a person reads it (up to its first comma, without digits or
-    signs); `rows` are the payments themselves, oldest first; `ended` when none came for an
-    interval and a half before `through`, the last day of the rows looked at.
+    `name` is who was paid as the cash flow names them (`merchant`), so the merchant filter of
+    the transactions finds them; two groups can have the same one. `rows` are the payments
+    themselves, oldest first; `ended` when none came for an interval and a half before
+    `through`, the last day of the rows of the same person and account looked at: an account
+    whose statements stop earlier than the others' does not make its payments look ended.
     """
 
     name: str
@@ -364,14 +366,21 @@ class Recurrence:
     through: date
 
     @property
+    def id(self) -> str:
+        """The first payment's id: it stays the same while the group grows, and no two groups
+        share it, even when they share a name."""
+        return self.rows[0].id
+
+    @property
     def latest(self) -> Row:
         return self.rows[-1]
 
     @property
     def previous(self) -> Decimal | None:
-        """What was paid before the latest amount, when that changed: the price before."""
-        changed = (row.amount for row in reversed(self.rows) if row.amount != self.latest.amount)
-        return next(changed, None)
+        """What the payment before the latest was, when the price changed between the two: a
+        rise of years ago is the price now, not a change."""
+        before = self.rows[-2].amount
+        return None if before == self.latest.amount else before
 
     @property
     def first(self) -> date:
@@ -403,11 +412,6 @@ class Recurrence:
 _INTERVAL = {"monthly": 30, "yearly": 365}
 
 
-def _display(row: Row) -> str:
-    name = re.sub(r"[\W\d_]+", " ", (row.counterparty or row.description).partition(",")[0])
-    return " ".join(name.split()) or (row.counterparty or row.description).strip()
-
-
 def recurrences(rows: Iterable[Row]) -> tuple[Recurrence, ...]:
     """The groups of rows that come back at a steady pace.
 
@@ -420,9 +424,10 @@ def recurrences(rows: Iterable[Row]) -> tuple[Recurrence, ...]:
     accounts are never recurring.
     """
     groups: dict[tuple[str, str, str, bool], list[Row]] = {}
-    through: date | None = None
+    through: dict[tuple[str, str], date] = {}
     for row in rows:
-        through = row.date if through is None else max(through, row.date)
+        whose = (row.owner, row.account)
+        through[whose] = max(through.get(whose, row.date), row.date)
         name = (row.counterparty or row.description).strip().casefold()
         if name and row.kind in _PAID:
             groups.setdefault((row.owner, row.account, name, row.amount > 0), []).append(row)
@@ -435,7 +440,7 @@ def recurrences(rows: Iterable[Row]) -> tuple[Recurrence, ...]:
             key=lambda row: row.date,
         )
         gaps = [(b.date - a.date).days for a, b in pairwise(steady)]
-        if not gaps or not middle or through is None:
+        if not gaps or not middle:
             continue
         every = (
             "monthly"
@@ -445,8 +450,9 @@ def recurrences(rows: Iterable[Row]) -> tuple[Recurrence, ...]:
             else None
         )
         if every:
-            name = _display(steady[-1])
-            found.append(Recurrence(name, owner, account, every, tuple(steady), through))
+            name = merchant(steady[-1].kind, account, steady[-1].counterparty)
+            last = through[owner, account]
+            found.append(Recurrence(name, owner, account, every, tuple(steady), last))
     return tuple(found)
 
 

@@ -20,11 +20,12 @@ def _row(  # a row is many fields; the tests vary these
     category: str | None = "Affitto",
     parent: str | None = "Casa",
     currency: str = "CHF",
+    account: str = "Migros",
 ) -> Row:
     return Row(
         str(n),
         "Anna",
-        "Migros",
+        account,
         on,
         on,
         D(amount),
@@ -127,7 +128,52 @@ def test_the_groups_say_when_the_next_payment_is_due_and_whether_it_stopped() ->
     assert rent_group.monthly == D(-1850)
 
 
-def test_a_counterparty_of_only_digits_keeps_its_name() -> None:
+def test_a_counterparty_of_only_digits_is_named_by_its_account_as_the_cash_flow_names_it() -> None:
     days = ((1, 5), (2, 6), (3, 7))
     (group,) = query.recurrences([_row(n, date(2026, m, 1), "-9", "123") for n, m in days])
-    assert group.name == "123"
+    assert group.name == "Migros" == query.merchant(Kind.EXPENSE, "Migros", "123")
+
+
+def test_the_next_payment_falls_on_the_last_day_of_a_shorter_month() -> None:
+    def next_after(every: str, *days: date) -> date:
+        rows = tuple(_row(n, on, "-10") for n, on in enumerate(days, 1))
+        return query.Recurrence("Gym", "Anna", "Migros", every, rows, days[-1]).next
+
+    assert next_after("monthly", date(2025, 12, 31), date(2026, 1, 31)) == date(2026, 2, 28)
+    assert next_after("monthly", date(2027, 12, 31), date(2028, 1, 31)) == date(2028, 2, 29)
+    assert next_after("monthly", date(2028, 1, 29), date(2028, 2, 29)) == date(2028, 3, 29)
+    assert next_after("yearly", date(2023, 2, 28), date(2024, 2, 29)) == date(2025, 2, 28)
+    assert next_after("monthly", date(2026, 11, 30), date(2026, 12, 31)) == date(2027, 1, 31)
+
+
+def test_an_account_whose_statements_stop_earlier_does_not_end_its_payments() -> None:
+    # The card's statements stop in June; the bank account's go on to October.
+    card = [
+        _row(n, date(2026, m, 3), "-12", "Streamio", account="Card")
+        for n, m in enumerate(range(3, 7), 1)
+    ]
+    bank = [_row(n, date(2026, m, 1), "-1850") for n, m in enumerate(range(3, 11), 10)]
+    gym = [_row(n, date(2026, m, 5), "-80", "Gym") for n, m in enumerate(range(3, 7), 20)]
+    found = {group.name: group for group in query.recurrences([*card, *bank, *gym])}
+    assert (found["Streamio"].through, found["Streamio"].ended) == (date(2026, 6, 3), False)
+    assert (found["Gym"].through, found["Gym"].ended) == (date(2026, 10, 1), True)
+    assert found["Landlord AG"].ended is False
+
+
+def test_two_groups_of_the_same_name_are_told_apart_by_their_first_row() -> None:
+    # Two plans of one service, each paid on its own: the same merchant, two groups.
+    one = [_row(n, date(2026, m, 3), "-12", "Streamio 1") for n, m in ((1, 5), (2, 6), (3, 7))]
+    two = [_row(n, date(2026, m, 9), "-30", "Streamio 2") for n, m in ((4, 5), (5, 6), (6, 7))]
+    first, second = query.recurrences([*one, *two])
+    assert (first.name, first.id) == ("Streamio", "1")
+    assert (second.name, second.id) == ("Streamio", "4")
+
+
+def test_only_a_change_from_the_payment_before_the_latest_is_a_price_change() -> None:
+    # The rise came a year ago: it is the price now, not a change.
+    rent = [_row(n, date(2025, m, 1), "-1800") for n, m in enumerate(range(1, 10), 1)]
+    rent += [_row(n, date(2026, m, 1), "-1850") for n, m in enumerate(range(1, 10), 20)]
+    (group,) = query.recurrences(rent)
+    assert group.previous is None
+    (group,) = query.recurrences([*rent, _row(40, date(2026, 10, 1), "-1900")])
+    assert group.previous == D(-1850)

@@ -1,9 +1,11 @@
 """The payments that come back at a steady pace, subscriptions among them, and what they cost
 a month: the panel of the cash-flow page.
 
-Only money spent, as the cash-flow page counts it, is listed: a salary comes back each month
+Only money spent at a merchant, as the cash-flow page adds it up, is listed, so the
+transactions page lists each payment's rows by its merchant: a salary comes back each month
 too, but it is not something one pays for, and neither is a standing transfer to one's own
-broker or pension fund, or (for both people together) what the two pay each other. What each
+broker or pension fund, or what the two people pay each other, which is the household's money
+moving and not a subscription, even in one person's view. What each
 costs a month is converted at the rate of the last day of the statements, the day the list is
 as of, and rounded to the cent.
 """
@@ -12,6 +14,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from scrooge import cashflow, networth, query, spending
@@ -30,6 +33,7 @@ class Payment:
 @dataclass(frozen=True, slots=True)
 class Recurring:
     currency: str
+    through: date | None  # the last day of the rows looked at; None: there are none
     active: tuple[Payment, ...]  # the most a month first
     ended: tuple[Payment, ...]  # the last paid most recently first
     monthly: Decimal | None  # what the active ones cost a month; None when a rate is missing
@@ -40,16 +44,21 @@ def run(conn: sqlite3.Connection, *, owner: str | None, currency: str) -> Recurr
     """The recurring payments of `owner`, or of everyone, with their monthly cost in
     `currency`."""
     rows = query.run(conn, query.Filter(owner=owner)).rows
-    spent = {row.id for row in cashflow.counted(conn, owner) if spending.is_spent(row)}
+    spent = {
+        row.id
+        for row in cashflow.counted(conn, owner)
+        if spending.is_expense(row) and row.counterparty_owner is None
+    }
     found = [
         group
         for group in query.recurrences(rows)
         if group.latest.amount < 0 and group.latest.id in spent
     ]
+    through = max((row.date for row in rows), default=None)
     errors: dict[str, networth.MissingRateError] = {}
     payments = []
-    if found:
-        rates = networth.rates_on(conn, [found[0].through])
+    if found and through is not None:
+        rates = networth.rates_on(conn, [through])
         for group in found:
             cost: Decimal | None
             try:
@@ -66,4 +75,4 @@ def run(conn: sqlite3.Connection, *, owner: str | None, currency: str) -> Recurr
     )[::-1]
     costs = [each.monthly for each in active]
     total = None if None in costs else sum((c for c in costs if c is not None), Decimal(0))
-    return Recurring(currency, tuple(active), tuple(ended), total, tuple(errors.values()))
+    return Recurring(currency, through, tuple(active), tuple(ended), total, tuple(errors.values()))

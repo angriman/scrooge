@@ -23,6 +23,9 @@ def test_recurring_payments_are_amounts_paid_with_their_monthly_cost(tmp_path: P
         [],
     )
     assert [p["name"] for p in sent["active"]] == ["Landlord AG", "Insurer", "Streamio"]
+    ids = [p.pop("id") for p in sent["active"] + sent["ended"]]
+    assert len(set(ids)) == len(ids) == 4
+    assert all(isinstance(each, str) and each for each in ids)
     assert sent["active"][2] == {
         "name": "Streamio",
         "owner": "Lukas",
