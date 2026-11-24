@@ -852,7 +852,7 @@ def test_each_month_ends_on_its_last_day_in_every_currency_newest_first(
 def test_a_currency_without_rates_is_left_out_of_the_month_ends_or_raised(
     conn: sqlite3.Connection,
 ) -> None:
-    close(conn, account("migros", "Migros", "CHF", "900"))
+    close(conn, account("migros", "ACME", "CHF", "900"))
     valued = networth.value(conn, None)
     missing: list[networth.MissingRateError] = []
     ends = networth.month_ends(conn, valued, ["JPY", "CHF"], missing.append)

@@ -33,7 +33,7 @@ sideways, the months staying in sight.
 		<p class="py-16 text-center text-small text-ink-muted" role="status">Working out the month-ends…</p>
 	{:then sent}
 		{@const shown = table(sent, currency)}
-		{#each sent.errors as error (error)}
+		{#each sent.errors as error, n (n)}
 			<p class="px-3 py-2 text-small text-caution" role="status">{error}</p>
 		{/each}
 		{#if shown.rows.length}
