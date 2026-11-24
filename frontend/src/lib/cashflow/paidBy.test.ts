@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { split } from './paidBy.js';
+import { personColors, split } from './paidBy.js';
 
 describe('who paid', () => {
 	it('splits a bar between the people, in their order', () => {
@@ -21,5 +21,18 @@ describe('who paid', () => {
 			{ name: 'Anna', spent: '0.00', width: 0 },
 			{ name: 'Lukas', spent: '0', width: 0 }
 		]);
+	});
+
+	it('gives each person a tone of their own, by where the app lists them', () => {
+		const brand = (strength: number) =>
+			`color-mix(in srgb, var(--brand) ${strength}%, var(--surface-panel))`;
+		// Zoe has no statements: Lukas keeps the colour of the second.
+		expect(personColors(['Anna', 'Lukas', 'Zoe'], ['Lukas', 'Anna'])).toEqual(
+			new Map([
+				['Lukas', brand(45)],
+				['Anna', brand(100)]
+			])
+		);
+		expect(personColors(['Anna'], ['Anna', 'Lukas', 'Mia', 'Zoe']).get('Zoe')).toBe(brand(25));
 	});
 });

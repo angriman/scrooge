@@ -30,3 +30,11 @@ export function whatMoved(categories: CashFlowReport['categories'], count = 3): 
 		.sort((a, b) => away(b) - away(a) || a.name.localeCompare(b.name))
 		.slice(0, count);
 }
+
+/** Whether a change is worth a colour, as the categories of spending say it: more than a tenth
+ * above the usual month, or below it; null within a tenth, or without a percent. */
+export function toneOf(moved: Moved): 'above' | 'below' | null {
+	if (moved.percent === null) return null;
+	const change = approximate(moved.percent);
+	return change > 10 ? 'above' : change < -10 ? 'below' : null;
+}

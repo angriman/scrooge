@@ -123,10 +123,11 @@
 		paidBack={report.paid_back}
 	/>
 
-	{#if report.paid_by || whatMoved(report.categories).length}
-		<div class="mt-6 grid items-start gap-6 lg:grid-cols-2">
-			<WhatMoved categories={report.categories} {colors} {transactions} />
-			{#if report.paid_by}<WhoPaid paidBy={report.paid_by} currency={report.currency} />{/if}
+	{@const moved = whatMoved(report.categories)}
+	{#if report.paid_by || moved.length}
+		<div class={['mt-6 grid items-start gap-6', report.paid_by && moved.length && 'lg:grid-cols-2']}>
+			{#if moved.length}<WhatMoved {moved} {colors} {transactions} />{/if}
+			{#if report.paid_by}<WhoPaid paidBy={report.paid_by} currency={report.currency} people={data.session.people} />{/if}
 		</div>
 	{/if}
 

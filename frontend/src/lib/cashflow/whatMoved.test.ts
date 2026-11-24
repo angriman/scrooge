@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CashFlowReport } from '#lib/types.js';
-import { whatMoved } from './whatMoved.js';
+import { toneOf, whatMoved, type Moved } from './whatMoved.js';
 
 const category = (name: string, monthly: string, usual: string | null): CashFlowReport['categories'][number] => ({
 	name,
@@ -52,5 +52,25 @@ describe('what moved over the range', () => {
 		);
 		expect(moved.map((each) => each.name)).toEqual(['Casa']);
 		expect(whatMoved([])).toEqual([]);
+	});
+
+	it('finds a category usually spent on and not at all in the range', () => {
+		const moved = whatMoved([category('Alimentari', '420.00', '400.00'), category('Casa', '0.00', '1500.00')]);
+		expect(moved[0]).toMatchObject({ name: 'Casa', change: '-1500.00', percent: '-100' });
+	});
+
+	it('colours only what is more than a tenth away from the usual month', () => {
+		const moved = (percent: string | null): Moved => ({
+			name: 'Casa',
+			monthly: '0',
+			usual: '0',
+			change: '0',
+			percent
+		});
+		expect(toneOf(moved('11'))).toBe('above');
+		expect(toneOf(moved('10'))).toBeNull();
+		expect(toneOf(moved('-10'))).toBeNull();
+		expect(toneOf(moved('-11'))).toBe('below');
+		expect(toneOf(moved(null))).toBeNull();
 	});
 });

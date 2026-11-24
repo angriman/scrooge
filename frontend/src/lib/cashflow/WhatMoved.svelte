@@ -1,34 +1,34 @@
 <!--
 @component
 What moved: the three categories furthest from their usual month over the range, each with what
-it took a month against the usual month, and a way to its transactions. Nothing shows when no
-category has a usual month to be set against.
+it took a month against the usual month, and a way to its transactions; a change within a tenth
+of the usual month is not coloured. Nothing shows when no category has a usual month.
 -->
 <script lang="ts">
 	import { signed, signedPercent } from '#lib/format/number.js';
-	import type { CashFlowReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { whatMoved } from './whatMoved.js';
+	import { toneOf, type Moved } from './whatMoved.js';
 
 	interface Props {
-		categories: CashFlowReport['categories'];
+		/** From `whatMoved`. */
+		moved: Moved[];
 		colors: Map<string, string>;
 		/** The address of the transactions with `changes` to the range shown. */
 		transactions: (changes: Record<string, string>) => string;
 	}
 
-	let { categories, colors, transactions }: Props = $props();
+	let { moved, colors, transactions }: Props = $props();
 
-	const moved = $derived(whatMoved(categories));
+	const TONES = { above: 'text-caution', below: 'text-gain' } as const;
 </script>
 
 {#if moved.length}
 	<Panel title="What moved" note="The categories furthest from their usual month, per month.">
 		<ul class="divide-y divide-line">
 			{#each moved as each (each.name)}
-				{@const above = !each.change.startsWith('-')}
+				{@const tone = toneOf(each)}
 				<li>
 					<a
 						href={transactions({ category: each.name })}
@@ -38,7 +38,7 @@ category has a usual month to be set against.
 							<span class="size-2 shrink-0 rounded-[2px]" style:background={colors.get(each.name) ?? 'var(--data-other)'}></span>
 							<span class="truncate">{each.name}</span>
 						</span>
-						<span class={cn('text-right text-body tabular-nums whitespace-nowrap', above ? 'text-caution' : 'text-gain')}>
+						<span class={cn('text-right text-body tabular-nums whitespace-nowrap', tone ? TONES[tone] : 'text-ink-secondary')}>
 							{signed(each.change, 0)}{#if each.percent !== null}<span class="ml-1 text-small">({signedPercent(each.percent, 0)})</span>{/if}
 						</span>
 						<span class="col-span-2 pl-4 text-caption text-ink-muted">
