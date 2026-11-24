@@ -33,6 +33,7 @@ from scrooge import (
     context,
     holds,
     marketdata,
+    merchants,
     months,
     networth,
     overview,
@@ -790,6 +791,25 @@ def _transactions_context(request: Request) -> Response:
     return JSONResponse({**wire.transactions_context(shown, held), "errors": errors})
 
 
+def _transactions_merchants(request: Request) -> Response:
+    """Every merchant `owner` (everyone) spent money at, named as the merchant filter reads
+    them, with what was spent there over the last twelve months in `currency`."""
+    asked = forms.analysis_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    errors: list[str] = []
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = wire.unless_rate_missing(
+                errors,
+                lambda: merchants.run(conn, owner=asked.owner, currency=asked.currency),
+                merchants.Merchants(asked.currency, None, None, (), ()),
+            )
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+    return JSONResponse({**wire.known_merchants(shown), "errors": errors})
+
+
 async def _discard(request: Request) -> Response:
     return await _remove(request, staging.discard)
 
@@ -840,6 +860,7 @@ routes = [
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
     Route("/transactions/context", _transactions_context, name="api_transactions_context"),
+    Route("/transactions/merchants", _transactions_merchants, name="api_transactions_merchants"),
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
     Route("/performance", _performance, name="api_performance"),

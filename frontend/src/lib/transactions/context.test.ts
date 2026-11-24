@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draw } from './context.js';
+import { draw, flow } from './context.js';
 
 const months = (...amounts: string[]) =>
 	amounts.map((amount, index) => ({ month: `2026-${String(index + 1).padStart(2, '0')}`, amount }));
@@ -40,5 +40,38 @@ describe('the chart of one category, merchant or account', () => {
 		expect(drawn.bars.map((bar) => bar.height)).toEqual([0, 0]);
 		expect(drawn.usual).toBe(50);
 		expect(draw([], null, true, 100, 50).bars).toEqual([]);
+	});
+});
+
+describe('the net flow of an account', () => {
+	it('draws a month below nothing down from the line of nothing', () => {
+		const drawn = draw(months('300.00', '-100.00', '0.00'), '100.00', false, 300, 80, true);
+		expect(drawn.top).toBe(300);
+		expect(drawn.zero).toBe(60);
+		expect(drawn.bars.map((bar) => [bar.y, bar.height, bar.negative])).toEqual([
+			[0, 60, false],
+			[60, 20, true],
+			[60, 0, false]
+		]);
+		expect(drawn.usual).toBe(40);
+	});
+
+	it('reaches the bottom with the usual month when it is the smallest', () => {
+		const drawn = draw(months('-10.00'), '-40.00', false, 10, 40, true);
+		expect([drawn.zero, drawn.usual, drawn.top]).toEqual([0, 40, 0]);
+		expect(drawn.bars.map((bar) => [bar.y, bar.height])).toEqual([[0, 10]]);
+	});
+
+	it('keeps the line of nothing at the bottom when nothing is below it', () => {
+		const drawn = draw(months('50.00', '0.00'), null, true, 200, 50, true);
+		expect(drawn.zero).toBe(50);
+		expect(drawn.bars.map((bar) => bar.height)).toEqual([50, 0]);
+		expect(draw(months('0.00'), '0.00', false, 10, 50, true).zero).toBe(50);
+	});
+
+	it('says what was put aside, or taken out, without its sign', () => {
+		expect(flow('1200.50')).toEqual({ said: 'Put aside', amount: '1200.50' });
+		expect(flow('0.00')).toEqual({ said: 'Put aside', amount: '0.00' });
+		expect(flow('-80.00')).toEqual({ said: 'Taken out', amount: '80.00' });
 	});
 });

@@ -6,9 +6,10 @@ for each other field. Every change goes in the address, so a filter can be kept 
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import Search from '@lucide/svelte/icons/search';
-	import type { Headed } from '#lib/types.js';
+	import type { Headed, KnownMerchants } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
 	import FilterChip from './FilterChip.svelte';
+	import MerchantPicker from './MerchantPicker.svelte';
 	import { kindName, periodName, periods } from './filter.js';
 
 	type Changes = Record<string, string | null>;
@@ -20,11 +21,13 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		categories: Headed[];
 		kinds: string[];
 		today: string;
+		/** The merchants the Merchant chip offers, loaded as it opens. */
+		merchants: () => Promise<KnownMerchants>;
 		/** `typing`: the search changed as it is typed, and the address need not keep each step. */
 		onchange: (changes: Changes, typing?: boolean) => void;
 	}
 
-	let { values, accounts, categories, kinds, today, onchange }: Props = $props();
+	let { values, accounts, categories, kinds, today, merchants, onchange }: Props = $props();
 
 	// The search as it is typed: the address follows once typing stops for a moment.
 	let text = $state('');
@@ -43,19 +46,14 @@ for each other field. Every change goes in the address, so a filter can be kept 
 	let to = $state('');
 	let least = $state('');
 	let most = $state('');
-	let payee = $state('');
 	let periodOpen = $state(false);
 	let amountOpen = $state(false);
-	let merchantOpen = $state(false);
 	let unreadable = $state(false);
 	// An amount as the API reads it: digits, a point for the cents, apostrophes or commas between
 	// thousands.
 	const readable = (text: string) => !text || /^\d[\d'’,]*(\.\d+)?$/.test(text);
 	$effect(() => {
 		if (periodOpen) [from, to] = [values.from ?? '', values.to ?? ''];
-	});
-	$effect(() => {
-		if (merchantOpen) payee = values.merchant ?? '';
 	});
 	$effect(() => {
 		if (amountOpen) {
@@ -191,28 +189,16 @@ for each other field. Every change goes in the address, so a filter can be kept 
 			{/snippet}
 		</FilterChip>
 
-		<FilterChip
-			label="Merchant"
-			value={values.merchant || null}
-			onclear={() => onchange({ merchant: null })}
-			bind:open={merchantOpen}
-		>
+		<FilterChip label="Merchant" value={values.merchant || null} onclear={() => onchange({ merchant: null })}>
 			{#snippet children(close)}
-				<form
-					class="space-y-2 p-1"
-					onsubmit={(event) => {
-						event.preventDefault();
-						onchange({ merchant: payee.trim() || null });
+				<MerchantPicker
+					current={values.merchant ?? ''}
+					load={merchants}
+					onpick={(name) => {
+						onchange({ merchant: name });
 						close();
 					}}
-				>
-					<label class="block text-caption text-ink-secondary">
-						Who was paid, as the cash flow names them
-						<input bind:value={payee} placeholder="Coop" autocomplete="off" spellcheck="false" class={cn(field, 'mt-1')} />
-					</label>
-					<p class="text-caption text-ink-muted">Without store numbers or places; a fee is its account's.</p>
-					<button type="submit" class={apply}>Show this merchant</button>
-				</form>
+				/>
 			{/snippet}
 		</FilterChip>
 

@@ -754,6 +754,9 @@ export interface TransactionsContext {
 	currency: string;
 	/** The amounts are money earned (a category of income), not money spent. */
 	earned: boolean;
+	/** The amounts are an account's net flow: money in less money out, every row of it
+	 * counted, transfers too; above nothing, money put aside. */
+	net: boolean;
 	/** Two years of months up to the one of `through`, oldest first; none when nothing is
 	 * committed or a rate is missing. */
 	months: { month: string; amount: Amount }[];
@@ -767,6 +770,31 @@ export interface TransactionsContext {
 	merchants: { name: string; amount: Amount; count: number }[] | null;
 	/** For an account: what it holds now. */
 	balance: Amount | null;
+	errors: string[];
+}
+
+/** A merchant money was spent at, as the merchant filter names them
+ * (`/api/transactions/merchants`). */
+export interface KnownMerchant {
+	name: string;
+	/** Over the twelve months up to the last day committed, a refund lowering it. */
+	spent: Amount;
+	/** Rows over those twelve months. */
+	count: number;
+	/** The day of its last row, whenever it was. */
+	last: Day;
+}
+
+export interface KnownMerchants {
+	currency: string;
+	/** The first day of the twelve months; null when nothing is committed. */
+	since: Day | null;
+	through: Day | null;
+	/** Those spent at in the twelve months first, the largest first; then the others, the
+	 * latest first. As many as the chip lists at once. */
+	merchants: KnownMerchant[];
+	/** The names of the rest, in the same order: typing still finds them. */
+	others: string[];
 	errors: string[];
 }
 

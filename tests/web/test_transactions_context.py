@@ -77,6 +77,7 @@ def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
         "name": "Alimentari",
         "currency": "CHF",
         "earned": False,
+        "net": False,
         "usual": "100.00",
         "this_month": "130.00",
         "through": "2026-08-31",
@@ -108,12 +109,16 @@ def test_a_merchant_is_named_as_the_cash_flow_names_it(client: TestClient) -> No
     assert (both["this_month"], both["usual"]) == ("160.00", None)
 
 
-def test_an_account_is_what_was_spent_from_it_and_what_it_holds(client: TestClient) -> None:
+def test_an_account_is_its_net_flow_and_what_it_holds(client: TestClient) -> None:
     sent = asked(client, owner=OWNER, account="IBKR USD")
     months = sent["months"]
     assert isinstance(months, list)
-    assert months[18] == {"month": "2026-03", "amount": "8.00"}  # 10 dollars at 0.80
+    assert months[18] == {"month": "2026-03", "amount": "-8.00"}  # 10 dollars out at 0.80
+    assert (sent["net"], sent["earned"]) == (True, False)
     assert (sent["balance"], sent["merchants"], sent["usual"]) == ("-8.00", None, "0.00")
+    # The salary less the shops: money put aside every month.
+    shop = asked(client, owner=OWNER, account="Migros")
+    assert (shop["usual"], shop["this_month"]) == ("5900.00", "5870.00")
 
 
 def test_a_missing_rate_leaves_the_figures_out_and_says_why(client: TestClient) -> None:
