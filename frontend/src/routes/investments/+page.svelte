@@ -11,6 +11,8 @@
 	import { rangeName } from '#lib/cashflow/names.js';
 	import Income from '#lib/investments/Income.svelte';
 	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
+	import * as returns from '#lib/investments/performance.js';
+	import Returns from '#lib/investments/Returns.svelte';
 	import type { HeldInstrument } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
@@ -21,7 +23,9 @@
 	let { data }: PageProps = $props();
 
 	const held = $derived(data.held?.holdings);
-	const errors = $derived(data.held?.errors ?? data.income?.errors ?? []);
+	const errors = $derived(
+		data.held?.errors ?? data.income?.errors ?? data.performance?.errors ?? []
+	);
 	const owner = $derived(page.url.searchParams.get('owner'));
 	const people = $derived(data.session.people.length > 1 && !owner);
 	const title = $derived(
@@ -45,12 +49,18 @@
 		return share === null ? null : { count, share };
 	});
 
-	// What is held, or what the investments paid: each view loads its own figures.
+	// What the investments returned, what is held, or what they paid: each view loads its own
+	// figures. An address without a view, as every link to the page had before, shows the
+	// returns.
 	const VIEWS = [
+		{ value: 'performance', label: 'Performance' },
 		{ value: 'holdings', label: 'Holdings' },
 		{ value: 'income', label: 'Income' }
 	] as const;
-	const view = $derived(oneOf(page.url, 'view', ['holdings', 'income'], 'holdings'));
+	const view = $derived(
+		oneOf(page.url, 'view', ['performance', 'holdings', 'income'], 'performance')
+	);
+	const range = $derived(returns.rangeOf(page.url.searchParams.get('range')));
 	const ranges = $derived(data.income?.ranges ?? []);
 	const chosen = $derived(
 		chosenRange(ranges, page.url.searchParams.get('from') ?? '', page.url.searchParams.get('to') ?? '')
@@ -75,8 +85,21 @@
 		value={view}
 		options={VIEWS}
 		onchange={(value) =>
-			show(page.url, value === 'income' ? { view: value } : { view: null, from: null, to: null })}
+			show(
+				page.url,
+				value === 'performance'
+					? { view: null, from: null, to: null }
+					: { view: value, range: null, ...(value === 'holdings' ? { from: null, to: null } : {}) }
+			)}
 	/>
+	{#if view === 'performance' && data.performance?.performance.totals}
+		<Segmented
+			label="Range"
+			value={range}
+			options={returns.RANGES}
+			onchange={(value) => show(page.url, { range: value === returns.DEFAULT_RANGE ? null : value })}
+		/>
+	{/if}
 	{#if view === 'income' && ranges.length}
 		<Segmented
 			label="Range"
@@ -100,7 +123,21 @@
 	</p>
 {/each}
 
-{#if data.income}
+{#if data.performance}
+	{#if !data.performance.performance.totals}
+		{#if !errors.length}
+			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
+				<h1 class="text-heading font-medium text-ink">No investment accounts yet</h1>
+				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
+					What your investments returned shows here once a statement of a broker or a stock plan
+					is committed.
+				</p>
+			</section>
+		{/if}
+	{:else}
+		<Returns performance={data.performance.performance} {range} {people} />
+	{/if}
+{:else if data.income}
 	{#if !data.income.income?.through}
 		{#if !errors.length}
 			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
