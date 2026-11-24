@@ -10,6 +10,8 @@ from starlette.testclient import TestClient
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
+from tests import test_savings as year
+from tests.storage import helpers
 from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close
 from tests.web.test_app import text
@@ -176,3 +178,29 @@ def test_what_was_saved_is_sent_as_a_part_of_income_and_of_salary(client: TestCl
     # She was paid no salary: there is nothing to measure what she kept against.
     hers = report(owner=PARTNER, currency="CHF", **{"from": "2026-07"})["totals"]
     assert (hers["work"], hers["rate"], hers["rate_salary"]) == ("0.00", None, None)
+
+
+@pytest.fixture(scope="module")
+def years(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
+    """The twenty months of the savings tests: enough for the twelve before July 2026."""
+    path: Path = tmp_path_factory.mktemp("analysis-years") / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, helpers.CLOSED_AT)
+    helpers.close(conn, OWNER, (year.START, year.END), year.END, ("migros", year.LUKAS))
+    helpers.close(conn, PARTNER, (date(2026, 1, 1), year.END), year.END, ("migros", year.ANNA))
+    conn.close()
+    return TestClient(webapp.create_app(path), base_url=SITE)
+
+
+def test_the_twelve_months_are_measured_against_income_and_salary(years: TestClient) -> None:
+    params = {"owner": OWNER, "currency": "CHF"}
+    sent = years.get("/api/cashflow", params={**params, "from": "2026-07", "to": "2026-07"})
+    july = sent.json()["report"]["periods"][0]
+    # August 2025 to July 2026: 39400 kept of the 60300 that came in, and of 60000 of salary.
+    assert (july["name"], july["rate_12"], july["rate_salary_12"]) == (
+        "2026-07",
+        "65.300",
+        "65.700",
+    )
+    month = years.get("/api/month", params={**params, "month": "2026-07"}).json()["month"]
+    assert (month["rate_year"], month["rate_salary_year"]) == ("65.300", "65.700")
