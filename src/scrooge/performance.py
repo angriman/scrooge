@@ -37,7 +37,8 @@ stored for is left out, and said to be, rather than leaving the page empty.
 **The time-weighted return** links the return of every day of the range: what the accounts
 are worth at the end of the day over what they were worth the day before with the day's flows,
 which come at its start. It measures the investments, not when money went in. A day that
-starts with nothing (or less) invested is no day of return.
+starts with next to nothing invested, or ends with less than nothing, or comes before any
+money is put in, is no day of return (`time_weighted`).
 
 **The money-weighted return** is the rate, a year, at which the value the range starts with
 and every flow grow into the value it ends with (an internal rate of return of dated flows,
@@ -70,6 +71,8 @@ WEEKLY_AFTER = 400  # days: a longer range is drawn one point a week
 _BROKERS = ("broker_cash", "broker_securities")  # the kinds of account a broker feeds
 _LEFT_OUT = frozenset({PENSION, PILLAR2, CARD})  # an account with these is no investment
 _CENT = Decimal("0.01")
+# A day starts with next to nothing invested below this part of the most any day starts with.
+_MATERIAL = 100
 _ONE_DAY = timedelta(days=1)
 _YEAR = 365.0
 # The rates a money-weighted return is looked for between, a year: from all but everything
@@ -134,13 +137,24 @@ def time_weighted(values: Sequence[Decimal], flows: Sequence[Decimal]) -> Decima
     """The return over the days of `values`, linked day by day, as a fraction.
 
     `values[0]` is the worth before the first day; `values[n]` and `flows[n]` are the worth at
-    the end of day n and the money put in at its start (`flows[0]` is not read). A day that
-    starts with nothing or less invested is left out. None when every day is.
+    the end of day n and the money put in at its start (`flows[0]` is not read).
+
+    Some days are left out, as no day of return. Those before any money is put in (the start
+    value and the flows so far add up to nothing): what an account makes before the deposit
+    that pays for it (a bill bought first, an export that reaches back only so far) is made on
+    money the history does not show. A day that starts with next to nothing invested, less than
+    a hundredth of the most any day of the range starts with: a return on a few cents says
+    nothing. A day that ends with less than nothing: losing more than was invested says that
+    money put in is missing, not what was returned. None when every day is left out.
     """
+    starts = [values[day - 1] + flows[day] for day in range(1, len(values))]
+    least = max(starts, default=Decimal(0)) / _MATERIAL
+    put_in, started = values[0], values[0] > 0
     grown, counted = Decimal(1), False
-    for day in range(1, len(values)):
-        invested = values[day - 1] + flows[day]
-        if invested <= 0:
+    for day, invested in enumerate(starts, start=1):
+        put_in += flows[day]
+        started = started or put_in > 0
+        if not started or invested <= 0 or invested < least or values[day] < 0:
             continue
         grown *= values[day] / invested
         counted = True

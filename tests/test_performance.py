@@ -58,7 +58,24 @@ def test_a_range_that_starts_with_nothing_counts_from_the_first_money_put_in() -
 
 
 def test_a_day_that_starts_with_less_than_nothing_is_no_day_of_return() -> None:
-    assert time_weighted(values(-100, 50, 55), values(0, 0, 0)) == D("0.1")
+    # 100 owed, 150 put in: the 50 left grows by 10%.
+    assert time_weighted(values(-100, 50, 55), values(0, 150, 0)) == D("0.1")
+
+
+def test_what_is_made_before_any_money_is_put_in_is_no_return() -> None:
+    # A bill bought before the deposit that pays for it: a few cents a day on nothing, then
+    # 1000 put in that earns 5%.
+    worth = [D(0), D(2), D(4), D(1002), D("1052.10")]
+    flows = values(0, 0, 0, 998, 0)
+    assert time_weighted(worth, flows) == D("0.05")
+    assert measure(worth, flows).gain == D("54.10")
+
+
+def test_a_day_on_next_to_nothing_or_ending_below_nothing_is_no_day_of_return() -> None:
+    # 5 left after 1095 taken out, then 9: each under a hundredth of the most invested.
+    assert time_weighted(values(1000, 1100, 9, 18), values(0, 0, -1095, 0)) == D("0.1")
+    # Losing more than there was: money put in is missing, not a return of -300%.
+    assert time_weighted(values(1000, 1100, -2200), values(0, 0, 0)) == D("0.1")
 
 
 @pytest.mark.parametrize(
