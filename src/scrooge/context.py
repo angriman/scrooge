@@ -6,10 +6,12 @@ the rate of its own day into one currency (plan decision 34), and are read as th
 reads them: for a category of expenses or a merchant, money spent, a refund lowering it; for a
 category of income, money earned. A merchant is named as the cash flow names it
 (`query.merchant`). An account is its net flow instead: money moved into it less money moved
-out, every row of it counted, moves between one's own accounts and exchanges too, each
-converted at the rate of its day. Buying and selling securities and the results of trading in
-it are left out: that money stays inside the account, which holds what it bought. A month
-above nothing is money put aside in it; one below, money taken out.
+out, each row converted at the rate of its day. Moves between one's own accounts and
+exchanges count, and so do income and expenses (a salary, a purchase). What the money in it
+earned or cost is left out: dividends, interest received or paid, fees, tax withheld and the
+results of trading are a return, not money put in. So is buying and selling securities, a
+bill's principal repaid too: that money stays inside the account, which holds what it bought.
+A month above nothing is money put aside in it; one below, money taken out.
 
 The months run up to the one of the last day committed, which is partial until its last day
 is: statements come in after their month is over, so the month of today would read as
@@ -29,7 +31,7 @@ from statistics import median
 
 from scrooge import analysis, income, networth, query, spending
 from scrooge.analysis import CENT, Converted
-from scrooge.cashflow import Counted
+from scrooge.cashflow import _INVESTING, Counted
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
 from scrooge.networth import DEFAULT_CURRENCY
@@ -39,8 +41,18 @@ KINDS = ("category", "merchant", "account")  # what the transactions can be cut 
 MONTHS = 24  # shown, the last one included
 MERCHANTS = 5  # listed for a category, the largest first
 _EARNED = "income"  # the side of the taxonomy whose categories are money earned
-# Rows of an account whose money stays inside it: its net flow leaves them out.
-_INSIDE = frozenset({Kind.SECURITY_TRADE, Kind.TRADING})
+# Rows of an account that are no money moved in or out: what its money earned or cost, and
+# securities bought and sold. Its net flow leaves them out.
+_INSIDE = frozenset(
+    {
+        Kind.SECURITY_TRADE,
+        Kind.TRADING,
+        Kind.DIVIDEND,
+        Kind.INTEREST,
+        Kind.COMMISSION,
+        Kind.TAX,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,7 +207,7 @@ def _flows(
     wanted = query.Filter(first=days[0], last=days[1], owner=owner, account=account)
     by_currency: dict[str, list[query.Row]] = defaultdict(list)
     for row in query.run(conn, wanted).rows:
-        if row.kind not in _INSIDE:
+        if _moved(row):
             by_currency[row.currency].append(row)
     flows: list[tuple[date, Decimal]] = []
     for native, members in by_currency.items():
@@ -203,6 +215,14 @@ def _flows(
         amounts = networth.convert([row.amount for row in members], native, currency, rates)
         flows.extend((row.date, amount) for row, amount in zip(members, amounts, strict=True))
     return sorted(flows, key=lambda flow: flow[0])
+
+
+def _moved(row: query.Row) -> bool:
+    """Whether `row` moves money into or out of its account (see the module)."""
+    if row.kind in _INSIDE:
+        return False
+    # Income or an expense of investing (a bill's principal repaid) stays inside.
+    return (row.category_parent or row.category) not in _INVESTING
 
 
 def _written(rows: list[Converted], asked: str) -> str:

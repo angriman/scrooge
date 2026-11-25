@@ -44,7 +44,15 @@ LUKAS_USD = [
         kind=Kind.COMMISSION,
         category=categories.FEES,
         **USD,
-    )
+    ),
+    txn(
+        "-10",
+        date=date(2026, 3, 2),
+        source_ref="2",
+        kind=Kind.TRANSFER,
+        category=categories.OWN_TRANSFER,
+        **USD,
+    ),
 ]
 ANNA = [txn("-60", date=date(2026, 8, 12), source_ref="1", counterparty=SHOP)]
 
@@ -120,9 +128,10 @@ def test_an_account_is_its_net_flow_and_what_it_holds(client: TestClient) -> Non
     sent = asked(client, owner=OWNER, account="IBKR USD")
     months = sent["months"]
     assert isinstance(months, list)
-    assert months[18] == {"month": "2026-03", "amount": "-8.00"}  # 10 dollars out at 0.80
+    # 10 dollars moved out at 0.80; the fee is what the money cost, not money taken out.
+    assert months[18] == {"month": "2026-03", "amount": "-8.00"}
     assert (sent["net"], sent["earned"]) == (True, False)
-    assert (sent["balance"], sent["merchants"], sent["usual"]) == ("-8.00", None, "0.00")
+    assert (sent["balance"], sent["merchants"], sent["usual"]) == ("-16.00", None, "0.00")
     # The salary less the shops: money put aside every month.
     shop = asked(client, owner=OWNER, account="Migros")
     assert (shop["usual"], shop["this_month"]) == ("5900.00", "5870.00")
