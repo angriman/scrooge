@@ -3,7 +3,9 @@ import { money } from '#lib/format/number.js';
 import type { HeldInstrument, HoldingReturns, Position } from '#lib/types.js';
 import {
 	columnsOf,
+	dashNotes,
 	periodLines,
+	realisedText,
 	sortHoldings,
 	withheldNote,
 	yearOf,
@@ -25,7 +27,9 @@ function returns(year: string | null, first = '2026-03-02'): HoldingReturns {
 		realised: '80.00',
 		unrealised: '120.00',
 		dividends: '12.00',
-		tax: '-1.80'
+		tax: '-1.80',
+		sold: true,
+		too_small: false
 	};
 }
 
@@ -139,5 +143,57 @@ describe('withheldNote', () => {
 		expect(withheldNote(returns('1.00'), money)).toBe('1.80 withheld');
 		expect(withheldNote({ ...returns('1.00'), tax: '0.00' }, money)).toBe('');
 		expect(withheldNote(null, money)).toBe('');
+	});
+});
+
+describe('realisedText', () => {
+	it('says none sold when nothing was, and the amount when it is known', () => {
+		expect(realisedText(returns('1.00'), money)).toBe('80.00');
+		expect(realisedText({ ...returns('1.00'), sold: false, realised: '0.00' }, money)).toBe(
+			'none sold'
+		);
+		expect(realisedText({ ...returns('1.00'), realised: null }, money)).toBeNull();
+		expect(realisedText(null, money)).toBeNull();
+	});
+});
+
+describe('dashNotes', () => {
+	const small: HoldingReturns = {
+		...returns(null),
+		periods: returns(null).periods.map((period) => ({ ...period, ...NONE })),
+		too_small: true
+	};
+
+	it('says a holding too small for a return is, and not that it was not held', () => {
+		const columns = [{ label: 'Return', returns: small }];
+		expect(dashNotes(columns, periodLines(columns))).toEqual([
+			'Never worth 100 CHF at the start of a day, so too small for a return.'
+		]);
+	});
+
+	it('names the accounts too small, and says a dash elsewhere is a range not held through', () => {
+		const columns = [
+			{ label: 'All', returns: returns(null) },
+			{ label: 'IBKR', returns: returns('10.00') },
+			{ label: 'Schwab', returns: small }
+		];
+		expect(dashNotes(columns, periodLines(columns))).toEqual([
+			'Schwab: never worth 100 CHF at the start of a day, so too small for a return.',
+			'– Not held through all of the range.'
+		]);
+	});
+
+	it('says nothing when every range has a return', () => {
+		const full: HoldingReturns = {
+			...returns('1.00'),
+			periods: returns('1.00').periods.map((period) => ({
+				...period,
+				first: '2025-01-01',
+				percent: '1.00',
+				amount: '1.00'
+			}))
+		};
+		const columns = [{ label: 'Return', returns: full }];
+		expect(dashNotes(columns, periodLines(columns))).toEqual([]);
 	});
 });

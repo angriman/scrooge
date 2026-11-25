@@ -4,14 +4,15 @@ What a holding returned, as its row opens to it: over the past month, this year,
 and since bought, each in percent (time-weighted, dividends included) and as an amount; then
 what its sales realised, what is not realised yet and the dividends it paid. Every account
 together, and each account on its own when it is held in several. A range it was not held
-through shows a dash.
+through shows a dash, and one never worth 100 francs at the start of a day has none at all:
+a note under the table tells the two apart.
 -->
 <script lang="ts">
 	import { signed, signedPercent, money } from '#lib/format/number.js';
 	import { direction } from '#lib/investments/performance.js';
 	import type { Amount, HeldInstrument } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
-	import { columnsOf, periodLines, withheldNote } from './returns.js';
+	import { columnsOf, dashNotes, periodLines, realisedText, withheldNote } from './returns.js';
 
 	interface Props {
 		holding: HeldInstrument;
@@ -25,6 +26,7 @@ through shows a dash.
 
 	const columns = $derived(columnsOf(holding, people));
 	const lines = $derived(periodLines(columns));
+	const notes = $derived(dashNotes(columns, lines));
 	const tone = (value: Amount | null, places = 0) => {
 		const way = direction(value, places);
 		return way === 'up' ? 'text-gain' : way === 'down' ? 'text-loss' : 'text-ink-secondary';
@@ -80,7 +82,9 @@ through shows a dash.
 							{@const value = column.returns?.[total.pick] ?? null}
 							{@const withheld = total.pick === 'dividends' ? withheldNote(column.returns, money) : ''}
 							<td class="py-2 pl-3 text-right whitespace-nowrap tabular-nums">
-								{#if value === null}
+								{#if total.pick === 'realised' && column.returns && !column.returns.sold}
+									<span class="text-ink-muted">{realisedText(column.returns, signed)}</span>
+								{:else if value === null}
 									<span class="text-ink-muted" title="not known">–</span>
 								{:else}
 									<span class={cn('block', total.pick === 'dividends' ? 'text-ink' : tone(value, 2))}>
@@ -95,4 +99,7 @@ through shows a dash.
 			</tbody>
 		</table>
 	</div>
+	{#each notes as note (note)}
+		<p class="mt-2 text-caption text-ink-muted">{note}</p>
+	{/each}
 {/if}

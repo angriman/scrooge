@@ -109,3 +109,34 @@ export function withheldNote(
 	if (!returns || !/[1-9]/.test(returns.tax)) return '';
 	return `${written(returns.tax.replace(/^-/, ''))} withheld`;
 }
+
+/** What realised says: `none sold` when nothing of it was ever sold, else the amount; null
+ * when it is not known. */
+export function realisedText(
+	returns: HoldingReturns | null,
+	written: (amount: Amount) => string
+): string | null {
+	if (!returns) return null;
+	if (!returns.sold) return 'none sold';
+	return returns.realised === null ? null : written(returns.realised);
+}
+
+/** What is said under the table about its dashes: which columns are too small for any return,
+ * and that a dash elsewhere is a range it was not held through. */
+export function dashNotes(columns: Column[], lines: Line[]): string[] {
+	const small = columns.filter((column) => column.returns?.too_small);
+	const notes = [];
+	if (small.length) {
+		const why = 'never worth 100 CHF at the start of a day, so too small for a return.';
+		notes.push(
+			small.length === columns.length
+				? why[0].toUpperCase() + why.slice(1)
+				: `${small.map((column) => column.label).join(', ')}: ${why}`
+		);
+	}
+	const unheld = lines.some((line) =>
+		line.cells.some((cell, n) => cell.percent === null && !columns[n].returns?.too_small)
+	);
+	if (unheld) notes.push('– Not held through all of the range.');
+	return notes;
+}
