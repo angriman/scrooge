@@ -13,8 +13,9 @@ Of the files with exactly such a name, these are kept and the rest removed:
 
 That is at most 27 files. The days, weeks and months counted are those with a backup, not
 those of the calendar, so a schedule that stopped for a while never empties the folder; and
-which are kept follows from the names alone. Nothing else in `backups/` is ever removed: the
-copies a commit or a new schema keeps, or a file put there by hand.
+which are kept follows from the names alone. Nothing else in `backups/` is ever removed here: the
+copies a commit or a new schema keeps (`staging.prune_copies` prunes those), or a file put
+there by hand.
 
 A copy that SQLite's `quick_check` or a reference between tables finds damaged is kept, and
 nothing is pruned: a database going wrong never pushes out the copies from before.

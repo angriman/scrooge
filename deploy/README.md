@@ -51,7 +51,7 @@ curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deplo
 |---|---|
 | `users/<name>/scrooge.yaml` | the config |
 | `users/<name>/scrooge.db` | the database |
-| `users/<name>/backups/` | the daily backups (`scrooge-backup-…Z.db`), and a copy of the database before every commit and before a new schema |
+| `users/<name>/backups/` | the daily backups (`scrooge-backup-…Z.db`), and a copy of the database before every commit and before a new schema (the newest 10 of those are kept) |
 | `users/<name>/originals/` | every statement imported, as it came |
 | `users/<name>/rules.yaml`, `rules.<owner>.yaml` | the category rules, both people's and each one's |
 | `users/<name>/categories.yaml` | the categories added to the built-in ones |
@@ -124,8 +124,10 @@ as `doctor` does, and removes the older backups it made except:
 - the newest of each of the last 8 weeks that have one,
 - the newest of each of the last 12 months that have one.
 
-That is at most 27 files, about a year back. Only files named like that are ever removed: the
-copies made before a commit or a new schema, and anything else in the folder, stay. When the
+That is at most 27 files, about a year back. Only files named like that are removed by it.
+The copies made before a commit, a change of categories or a new schema
+(`scrooge-YYYYMMDDTHHMMSS.db`) are another kind: after the operation succeeded, all but the
+newest 10 are removed, and nothing else in the folder is ever touched. When the
 copy is damaged it is kept, nothing is removed and the log says what is wrong:
 `docker compose logs backup`.
 

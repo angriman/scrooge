@@ -1,3 +1,4 @@
+import os
 import re
 import sqlite3
 from collections.abc import Iterator
@@ -1588,6 +1589,112 @@ def test_two_commits_in_one_second_do_not_share_a_copy(tmp_path: Path) -> None:
         "scrooge-20261221T093000-2.db",
         "scrooge-20261221T093000-3.db",
     ]
+    conn.close()
+
+
+def copy_named(folder: Path, name: str) -> Path:
+    folder.mkdir(exist_ok=True)
+    path = folder / name
+    path.write_bytes(b"x")
+    return path
+
+
+def test_copies_are_ordered_by_their_name_and_only_those_of_this_kind(tmp_path: Path) -> None:
+    database = tmp_path / "scrooge.db"
+    folder = tmp_path / "backups"
+    assert staging.copies(database) == []  # no folder yet
+    names = [
+        "scrooge-20261101T000000-10.db",
+        "scrooge-20261101T000000.db",
+        "scrooge-20261101T000000-2.db",
+        "scrooge-20261001T235959.db",
+    ]
+    mine = [copy_named(folder, name) for name in names]
+    for other in (
+        "scrooge-backup-20261101T000000Z.db",  # of `scrooge backup`
+        "other-20261101T000000.db",  # of another database
+        "scrooge-20261101T000000.db.part",
+        "scrooge-20261101T000000-x.db",
+        "scrooge-20261301T000000.db",  # no such month
+        "notes.txt",
+    ):
+        copy_named(folder, other)
+    (folder / "scrooge-20260101T000000.db").mkdir()  # a folder is no copy
+    os.utime(mine[3], (4_000_000_000, 4_000_000_000))  # mtime is no matter
+    assert staging.copies(database) == [mine[3], mine[1], mine[2], mine[0]]
+
+
+def test_pruning_keeps_the_newest_copies_and_nothing_else_goes(tmp_path: Path) -> None:
+    database = tmp_path / "scrooge.db"
+    folder = tmp_path / "backups"
+    old = [copy_named(folder, f"scrooge-202610{day:02d}T120000.db") for day in range(1, 16)]
+    same_second = [copy_named(folder, f"scrooge-20261020T120000{n}.db") for n in ("", "-2", "-3")]
+    others = [
+        copy_named(folder, "scrooge-backup-20260101T000000Z.db"),
+        copy_named(folder, "mine.txt"),
+        copy_named(tmp_path, "scrooge-20260101T000000.db"),  # not in backups/
+    ]
+    newest = same_second[-1]
+    removed = staging.prune_copies(database, keep=newest)
+    kept = [*old[-7:], *same_second]
+    assert staging.COPIES_KEPT == 10
+    assert removed == old[:8]
+    assert staging.copies(database) == kept
+    assert all(path.exists() for path in others)
+    assert staging.prune_copies(database, keep=newest) == []  # nothing more to do
+
+
+def test_pruning_never_removes_the_copy_just_made(tmp_path: Path) -> None:
+    database = tmp_path / "scrooge.db"
+    folder = tmp_path / "backups"
+    paths = [copy_named(folder, f"scrooge-202610{day:02d}T120000.db") for day in range(1, 14)]
+    # Its name is older than ten others (a clock set back): it is kept all the same.
+    removed = staging.prune_copies(database, keep=paths[0])
+    assert removed == paths[1:3]
+    assert staging.copies(database) == [paths[0], *paths[3:]]
+
+
+def test_a_copy_that_cannot_be_removed_is_left_and_the_rest_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "scrooge.db"
+    folder = tmp_path / "backups"
+    paths = [copy_named(folder, f"scrooge-202610{day:02d}T120000.db") for day in range(1, 15)]
+    unlink = Path.unlink
+
+    def refuse(path: Path, missing_ok: bool = False) -> None:
+        if path == paths[1]:
+            raise PermissionError(path)
+        unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refuse)
+    removed = staging.prune_copies(database, keep=paths[-1])
+    assert removed == [paths[0], paths[2], paths[3]]
+    assert staging.copies(database) == [paths[1], *paths[4:]]
+
+
+def test_a_commit_prunes_the_older_copies_only_when_it_changed_something(tmp_path: Path) -> None:
+    database = tmp_path / "scrooge.db"
+    conn = db.connect(database)
+    db.migrate(conn, NOW)
+    folder = tmp_path / "backups"
+    old = [copy_named(folder, f"scrooge-202610{day:02d}T120000.db") for day in range(1, 13)]
+    other = copy_named(folder, "scrooge-backup-20261001T000000Z.db")
+
+    assert staging.commit_with_copy(conn, database, owner=OWNER, now=LATER) == ([], None)
+    assert staging.copies(database) == old  # nothing committed: nothing pruned
+
+    staging.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
+    conn.execute("UPDATE transactions SET category_id = NULL, category_source = NULL")
+    with pytest.raises(staging.UncategorizedRowsError):
+        staging.commit_with_copy(conn, database, owner=OWNER, now=LATER)
+    assert staging.copies(database) == old  # refused: nothing pruned
+
+    staging.stage(conn, month_of(SEPTEMBER, "100", "-20"), NOW)
+    _, copy = staging.commit_with_copy(conn, database, owner=OWNER, now=LATER)
+    assert copy is not None
+    assert staging.copies(database) == [*old[3:], copy]
+    assert other.exists()
     conn.close()
 
 
