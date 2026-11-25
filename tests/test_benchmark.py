@@ -181,7 +181,7 @@ def test_a_benchmark_s_return_counts_from_where_the_time_weighted_return_does(
         conn,
         ("VT",),
         days(1, 3),
-        performance._Days(money(0, 0, 0), money(0, 0, 0), money(0, 0, 0)),
+        performance.Days(money(0, 0, 0), money(0, 0, 0), money(0, 0, 0)),
         totals=totals,
         currency="USD",
     )

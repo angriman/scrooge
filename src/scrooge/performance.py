@@ -493,7 +493,7 @@ def _followed(  # noqa: PLR0913  # the benchmarks, and the days and money of the
     conn: sqlite3.Connection,
     symbols: Sequence[str],
     days: Sequence[date],
-    every: _Days,
+    every: Days,
     *,
     totals: Measured,
     currency: str,
@@ -590,8 +590,52 @@ def _on(
     return convert([amount], currency, into, that_day)[0]
 
 
-# The names these had while they were private, for branches that still use them.
-_Days = Days
-_flows = external_flows
-_floor = floors
-_daily = daily_worth
+# --------------------------------------------------------------------------- one instrument
+
+
+def instrument_ranges(  # noqa: PLR0913  # the shares, what moved, the ranges, how to convert
+    series: Sequence[Series],
+    moved: Iterable[tuple[date, str, Decimal, bool]],
+    days: Sequence[date],
+    ranges: Sequence[str],
+    *,
+    currency: str,
+    rates: Mapping[str, Sequence[Decimal]],
+) -> dict[str, Measured | None]:
+    """What the shares of `series` (one instrument, in one account or several) returned over
+    each of `ranges` (of RANGES) ending with the last of `days`, in `currency`: measured as an
+    account is, the shares being all it holds.
+
+    `moved` is what was put into them or taken out of them: the day, the currency, the amount
+    (negative when taken out) and whether it is valued at the day's close. What the shares
+    bring when they come into view comes at the close, as for an account. A range other than
+    `all` is None unless the shares were held through all of it, worth something at the end
+    of the day before it and counting from its first day: a return over a part of it would
+    read as one over all of it. `all` runs from the day before anything was first held or
+    moved, and is None when no day ever counts. Here `since` is always the first day the
+    time-weighted return counts.
+    """
+    flows = {0: [_Flow(*each) for each in moved]}
+    daily = daily_worth([0], {0: series}, flows, days, currency=currency, rates=rates)
+    floor = floors(currency, rates, days)
+    active = next(
+        (
+            n
+            for n, (worth, put) in enumerate(zip(daily.values, daily.flows, strict=True))
+            if worth or put
+        ),
+        0,
+    )
+    found: dict[str, Measured | None] = {}
+    for range_ in ranges:
+        start = (base_day(range_, days[0], days[-1]) - days[0]).days
+        if range_ == "all":
+            start = max(start, active - 1)
+        part, first = daily.after(start), days[0] + timedelta(days=start + 1)
+        measured = _rounded(_measure(part, first, floor.after(start).values))
+        whole = range_ == "all" or (part.values[0] > 0 and measured.since is None)
+        if measured.twr is not None and whole:
+            found[range_] = replace(measured, since=measured.since or first)
+        else:
+            found[range_] = None
+    return found

@@ -21,6 +21,7 @@ from scrooge import (
     attention,
     categories,
     costs,
+    holding_returns,
     holds,
     importing,
     months,
@@ -267,10 +268,36 @@ def _position(position: portfolio.Position) -> JSON:
     }
 
 
-def holdings(held: portfolio.Portfolio) -> JSON:
+def _returns(returned: holding_returns.Returns | None) -> JSON | None:
+    if returned is None:
+        return None
+    return {
+        "periods": [
+            {"range": name, "first": None, "percent": None, "amount": None}
+            if period is None
+            else {
+                "range": name,
+                "first": day(period.first),
+                "percent": number(period.percent),
+                "amount": number(period.amount),
+            }
+            for name, period in returned.periods.items()
+        ],
+        "realised": number(returned.realised),
+        "unrealised": number(returned.unrealised),
+        "dividends": number(returned.dividends),
+        "tax": number(returned.tax),
+        "sold": returned.sold,
+        "too_small": returned.too_small,
+    }
+
+
+def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None = None) -> JSON:
     """What is held on `day`: the totals, each instrument with its positions account by
-    account, how it is spread (`portfolio.SPREADS`), and the bills by maturity. The API asks
-    it without the 3a fund units, which the pensions (`pensions_report`) count instead."""
+    account and what each returned (`holding_returns`), how it is spread
+    (`portfolio.SPREADS`), and the bills by maturity. The API asks it without the 3a fund units,
+    which the pensions (`pensions_report`) count instead."""
+    returned = returned or holding_returns.Found()
     positions: dict[tuple[str, str, str], list[portfolio.Position]] = {}
     for position in held.positions:
         key = (position.symbol, position.currency, position.asset)
@@ -296,8 +323,9 @@ def holdings(held: portfolio.Portfolio) -> JSON:
                 "cost": number(h.cost),
                 "gain": number(h.gain),
                 "return_percent": number(h.return_percent),
+                "returns": _returns(returned.holdings.get((h.symbol, h.currency, h.asset))),
                 "positions": [
-                    _position(p)
+                    {**_position(p), "returns": _returns(returned.positions.get(p))}
                     for p in sorted(
                         positions[h.symbol, h.currency, h.asset],
                         key=lambda p: (-p.value, p.owner, p.account),

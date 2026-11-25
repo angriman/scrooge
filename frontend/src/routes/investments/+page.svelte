@@ -26,18 +26,16 @@
 	let { data }: PageProps = $props();
 
 	const held = $derived(data.held?.holdings);
-	const errors = $derived(
-		[
-			...new Set(
-				data.held
-					? [...data.held.errors, ...(data.pensions?.errors ?? [])]
-					: [
-							...(data.income?.errors ?? data.performance?.errors ?? []),
-							...(data.costs?.sent?.errors ?? [])
-						]
-			)
-		]
-	);
+	const errors = $derived([
+		...new Set(
+			data.held
+				? [...data.held.errors, ...(data.pensions?.errors ?? [])]
+				: [
+						...(data.income?.errors ?? data.performance?.errors ?? []),
+						...(data.costs?.sent?.errors ?? [])
+					]
+		)
+	]);
 	const pensions = $derived(data.pensions?.pensions);
 	// The period the pensions' change is over: only the address changes, the figures of both
 	// are there.
