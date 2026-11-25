@@ -180,9 +180,10 @@ def test_an_account_is_its_net_flow_each_row_converted_on_its_day(
     found = shown(conn, "account", "IBKR USD")
     assert found.net
     assert not found.earned
-    # January 2026: 1000 dollars moved in at 0.90; February: a fee of 5 at 0.80.
-    assert (amounts(found)[16], amounts(found)[17]) == (Decimal(900), Decimal(-4))
-    assert sum(amounts(found)) == Decimal(896)
+    # January 2026: 1000 dollars moved in at 0.90. February's fee of 5 is what the money
+    # cost, not money taken out: it is only in the balance.
+    assert (amounts(found)[16], amounts(found)[17]) == (Decimal(900), Decimal(0))
+    assert sum(amounts(found)) == Decimal(900)
     assert (found.usual, found.merchants) == (Decimal(0), None)
     assert context.balance(conn, "IBKR USD", owner=OWNER, currency="CHF") == Decimal(796)
     assert context.balance(conn, "Nowhere", owner=OWNER, currency="CHF") is None
@@ -280,6 +281,47 @@ def test_an_exchange_nets_to_its_spread_and_trading_stays_inside() -> None:
     assert (july("Revolut CHF"), july("Revolut EUR")) == (Decimal(-1000), Decimal("997.50"))
     # Both together: the spread, 1050 euros at 0.95 for 1000 francs.
     assert july("Revolut CHF") + july("Revolut EUR") == Decimal("-2.50")
+    connection.close()
+
+
+def test_an_account_net_flow_leaves_out_what_its_money_earned_or_cost() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    broker = {"account": "IBKR CHF", "source_file": "ibkr.csv", "date": date(2026, 7, 10)}
+    rows = [
+        # Money put in: the only row that counts.
+        txn(
+            "2000",
+            source_ref="1",
+            kind=Kind.TRANSFER,
+            category=categories.OWN_TRANSFER,
+            **broker,
+        ),
+        # What the money earned or cost is a return, not money put in or taken out.
+        txn("40", source_ref="2", kind=Kind.DIVIDEND, category=categories.DIVIDENDS, **broker),
+        txn(
+            "-6",
+            source_ref="3",
+            kind=Kind.TAX,
+            category=categories.WITHHOLDING_TAX,
+            **broker,
+        ),
+        txn("12", source_ref="4", kind=Kind.INTEREST, category=categories.INTEREST, **broker),
+        txn("-3", source_ref="5", kind=Kind.INTEREST, category=categories.INTEREST, **broker),
+        txn("-2", source_ref="6", kind=Kind.COMMISSION, category=categories.FEES, **broker),
+        # A bill's principal repaid stays inside the account, like the bill bought.
+        txn(
+            "990",
+            source_ref="7",
+            kind=Kind.INCOME,
+            category=categories.INVESTMENTS,
+            **broker,
+        ),
+    ]
+    july_days = (date(2026, 7, 1), date(2026, 7, 31))
+    close(connection, OWNER, july_days, july_days[1], ("ibkr", rows))
+    found = context.run(connection, "account", "IBKR CHF", owner=OWNER, currency="CHF")
+    assert found.this_month == Decimal(2000)
     connection.close()
 
 
