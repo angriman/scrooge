@@ -424,19 +424,22 @@ def _with_copy(
 ) -> int:
     """Make `change` in one transaction, after a copy of the database, with every file put
     back when anything raises and the lock held throughout. The copy is dropped when the change
-    fails and everything was put back; it is kept, and named, when a file could not be."""
+    fails and everything was put back; it is kept, and named, when a file could not be. After a
+    change that succeeded the older copies beyond the newest `staging.COPIES_KEPT` are removed."""
     with yamlfiles.LOCK:
         copy = staging.copy_before(conn, places.database, now)
         try:
             with _kept([places.categories_file, *places.rule_files]), db.transaction(conn):
                 store.seed_categories(conn, categories.load(places.categories_file))
-                return change()
+                changed = change()
         except _UnrestoredError as exc:
             msg = f"{exc}; the database as it was before is kept in {copy}"
             raise SettingsError(msg) from exc
         except BaseException:
             copy.unlink()
             raise
+        staging.prune_copies(places.database, keep=copy)
+        return changed
 
 
 def _fresh_name(places: Places, name: str) -> str:

@@ -867,7 +867,8 @@ def _open(path: Path, origin: str, now: datetime, out: TextIO) -> sqlite3.Connec
 
     A database at an older schema is copied to `backups/` next to it first, and the copy is
     said. A migration that fails is refused with its reason: the migrations applied before it
-    stay (each is one transaction), and the copy is dropped when none was.
+    stay (each is one transaction), and the copy is dropped when none was. Once the schema is
+    reached, the older copies beyond the newest `staging.COPIES_KEPT` are removed.
     """
     _refuse_missing(path, "database", origin, _ONLY_INIT)
     conn = db.connect(path)
@@ -891,6 +892,7 @@ def _open(path: Path, origin: str, now: datetime, out: TextIO) -> sqlite3.Connec
         conn.close()
         raise
     if copy:
+        staging.prune_copies(path, keep=copy)  # the schema was reached: the older ones go
         out.write(
             f"{path}: schema version {found} brought up to {latest}. Copy from before: {copy}\n"
         )

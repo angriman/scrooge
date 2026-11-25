@@ -18,6 +18,7 @@ as it was.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
@@ -623,6 +624,10 @@ def _rules_kept() -> Iterator[dict[Path, bytes | None]]:
 
 
 BACKUPS = "backups"  # the folder of the copies, next to the database
+# Of the copies made before a commit, a change of categories or a new schema (`copy_before`)
+# this many, the newest, are kept once the operation has succeeded; the rest are removed. The
+# backups of `scrooge backup` are another kind and never counted or removed here.
+COPIES_KEPT = 10
 
 
 def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:
@@ -647,13 +652,56 @@ def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path
     return copy
 
 
+def copies(database: Path) -> list[Path]:
+    """The copies `copy_before` made of `database`, oldest first.
+
+    Only files named exactly as it names them: `<stem>-YYYYmmddTHHMMSS.db`, with `-2`, `-3`...
+    for the further ones of a second. Ordered by that moment and number, never by mtime: a
+    copy restored or touched later is no newer for it.
+    """
+    folder = database.parent / BACKUPS
+    pattern = re.compile(rf"{re.escape(database.stem)}-(\d{{8}}T\d{{6}})(?:-(\d+))?\.db")
+    found: list[tuple[str, int, Path]] = []
+    for path in folder.iterdir() if folder.is_dir() else ():
+        match = pattern.fullmatch(path.name)
+        if not match or not path.is_file():
+            continue
+        try:
+            datetime.fromisoformat(match[1])
+        except ValueError:  # digits of no real moment: a file of someone else's
+            continue
+        found.append((match[1], int(match[2] or 1), path))
+    return [path for _, _, path in sorted(found)]
+
+
+def prune_copies(database: Path, *, keep: Path) -> list[Path]:
+    """Remove all but the newest `COPIES_KEPT` copies of `database`, and `keep` whichever its
+    age: the one just made. Call it only once the operation that made `keep` has succeeded,
+    so that a copy a failed one needs is never among those removed.
+
+    A copy that cannot be removed is left, and the others still are: pruning is housekeeping
+    and never fails what it follows. Returns the copies removed, oldest first.
+    """
+    removed: list[Path] = []
+    for path in copies(database)[:-COPIES_KEPT]:
+        if path == keep:
+            continue
+        try:
+            path.unlink()
+        except OSError:  # locked, read-only folder, gone already: left for the next time
+            continue
+        removed.append(path)
+    return removed
+
+
 def commit_with_copy(
     conn: sqlite3.Connection, database: Path, *, owner: str, now: datetime
 ) -> tuple[list[store.StatementFile], Path | None]:
     """Commit what is staged for `owner` after saving a copy of the database next to it.
 
     Returns the statements committed and the copy, None when nothing was staged. The copy is
-    dropped when nothing changed, including when the commit is refused.
+    dropped when nothing changed, including when the commit is refused; when it is kept, the
+    older copies beyond the newest `COPIES_KEPT` are removed.
     """
     copy = copy_before(conn, database, now)
     try:
@@ -664,6 +712,7 @@ def commit_with_copy(
     if not done:
         copy.unlink()
         return done, None
+    prune_copies(database, keep=copy)
     return done, copy
 
 
