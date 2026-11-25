@@ -1,6 +1,6 @@
-"""`scrooge init | import | commit | statements | uncommit | discard | balance | keep | logo |
-prices | query | serve | password | publish | migrate-files | doctor`: the database from the
-terminal.
+"""`scrooge init | import | commit | statements | uncommit | discard | balance | position | close |
+keep | logo | prices | query | serve | password | publish | migrate-files | doctor`: the database
+from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/,
                               its database too (--container: for the app in a container, its
@@ -17,6 +17,9 @@ terminal.
     scrooge position <account> <YYYY-MM-DD> <symbol> <quantity> <currency>
                               type how many shares of one stock or ETF it held on a day
                               (--remove: take it back)
+    scrooge close <account> <YYYY-MM-DD>
+                              close an account on a day it held nothing at the end of: its
+                              history stays, listed apart (--reopen: open it again)
     scrooge keep <path>...    keep the files of statements imported before originals were kept
     scrooge logo <symbol> <file>
                               keep an SVG or PNG as the logo of an instrument (--remove to drop it)
@@ -142,6 +145,7 @@ from scrooge import (
     benchmark,
     categories,
     classification,
+    closing,
     doctor,
     importing,
     marketdata,
@@ -175,6 +179,7 @@ COMMANDS = (
     "discard",
     "balance",
     "position",
+    "close",
     "keep",
     "logo",
     "prices",
@@ -311,6 +316,7 @@ def _parser() -> argparse.ArgumentParser:
         help="for an instrument not known yet (default: Stocks); a known one keeps its own",
     )
     _rules_flags(held)
+    _close_parser(commands, shared)
     keep = commands.add_parser("keep", parents=[files], help="keep the files of stored statements")
     keep.add_argument(
         "paths",
@@ -355,6 +361,19 @@ def _parser() -> argparse.ArgumentParser:
     )
     _care_parsers(commands, setup, files)
     return parser
+
+
+def _close_parser(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser], shared: argparse.ArgumentParser
+) -> None:
+    closing = commands.add_parser(
+        "close", parents=[shared], help="close an account that holds nothing any more"
+    )
+    closing.add_argument("account", help="the account, as the accounts page names it")
+    closing.add_argument(
+        "day", type=date.fromisoformat, nargs="?", help="the day it was closed, as YYYY-MM-DD"
+    )
+    closing.add_argument("--reopen", action="store_true", help="open a closed account again")
 
 
 def _care_parsers(
@@ -893,22 +912,54 @@ def _check_copy(path: Path) -> None:
 
 def _for_owner(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:
     """The commands about one person's statements."""
-    conn, owner, out = session.conn, session.owner, session.console.out
     if args.command == "import":
         return _import(session, args, config)
     if args.command == "commit":
         return _commit(session)
     if args.command == "statements":
         return _statements(session)
+    if args.command in ("uncommit", "discard"):
+        return _take_back(session, args)
+    if args.command == "close":
+        return _close(session, args)
+    return _typed(session, args, config)
+
+
+def _take_back(session: _Session, args: argparse.Namespace) -> int:
+    """`uncommit` and `discard`: a statement staged again, or removed while staged."""
+    conn, owner, out = session.conn, session.owner, session.console.out
     if args.command == "uncommit":
         taken = staging.uncommit(conn, owner=owner, file_id=args.id)
         out.write(f"{taken.filename} is staged again for {owner}.\n")
         return OK
-    if args.command == "discard":
-        gone = staging.discard(conn, owner=owner, file_id=args.id)
-        out.write(f"{gone.filename} and what it staged are removed; its original is kept.\n")
+    gone = staging.discard(conn, owner=owner, file_id=args.id)
+    out.write(f"{gone.filename} and what it staged are removed; its original is kept.\n")
+    return OK
+
+
+def _close(session: _Session, args: argparse.Namespace) -> int:
+    """`close`: an account closed on a day, or opened again."""
+    conn, owner, out = session.conn, session.owner, session.console.out
+    if args.reopen:
+        if args.day is not None:
+            msg = "`close --reopen` takes no day: it opens the account again"
+            raise StagingError(msg)
+        day = closing.reopen(conn, owner=owner, account=args.account)
+        out.write(f"{args.account} of {owner} is open again (it was closed on {day}).\n")
         return OK
-    return _typed(session, args, config)
+    if args.day is None:
+        msg = "`close` needs the day the account was closed"
+        raise StagingError(msg)
+    today = session.now.date()
+    if args.day > today:
+        msg = f"{args.day} is after today ({today}): close it on a day that has begun"
+        raise StagingError(msg)
+    closing.close(conn, owner=owner, account=args.account, day=args.day)
+    out.write(
+        f"{args.account} of {owner} is closed on {args.day}: its history stays, listed with "
+        "the closed accounts.\n"
+    )
+    return OK
 
 
 def _typed(session: _Session, args: argparse.Namespace, config: dict[str, object]) -> int:

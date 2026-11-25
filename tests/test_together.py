@@ -177,3 +177,17 @@ def test_nothing_known_is_nothing_together() -> None:
     known = {key: found for key, found in HELD.items() if key != (OWNER, "ACME GBP")}
     rows = together.arranged(LINES, TRACKS, FILES, known)
     assert (rows[1].line.account, rows[1].held) == ("ACME", None)
+
+
+def test_a_brokers_currencies_are_closed_together_once_all_of_them_are() -> None:
+    first, last = date(2026, 9, 30), OCT
+    lines = (
+        Coverage(OWNER, "ACME CHF", "ibkr", OCT, None, first),
+        Coverage(OWNER, "ACME USD", "ibkr", OCT, None, None),
+    )
+    files = {(OWNER, "ACME CHF"): (file(1, OCT),), (OWNER, "ACME USD"): (file(1, OCT),)}
+    [row] = together.arranged(lines, {}, files, {})
+    assert (row.line.account, row.line.closed) == ("ACME", None)
+    lines = (lines[0], Coverage(OWNER, "ACME USD", "ibkr", OCT, None, last))
+    [row] = together.arranged(lines, {}, files, {})
+    assert row.line.closed == last

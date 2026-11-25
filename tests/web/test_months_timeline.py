@@ -8,7 +8,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from scrooge import staging
-from scrooge.storage import db
+from scrooge.storage import db, store
 from scrooge.web import app as webapp
 from tests.storage.helpers import OWNER, PARTNER, certificate, certified, txn
 from tests.web.builders import (
@@ -134,3 +134,30 @@ def test_a_certificate_after_the_statements_makes_no_account_behind(tmp_path: Pa
     assert re.search(r"<h2>Committed up to</h2>\s*<p class=\"value\">2026-08-31</p>", page)
     assert "Pillar 2 AXA" in page  # the timeline still shows the day of the certificate
     assert "committed 2026-10-15 to 2026-10-15" in page
+
+
+def test_a_closed_account_is_listed_apart_and_never_behind(
+    client: TestClient, tmp_path: Path
+) -> None:
+    conn = db.connect(tmp_path / "f.db")  # the fixture's: each request reads it afresh
+    revolut = store.account_of(conn, store.owner_id(conn, OWNER) or 0, "Revolut CHF")
+    assert revolut is not None
+    store.set_closed(conn, revolut.id, date(2026, 6, 30))
+    conn.close()
+    page = client.get("/months").text
+    # The people's accounts, the closed ones on the timeline, then in the table of detail.
+    assert re.findall(r"<h3>([\w ]+)</h3>", page) == [
+        "Anna",
+        "Lukas",
+        "Closed accounts",
+        "Closed accounts",
+    ]
+    assert '<div class="row behind">' not in page
+    assert "none behind; 1 closed" in page
+    assert "Revolut CHF <small>Revolut account statement · Lukas, closed 2026-06-30</small>" in page
+    assert '<td class="date" data-label="Closed on">2026-06-30</td>' in page
+    sent = client.get("/api/statements").json()["accounts"]
+    shown = [(a["owner"], a["account"], a["closed"], a["behind"]) for a in sent]
+    assert ("Lukas", "Revolut CHF", "2026-06-30", False) in shown
+    assert ("Lukas", "Migros", None, False) in shown
+    assert client.get("/api/attention").json()["behind"] == []

@@ -89,6 +89,10 @@ class OtherOwnerError(StagingError):
     """The statement is of an account whose statements were imported for another person."""
 
 
+class ClosedAccountError(StagingError):
+    """Something is booked, stated or typed for a closed account after the day it was closed."""
+
+
 @dataclass(frozen=True, slots=True)
 class Batch:
     """Statements of one person, as the pipeline produced them.
@@ -233,7 +237,7 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
         gaps = tuple(str(gap) for gap in _unsettled(conn, owner_id))
         store.apply_overrides(conn)
         pairs.mark(conn)
-        nothing = [part.statement.filename for part in parts.values() if not part.staged]
+        refuse_after_closing(conn, owner_id)
         return Staged(
             files=tuple(sorted({*files.values(), *stored})),
             transactions=len(new),
@@ -242,7 +246,11 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
             already=already,
             differences=tuple(differences),
             later=later,
-            nothing_new=tuple(sorted([*nothing, *unchanged])),
+            nothing_new=tuple(
+                sorted(
+                    [*(p.statement.filename for p in parts.values() if not p.staged), *unchanged]
+                )
+            ),
         )
 
 
@@ -857,6 +865,7 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
             )
             store.set_typed_balance(conn, account_id, day, amount)
             _refuse_unfollowed_balances(conn, account, account_id)
+            refuse_after_closing(conn, owner_id)
             return
         source = found.source if found is not None and found.kind == _CARRIED_FLAT else None
         account_id = store.ensure_account(
@@ -865,6 +874,7 @@ def type_balance(  # noqa: PLR0913  # one fact: who, which account, when, how mu
         if source is not None:
             _refuse_certified_day(conn, account, account_id, day, currency)
         store.set_typed_balance(conn, account_id, day, amount)
+        refuse_after_closing(conn, owner_id)
 
 
 def _refuse_unfollowed_balances(conn: sqlite3.Connection, name: str, account: int) -> None:
@@ -976,6 +986,7 @@ def type_holding(
                 raise store.AccountMismatchError(msg)
             store.set_typed_holding(conn, found.id, day, holding)
             _refuse_unfollowed_holdings(conn, account, owner_id, found.id)
+            refuse_after_closing(conn, owner_id)
             return
         if found is not None and found.source is None and found.kind == "manual":
             account_id = found.id
@@ -984,6 +995,41 @@ def type_holding(
                 conn, owner_id, name=account, kind="manual", currency=holding.currency, source=None
             )
         store.set_typed_holding(conn, account_id, day, holding)
+        refuse_after_closing(conn, owner_id)
+
+
+def refuse_after_closing(
+    conn: sqlite3.Connection,
+    owner_id: int,
+    advice: str = "open it again ('scrooge close --reopen') if it is in use",
+) -> None:
+    """Of each closed account of the owner, nothing is booked after the day it was closed, and
+    no balance or quantity other than none is stated or typed for a later day: a statement or
+    a figure that says otherwise is refused, until the account is opened again."""
+    closed = store.closed_accounts(conn, owner_id)
+    if not closed:
+        return
+    held = holdings.held(conn, owner_id=owner_id)
+    symbols = store.symbols(conn)
+    for account, name, day in closed:
+        found: list[str] = []
+        if (last := store.booked_after(conn, account, day)) is not None:
+            found.append(f"rows are booked up to {last}")
+        found += [
+            f"it held {amount:,.2f} on {when}"
+            for when, amount in store.balances_of(conn, account)
+            if when > day and amount
+        ]
+        found += [
+            f"it held {step.quantity.normalize():f} {symbols[holding.instrument_id]} on {step.day}"
+            for holding in held
+            if holding.account_id == account
+            for step in holding.steps
+            if step.day > day and step.quantity
+        ]
+        if found:
+            msg = f"{name} was closed on {day}, and after it {found[0]}: {advice}"
+            raise ClosedAccountError(msg)
 
 
 def would_refuse(conn: sqlite3.Connection, owner_id: int) -> list[ReconciliationError]:

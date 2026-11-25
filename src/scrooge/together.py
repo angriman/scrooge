@@ -117,14 +117,17 @@ def grouped(
 
 
 def _together(stem: str | None, parts: Sequence[months.Coverage]) -> months.Coverage:
-    """The line of accounts together: committed as far as the furthest, staged beyond that."""
+    """The line of accounts together: committed as far as the furthest, staged beyond that,
+    closed when every one of them is, on the last of their days."""
     first = parts[0]
     if stem is None or len(parts) == 1:
         return first
     committed = max((part.committed for part in parts if part.committed), default=None)
     staged = max((part.staged for part in parts if part.staged), default=None)
     ahead = staged if staged and (not committed or staged > committed) else None
-    return months.Coverage(first.owner, stem, first.source, committed, ahead)
+    days = [part.closed for part in parts if part.closed]
+    closed = max(days) if len(days) == len(parts) else None
+    return months.Coverage(first.owner, stem, first.source, committed, ahead, closed)
 
 
 def _row(

@@ -4,6 +4,8 @@
 {%- if timeline %}
 {%- set committed = coverage|rejectattr("certificate")|map(attribute="coverage.committed")|select|list or coverage|map(attribute="coverage.committed")|select|list %}
 {%- set late = coverage|selectattr("behind")|list|length %}
+{%- set open = coverage|rejectattr("closed")|list %}
+{%- set closed = coverage|selectattr("closed")|list %}
 <div class="tiles">
   <section class="tile lead">
     <h2>Committed up to</h2>
@@ -12,8 +14,8 @@
   </section>
   <section class="tile">
     <h2>Accounts</h2>
-    <p class="value">{{ coverage|length }}</p>
-    <p class="then{% if late %} worse{% endif %}">{% if late %}{{ late }} behind: a statement is probably missing{% else %}none behind{% endif %}</p>
+    <p class="value">{{ open|length }}</p>
+    <p class="then{% if late %} worse{% endif %}">{% if late %}{{ late }} behind: a statement is probably missing{% else %}none behind{% endif %}{% if closed %}; {{ closed|length }} closed{% endif %}</p>
   </section>
   <section class="tile">
     <h2>Staged</h2>
@@ -38,7 +40,7 @@
     </div>
     {%- for row in rows %}
     <div class="row{% if row.behind %} behind{% endif %}">
-      <span class="who">{{ row.track.account }} <small>{{ row.track.label }}{% if row.behind %} · <strong>behind</strong>{% endif %}</small></span>
+      <span class="who">{{ row.track.account }} <small>{{ row.track.label }}{% if row.behind %} · <strong>behind</strong>{% endif %}{% if row.closed %} · {{ row.track.owner }}, closed {{ row.closed }}{% endif %}</small></span>
       <svg viewBox="0 0 {{ timeline.width }} 18" preserveAspectRatio="none" role="img" aria-label="{{ row.track.owner }}, {{ row.track.account }}: {% for run in row.runs %}{{ 'committed' if run.span.committed else 'staged' }} {{ run.span.first }} to {{ run.span.last }}{{ '; ' if not loop.last }}{% endfor %}">
         {%- for tick in timeline.ticks %}
         <line class="{{ 'year' if tick.year else 'grid' }}" x1="{{ tick.x }}" x2="{{ tick.x }}" y1="0" y2="18" vector-effect="non-scaling-stroke"/>
@@ -67,7 +69,7 @@
       <tr><th>Person</th><th>Account</th><th>Source</th><th>Committed to</th><th>Staged to</th></tr>
     </thead>
     <tbody>
-      {%- for line in coverage %}
+      {%- for line in open %}
       <tr{% if line.behind %} class="behind"{% endif %}>
         <td class="lead">{{ line.coverage.owner }}</td>
         <td data-label="Account">{{ line.coverage.account }}</td>
@@ -79,6 +81,26 @@
     </tbody>
   </table>
   <p class="note">An account is behind when its last committed day is more than {{ behind }} days before the newest day committed for the same person, or longer for one that reports less often (a quarter for Morgan Stanley, Tastytrade and Schwab, over a year for finpension): a statement is probably missing.</p>
+  {%- if closed %}
+  <h3>Closed accounts</h3>
+  <table class="cards">
+    <thead>
+      <tr><th>Person</th><th>Account</th><th>Source</th><th>Committed to</th><th>Closed on</th></tr>
+    </thead>
+    <tbody>
+      {%- for line in closed %}
+      <tr>
+        <td class="lead">{{ line.coverage.owner }}</td>
+        <td data-label="Account">{{ line.coverage.account }}</td>
+        <td data-label="Source">{{ line.coverage.label }}</td>
+        <td class="date" data-label="Committed to">{{ line.coverage.committed or "nothing" }}</td>
+        <td class="date" data-label="Closed on">{{ line.coverage.closed }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  <p class="note">A closed account keeps its history: what it held still counts on every page up to the day it was closed. <code>scrooge close --reopen</code> opens one again.</p>
+  {%- endif %}
   <table class="cards">
     <thead>
       <tr><th>Person</th><th>Committed</th><th class="number">Transactions</th><th class="number">Staged</th></tr>

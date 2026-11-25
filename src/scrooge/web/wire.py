@@ -386,13 +386,15 @@ def statements_account(
     spans: Sequence[months.Span],
     files: Sequence[JSON],
 ) -> JSON:
-    """An account a source feeds: how far it is committed and staged, whether it is behind, what
-    it holds now, the runs of days its statements cover, and the statements themselves."""
+    """An account a source feeds: how far it is committed and staged, whether it is behind, the
+    day it was closed, what it holds now, the runs of days its statements cover, and the
+    statements themselves."""
     return {
         **account(line),
         "source": line.source,
         "staged": day(line.staged),
         "behind": late,
+        "closed": day(line.closed),
         "monthly": months.monthly(line),
         "balance": number(balance),
         "spans": [
