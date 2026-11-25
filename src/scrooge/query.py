@@ -201,6 +201,8 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
             names.append(r["name"])
         if not top:
             leaves.setdefault(heading, []).append(r["name"])
+    # Found under Banking, as the cash flow counts it, though no row is given it.
+    groups.get(categories.GROUP_BANKING, []).append(categories.INTEREST_CHARGED)
     return Choices(
         tuple(r["name"] for r in accounts),
         tuple((heading, tuple(names)) for heading, names in groups.items()),
@@ -224,11 +226,28 @@ def span(text: str) -> tuple[date, date]:
     return day, day
 
 
+# A row's category and top-level one as the cash flow counts them: interest charged
+# (`categories.charged`, here in SQL) as the leaf INTEREST_CHARGED of Banking.
+_CHARGED = f"(category = '{categories.INTEREST}' AND amount_nano < 0)"
+_CATEGORY = f"CASE WHEN {_CHARGED} THEN '{categories.INTEREST_CHARGED}' ELSE category END"
+_PARENT = f"CASE WHEN {_CHARGED} THEN '{categories.GROUP_BANKING}' ELSE category_parent END"
+
+
+def category_key(conn: sqlite3.Connection, name: str) -> str:
+    """The key of the category `name` means, by its key or its label (`store.category_key`):
+    `categories.INTEREST_CHARGED` too, which no row is given but the cash flow counts by."""
+    if categories.key(name) == categories.INTEREST_CHARGED:
+        return categories.INTEREST_CHARGED
+    return store.category_key(conn, name)
+
+
 def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
     """The committed transactions that match `wanted`, with what they add up to. Its category
-    may be named by its key or its label (`store.category_key`)."""
+    may be named by its key or its label (`category_key`), and finds the rows the cash flow
+    counts under it: Interest those at or above nothing, Banking and Interest charged those
+    below (plan decision 52)."""
     if wanted.category is not None:
-        wanted = replace(wanted, category=store.category_key(conn, wanted.category))
+        wanted = replace(wanted, category=category_key(conn, wanted.category))
     check_names(conn, wanted)
     column = "booking_date" if wanted.booking else "date"
     conditions: list[tuple[str, object]] = [
@@ -236,7 +255,7 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         (f"{column} <= ?", wanted.last and wanted.last.isoformat()),
         ("owner = ?", wanted.owner),
         ("account = ?", wanted.account),
-        ("? IN (category, category_parent)", wanted.category),
+        (f"? IN ({_CATEGORY}, {_PARENT})", wanted.category),
         ("kind = ?", wanted.kind and wanted.kind.value),
         (
             "kind IN (SELECT value FROM json_each(?))",
@@ -284,7 +303,7 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
 def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
     """Refuse a name nothing can match: a typo would otherwise read as "no transactions". A
     category may be named by its key or its label."""
-    category = wanted.category and store.category_key(conn, wanted.category)
+    category = wanted.category and category_key(conn, wanted.category)
     checks = (
         ("owner", wanted.owner, "SELECT 1 FROM owners WHERE name = ?"),
         (
@@ -296,7 +315,8 @@ def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
         ("category", wanted.category, "SELECT 1 FROM categories WHERE key = ?"),
     )
     for what, name, sql in checks:
-        if name is None:
+        # Interest charged is no stored category, and always there to find (`run`).
+        if name is None or (what == "category" and category == categories.INTEREST_CHARGED):
             continue
         args = {"account": (name, wanted.owner), "category": (category,)}.get(what, (name,))
         if conn.execute(sql, args).fetchone() is None:
@@ -363,10 +383,12 @@ TRANSFERS = "Transfers"  # what the rows of kind `internal`, which have no categ
 
 def by_category(rows: Iterable[Row], ranks: store.Ranks) -> tuple[CategorySum, ...]:
     """What `rows` add up to by top-level category and currency, the largest first; equal
-    ones in the taxonomy's order (`ranks`)."""
+    ones in the taxonomy's order (`ranks`). Interest charged is of Banking (`run`)."""
     sums: dict[tuple[str, str], tuple[int, Decimal]] = {}
     for row in rows:
-        key = (row.category_parent or row.category or TRANSFERS, row.currency)
+        charged = categories.charged(row.category, to_nano(row.amount))
+        top = categories.GROUP_BANKING if charged else row.category_parent or row.category
+        key = (top or TRANSFERS, row.currency)
         count, total = sums.get(key, (0, Decimal(0)))
         sums[key] = (count + 1, total + row.amount)
     return tuple(

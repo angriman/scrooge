@@ -35,7 +35,6 @@ from scrooge.cashflow import _INVESTING, Counted
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
 from scrooge.networth import DEFAULT_CURRENCY
-from scrooge.storage import store
 
 KINDS = ("category", "merchant", "account")  # what the transactions can be cut to
 MONTHS = 24  # shown, the last one included
@@ -117,7 +116,7 @@ def run(
         ),
     )
     if kind == "category":  # named by its key or its label
-        name = store.category_key(conn, name)
+        name = query.category_key(conn, name)
     earned = kind == "category" and _is_earned(conn, name)
     # Every counted row, so that the months known are those of the history, not only those
     # of the rows that match.

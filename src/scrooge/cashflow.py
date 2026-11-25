@@ -2,17 +2,19 @@
 
 Only committed months are read. A row counts on the day it really happened, on the side of
 its category: `income` is income, `expenses` an expense, so a refund lowers the expenses of its
-category. Buying and selling securities and the results of trading are neither: they are
-investing, kept apart so that a bill bought and repaid does not swamp the rest (decided
-2026-10-08). Moves between a person's own accounts and currency exchanges are never counted;
-what the two people pay each other is counted for one person and left out for both together
-(plan 7.1). Amounts stay in their own currency: nothing is converted here.
+category. Interest charged (a row of Interest below nothing) is what an account cost: an
+expense of Banking, under a leaf of its own, never income lowered (plan decision 52). Buying
+and selling securities and the results of trading are neither: they are investing, kept apart
+so that a bill bought and repaid does not swamp the rest (decided 2026-10-08). Moves between a
+person's own accounts and currency exchanges are never counted; what the two people pay each
+other is counted for one person and left out for both together (plan 7.1). Amounts stay in
+their own currency: nothing is converted here.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
@@ -104,7 +106,8 @@ def days(name: str) -> tuple[date, date]:
 @dataclass(frozen=True, slots=True)
 class Counted:
     """A row the cash-flow page counts: neither a move between one's own accounts nor an
-    exchange. `side` is that of its category, `top` the top-level category of its leaf."""
+    exchange. `side` is that of its category, `top` the top-level category of its leaf; for
+    interest charged (`categories.charged`) an expense, of Banking, leaf `INTEREST_CHARGED`."""
 
     day: date
     owner: str
@@ -139,8 +142,17 @@ def counted(conn: sqlite3.Connection, owner: str | None = None) -> list[Counted]
         (*(kind.value for kind in _NOT_COUNTED), owner, owner),
     ).fetchall()
     return [
-        Counted(date.fromisoformat(row[0]), row[1], row[2], Kind(row[3]), *row[4:]) for row in found
+        _counted(Counted(date.fromisoformat(r[0]), r[1], r[2], Kind(r[3]), *r[4:])) for r in found
     ]
+
+
+def _counted(row: Counted) -> Counted:
+    """`row` as it counts: interest charged is an expense of Banking (plan decision 52)."""
+    if not categories.charged(row.leaf, row.amount_nano):
+        return row
+    return replace(
+        row, side=EXPENSES, top=categories.GROUP_BANKING, leaf=categories.INTEREST_CHARGED
+    )
 
 
 def run(
