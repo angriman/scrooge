@@ -206,11 +206,13 @@ def category_key(conn: sqlite3.Connection, name: str) -> str:
     return str(found[0]) if found else name
 
 
-def category_labels(conn: sqlite3.Connection) -> categories.Labels:
+def category_labels(
+    conn: sqlite3.Connection, language: str = categories.LANGUAGE
+) -> categories.Labels:
     """The label of every category the database holds: a built-in one's from its key, an added
     one's the name it was given."""
     rows = conn.execute("SELECT key, name FROM categories ORDER BY id").fetchall()
-    return categories.Labels({row["key"]: row["name"] for row in rows})
+    return categories.Labels({row["key"]: row["name"] for row in rows}, language=language)
 
 
 # The taxonomy's own order, never the names (which change with the language): expenses, then

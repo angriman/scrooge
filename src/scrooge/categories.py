@@ -292,6 +292,7 @@ LABELS_IT: dict[str, str] = {
     OWN_TRANSFER: "Giroconto",
 }
 LABELS: dict[str, dict[str, str]] = {"en": LABELS_EN, "it": LABELS_IT}
+LANGUAGES: tuple[str, ...] = tuple(LABELS)
 LANGUAGE = "en"  # what the pages and the terminal show
 # The key of every label a file may name a built-in category by. The Italian ones can go
 # once `scrooge migrate-files` has been out for a release or two: then only the English.
@@ -351,14 +352,14 @@ class Labels:
         return shown if key(shown) == name else name
 
     @classmethod
-    def of(cls, extras: Iterable[Extra]) -> Labels:
+    def of(cls, extras: Iterable[Extra], language: str = LANGUAGE) -> Labels:
         """The labels of the taxonomy and of what `categories.yaml` adds."""
         added = {}
         for extra in extras:
             added[extra.key] = extra.name
             if extra.group:
                 added.setdefault(extra.group_key, extra.group)
-        return cls(added)
+        return cls(added, language=language)
 
 
 # Every leaf category, in the order rows are written to the sheet.

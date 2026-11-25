@@ -27,7 +27,7 @@ from scrooge import categories, query, settings, staging
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store
 from scrooge.web import wire
-from scrooge.web.api import _refused, _sent
+from scrooge.web.api import _refused, _sent, language_of
 
 # What a change refused answers: what was asked cannot be done as it is.
 _REFUSED = (settings.SettingsError, staging.StagingError, ConfigError)
@@ -112,7 +112,7 @@ def _test(request: Request) -> Response:
             )
         except settings.SettingsError as exc:
             return _refused((wire.sentence(exc),))
-        label = store.category_labels(conn)
+        label = store.category_labels(conn, language=language_of(request))
     cut = f"It took too long: only the {tried.tried} newest rows were tried."
     return JSONResponse(
         {
@@ -211,7 +211,7 @@ def _listed_categories(request: Request) -> Response:
     top-level expense categories a new one can go under."""
     file = _categories_file(request)
     extras = categories.load(file) if file else ()
-    label = categories.Labels.of(extras)
+    label = categories.Labels.of(extras, language=language_of(request))
     with db.reading(request.app.state.database) as conn:
         listed = settings.listed_categories(conn, file)
     unmatched: str = request.app.state.unmatched

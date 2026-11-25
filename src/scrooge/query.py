@@ -185,7 +185,9 @@ class Choices:
 HEADINGS = {"income": "Income", "transfer": "Transfer"}  # the sides without groups
 
 
-def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
+def choices(
+    conn: sqlite3.Connection, owner: str | None = None, language: str = categories.LANGUAGE
+) -> Choices:
     """The accounts of `owner` (of everyone without one) and the whole taxonomy, by key."""
     accounts = conn.execute(
         "SELECT DISTINCT a.name FROM accounts a JOIN owners o ON o.id = a.owner_id "
@@ -213,7 +215,7 @@ def choices(conn: sqlite3.Connection, owner: str | None = None) -> Choices:
         tuple((heading, tuple(names)) for heading, names in groups.items()),
         tuple((heading, tuple(names)) for heading, names in leaves.items()),
         tuple(r["name"] for r in found if r["side"] == "expenses" and r["parent"] is None),
-        store.category_labels(conn),
+        store.category_labels(conn, language=language),
     )
 
 
