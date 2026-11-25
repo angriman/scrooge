@@ -567,6 +567,9 @@ def test_choosing_a_language_remembers_it_in_a_cookie_and_translates_categories(
         client.get("/api/cashflow", params={"lang": "en"}).json()["report"]["categories"][0]["name"]
         == categories.LABELS_EN[categories.GROUP_FOOD]
     )
+    csv_it = client.get("/transactions.csv").text
+    assert categories.LABELS_IT[categories.GROCERIES] in csv_it
+    assert expected_food in csv_it
 
 
 def test_choosing_a_language_is_allowed_in_read_only_mode(database: Path) -> None:

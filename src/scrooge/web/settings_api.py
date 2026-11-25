@@ -68,7 +68,7 @@ def _rules(request: Request) -> Response:
     files = settings.rule_files(shared, people, owner) if shared else []
     with db.reading(request.app.state.database) as conn:
         listed, problems = settings.rules(conn, files, owner)
-        found = query.choices(conn)
+        found = query.choices(conn, language=language_of(request))
     return JSONResponse(
         {
             "people": people,
@@ -211,9 +211,10 @@ def _listed_categories(request: Request) -> Response:
     top-level expense categories a new one can go under."""
     file = _categories_file(request)
     extras = categories.load(file) if file else ()
-    label = categories.Labels.of(extras, language=language_of(request))
+    language = language_of(request)
+    label = categories.Labels.of(extras, language=language)
     with db.reading(request.app.state.database) as conn:
-        listed = settings.listed_categories(conn, file)
+        listed = settings.listed_categories(conn, file, language=language)
     unmatched: str = request.app.state.unmatched
     return JSONResponse(
         {

@@ -591,3 +591,15 @@ def test_a_change_whose_files_cannot_be_put_back_keeps_the_copy(
     (copy,) = (places.database.parent / "backups").iterdir()
     assert str(copy) in said
     assert ("Anna Meier", "Prestiti") in _categories_of(conn)  # the database rolled back
+
+
+def test_listed_categories_uses_the_requested_language(
+    conn: sqlite3.Connection, places: settings.Places
+) -> None:
+    listed = {
+        c.key: c for c in settings.listed_categories(conn, places.categories_file, language="it")
+    }
+    assert listed[categories.GROCERIES].name == categories.LABELS_IT[categories.GROCERIES]
+    assert listed[categories.GROCERIES].parent == categories.LABELS_IT[categories.GROUP_FOOD]
+    assert listed["shipping"].name == "Shipping"
+    assert listed["shipping"].parent == categories.LABELS_IT[categories.GROUP_TRANSPORT]
