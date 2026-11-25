@@ -22,6 +22,7 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import date
 from decimal import Decimal
+from typing import Concatenate, ParamSpec, TypeVar
 
 from scrooge.classification import Rule
 from scrooge.models import Kind, Transaction
@@ -30,9 +31,10 @@ from scrooge.models import Kind, Transaction
 Text = tuple[str, bool, str, str]
 # A rule as it is counted: pattern, account, direction, and whose rows (None: everyone's).
 Spec = tuple[str, str, str, str | None]
-Put = Callable[[object], None]
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+Put = Callable[[_T], None]
 
-_DONE = "done"
 _BATCH = 500  # texts decided before what was found is handed back
 _CONTEXT = multiprocessing.get_context("forkserver")
 _CONTEXT.set_forkserver_preload([__name__])
@@ -53,7 +55,9 @@ def _read(text: Text) -> Transaction:
     )
 
 
-def matching(match: str, direction: str, texts: Sequence[Text], put: Put) -> None:
+def matching(
+    put: Put[tuple[int, list[int]]], match: str, direction: str, texts: Sequence[Text]
+) -> None:
     """Hand back, a batch at a time, how many of `texts` (in their order) are decided so far
     and which of them the pattern `match` matches in `direction`: `(decided, [indexes])`."""
     rule = Rule(re.compile(match, re.IGNORECASE), "", direction=direction)
@@ -67,7 +71,11 @@ def matching(match: str, direction: str, texts: Sequence[Text], put: Put) -> Non
     put((len(texts), found))
 
 
-def counting(specs: Sequence[Spec], texts: Sequence[tuple[str, Text, int]], put: Put) -> None:
+def counting(
+    put: Put[tuple[int, int | None]],
+    specs: Sequence[Spec],
+    texts: Sequence[tuple[str, Text, int]],
+) -> None:
     """Hand back, rule by rule, `(index, rows)`: how many rows of `texts` (owner, text, how
     many rows read so) each of `specs` matches on its own; None for one that is no pattern."""
     for n, (match, account, direction, owner) in enumerate(specs):
@@ -89,32 +97,38 @@ def counting(specs: Sequence[Spec], texts: Sequence[tuple[str, Text, int]], put:
         )
 
 
+class _Done:
+    """Marks the end of what the child process sends."""
+
+
 def _child(
     work: Callable[..., None], args: tuple[object, ...], out: multiprocessing.queues.Queue[object]
 ) -> None:
     try:
-        work(*args, out.put)
+        work(out.put, *args)
     finally:
-        out.put(_DONE)
+        out.put(_Done())
 
 
 def bounded(
-    work: Callable[..., None], args: tuple[object, ...], seconds: float
-) -> tuple[list[object], bool]:
-    """Run `work(*args, put)` in a process of its own for at most `seconds`: what it put, in
+    work: Callable[Concatenate[Put[_T], _P], None],
+    args: tuple[object, ...],
+    seconds: float,
+) -> tuple[list[_T], bool]:
+    """Run `work(put, *args)` in a process of its own for at most `seconds`: what it put, in
     order, and whether it finished. When time is up the process is killed."""
-    out: multiprocessing.queues.Queue[object] = _CONTEXT.Queue()
+    out: multiprocessing.queues.Queue[_T | _Done] = _CONTEXT.Queue()
     process = _CONTEXT.Process(target=_child, args=(work, args, out), daemon=True)
     process.start()
     deadline = time.monotonic() + seconds
-    got: list[object] = []
+    got: list[_T] = []
     try:
         while True:
             try:
                 item = out.get(timeout=max(deadline - time.monotonic(), 0.001))
             except queue.Empty:
                 return got, False
-            if item == _DONE:
+            if isinstance(item, _Done):
                 process.join(1)
                 return got, process.exitcode == 0
             got.append(item)

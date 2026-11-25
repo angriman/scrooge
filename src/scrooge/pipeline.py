@@ -102,10 +102,17 @@ def resolve_holdings(
     resolved: list[Statement] = []
     for statement in statements:
         held = statement.extraction.holdings
-        if held:
-            named = tuple(classification.resolve_holding(h, instruments) for h in held)
-            statement = replace(statement, extraction=replace(statement.extraction, holdings=named))  # noqa: PLW2901  # the same statement, with its instruments named
-        resolved.append(statement)
+        resolved.append(
+            replace(
+                statement,
+                extraction=replace(
+                    statement.extraction,
+                    holdings=tuple(classification.resolve_holding(h, instruments) for h in held),
+                ),
+            )
+            if held
+            else statement
+        )
     return resolved
 
 
