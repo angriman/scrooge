@@ -147,17 +147,8 @@ def read(owner: str, files: Sequence[Path], setup: Setup, unpack_into: Path | No
 
 def _unpacked(named: Mapping[Path, str], folder: Path) -> tuple[dict[Path, str], list[File]]:
     """`named` with each zip replaced by its files, and the zips and files of zips refused."""
-    files = {path: name for path, name in named.items() if not archives.is_zip(path)}
-    taken = set(named.values())
-    refused: list[File] = []
-    zips = sorted((name, path) for path, name in named.items() if archives.is_zip(path))
-    for number, (name, path) in enumerate(zips, start=1):
-        for entry in archives.unpack(path, name, folder / str(number), taken):
-            if entry.problem:
-                refused.append(File(entry.path, entry.name, problem=entry.problem))
-            else:
-                files[entry.path] = entry.name
-    return files, refused
+    files, refused = archives.unpack_all(named, folder)
+    return files, [File(entry.path, entry.name, problem=entry.problem) for entry in refused]
 
 
 def _read_one(

@@ -53,7 +53,8 @@ was read is printed, to be compared with the paper.
 `import` keeps every file it stages in the folder `originals` next to the database, under its
 SHA-256: the rows of the database say which file they came from, and that file is there.
 `keep` does the same for statements imported earlier: of the files named it keeps those the
-database was filled from, and says which statements still have no original.
+database was filled from, and says which statements still have no original. It opens a zip
+as `import` does and keeps the files in it, never the zip; a zip it refuses makes it exit 1.
 
 The config is `--config`; else `scrooge.yaml` in the folder the command runs in; else the
 setup `users/<name>/scrooge.yaml` that `--user` or $SCROOGE_USER names, or the only one in
@@ -142,6 +143,7 @@ import uvicorn
 import yaml
 
 from scrooge import (
+    archives,
     benchmark,
     categories,
     classification,
@@ -1313,16 +1315,20 @@ def _statements(session: _Session) -> int:
 
 
 def _keep(conn: sqlite3.Connection, database: Path, files: Sequence[Path], out: TextIO) -> int:
-    """Keep those of `files` the database was filled from, and say what is still not kept."""
+    """Keep those of `files` the database was filled from, and say what is still not kept.
+    A zip is opened as `import` opens it: its files are kept, never the zip."""
     folder = originals.folder_of(database)
     known = store.statement_names(conn)
-    kept = originals.keep(folder, files, known)
-    out.write(f"{len(kept)} of {len(files)} files kept in {folder}.\n")
+    with tempfile.TemporaryDirectory() as unpacked:
+        read, refused = archives.unpack_all(pipeline.names(files), Path(unpacked))
+        kept = originals.keep(folder, read, known)
+    out.write(f"{len(kept)} of {len(read) + len(refused)} files kept in {folder}.\n")
+    out.writelines(f"  refused {entry.name}: {entry.problem}\n" for entry in refused)
     without = sorted(
         name for digest, name in known.items() if originals.find(folder, digest, name) is None
     )
     out.writelines(f"  no original: {name}\n" for name in without)
-    return OK
+    return FAILED if refused else OK
 
 
 def _logo(conn: sqlite3.Connection, args: argparse.Namespace, now: datetime, out: TextIO) -> int:
