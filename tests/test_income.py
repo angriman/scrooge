@@ -180,9 +180,8 @@ def test_the_employers_share_is_of_the_twelve_months_ending_with_each_period(
     # Before twelve months of income are known, there is no share.
     assert share["2025-01"] is None
     assert share["2025-11"] is None
-    assert share["2025-12"] == Decimal("0.999")  # 60000 of 60080: the 2025 dividend
-    assert share["2026-07"] == Decimal("0.995")  # 60000 of 60291
-    assert share["2026-08"] == Decimal("0.995")
+    assert share["2025-12"] == Decimal(60000) / 60080  # the 2025 dividend
+    assert share["2026-07"] == share["2026-08"] == Decimal(60000) / 60291
 
 
 def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
@@ -191,9 +190,9 @@ def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
     quarters = his(conn, grouping=Grouping.QUARTER, last=date(2026, 12, 31))
     share = {p.name: p.employer for p in quarters.periods}
     assert share == {
-        "2026-Q1": Decimal("0.999"),  # 60000 of 60090: the 2026 dividend replaced 2025's
-        "2026-Q2": Decimal("0.998"),
-        "2026-Q3": Decimal("0.995"),  # up to 31 August, the last day committed
+        "2026-Q1": Decimal(60000) / 60090,  # the 2026 dividend replaced 2025's
+        "2026-Q2": Decimal(60000) / 60100,
+        "2026-Q3": Decimal(60000) / 60291,  # up to 31 August, the last day committed
         "2026-Q4": None,  # no day of it is committed
     }
     assert quarters.through == END

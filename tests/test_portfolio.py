@@ -326,6 +326,16 @@ def test_sharing_out_keeps_the_rounded_sum_and_moves_nothing_by_a_cent(
     assert portfolio.shared_out(whole) == whole
 
 
+def test_sharing_out_to_a_coarser_step_keeps_the_rounded_sum() -> None:
+    # Each rounded on its own, 48.5 and 51.5 would be 49 and 52: 101.
+    assert portfolio.shared_out([D("48.5"), D("51.5")], D(1)) == [D(49), D(51)]
+    assert portfolio.shared_out([D("99.2433"), D("0.7195"), D("0.0372")], D("0.1")) == [
+        D("99.3"),
+        D("0.7"),
+        D("0.0"),
+    ]
+
+
 # -------------------------------------------------------------------------------- people
 
 

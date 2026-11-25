@@ -95,8 +95,8 @@ def test_each_person_paid_a_share_of_what_the_household_spent(conn: sqlite3.Conn
     # By name. Hers: food, a restaurant and 100 EUR at 0.95; his: rent and food, less a refund.
     # After settling up: she sent him 4500 of rent, he sent her 300.
     assert shown.people == (
-        Payer(PARTNER, D(1985), D("0.172"), D(6185), D("0.535")),
-        Payer(OWNER, D(9580), D("0.828"), D(5380), D("0.465")),
+        Payer(PARTNER, D(1985), D(1985) / 11565, D(6185), D(6185) / 11565),
+        Payer(OWNER, D(9580), D(9580) / 11565, D(5380), D(5380) / 11565),
     )
     # Seen in both their statements, each payment counts once.
     assert shown.moves == (Move(PARTNER, OWNER, D(4200)),)

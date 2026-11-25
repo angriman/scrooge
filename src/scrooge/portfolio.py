@@ -295,14 +295,16 @@ class Portfolio:
         return tuple(groups)
 
 
-def shared_out(exact: Sequence[Decimal]) -> list[Decimal]:
-    """`exact` to the cent, so that the parts add up to their rounded sum."""
-    whole = sum(exact, Decimal(0)).quantize(_CENT)
-    parts = [value.quantize(_CENT, rounding=ROUND_FLOOR) for value in exact]
-    missing = int((whole - sum(parts, Decimal(0))) / _CENT)
+def shared_out(exact: Sequence[Decimal], step: Decimal = _CENT) -> list[Decimal]:
+    """`exact` to the `step` (the cent unless asked), so that the parts add up to their
+    rounded sum: each is rounded down, and the steps that misses go to those that lost the
+    most (the largest remainders)."""
+    whole = sum(exact, Decimal(0)).quantize(step)
+    parts = [value.quantize(step, rounding=ROUND_FLOOR) for value in exact]
+    missing = int((whole - sum(parts, Decimal(0))) / step)
     lost_most = sorted(range(len(exact)), key=lambda n: parts[n] - exact[n])
     for n in lost_most[:missing]:
-        parts[n] += _CENT
+        parts[n] += step
     return parts
 
 

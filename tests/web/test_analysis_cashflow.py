@@ -62,6 +62,11 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
 
 
+def hundredths(percent: str) -> Decimal:
+    """A percent as sent, unrounded, to the hundredth."""
+    return Decimal(percent).quantize(Decimal("0.01"))
+
+
 def tables(html: str) -> list[list[list[str]]]:
     """The rows of every table body and foot on the page, in order, as their cells' text."""
     found = []
@@ -172,12 +177,11 @@ def test_what_was_saved_is_sent_as_a_part_of_income_and_of_salary(client: TestCl
 
     his = report(owner=OWNER, currency="CHF", **{"from": "2026-07"})
     # All he earned was salary: both rates are the same.
-    assert (his["totals"]["work"], his["totals"]["rate"], his["totals"]["rate_salary"]) == (
-        "12100.00",
-        "82.400",
-        "82.400",
-    )
-    assert his["periods"][-1]["rate_salary"] == "96.300"
+    assert his["totals"]["work"] == "12100.00"
+    assert his["totals"]["rate"] == his["totals"]["rate_salary"]
+    # Sent as it is: the app rounds it once.
+    assert hundredths(his["totals"]["rate"]) == Decimal("82.45")
+    assert hundredths(his["periods"][-1]["rate_salary"]) == Decimal("96.25")
     # Two months of history: no twelve months to measure either rate over.
     assert (his["periods"][-1]["rate_12"], his["periods"][-1]["rate_salary_12"]) == (None, None)
     # She was paid no salary: there is nothing to measure what she kept against.
@@ -202,13 +206,16 @@ def test_the_twelve_months_are_measured_against_income_and_salary(years: TestCli
     sent = years.get("/api/cashflow", params={**params, "from": "2026-07", "to": "2026-07"})
     july = sent.json()["report"]["periods"][0]
     # August 2025 to July 2026: 39400 kept of the 60300 that came in, and of 60000 of salary.
-    assert (july["name"], july["rate_12"], july["rate_salary_12"]) == (
-        "2026-07",
-        "65.300",
-        "65.700",
+    assert july["name"] == "2026-07"
+    assert (hundredths(july["rate_12"]), hundredths(july["rate_salary_12"])) == (
+        Decimal("65.34"),
+        Decimal("65.67"),
     )
     month = years.get("/api/month", params={**params, "month": "2026-07"}).json()["month"]
-    assert (month["rate_year"], month["rate_salary_year"]) == ("65.300", "65.700")
+    assert (month["rate_year"], month["rate_salary_year"]) == (
+        july["rate_12"],
+        july["rate_salary_12"],
+    )
 
 
 def test_the_household_is_sent_who_paid(client: TestClient) -> None:
@@ -221,16 +228,16 @@ def test_the_household_is_sent_who_paid(client: TestClient) -> None:
         {
             "name": "Anna",
             "spent": "60.00",
-            "share": "3.000",
+            "share": "3",
             "settled": "-140.00",
-            "settled_share": "-7.100",
+            "settled_share": "-7",
         },
         {
             "name": "Lukas",
             "spent": "1923.70",
-            "share": "97.000",
+            "share": "97",
             "settled": "2123.70",
-            "settled_share": "107.100",
+            "settled_share": "107",
         },
     ]
     # His gift to her, as his statements have it.

@@ -86,7 +86,7 @@ def test_the_range_against_the_same_range_a_year_before(conn: sqlite3.Connection
     # Her share of the rent lowers what he spent; the present for her is spent.
     assert result.totals == Totals(D(40300), D(13700), D(40000))
     assert result.totals.saved == D(26600)
-    assert (result.totals.rate, result.totals.from_work) == (D("0.660"), D("0.993"))
+    assert (result.totals.rate, result.totals.from_work) == (D(26600) / 40300, D(40000) / 40300)
     # 26600 saved of 40000 of salary.
     assert result.totals.rate_salary == D("0.665")
     assert result.year_before == Totals(D(40000), D(14400), D(40000))
@@ -97,9 +97,9 @@ def test_each_period_with_the_rate_of_its_twelve_months(conn: sqlite3.Connection
     july = by_name["2026-07"]
     assert july.totals == Totals(D(5300), D(1100), D(5000))
     # August 2025 to July 2026: 39400 of 60300 saved.
-    assert july.rate == D("0.653")
+    assert july.rate == D(39400) / 60300
     # Of the 60000 the salary brought in over those months.
-    assert july.rate_salary == D("0.657")
+    assert july.rate_salary == D(39400) / 60000
     november = saved(conn, first=date(2025, 11, 1), last=date(2025, 11, 30)).periods[0]
     assert (november.rate, november.rate_salary) == (None, None)
 

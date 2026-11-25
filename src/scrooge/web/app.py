@@ -1342,7 +1342,10 @@ def _slices(values: Sequence[tuple[str, Decimal]]) -> tuple[list[_Slice], list[_
     below zero, which a ring cannot show."""
     above = [(name, value) for name, value in values if value > 0]
     whole = sum((value for _, value in above), Decimal(0))
-    slices = [_Slice(name, value, (value * 100 / whole).quantize(_TENTH)) for name, value in above]
+    shares = portfolio.shared_out([value * 100 / whole for _, value in above], _TENTH)
+    slices = [
+        _Slice(name, value, share) for (name, value), share in zip(above, shares, strict=True)
+    ]
     return slices, [_Slice(name, value, None) for name, value in values if value < 0]
 
 

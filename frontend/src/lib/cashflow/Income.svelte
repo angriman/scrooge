@@ -32,7 +32,7 @@ first. A source opens its transactions over the same range.
 	{/if}
 	<div class="space-y-4">
 		{#each groups as { group, sources, total } (group)}
-			{@const share = percentOf(total, all, 1)}
+			{@const share = percentOf(total, all, 0)}
 			<div>
 				<p class="flex items-baseline gap-2 text-body text-ink">
 					<span class="size-2 shrink-0 self-center rounded-[2px]" style:background={incomeColor(group)}></span>

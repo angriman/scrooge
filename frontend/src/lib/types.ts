@@ -539,8 +539,9 @@ export interface CashFlowReport {
 /** Who paid what the household spent over a range (src/scrooge/paidby.py `PaidBy`). */
 export interface PaidBy {
 	spent: Amount;
-	/** Everyone with statements committed, by name; `share` in percent of `spent`. `settled`:
-	 * what they spent, and sent the others, less what the others sent them. */
+	/** Everyone with statements committed, by name; `share` in percent of `spent`, whole and
+	 * shared out so that the people add up to 100. `settled`: what they spent, and sent the
+	 * others, less what the others sent them. */
 	people: {
 		name: string;
 		spent: Amount;
