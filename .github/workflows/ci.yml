@@ -1,0 +1,158 @@
+# CI: everything a change must pass before it merges, on every pull request and every push
+# to main. release.yml runs it too, before it builds an image.
+#
+#   lint      ruff (lint + format) and mypy --strict, once: Linux, Python 3.11
+#   test      pytest on Linux and macOS, on Python 3.11 (the oldest supported, the image's)
+#             and 3.14; the Linux 3.11 run also holds the coverage floors
+#   frontend  the SvelteKit app at /app: formatting, types, unit tests and its build
+#   check     passes when all of the above passed: the one check main requires
+#
+# `make check` locally is lint + the coverage run of test.
+#
+# Third-party actions are pinned to the full commit SHA of a release, its version beside it.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels its older run. Every merge into main runs to the
+# end: each commit there is its own group, since a shared one would still cancel a run left
+# waiting behind another.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # The Python of .python-version (the image's), installed by uv.
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.23" # the uv of ./uv and the Dockerfile
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the project
+        run: uv sync --locked
+
+      - name: make lint type
+        run: make lint type
+
+  test:
+    name: test (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.14"]
+        include:
+          - os: ubuntu-latest
+            python: "3.11"
+            coverage: true
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # The OCR tests read the scanned certificates with the real program
+      # (tests/extractors/test_ocr.py): without it they fail, they are not skipped.
+      - name: Install Tesseract (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+          tesseract --version
+
+      - name: Install Tesseract (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew install tesseract
+          tesseract --version
+
+      # python-version overrides .python-version for every uv command of the job.
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.23" # the uv of ./uv and the Dockerfile
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install the project
+        run: uv sync --locked
+
+      - name: pytest
+        if: ${{ !matrix.coverage }}
+        run: uv run pytest
+
+      # The 90% global floor and the 100% floors of strict-cover, measured once.
+      - name: make test strict-cover
+        if: ${{ matrix.coverage }}
+        run: make test strict-cover
+
+      # The total for the README's badge, after a push to main: coverage-badge.yml publishes it.
+      - name: Coverage total
+        if: matrix.coverage && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: uv run coverage report --format=total > coverage-total.txt
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.coverage && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: coverage-total
+          path: coverage-total.txt
+          retention-days: 7
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Node 22, as in the Dockerfile: the oldest SvelteKit takes.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: make web-check web
+        run: make web-check web
+
+  # The branch protection of main requires this job alone, so the matrix above can change
+  # without touching the repository's settings. It fails when any job failed, was cancelled
+  # or was skipped.
+  check:
+    if: always()
+    needs: [lint, test, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "lint, test, frontend: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done

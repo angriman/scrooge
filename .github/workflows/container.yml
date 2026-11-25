@@ -1,7 +1,7 @@
 # The image, built and run on each processor it is for, natively: deploy/smoke-test.sh goes
 # through the first run of deploy/README.md (init, compose up, sign in, import, commit) on
 # x86-64 and on ARM. On every pull request that touches what goes in the image, and before
-# image.yml pushes a release.
+# release.yml pushes a release.
 #
 # Third-party actions are pinned to the full commit SHA of a release, its version beside it.
 

@@ -1,12 +1,13 @@
-# The web app's image, for x86-64 and 64-bit ARM (a Raspberry Pi, an ARM NAS, a Mac), built
-# from the Dockerfile and pushed to GitHub's registry, public like the repository:
-#   ghcr.io/<owner>/scrooge:<tag> and :latest, on a tag `v*` once `make check` passes.
-# Run by hand (Actions > image > Run workflow) on a tag, it does the same; on a branch, it
+# A release: the web app's image, for x86-64 and 64-bit ARM (a Raspberry Pi, an ARM NAS, a
+# Mac), built from the Dockerfile and pushed to GitHub's registry, public like the repository:
+#   ghcr.io/<owner>/scrooge:<tag> and :latest, on a tag `v*` (`make release`) once CI
+#   (ci.yml) and the container smoke test (container.yml) pass.
+# Run by hand (Actions > release > Run workflow) on a tag, it does the same; on a branch, it
 # pushes only `sha-<commit>` and leaves `latest` where it is. deploy/README.md: pulling it.
 #
 # Third-party actions are pinned to the full commit SHA of a release, its version beside it.
 
-name: image
+name: release
 
 on:
   push:
@@ -16,12 +17,12 @@ on:
 permissions: {}
 
 concurrency:
-  group: image-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  check:
-    uses: ./.github/workflows/check.yml
+  ci:
+    uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
@@ -32,7 +33,7 @@ jobs:
       contents: read
 
   image:
-    needs: [check, smoke]
+    needs: [ci, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

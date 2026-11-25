@@ -266,9 +266,9 @@ and `SCROOGE_IMAGE=scrooge:local` in `.env`. For another machine:
 
 ## For the maintainer: releases
 
-Every tag `v*` pushed to GitHub runs `make check` and, when it passes, builds the image for
-both processors and pushes `ghcr.io/<owner>/scrooge:<tag>` and `:latest`
-(`.github/workflows/image.yml`). Nothing is built where the app runs.
+Every tag `v*` pushed to GitHub runs CI and the container smoke test and, when they pass,
+builds the image for both processors and pushes `ghcr.io/<owner>/scrooge:<tag>` and
+`:latest` (`.github/workflows/release.yml`). Nothing is built where the app runs.
 
 ```sh
 make release VERSION=v1.2.3     # tag main, push the tag, wait for GitHub to build the image
