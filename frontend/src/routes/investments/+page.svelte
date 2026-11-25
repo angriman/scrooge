@@ -3,7 +3,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { day } from '#lib/format/date.js';
-	import { money, percent, percentOf, sum } from '#lib/format/number.js';
+	import { percent, percentOf, sum } from '#lib/format/number.js';
 	import Bills from '#lib/holdings/Bills.svelte';
 	import HoldingsList from '#lib/holdings/HoldingsList.svelte';
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
@@ -12,20 +12,28 @@
 	import Income from '#lib/investments/Income.svelte';
 	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
 	import * as returns from '#lib/investments/performance.js';
+	import Pensions from '#lib/investments/Pensions.svelte';
+	import { DEFAULT_PERIOD, periodOf } from '#lib/investments/pensions.js';
 	import Returns from '#lib/investments/Returns.svelte';
 	import type { HeldInstrument } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
-	import { oneOf, show } from '#lib/view.js';
+	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	const held = $derived(data.held?.holdings);
 	const errors = $derived(
-		data.held?.errors ?? data.income?.errors ?? data.performance?.errors ?? []
+		data.held
+			? [...data.held.errors, ...(data.pensions?.errors ?? [])]
+			: (data.income?.errors ?? data.performance?.errors ?? [])
 	);
+	const pensions = $derived(data.pensions?.pensions);
+	// The period the pensions' change is over: only the address changes, the figures of both
+	// are there.
+	const period = $derived(periodOf(here().searchParams.get('pension')));
 	const owner = $derived(page.url.searchParams.get('owner'));
 	const people = $derived(data.session.people.length > 1 && !owner);
 	const title = $derived(
@@ -89,7 +97,11 @@
 				page.url,
 				value === 'performance'
 					? { view: null, from: null, to: null }
-					: { view: value, range: null, ...(value === 'holdings' ? { from: null, to: null } : {}) }
+					: {
+							view: value,
+							range: null,
+							...(value === 'holdings' ? { from: null, to: null } : { pension: null })
+						}
 			)}
 	/>
 	{#if view === 'performance' && data.performance?.performance.totals}
@@ -171,6 +183,7 @@
 			Shares, ETFs, funds and bills show here once a statement with them is committed.
 		</p>
 	</section>
+	{@render pensionGroup()}
 {:else}
 	<!-- The lead: what securities are worth, what they gained since bought, and their map. -->
 	<section class="rounded-lead border border-line bg-panel px-5 pt-5 pb-4" aria-labelledby="securities">
@@ -214,6 +227,8 @@
 		bind:open
 	/>
 
+	{@render pensionGroup()}
+
 	<div class="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
 		<Spread
 			spread={held.spread}
@@ -226,16 +241,21 @@
 		{/if}
 	</div>
 
-	{#if held.pension_cash !== null || held.notes.length}
+	{#if held.notes.length}
 		<div class="mt-8 grid gap-1 text-small text-ink-muted">
-			{#if held.pension_cash !== null}
-				<p>
-					Pillar 3a here is the fund units only: the pension account’s cash,
-					{money(held.pension_cash, 0)}
-					{held.currency}, counts in Pillar 3a on the overview.
-				</p>
-			{/if}
 			{#each held.notes as note (note)}<p>{note}</p>{/each}
 		</div>
 	{/if}
 {/if}
+
+{#snippet pensionGroup()}
+	{#if pensions?.day && pensions.pensions.length}
+		<Pensions
+			report={pensions}
+			{period}
+			{people}
+			onperiod={(value) =>
+				show(here(), { pension: value === DEFAULT_PERIOD ? null : value }, { shallow: true })}
+		/>
+	{/if}
+{/snippet}
