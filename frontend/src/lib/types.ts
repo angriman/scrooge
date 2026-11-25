@@ -627,6 +627,8 @@ export interface OfferedRange {
 	label: string;
 	from: string;
 	to: string;
+	/** The period it is (`lib/period.ts`), empty for a year of its own. */
+	range: string;
 }
 
 export interface CashFlow {

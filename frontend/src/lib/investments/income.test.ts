@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { PayingHolding } from '#lib/types.js';
 import {
 	change,
-	chosenRange,
 	highest,
 	isTrailing,
 	kindsOf,
@@ -90,15 +89,5 @@ describe('what investments paid', () => {
 		expect(isTrailing({ first: '2026-01-01', last: through, through })).toBe(false);
 		expect(isTrailing({ first: '2025-09-01', last: '2026-07-31', through })).toBe(false);
 		expect(isTrailing({ first: null, last: null, through: null })).toBe(false);
-	});
-
-	it('takes no range asked for as the last twelve months', () => {
-		const ranges = [
-			{ key: 'ytd', label: 'Year to date', from: '2026', to: '' },
-			{ key: '2025', label: '2025', from: '2025', to: '2025' }
-		];
-		expect(chosenRange(ranges, '', '')).toBe('12m');
-		expect(chosenRange(ranges, '2025', '2025')).toBe('2025');
-		expect(chosenRange(ranges, '2024-05', '')).toBe('');
 	});
 });

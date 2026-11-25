@@ -84,6 +84,7 @@ def test_the_last_twelve_months_are_sent_unless_a_range_is_asked(client: TestCli
     assert list(sent["logos"]) == ["ACME"]
     assert [r["label"] for r in sent["ranges"]] == ["Year to date", "Last 12 months", "2025", "All"]
     assert [r["key"] for r in sent["ranges"]] == ["ytd", "12m", "2025", "all"]
+    assert [r["range"] for r in sent["ranges"]] == ["ytd", "1y", "", "all"]
 
 
 def test_a_range_is_compared_with_the_year_before_and_the_last_twelve_months_sent(
@@ -140,6 +141,19 @@ def test_a_row_in_a_currency_without_a_rate_leaves_the_others_shown(tmp_path: Pa
     assert shown["income"]["totals"]["interest"] == "5.00"
     assert [h["key"] for h in shown["income"]["holdings"]] == ["Migros"]
     assert shown["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+
+
+def test_a_period_of_another_page_picks_the_months_paid(client: TestClient) -> None:
+    def first(**params: str) -> str | None:
+        found: str | None = client.get("/api/income", params=params).json()["income"]["first"]
+        return found
+
+    through = client.get("/api/income", params={"owner": OWNER}).json()["income"]["through"]
+    assert first(owner=OWNER, range="ytd") == f"{through[:4]}-01-01"
+    assert first(owner=OWNER, range="1m") == f"{through[:7]}-01"
+    # A range asked for by its ends wins over a period.
+    assert first(owner=OWNER, range="1m", **{"from": "2025"}) == "2025-01-01"
+    assert client.get("/api/income", params={"range": "2w"}).status_code == 400
 
 
 def test_a_field_that_cannot_be_read_is_refused(client: TestClient) -> None:

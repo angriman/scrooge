@@ -136,7 +136,7 @@
 				through={statementsUpTo(figures.through, figures.day, covered)}
 				{range}
 				onrange={(chosen: Range) =>
-					show(here(), { range: chosen === DEFAULT_RANGE ? null : chosen }, { shallow: true })}
+					show(here(), { range: chosen }, { shallow: true })}
 				{breakdowns}
 				by={data.by}
 				onby={(by) => show(here(), { by: by === 'asset' ? null : by })}
