@@ -40,6 +40,7 @@ from scrooge import (
     report,
     savings,
     settings,
+    suggestions,
 )
 from scrooge.context import Context
 from scrooge.merchants import Merchants
@@ -509,6 +510,21 @@ def _pending(row: months.Pending, label: categories.Labels) -> JSON:
         # Whether a category can be given here: it has none yet, or one a rule or a choice gave.
         "choosable": row.waiting or row.changeable,
         "statement": row.statement,
+    }
+
+
+def suggestion(offered: suggestions.Suggestion, label: categories.Labels) -> JSON:
+    """A rule offered for a row whose category was changed by hand (plan decision 56): the
+    row it was offered for (`id`, what accepting it names), the merchant's words, the pattern
+    written, the money it is for (`in`, `out`), the category and the rules file it goes
+    first in."""
+    return {
+        "id": offered.row,
+        "merchant": offered.merchant,
+        "match": offered.match,
+        "direction": offered.direction,
+        "category": label(offered.category),
+        "file": offered.file.name,
     }
 
 

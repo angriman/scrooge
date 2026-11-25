@@ -253,3 +253,94 @@ def test_a_zip_sent_is_opened_and_each_of_its_files_staged(site: Site) -> None:
         hashlib.sha256((site.folder / name).read_bytes()).hexdigest() + Path(name).suffix
         for name in ("Migros.csv", "Revolut Savings.tsv")
     }
+
+
+def _changeable(draft: dict[str, Any]) -> dict[str, Any]:
+    """A row paid out whose category a rule gave, named by letters."""
+    for row in draft["rows"]:
+        named = row["counterparty"] or row["description"]
+        paid = row["amount"].startswith("-")
+        if row["choosable"] and row["category"] and paid and any(c.isalpha() for c in named):
+            return dict(row)
+    raise AssertionError
+
+
+def test_a_category_changed_by_hand_is_answered_with_a_rule_to_offer(site: Site) -> None:
+    rules = webapp.Rules(site.folder / "rules.yaml", PEOPLE)
+    client: TestClient = site.app(imports=site.setup, rules=rules)
+    _upload(site, "Migros.csv")
+    row = _changeable(_draft(site))
+    other = next(
+        name
+        for group in _draft(site)["choices"]["leaves"]
+        if group["heading"] != "Income"
+        for name in group["names"]
+        if name != row["category"]
+    )
+    sent = {"owner": "Lukas", "choices": [{"ids": [row["id"]], "category": other, "rule": False}]}
+    response = client.post("/api/import/categories", json=sent, headers=_headers(site))
+    assert response.status_code == 200
+    (offered,) = response.json()["suggestions"]
+    assert (offered["id"], offered["direction"], offered["category"]) == (row["id"], "out", other)
+    assert (offered["file"], response.json()["unoffered"]) == ("rules.yaml", None)
+    before = rules.shared.read_text(encoding="utf-8")
+    adding = {"owner": "Lukas", "id": row["id"]}
+    added = client.post("/api/import/rules", json=adding, headers=_headers(site))
+    assert added.json() == {"rule": offered, "errors": []}
+    written = rules.shared.read_text(encoding="utf-8")
+    assert written.startswith("rules:\n  - {match: ")
+    assert written.endswith(before.removeprefix("rules:\n"))
+    again = client.post("/api/import/rules", json=adding, headers=_headers(site))
+    assert again.status_code == 409
+    assert again.json()["errors"][0].startswith("No rule was added: That rule is not needed")
+
+
+def test_no_rule_is_offered_for_a_choice_saved_as_a_rule_or_without_rules(site: Site) -> None:
+    _upload(site, "Migros.csv")
+    row = _changeable(_draft(site))
+    choice = {"ids": [row["id"]], "category": categories.GIFTS, "rule": False}
+    sent = {"owner": "Lukas", "choices": [choice]}
+    response = site.client.post("/api/import/categories", json=sent, headers=_headers(site))
+    assert (response.json()["suggestions"], response.json()["unoffered"]) == ([], None)
+    adding = {"owner": "Lukas", "id": row["id"]}
+    assert (
+        site.client.post("/api/import/rules", json=adding, headers=_headers(site)).status_code
+        == 404
+    )
+    rules = webapp.Rules(site.folder / "rules.yaml", PEOPLE)
+    client: TestClient = site.app(imports=site.setup, rules=rules)
+    remembered = choice | {"category": categories.DENTIST, "rule": True}
+    saved = {"owner": "Lukas", "choices": [remembered]}
+    response = client.post("/api/import/categories", json=saved, headers=_headers(site))
+    assert response.json()["suggestions"] == []
+
+
+def test_a_rules_file_that_cannot_be_read_is_said_and_adds_nothing(site: Site) -> None:
+    rules = webapp.Rules(site.folder / "rules.yaml", PEOPLE)
+    client: TestClient = site.app(imports=site.setup, rules=rules)
+    _upload(site, "Migros.csv")
+    row = _changeable(_draft(site))
+    (site.folder / "rules.yaml").write_text("rules: [\n", encoding="utf-8")
+    choice = {"ids": [row["id"]], "category": categories.GIFTS, "rule": False}
+    sent = {"owner": "Lukas", "choices": [choice]}
+    response = client.post("/api/import/categories", json=sent, headers=_headers(site))
+    assert response.json()["suggestions"] == []
+    assert response.json()["unoffered"].startswith("No rule can be offered:")
+    adding = {"owner": "Lukas", "id": row["id"]}
+    refused = client.post("/api/import/rules", json=adding, headers=_headers(site))
+    assert refused.status_code == 409
+    assert refused.json()["errors"][0].startswith("No rule was added:")
+
+
+def test_a_rule_is_added_only_for_someone_the_config_names_and_never_on_a_copy(
+    site: Site,
+) -> None:
+    rules = webapp.Rules(site.folder / "rules.yaml", PEOPLE)
+    client: TestClient = site.app(imports=site.setup, rules=rules)
+    for sent in [{"owner": "Zoe", "id": "x"}, ["Lukas"]]:
+        refused = client.post("/api/import/rules", json=sent, headers=_headers(site))
+        assert refused.status_code == 400
+    assert client.post("/api/import/rules", json={"owner": "Lukas"}).status_code == 403
+    copy = site.app(imports=site.setup, rules=rules, read_only=True)
+    sent = {"owner": "Lukas", "id": "x"}
+    assert copy.post("/api/import/rules", json=sent, headers=_headers(site)).status_code == 403

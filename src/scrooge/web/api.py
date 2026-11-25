@@ -19,8 +19,9 @@ from collections.abc import Callable
 from datetime import date
 from urllib.parse import urlsplit
 
+import yaml
 from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import UploadFile
+from starlette.datastructures import State, UploadFile
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -50,6 +51,7 @@ from scrooge import (
     recurring,
     report,
     staging,
+    suggestions,
     together,
 )
 from scrooge.classification import UnknownMaturityError
@@ -552,10 +554,38 @@ def _choices(
     return made
 
 
+def rule_places(state: State) -> suggestions.Places | None:
+    """Where the import reads its rules, and so where a rule offered goes; None when the app
+    has nowhere to write one."""
+    if state.rules is None:
+        return None
+    shared = list(state.imports.rules) if state.imports else [state.rules.shared]
+    unmatched = state.imports.unmatched if state.imports else ""
+    return suggestions.Places(shared, state.rules.people, unmatched)
+
+
+def _offered(
+    conn: sqlite3.Connection, state: State, owner: str, ids: list[str]
+) -> tuple[list[wire.JSON], str | None]:
+    """The rules offered for the rows `ids` changed by hand, and why none could be, if so."""
+    places = rule_places(state)
+    if places is None or not ids:
+        return [], None
+    try:
+        found = suggestions.suggest(conn, places, owner, ids)
+    except (ConfigError, yaml.YAMLError) as exc:
+        return [], f"No rule can be offered: {wire.sentence(exc)}"
+    label = query.choices(conn, owner).label
+    return [wire.suggestion(offered, label) for offered in found], None
+
+
 async def _categorize_staged(request: Request) -> Response:
     """Give the categories chosen to staged rows of one person, all of them or none, and with
     `"commit": true` then commit everything staged for that person:
-    `{"owner", "choices": [{"ids", "category", "rule"}], "commit"}`."""
+    `{"owner", "choices": [{"ids", "category", "rule"}], "commit"}`. Rows that had a category
+    and were given another without a rule are answered with the rules to offer for them
+    (`suggestions`, plan decision 56; `unoffered` says why there are none when the rules files
+    cannot be read)."""
     sent = await _sent(request)
     owners = _importable(request)
     state = request.app.state
@@ -563,7 +593,7 @@ async def _categorize_staged(request: Request) -> Response:
         return _refused(("Send whose rows they are and the categories chosen, as JSON.",))
     owner = str(sent["owner"])
 
-    def apply() -> tuple[int, int | None]:
+    def apply() -> tuple[int, int | None, list[str]]:
         conn = db.connect(state.database)
         try:
             made = _choices(sent, months.draft(conn, owner), conn)
@@ -575,24 +605,63 @@ async def _categorize_staged(request: Request) -> Response:
                 if made
                 else 0
             )
+            by_hand = [row for c in made if c.change and not c.rule for row in c.ids]
             if sent.get("commit") is not True:
-                return changed, None
+                return changed, None, by_hand
             files, _ = staging.commit_with_copy(
                 conn, state.database, owner=owner, now=state.clock()
             )
-            return changed, len(files)
+            return changed, len(files), by_hand
         finally:
             conn.close()
 
+    def offer(ids: list[str]) -> tuple[list[wire.JSON], str | None]:
+        with db.reading(state.database) as conn:
+            return _offered(conn, state, owner, ids)
+
     try:
-        changed, committed = await run_in_threadpool(apply)
+        changed, committed, by_hand = await run_in_threadpool(apply)
     except _Refused as exc:
         return JSONResponse({"errors": [str(exc)]}, 409)
     except (staging.UncategorizedRowsError, ReconciliationError) as exc:
         return JSONResponse({"errors": [f"Not committed: {wire.sentence(exc)}"]}, 409)
     except (staging.StagingError, store.UnknownCategoryError) as exc:
         return JSONResponse({"errors": [f"No category was set: {wire.sentence(exc)}"]}, 409)
-    return JSONResponse({"changed": changed, "committed": committed, "errors": []})
+    offered, unoffered = await run_in_threadpool(offer, by_hand)
+    return JSONResponse(
+        {
+            "changed": changed,
+            "committed": committed,
+            "suggestions": offered,
+            "unoffered": unoffered,
+            "errors": [],
+        }
+    )
+
+
+async def _add_rule(request: Request) -> Response:
+    """Add the rule offered for a row whose category was changed by hand, first in its file
+    (plan decision 56): `{"owner", "id"}`, the `id` of a suggestion. Answers the rule added."""
+    sent = await _sent(request)
+    owners = _importable(request)
+    state = request.app.state
+    places = rule_places(state)
+    if places is None:  # nowhere to write it down for the next import
+        raise HTTPException(404)
+    if sent is None or str(sent.get("owner", "")) not in owners:
+        return _refused(("Send whose row it is and the id of the row, as JSON.",))
+    owner, row = str(sent["owner"]), str(sent.get("id", ""))
+
+    def add() -> wire.JSON:
+        with db.reading(state.database) as conn:
+            added = suggestions.add(conn, places, owner, row)
+            return wire.suggestion(added, query.choices(conn, owner).label)
+
+    try:
+        rule = await run_in_threadpool(add)
+    except (suggestions.SuggestionError, ConfigError, yaml.YAMLError) as exc:
+        return JSONResponse({"errors": [f"No rule was added: {wire.sentence(exc)}"]}, 409)
+    return JSONResponse({"rule": rule, "errors": []})
 
 
 async def _add_category(request: Request) -> Response:
@@ -976,6 +1045,7 @@ routes = [
     Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),
     Route("/import/categories", _categorize_staged, methods=["POST"], name="api_categorize_staged"),
     Route("/import/category", _add_category, methods=["POST"], name="api_add_category"),
+    Route("/import/rules", _add_rule, methods=["POST"], name="api_add_rule"),
     Route("/accounts/close", _close, methods=["POST"], name="api_close"),
     Route("/accounts/reopen", _reopen, methods=["POST"], name="api_reopen"),
     Route("/statements/{number:int}/discard", _discard, methods=["POST"], name="api_discard"),
