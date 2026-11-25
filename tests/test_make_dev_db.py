@@ -93,6 +93,7 @@ def test_the_config_next_to_it_serves_and_queries_it(tmp_path: Path) -> None:
     assert "transactions\n" in out.getvalue()
 
 
+@pytest.mark.usefixtures("scans")
 def test_its_rules_are_one_file_from_the_fixtures_and_the_starter(tmp_path: Path) -> None:
     # The repository's own rules.yaml and categories.yaml are the user's: never read here.
     built, _ = build(tmp_path / "dev", tmp_path)

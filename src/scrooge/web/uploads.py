@@ -17,12 +17,14 @@ from pathlib import Path
 
 from starlette.datastructures import State
 
-from scrooge import importing, staging
+from scrooge import classification, importing, marketdata, staging
 from scrooge.classification import UnknownInstrumentError
 from scrooge.errors import ConfigError, ExtractionError
+from scrooge.prices import PriceError
 from scrooge.storage import db, store
 from scrooge.storage.money import PrecisionError
 from scrooge.validation import ReconciliationError
+from scrooge.web import wire
 
 # Files taken by one import: a folder of a few years of monthly statements of every source.
 UPLOADS = 500
@@ -91,3 +93,42 @@ def hold(state: State, held: Held) -> str:
     key = secrets.token_urlsafe(16)
     state.held[key] = held
     return key
+
+
+class LookupRefusedError(Exception):
+    """Looking up the bills of a held import failed; `held` is None when the files are gone."""
+
+    def __init__(self, status: int, message: str, held: Held | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+        self.held = held
+
+
+def look_up(state: State, key: str) -> tuple[Held, str]:
+    """Look up when the bills of `key` mature, write them into `instruments.yaml`, and drop
+    `key`; runs in a thread. Returns `(held, notice)`."""
+    held: Held | None = state.held.get(key)
+    if held is None or held.until <= state.clock():
+        raise LookupRefusedError(
+            409, "The files of that import are no longer kept: choose them again."
+        )
+    try:
+        looked = marketdata.maturities(state.maturities, held.bills)
+    except PriceError as exc:
+        message = (
+            f"TreasuryDirect could not tell: {exc}. Try again later, or add "
+            "the maturity to instruments.yaml."
+        )
+        raise LookupRefusedError(502, message, held) from None
+    if looked.unknown:
+        unknown = ", ".join(looked.unknown)
+        message = f"TreasuryDirect knows no bill {unknown}: add its maturity to instruments.yaml."
+        raise LookupRefusedError(409, message, held)
+    try:
+        classification.add_maturities(state.imports.instruments, looked.found)
+    except ConfigError as exc:
+        raise LookupRefusedError(409, wire.sentence(exc), held) from None
+    state.held.pop(key, None)
+    days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
+    return held, f"{days} (TreasuryDirect), written in instruments.yaml."

@@ -59,7 +59,6 @@ from scrooge import (
     classification,
     importing,
     income,
-    marketdata,
     months,
     networth,
     overview,
@@ -75,7 +74,7 @@ from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
-from scrooge.prices import MaturitySource, PriceError
+from scrooge.prices import MaturitySource
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
 from scrooge.validation import ReconciliationError
@@ -776,34 +775,14 @@ async def _look_up(request: Request) -> Response:
         _own_token(request, token)
     except HTTPException:
         return await run_in_threadpool(_import_form, request, None, _STALE, None, 403)
-    held = state.held.get(key)
-    if held is None or held.until <= state.clock():
-        error = "The files of that import are no longer kept: choose them again."
-        return await run_in_threadpool(_import_form, request, None, error, None, 409)
-    undated = _Undated(held.bills, key)
     try:
-        looked = await run_in_threadpool(marketdata.maturities, state.maturities, held.bills)
-    except PriceError as exc:
-        error = f"TreasuryDirect could not tell: {exc}. Try again later, or add the maturity "
-        error += "to instruments.yaml."
+        held, notice = await run_in_threadpool(uploads_.look_up, state, key)
+    except uploads_.LookupRefusedError as exc:
+        undated = _Undated(exc.held.bills, key) if exc.held is not None else None
+        owner = exc.held.owner if exc.held is not None else None
         return await run_in_threadpool(
-            _import_form, request, held.owner, error, None, 502, undated=undated
+            _import_form, request, owner, exc.message, None, exc.status, undated=undated
         )
-    if looked.unknown:
-        error = f"TreasuryDirect knows no bill {', '.join(looked.unknown)}: add its maturity "
-        error += "to instruments.yaml."
-        return await run_in_threadpool(
-            _import_form, request, held.owner, error, None, 409, undated=undated
-        )
-    try:
-        classification.add_maturities(state.imports.instruments, looked.found)
-    except ConfigError as exc:
-        return await run_in_threadpool(
-            _import_form, request, held.owner, f"{exc}.", None, 409, undated=undated
-        )
-    del state.held[key]
-    days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
-    notice = f"{days} (TreasuryDirect), written in instruments.yaml."
     return await _staged(request, held.owner, held.uploads, notice)
 
 

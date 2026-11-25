@@ -18,6 +18,11 @@ def axa_text() -> str:
     return ocr.read_text(AXA)
 
 
+@pytest.fixture(scope="module")
+def servisa_text() -> str:
+    return ocr.read_text(SERVISA)
+
+
 def test_the_axa_scan_reads_as_its_golden_file(axa_text: str) -> None:
     assert axa.recognises(axa_text)
     assert_certificate_matches_golden(axa.extract(axa_text), "axa")
@@ -29,20 +34,22 @@ def test_the_yearly_axa_scan_reads_as_its_golden_file() -> None:
     assert_certificate_matches_golden(axa.extract(text), "axa_yearly")
 
 
-def test_the_servisa_scan_reads_as_its_golden_file() -> None:
-    text = ocr.read_text(SERVISA)
-    assert servisa.recognises(text)
-    assert not axa.recognises(text)
-    assert_certificate_matches_golden(servisa.extract(text), "servisa")
+def test_the_servisa_scan_reads_as_its_golden_file(servisa_text: str) -> None:
+    assert servisa.recognises(servisa_text)
+    assert not axa.recognises(servisa_text)
+    assert_certificate_matches_golden(servisa.extract(servisa_text), "servisa")
 
 
 def test_a_rerun_reads_the_same_text(axa_text: str) -> None:
     assert ocr.read_text(AXA) == axa_text
 
 
-def test_every_page_is_read_in_order() -> None:
-    text = ocr.read_text(SERVISA)
-    assert text.index("Seite 1/2") < text.index("Vorsorgeausweis g") < text.index("Seite 2/2")
+def test_every_page_is_read_in_order(servisa_text: str) -> None:
+    assert (
+        servisa_text.index("Seite 1/2")
+        < servisa_text.index("Vorsorgeausweis g")
+        < servisa_text.index("Seite 2/2")
+    )
 
 
 def test_without_tesseract_it_says_so(monkeypatch: pytest.MonkeyPatch) -> None:

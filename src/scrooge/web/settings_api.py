@@ -11,11 +11,9 @@ change but the built-in categories.
 
 from __future__ import annotations
 
-import secrets
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
@@ -27,7 +25,7 @@ from scrooge import categories, query, settings, staging
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store
 from scrooge.web import wire
-from scrooge.web.api import _refused, _sent, language_of
+from scrooge.web.api import _origin_and_token, _refused, _sent, language_of
 
 # What a change refused answers: what was asked cannot be done as it is.
 _REFUSED = (settings.SettingsError, staging.StagingError, ConfigError)
@@ -81,22 +79,11 @@ def _rules(request: Request) -> Response:
     )
 
 
-def _from_these_pages(request: Request) -> None:
-    """Refuse what another site sent, or what comes without the token of these pages."""
-    state = request.app.state
-    origin = request.headers.get("origin", "null")
-    if origin != "null" and urlsplit(origin).hostname not in state.hosts:
-        raise HTTPException(403)
-    token = request.headers.get("x-token", "")
-    if not secrets.compare_digest(token.encode(), state.token.encode()):
-        raise HTTPException(403)
-
-
 def _test(request: Request) -> Response:
     """The committed rows of `owner` (of everyone) that the pattern `match` matches in
     `direction`, newest first, as a rule with it would: nothing is saved. Tried for a while
     (`settings.BUDGET`); what time left untried is said in `errors`."""
-    _from_these_pages(request)
+    _origin_and_token(request, request.headers.get("x-token", ""))
     params = request.query_params
     owner = params.get("owner") or None
     if owner is not None and owner not in _people(request):
