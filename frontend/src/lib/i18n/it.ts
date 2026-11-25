@@ -34,6 +34,8 @@ export const it: Messages = {
 	'common.noChange': 'nessuna variazione',
 	'common.notKnownShorterHistory': 'Non noto: lo storico è più breve',
 
+	'ui.close': 'Chiudi',
+
 	'asset.Cash': 'Liquidità',
 	'asset.CashOwed': 'Scoperto di cassa',
 	'asset.ETFs': 'ETF',
