@@ -10,7 +10,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 	import { cn } from '#lib/ui/cn.js';
 	import FilterChip from './FilterChip.svelte';
 	import MerchantPicker from './MerchantPicker.svelte';
-	import { kindName, periodName, periods } from './filter.js';
+	import { ACCOUNT_KINDS, accountsName, kindName, periodName, periods } from './filter.js';
 
 	type Changes = Record<string, string | null>;
 
@@ -179,6 +179,16 @@ for each other field. Every change goes in the address, so a filter can be kept 
 				{/snippet}
 			</FilterChip>
 		{/if}
+
+		<FilterChip
+			label="Kind of account"
+			value={values.accounts ? accountsName(values.accounts) : null}
+			onclear={() => onchange({ accounts: null })}
+		>
+			{#snippet children(close)}
+				{@render list(ACCOUNT_KINDS, values.accounts, 'accounts', close)}
+			{/snippet}
+		</FilterChip>
 
 		<FilterChip label="Category" value={values.category || null} onclear={() => onchange({ category: null })}>
 			{#snippet children(close)}

@@ -854,3 +854,38 @@ export interface SettingsCategories {
 	editable: boolean;
 	errors: string[];
 }
+
+/** What investing cost, above zero: a refund lowers it (src/scrooge/costs.py `Cost`). */
+export interface Cost {
+	commissions: Amount;
+	/** Withheld from what investments paid. */
+	tax: Amount;
+	total: Amount;
+}
+
+/** What investing cost each calendar year, every year together and account by account
+ * (src/scrooge/costs.py `Costs`). `tax_share` is the tax in percent of `paid`, the dividends
+ * and interest before tax; null when nothing was paid. */
+export interface CostsReport {
+	currency: string;
+	through: Day | null;
+	/** Oldest first; `whole` is false for the year counted so far, up to `last`. */
+	years: CostYear[];
+	totals: Cost & { paid: Amount; tax_share: Amount | null };
+	/** What cost the most first; `name` has the owner after it when two people have one of it.
+	 * `broker`: a broker's account, whose commissions count; of any other only the tax does. */
+	accounts: (Cost & { owner: string; account: string; name: string; broker: boolean })[];
+}
+
+export type CostYear = Cost & {
+	year: number;
+	paid: Amount;
+	tax_share: Amount | null;
+	last: Day;
+	whole: boolean;
+};
+
+export interface InvestmentCosts {
+	costs: CostsReport;
+	errors: string[];
+}
