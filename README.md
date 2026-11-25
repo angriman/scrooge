@@ -142,21 +142,25 @@ serve:
 A machine that only shows the data has `serve: {read_only: true}` and a copy of the database,
 sent there by `scrooge publish <folder>`.
 
-## On the NAS
+## With Docker
 
-The app runs as a container on a Synology NAS, over the one database: statements are imported
-on its import page, prices fetched by a daily task. First setup: `deploy/README.md`. GitHub
-builds the image on every tag `v*` once `make check` passes; the NAS pulls it.
+The app runs as a container on any machine with Docker (a server, a NAS, a Raspberry Pi, a
+Mac), over the one database: statements are imported on its import page, prices fetched
+every day by a second container. The image is public, for x86-64 and 64-bit ARM:
 
 ```sh
-make release VERSION=v0.2     # tag main, push the tag, wait for the image
-make nas-update               # on the NAS (`ssh nas`, or NAS=<host>): pull, restart
+mkdir -p ~/scrooge/data && cd ~/scrooge
+curl -fsSLO https://raw.githubusercontent.com/angriman/scrooge/main/deploy/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deploy/.env.example
+# in .env: SCROOGE_UID and SCROOGE_GID, as `id -u` and `id -g` print them
+docker compose run --rm scrooge scrooge init --container   # who you are, a password
+docker compose up -d                                       # http://localhost:8765
 ```
 
-`make release` refuses uncommitted changes or a `main` that differs from GitHub's, and needs
-`gh` signed in. A new schema is migrated as the app starts, after a backup in `data/backups/`.
-To go back, pin `image: ghcr.io/<owner>/scrooge:<older tag>` in the NAS's `compose.yaml` and
-run `make nas-update`.
+Everything else, from updates to reaching it from other devices and a Synology NAS:
+[deploy/README.md](deploy/README.md). GitHub builds the image on every tag `v*` once
+`make check` passes; `make release VERSION=v1.2.3` tags `main` and waits for it, and
+`make deploy-update` pulls it where the app runs (`Makefile.local` says where).
 
 ## Everything in this folder
 

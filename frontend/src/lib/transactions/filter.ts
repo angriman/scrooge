@@ -11,6 +11,7 @@ export const FIELDS = [
 	'to',
 	'booking',
 	'account',
+	'accounts',
 	'category',
 	'merchant',
 	'kind',
@@ -36,6 +37,18 @@ const KINDS: Readonly<Record<string, string>> = {
 export function kindName(kind: string): string {
 	if (kind.includes(',')) return kind.split(',').map(kindName).join(', ');
 	return KINDS[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1).replaceAll('_', ' ');
+}
+
+/** The kinds of account the rows can be cut to (`accounts`), as the API names them
+ * (`query.ACCOUNTS`), and what each is called on its chip. */
+export const ACCOUNT_KINDS = [
+	{ value: 'broker', label: 'Broker accounts' },
+	{ value: 'bank', label: 'Bank accounts' },
+	{ value: 'card', label: 'Cards' }
+] as const;
+
+export function accountsName(value: string): string {
+	return ACCOUNT_KINDS.find((kind) => kind.value === value)?.label ?? value;
 }
 
 /** What the transactions can be cut to that a context is shown for, above the list. */

@@ -20,6 +20,7 @@ from typing import TypeVar
 from scrooge import (
     attention,
     categories,
+    costs,
     holds,
     importing,
     months,
@@ -834,7 +835,8 @@ def known_merchants(shown: Merchants) -> JSON:
 
 def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
     """One rule of the settings page: what it gives, in which file, how many committed rows
-    it would match on its own (null when its pattern is none), what a change of it sends back
+    it would match on its own (null when its pattern is none, or `counted` is false: time ran
+    out before it was counted), what a change of it sends back
     (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
     return {
         "file": rule.file.key,
@@ -847,6 +849,7 @@ def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
         "matches": rule.matches,
         "version": rule.version,
         "fixed": rule.fixed or None,
+        "counted": rule.counted,
     }
 
 
@@ -901,5 +904,49 @@ def performance_report(shown: performance.Performance) -> JSON:
                 **_measured(holder.measured),
             }
             for holder in shown.holders
+        ],
+    }
+
+
+def _cost(cost: costs.Cost) -> JSON:
+    return {
+        "commissions": number(cost.commissions),
+        "tax": number(cost.tax),
+        "total": number(cost.total),
+    }
+
+
+def costs_report(shown: costs.Costs) -> JSON:
+    """What investing cost, year by year, every year together and account by account, in one
+    currency: commissions and tax withheld above zero. `tax_share` is the tax in percent of
+    what investments paid (`paid`); a year is `whole` unless it is counted so far."""
+    return {
+        "currency": shown.currency,
+        "through": day(shown.through),
+        "years": [
+            {
+                "year": year.year,
+                **_cost(year.cost),
+                "paid": number(year.paid),
+                "tax_share": _percent(year.tax_share),
+                "last": day(year.last),
+                "whole": year.whole,
+            }
+            for year in shown.years
+        ],
+        "totals": {
+            **_cost(shown.totals),
+            "paid": number(shown.paid),
+            "tax_share": _percent(shown.tax_share),
+        },
+        "accounts": [
+            {
+                "owner": each.owner,
+                "account": each.account,
+                "name": each.name,
+                "broker": each.broker,
+                **_cost(each.cost),
+            }
+            for each in shown.accounts
         ],
     }

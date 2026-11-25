@@ -45,8 +45,4 @@ currency: $currency
 # A bare name is every account so called; {<owner>: <name>} is that person's alone.
 # frozen: [Deposito affitto, {Anna: Risparmio}]
 
-# To reach the pages from other devices, with a password (`scrooge password` prints it):
-# serve:
-#   host: 0.0.0.0
-#   names: [nas.example.ts.net]
-#   password: scrypt$$...  # pragma: allowlist secret
+$serve

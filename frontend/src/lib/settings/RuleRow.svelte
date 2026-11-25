@@ -142,7 +142,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				<p class="text-caption text-ink-muted">
 					{directionName(rule.direction)}{rule.account ? ` · ${rule.account} only` : ''} ·
 					<span class={rule.matches === null ? 'text-caution' : ''}
-						>{matchesName(rule.matches)}</span
+						>{matchesName(rule.matches, rule.counted)}</span
 					>
 				</p>
 				{#if editable && rule.fixed}

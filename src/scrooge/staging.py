@@ -592,23 +592,25 @@ def _file_of(conn: sqlite3.Connection, owner: str, file_id: int) -> store.Statem
 
 
 @contextmanager
-def _rules_kept() -> Iterator[dict[Path, str | None]]:
-    """Yields a place for what each rules file held before it was touched (None: no file).
+def _rules_kept() -> Iterator[dict[Path, bytes | None]]:
+    """Yields a place for what each rules file held before it was touched, byte for byte
+    (None: no file; `yamlfiles.snapshot`).
 
-    Whatever raises inside, those files are put back: a rule is never saved for a choice
-    the database did not keep. The lock of every writer of these files (`yamlfiles`) is held
-    throughout, so that what is put back is never another change made meanwhile.
+    Whatever raises inside, those files that changed are put back: a rule is never saved for a
+    choice the database did not keep. The lock of every writer of these files (`yamlfiles`) is
+    held throughout, so that what is put back is never another change made meanwhile. When a
+    file cannot be put back, the others still are, and the error says which could not, after
+    what went wrong first.
     """
-    before: dict[Path, str | None] = {}
+    before: dict[Path, bytes | None] = {}
     with yamlfiles.LOCK:
         try:
             yield before
-        except BaseException:
-            for path, text in before.items():
-                if text is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    yamlfiles.write(path, text)
+        except BaseException as exc:
+            failed = yamlfiles.put_back(before)
+            if failed:
+                msg = f"{exc}; and {', '.join(failed)} could not be put back as it was"
+                raise StagingError(msg) from exc
             raise
 
 
@@ -735,7 +737,7 @@ def categorize_all(
 
 def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule files' state
     conn: sqlite3.Connection,
-    before: dict[Path, str | None],
+    before: dict[Path, bytes | None],
     *,
     owner: str,
     choice: Choice,
@@ -788,7 +790,7 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
     written = store.category_labels(conn).written(category)
     for (name, flow), where in rules.items():
         if where not in before:
-            before[where] = where.read_text(encoding="utf-8") if where.exists() else None
+            before[where] = yamlfiles.snapshot(where)
         classification.append_rule(where, name, flow, written, first=change)
     return len(rows)
 
@@ -823,7 +825,7 @@ def add_category(
         if side == "expenses" and group:  # written by its label, which people read
             group = categories.Labels.of(extras).written(categories.key(group))
         extra = Extra(name, side, (group or name) if side == "expenses" else "")
-        before[file] = file.read_text(encoding="utf-8") if file.exists() else None
+        before[file] = yamlfiles.snapshot(file)
         categories.add(file, extra)
         store.seed_categories(conn, categories.load(file))
         return extra

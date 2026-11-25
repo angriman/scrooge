@@ -763,3 +763,29 @@ def test_migration_0012_keeps_every_reference_of_a_database_at_schema_6(
     store.seed_categories(conn)  # the taxonomy of today finds every category on its side
     assert conn.execute(count).fetchone()[0] == before_seed
     conn.close()
+
+
+def test_migrations_another_process_applies_meanwhile_are_left_to_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The pages and the prices of one deployment start together on a new database: both read
+    # version 0, and one waits for the lock while the other applies every migration.
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    read = db.version
+    raced: list[bool] = []
+
+    def stale(seen: sqlite3.Connection) -> int:
+        if seen is conn and not raced:
+            raced.append(True)
+            other = db.connect(path)
+            db.migrate(other, NOW)
+            other.close()
+            return 0
+        return read(seen)
+
+    monkeypatch.setattr(db, "version", stale)
+    assert db.migrate(conn, NOW) == []
+    assert read(conn) == db.latest()
+    assert conn.execute("SELECT count(*) FROM schema_version").fetchone()[0] == db.latest()
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1

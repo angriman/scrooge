@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from scrooge import categories, query, rulesfile, settings, staging
+from scrooge import categories, patterns, query, rulesfile, settings, staging, yamlfiles
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from tests.storage import helpers
@@ -143,10 +143,32 @@ def test_a_pattern_tried_lists_the_rows_it_matches_newest_first(
     assert (tried.count, [row.description for row in tried.rows]) == (1, ["ACME"])
 
 
-def test_a_pattern_is_tried_for_a_while_only(conn: sqlite3.Connection) -> None:
-    ticks = iter(range(100))
-    tried = settings.try_pattern(conn, ".", budget=2, clock=lambda: next(ticks))
-    assert (tried.count, tried.tried, tried.complete) == (2, 2, False)
+def test_a_pattern_cut_short_counts_the_newest_rows_it_decided(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Anna's KONSUM (the newest), then Lukas's rows: time ran out after the first text.
+    monkeypatch.setattr(patterns, "bounded", lambda *_: ([(1, [0])], False))
+    tried = settings.try_pattern(conn, "konsum")
+    assert (tried.count, tried.tried, tried.complete) == (1, 1, False)
+    assert tried.rows[0].owner == PARTNER
+
+
+def test_rules_time_did_not_reach_are_listed_uncounted(
+    conn: sqlite3.Connection, places: settings.Places, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(patterns, "bounded", lambda *_: ([(0, 1), (1, None)], False))
+    files = settings.rule_files([_shared(places)], [OWNER], None)
+    listed, problems = settings.rules(conn, files)
+    assert [(r.matches, r.counted) for r in listed] == [
+        (1, True),
+        (None, True),
+        (None, False),
+        (None, False),
+    ]
+    assert problems == [
+        "counting the rules took too long: 2 of them, from the first left out, "
+        "say no number of rows"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -163,6 +185,15 @@ def test_a_pattern_that_cannot_be_tried_says_why(
 ) -> None:
     with pytest.raises(settings.SettingsError, match=problem):
         settings.try_pattern(conn, match, direction=direction)
+
+
+def _move(places: settings.Places, position: int, by: int, categories_file: Path | None) -> None:
+    """Move rule `position` of the shared file as the page would: with the rule it passes as
+    shown now."""
+    found = rulesfile.read(_shared(places))[1]
+    at = position - 1 + by
+    beside = found[at].version if 0 <= at < len(found) else ""
+    settings.move_rule(_seen(places, position), by, beside, categories_file)
 
 
 def _seen(places: settings.Places, position: int, path: Path | None = None) -> settings.Seen:
@@ -241,15 +272,15 @@ def test_a_change_that_would_not_load_is_not_saved(places: settings.Places) -> N
             categories_file=None,
         )
     with pytest.raises(settings.SettingsError, match="left as it was"):
-        settings.move_rule(_seen(places, 2), -1, None)
+        _move(places, 2, -1, None)
     assert _shared(places).read_text(encoding="utf-8") == broken
 
 
 @pytest.mark.usefixtures("conn")
 def test_a_rule_removed_or_moved_keeps_the_comments(places: settings.Places) -> None:
     file = places.categories_file
-    settings.move_rule(_seen(places, 3), -1, file)
-    settings.move_rule(_seen(places, 1), 1, file)
+    _move(places, 3, -1, file)
+    _move(places, 1, 1, file)
     lines = _shared(places).read_text(encoding="utf-8").splitlines()
     assert lines[:3] == SHARED.splitlines()[:3]
     assert [line.split(",")[0] for line in lines[3:]] == [
@@ -283,8 +314,8 @@ def test_rules_on_lines_of_their_own_are_changed_only_when_it_is_safe(
     # A dash on a line of its own: neither removed nor moved, nor passed by a move.
     changes: list[Callable[[], None]] = [
         lambda: settings.remove_rule(_seen(places, 3), None),
-        lambda: settings.move_rule(_seen(places, 3), -1, None),
-        lambda: settings.move_rule(_seen(places, 4), -1, None),
+        lambda: _move(places, 3, -1, None),
+        lambda: _move(places, 4, -1, None),
     ]
     for change in changes:
         with pytest.raises(settings.SettingsError, match="cannot be"):
@@ -299,7 +330,7 @@ def test_rules_on_lines_of_their_own_are_changed_only_when_it_is_safe(
             categories_file=None,
         )
     assert path.read_text(encoding="utf-8") == BLOCKS
-    settings.move_rule(_seen(places, 2), -1, None)
+    _move(places, 2, -1, None)
     moved = "  - match: ACME  # the employer\n    category: Salary\n  - match: KONSUM\n"
     assert moved in path.read_text(encoding="utf-8")
     settings.remove_rule(_seen(places, 1), None)
@@ -326,7 +357,7 @@ def test_a_rule_moves_one_place_within_its_file(
     places: settings.Places, position: int, by: int, problem: str
 ) -> None:
     with pytest.raises(settings.SettingsError, match=problem):
-        settings.move_rule(_seen(places, position), by, None)
+        _move(places, position, by, None)
 
 
 def test_categories_list_the_taxonomy_then_what_is_added(
@@ -536,20 +567,27 @@ def test_a_move_that_cannot_be_made_says_why(
         settings.move_category(conn, places, name=name, under=under, now=NOW)
 
 
+def test_a_move_past_a_rule_changed_since_is_refused(places: settings.Places) -> None:
+    with pytest.raises(settings.SettingsError, match=r"rule 2 of rules\.yaml changed since"):
+        settings.move_rule(_seen(places, 1), 1, "an older digest", None)
+    assert _shared(places).read_text(encoding="utf-8") == SHARED
+
+
 def test_a_change_whose_files_cannot_be_put_back_keeps_the_copy(
     conn: sqlite3.Connection, places: settings.Places, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fail(*_: object) -> int:
-        raise settings.SettingsError("the rules could not be changed")
-
-    def unwritable(_: object) -> None:
+    def unwritable(*_: object) -> None:
         raise PermissionError("read-only folder")
 
+    def fail(*_: object) -> int:
+        monkeypatch.setattr(yamlfiles, "write_bytes", unwritable)  # categories.yaml was written
+        raise settings.SettingsError("the rules could not be changed")
+
     monkeypatch.setattr(settings, "_recategorize", fail)
-    monkeypatch.setattr(settings, "_put_back", unwritable)
     with pytest.raises(settings.SettingsError, match="kept in") as raised:
         settings.rename_category(conn, places, name="Prestiti", to="Mutuo", now=NOW)
-    assert "could not all be put back as they were (read-only folder)" in str(raised.value)
+    said = str(raised.value)
+    assert said.startswith("the rules could not be changed; and categories.yaml (read-only")
     (copy,) = (places.database.parent / "backups").iterdir()
-    assert str(copy) in str(raised.value)
+    assert str(copy) in said
     assert ("Anna Meier", "Prestiti") in _categories_of(conn)  # the database rolled back

@@ -1,5 +1,6 @@
 """`scrooge init`: the first run makes a setup in users/<name>/ that works as it is."""
 
+import getpass
 import io
 import re
 import shutil
@@ -10,20 +11,22 @@ import pytest
 import yaml
 
 from scrooge import categories, dbcli, onboarding
+from scrooge.web import auth
 from tests.conftest import FILES, FIXTURES
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 STARTER = Path(onboarding.__file__).parent / "starter"
+WORDS = "correct horse battery"  # a password for the pages  # pragma: allowlist secret
 
 
-def init(*answers: str) -> tuple[int, str, list[str]]:
+def init(*answers: str, flags: tuple[str, ...] = ()) -> tuple[int, str, list[str]]:
     out, left, asked = io.StringIO(), list(answers), []
 
     def ask(question: str) -> str:
         asked.append(question)
         return left.pop(0)
 
-    code = dbcli.main(["init"], out, ask=ask, now=lambda: NOW)
+    code = dbcli.main(["init", *flags], out, ask=ask, now=lambda: NOW)
     assert not left, "every answer is asked for"
     return code, out.getvalue(), asked
 
@@ -155,6 +158,60 @@ def test_with_a_config_here_the_next_steps_name_the_new_setup(here: Path) -> Non
     assert code == dbcli.OK
     assert "While it is there, it is the one `scrooge` uses unless --user" in output
     assert "  3. scrooge commit --user anna" in output
+
+
+def typed(monkeypatch: pytest.MonkeyPatch, *passwords: str) -> None:
+    """What is typed where the password is asked, each in turn."""
+    left = list(passwords)
+    monkeypatch.setattr(getpass, "getpass", lambda _prompt: left.pop(0))
+
+
+def test_in_a_container_the_pages_listen_beyond_it_with_a_password(
+    here: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Too short, then two that differ, then the one kept.
+    typed(monkeypatch, "short", WORDS, "other horse battery", WORDS, WORDS)
+    code, output, asked = init(
+        "Lukas", "LUKAS MEIER", "", "", "localhost, nas.example.ts.net", flags=("--container",)
+    )
+    assert code == dbcli.OK, output
+    assert asked[-1].startswith("What is typed in a browser to reach the pages")
+    assert "  at least 12 characters, please\n" in output
+    assert "  the two do not match, again please\n" in output
+    config_file = here / "users" / "lukas" / "scrooge.yaml"
+    config = dbcli._config(config_file)
+    serve = config["serve"]
+    assert isinstance(serve, dict)
+    assert serve["host"] == "0.0.0.0"  # noqa: S104  # every address of the container
+    assert serve["names"] == ["localhost", "nas.example.ts.net"]
+    assert auth.matches(WORDS, str(serve["password"]))
+    reach = dbcli._reach(config, config_file)  # what `serve` accepts
+    assert reach.host == "0.0.0.0"  # noqa: S104  # every address of the container
+    assert reach.names == ("localhost", "nas.example.ts.net")
+    # The next steps are commands in the container.
+    assert "  1. docker compose up -d\n" in output
+    assert "     docker compose exec scrooge scrooge import users/lukas/statements\n" in output
+    assert "     docker compose exec scrooge scrooge commit\n" in output
+
+
+def test_in_a_container_without_names_the_pages_are_localhost(
+    here: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    typed(monkeypatch, WORDS, WORDS)
+    code, output, _ = init("Lukas", "LUKAS MEIER", "", "", " ", flags=("--container",))
+    assert code == dbcli.OK, output
+    serve = dbcli._config(here / "users" / "lukas" / "scrooge.yaml")["serve"]
+    assert isinstance(serve, dict)
+    assert serve["names"] == ["localhost"]
+
+
+def test_without_a_setup_the_app_says_how_to_make_one(here: Path) -> None:
+    out = io.StringIO()
+    assert dbcli.main(["serve"], out, now=lambda: NOW) == dbcli.FAILED
+    assert out.getvalue() == (
+        "error: no database: there is no scrooge.yaml: make a setup with 'scrooge init', "
+        "or pass --db\n"
+    )
 
 
 def test_the_starter_config_holds_every_answer() -> None:
