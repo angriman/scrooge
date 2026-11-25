@@ -94,10 +94,10 @@ describe('what investments paid', () => {
 
 	it('takes no range asked for as the last twelve months', () => {
 		const ranges = [
-			{ label: 'Year to date', from: '2026', to: '' },
-			{ label: '2025', from: '2025', to: '2025' }
+			{ key: 'ytd', label: 'Year to date', from: '2026', to: '' },
+			{ key: '2025', label: '2025', from: '2025', to: '2025' }
 		];
-		expect(chosenRange(ranges, '', '')).toBe('Last 12 months');
+		expect(chosenRange(ranges, '', '')).toBe('12m');
 		expect(chosenRange(ranges, '2025', '2025')).toBe('2025');
 		expect(chosenRange(ranges, '2024-05', '')).toBe('');
 	});

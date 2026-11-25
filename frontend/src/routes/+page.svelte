@@ -21,6 +21,7 @@
 	import Notices from '#lib/overview/Notices.svelte';
 	import { statementsUpTo } from '#lib/overview/through.js';
 	import { daysBack, DEFAULT_RANGE, RANGES, rangeLabel, type Range } from '#lib/overview/range.js';
+	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
@@ -118,18 +119,11 @@
 {/each}
 
 {#if !figures || !figures.day || !series}
-	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
-		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			{t('overview.emptyBody')}
-		</p>
-		<a
-			href={resolve('/import')}
-			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
-		>
-			{t('overview.emptyCta')}
-		</a>
-	</section>
+	<EmptyState
+		heading={t('overview.emptyHeading')}
+		body={t('overview.emptyBody')}
+		importCta={!data.session.read_only}
+	/>
 {:else}
 	<div class="grid grid-cols-1 gap-4">
 		{#key data.by}

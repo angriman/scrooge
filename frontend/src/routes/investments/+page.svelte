@@ -20,6 +20,7 @@
 	import Returns from '#lib/investments/Returns.svelte';
 	import type { HeldInstrument } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
+	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { here, oneOf, show } from '#lib/view.js';
@@ -130,12 +131,12 @@
 		<Segmented
 			label={t('overview.rangeAria')}
 			value={chosen}
-			options={ranges.map((range) => ({ value: range.label, label: rangePillLabel(range) }))}
-			onchange={(label) => {
-				const range = ranges.find((r) => r.label === label)!;
+			options={ranges.map((range) => ({ value: range.key, label: rangePillLabel(range) }))}
+			onchange={(key) => {
+				const range = ranges.find((r) => r.key === key)!;
 				show(
 					page.url,
-					label === DEFAULT_RANGE
+					key === DEFAULT_RANGE
 						? { from: null, to: null }
 						: { from: range.from, to: range.to || null }
 				);
@@ -157,12 +158,10 @@
 {#if data.performance}
 	{#if !data.performance.performance.totals}
 		{#if !errors.length}
-			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-				<h1 class="text-heading font-medium text-ink">{t('investments.noAccountsHeading')}</h1>
-				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-					{t('investments.noAccountsBody')}
-				</p>
-			</section>
+			<EmptyState
+				heading={t('investments.noAccountsHeading')}
+				body={t('investments.noAccountsBody')}
+			/>
 		{/if}
 	{:else}
 		<Returns performance={data.performance.performance} {range} {people} />
@@ -170,12 +169,7 @@
 {:else if data.income}
 	{#if !data.income.income?.through}
 		{#if !errors.length}
-			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-				<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
-				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-					{t('investments.incomeEmptyBody')}
-				</p>
-			</section>
+			<EmptyState heading={t('overview.emptyHeading')} body={t('investments.incomeEmptyBody')} />
 		{/if}
 	{:else}
 		<Income
@@ -190,20 +184,13 @@
 	{/if}
 {:else if !held || !held.day}
 	{#if !errors.length}
-		<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-			<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
-			<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-				{t('investments.holdingsEmptyBody')}
-			</p>
-		</section>
+		<EmptyState heading={t('overview.emptyHeading')} body={t('investments.holdingsEmptyBody')} />
 	{/if}
 {:else if !held.holdings.length}
-	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">{t('investments.noSecuritiesHeading')}</h1>
-		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			{t('investments.noSecuritiesBody')}
-		</p>
-	</section>
+	<EmptyState
+		heading={t('investments.noSecuritiesHeading')}
+		body={t('investments.noSecuritiesBody')}
+	/>
 	{@render pensionGroup()}
 {:else}
 	<!-- The lead: what securities are worth, what they gained since bought, and their map. -->

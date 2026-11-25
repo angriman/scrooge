@@ -8,7 +8,7 @@ import type { Rule, RulesFile } from '#lib/types.js';
 export interface Draft {
 	match: string;
 	category: string;
-	direction: string;
+	direction: Rule['direction'];
 }
 
 export interface FileRules {
@@ -39,9 +39,6 @@ export function fileNote(file: RulesFile): string {
 export function stayNote(): string {
 	return t('settings.stayNote');
 }
-
-export const STAY =
-	"A rule moves up or down within its file only: to make a person's rule a shared one, or the other way round, change the files themselves.";
 
 /** A rule's key among all: its file and place. */
 export const ruleKey = (rule: Rule): string => `${rule.file}#${rule.position}`;

@@ -287,7 +287,7 @@ securities), then its statements, newest first, each with the file it came from.
 											<span class="text-body text-ink">{span(statement.first, statement.last)}</span
 											>
 											<span
-												class="order-last col-span-2 truncate text-small text-ink-muted sm:order-none sm:col-span-1"
+												class="order-last truncate text-small text-ink-muted sm:order-none"
 												title={statement.filename}
 											>
 												{statement.filename}
@@ -308,7 +308,9 @@ securities), then its statements, newest first, each with the file it came from.
 															})}{#if !statement.checked}{t('accounts.nothingToCheck')}{/if}
 												</span>
 											</span>
-											<span class="hidden items-center gap-3 text-small sm:flex">
+											<span
+												class="order-last flex items-center justify-end gap-3 text-small sm:order-none"
+											>
 												{#if statement.original}
 													<a
 														href={statement.original}

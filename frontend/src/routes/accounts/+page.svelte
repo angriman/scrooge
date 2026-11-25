@@ -3,8 +3,8 @@
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
-	import { send } from '#lib/api.js';
-	import { day } from '#lib/format/date.js';
+	import { errorMessage, send } from '#lib/api.js';
+	import { day, todayIso } from '#lib/format/date.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Notices from '#lib/overview/Notices.svelte';
 	import Checks from '#lib/coverage/Checks.svelte';
@@ -13,6 +13,7 @@
 	import { heldTogether } from '#lib/coverage/held.js';
 	import type { StatementsAccount } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
+	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import type { PageProps } from './$types';
 
 	type Statement = StatementsAccount['statements'][number];
@@ -23,8 +24,7 @@
 	const owner = $derived(page.url.searchParams.get('owner'));
 	const single = $derived(data.session.people.length < 2);
 	const people = $derived(!single && !owner);
-	const now = new Date();
-	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+	const today = todayIso();
 
 	// A closed account keeps its history but is listed apart, and is never behind.
 	const opened = $derived(listed.accounts.filter((account) => !account.closed));
@@ -50,7 +50,7 @@
 			data.session.token
 		);
 		if (!done.ok) {
-			problem = (done.sent.errors ?? []).join(' ');
+			problem = errorMessage(done);
 			return;
 		}
 		await goto(`${resolve('/import')}?owner=${encodeURIComponent(done.sent.owner)}`);
@@ -62,7 +62,7 @@
 			{ owner: account.owner, account: account.account, ...extra },
 			data.session.token
 		);
-		if (!done.ok) return (done.sent.errors ?? []).join(' ');
+		if (!done.ok) return errorMessage(done);
 		await invalidateAll();
 		return null;
 	}
@@ -101,18 +101,11 @@
 {/each}
 
 {#if !listed.accounts.length}
-	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
-		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			{t('accounts.emptyBody')}
-		</p>
-		<a
-			href={resolve('/import')}
-			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
-		>
-			{t('overview.emptyCta')}
-		</a>
-	</section>
+	<EmptyState
+		heading={t('overview.emptyHeading')}
+		body={t('accounts.emptyBody')}
+		importCta={!data.session.read_only}
+	/>
 {:else}
 	<!-- The lead: what the accounts hold now, then up to when every statement of them is in. -->
 	<section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="accounts">

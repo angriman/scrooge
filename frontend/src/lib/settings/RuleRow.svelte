@@ -24,7 +24,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 		onmove: (by: -1 | 1) => Promise<string | null>;
 		onremove: () => Promise<string | null>;
 		/** Try its pattern (as being edited) on the committed rows. */
-		ontry: (match: string, direction: string) => void;
+		ontry: (match: string, direction: Rule['direction']) => void;
 	}
 
 	let { rule, leaves, editable, first, last, onsave, onmove, onremove, ontry }: Props = $props();

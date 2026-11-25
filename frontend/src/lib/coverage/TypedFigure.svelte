@@ -5,7 +5,7 @@ What an account held at the end of a day where no statement says it, typed by ha
 it held. A figure typed can be removed again the same way, by its day (and symbol).
 -->
 <script lang="ts">
-	import { send } from '#lib/api.js';
+	import { errorMessage, send } from '#lib/api.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Panel from '#lib/ui/Panel.svelte';
 
@@ -57,7 +57,7 @@ it held. A figure typed can be removed again the same way, by its day (and symbo
 		const answer = await send<{ symbol: string | null }>('/api/accounts/typed', body, token);
 		busy = false;
 		if (!answer.ok) {
-			problem = (answer.sent.errors ?? []).join(' ') || t('api.changeRefused');
+			problem = errorMessage(answer);
 			return;
 		}
 		done = remove ? t('typed.removed', { account, day }) : t('typed.kept', { account, day });

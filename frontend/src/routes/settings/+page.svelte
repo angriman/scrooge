@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { send } from '#lib/api.js';
+	import { errorMessage, send } from '#lib/api.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import AddCategory from '#lib/import/AddCategory.svelte';
 	import CategoryRow from '#lib/settings/CategoryRow.svelte';
@@ -34,11 +34,11 @@
 
 	// What the box at the top of the rules tries; a rule's "Try" puts its pattern there.
 	let match = $state('');
-	let direction = $state('');
+	let direction = $state<Rule['direction']>('');
 	let box = $state<HTMLElement>();
 	let tester = $state<PatternTest>();
 
-	async function tryPattern(pattern: string, way: string) {
+	async function tryPattern(pattern: string, way: Rule['direction']) {
 		match = pattern;
 		direction = way;
 		box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -49,7 +49,7 @@
 	/** Send a change, and load the page again when it is made: what went wrong, or null. */
 	async function change(path: string, body: unknown): Promise<string | null> {
 		const done = await send(`/api/settings/${path}`, body, token);
-		if (!done.ok) return (done.sent.errors ?? []).join(' ') || t('api.changeRefused');
+		if (!done.ok) return errorMessage(done);
 		await invalidate('api:settings');
 		return null;
 	}

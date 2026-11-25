@@ -390,7 +390,7 @@ export interface Total {
 
 /** What the rows of one top-level category add up to, in one currency. */
 export interface CategoryTotal extends Total {
-	key?: string;
+	key: string;
 	name: string;
 }
 
@@ -621,6 +621,14 @@ export interface PaidBy {
 	moves: { sender: string; receiver: string; amount: Amount }[];
 }
 
+/** One range offered by `/api/cashflow` and `/api/income`. */
+export interface OfferedRange {
+	key: string;
+	label: string;
+	from: string;
+	to: string;
+}
+
 export interface CashFlow {
 	report: CashFlowReport | null;
 	/** The range shown: `last` null means up to the last day committed. */
@@ -628,7 +636,7 @@ export interface CashFlow {
 	last: string | null;
 	by: 'week' | 'month' | 'quarter' | 'year';
 	/** The ranges offered, as `from` and `to` take them. */
-	ranges: { key?: string; label: string; from: string; to: string }[];
+	ranges: OfferedRange[];
 	errors: string[];
 }
 
@@ -677,7 +685,7 @@ export interface PayoutsReport {
 export interface InvestmentIncome {
 	income: PayoutsReport;
 	logos: Record<string, string>;
-	ranges: { key?: string; label: string; from: string; to: string }[];
+	ranges: OfferedRange[];
 	errors: string[];
 }
 
@@ -882,7 +890,7 @@ export interface Rule {
 	match: string;
 	category: string;
 	/** `in`, `out`, or empty for both. */
-	direction: string;
+	direction: '' | 'in' | 'out';
 	account: string;
 	/** Committed rows it would match on its own, whatever rule before it takes them first;
 	 * null when its pattern is none. */

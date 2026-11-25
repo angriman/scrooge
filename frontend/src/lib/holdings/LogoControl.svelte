@@ -4,7 +4,7 @@ The logo of one instrument: a PNG or SVG of the user's own is kept in place of a
 the one it has is taken out. Nothing is fetched: the image comes from this browser.
 -->
 <script lang="ts">
-	import { send } from '#lib/api.js';
+	import { errorMessage, send } from '#lib/api.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 
 	interface Props {
@@ -28,7 +28,7 @@ the one it has is taken out. Nothing is fetched: the image comes from this brows
 		const done = await send<{ logos: Record<string, string> }>(path, body, token);
 		busy = false;
 		if (!done.ok) {
-			problem = (done.sent.errors ?? []).join(' ') || t('api.changeRefused');
+			problem = errorMessage(done);
 			return;
 		}
 		await onchange();

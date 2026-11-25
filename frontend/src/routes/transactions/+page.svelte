@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import Download from '@lucide/svelte/icons/download';
 	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { get, post } from '#lib/api.js';
+	import { todayIso } from '#lib/format/date.js';
 	import { money } from '#lib/format/number.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Context from '#lib/transactions/Context.svelte';
@@ -13,6 +13,7 @@
 	import { FIELDS, TRANSFERS, filtered } from '#lib/transactions/filter.js';
 	import type { KnownMerchants, Transaction, Transactions } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
+	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import { pick, withQuery } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
@@ -27,9 +28,7 @@
 		Object.fromEntries(FIELDS.map((name) => [name, page.url.searchParams.get(name) ?? '']))
 	);
 	const cut = $derived(filtered(page.url));
-
-	const now = new Date();
-	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+	const today = todayIso();
 
 	function change(changes: Record<string, string | null>, typing = false) {
 		return goto(withQuery(page.url, changes), { reset: false, replace: typing });
@@ -113,20 +112,11 @@
 </svelte:head>
 
 {#if !listed.count && !cut}
-	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">{t('transactions.emptyHeading')}</h1>
-		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			{t('transactions.emptyBody')}
-		</p>
-		{#if !session.read_only}
-			<a
-				href={resolve('/import')}
-				class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
-			>
-				{t('overview.emptyCta')}
-			</a>
-		{/if}
-	</section>
+	<EmptyState
+		heading={t('transactions.emptyHeading')}
+		body={t('transactions.emptyBody')}
+		importCta={!session.read_only}
+	/>
 {:else}
 	<h1 class="sr-only">{t('transactions.heading')}</h1>
 	<Filters
@@ -208,7 +198,7 @@
 					chosen={values.category || null}
 					onchoose={(line) =>
 						change(
-							(line.key ?? line.name) === TRANSFERS
+							line.key === TRANSFERS
 								? { kind: 'internal' }
 								: { category: values.category === line.name ? null : line.name }
 						)}
@@ -223,7 +213,7 @@
 					{people}
 					rules={session.rules}
 					changeable={!session.read_only}
-					thisYear={now.getFullYear()}
+					thisYear={Number(today.slice(0, 4))}
 					onchange={recategorize}
 				/>
 				{#if rows.length < listed.count}

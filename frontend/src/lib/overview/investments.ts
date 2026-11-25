@@ -25,9 +25,6 @@ export interface Loaded<T> {
 	errors: string[];
 }
 
-export const RETURNED = 'What the investments returned';
-export const PAID = 'What the investments paid';
-
 export const returnedLabel = () => t('overview.returnedSubject');
 export const paidLabel = () => t('overview.paidSubject');
 
