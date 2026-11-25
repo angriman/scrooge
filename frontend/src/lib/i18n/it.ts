@@ -56,8 +56,7 @@ export const it: Messages = {
 	'bridge.newAccounts': 'Nuovi conti',
 	'bridge.marketsShort': 'Mercati',
 	'bridge.marketsAndOther': 'Mercati e altro',
-	'bridge.ariaLabel':
-		'Da {before} al {from}: entrate {income}, spese {spending}, mercati e altro {other}, a {after} al {to}',
+	'bridge.ariaLabel': 'Da {before} al {from}: {steps}, a {after} al {to}',
 
 	'range.1m': '1M',
 	'range.3m': '3M',
