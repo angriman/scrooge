@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import networth, query
+from scrooge import networth, portfolio, query
 from scrooge.web import wire
 
 
@@ -59,3 +59,23 @@ def test_parts_of_a_whole_are_sent_in_whole_percents_that_add_up() -> None:
     # A part below zero: the others add up to more than 100, all of them to 100.
     assert wire.whole_percents([Decimal("-0.070575"), Decimal("1.070575")]) == ["-7", "107"]
     assert wire.whole_percents([None, None]) == [None, None]
+
+
+def test_parts_of_a_whole_are_sent_to_the_tenth_rounded_once_and_adding_up() -> None:
+    # Sent to the hundredth, 48.449 would be 48.45 and the app's tenth 48.5: rounded twice.
+    # And 48.5 with 51.6 is 100.1.
+    whole = Decimal(100)
+    assert wire.tenths([Decimal("48.449"), Decimal("51.551")], whole) == ["48.4", "51.6"]
+    # What is owed is below zero: the others add up to more than 100, all of them to 100.
+    assert wire.tenths([Decimal(-70), Decimal(1070)], Decimal(1000)) == ["-7.0", "107.0"]
+    assert wire.tenths([Decimal(1), Decimal(2)], Decimal(3)) == ["33.3", "66.7"]
+    assert wire.tenths([Decimal(5)], Decimal(0)) == [None]
+    assert wire.tenths([Decimal(5), Decimal(-10)], Decimal(-5)) == [None, None]
+
+
+def test_securities_worth_nothing_in_all_have_shares_of_zero() -> None:
+    held = portfolio.Portfolio("CHF", None, (), ())
+    sent = wire.holdings(held)
+    assert sent["holdings"] == []
+    assert sent["spread"] == {by: [] for by in portfolio.SPREADS}
+    assert wire._of_securities([Decimal(5), Decimal(-5)], Decimal(0)) == ["0", "0"]

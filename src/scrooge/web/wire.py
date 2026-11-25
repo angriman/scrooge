@@ -7,7 +7,9 @@ category is sent by its label (`categories.Labels`), as people read it: the serv
 categories by their keys, and the translation is made here, once. A side of the taxonomy
 keeps the Italian name it had (`side`, `side_sent`).
 Nothing is laid out here: no colours, no shapes, no rounding for the eye. Those are the
-frontend's.
+frontend's. Shares of one whole are the exception: rounded on its own, each could make the
+parts add up to 101, so they are sent shared out at the precision the app shows them
+(`whole_percents`, `tenths`), from the exact values, and the app rounds nothing again.
 """
 
 from __future__ import annotations
@@ -47,6 +49,7 @@ _T = TypeVar("_T")
 _F = TypeVar("_F")
 
 _WHOLE = Decimal(1)  # a whole percent
+_TENTH = Decimal("0.1")  # a tenth of a percent
 
 
 def number(value: Decimal | None) -> str | None:
@@ -104,13 +107,18 @@ def person(shown: query.Person, covered: date | None = None) -> JSON:
     }
 
 
-def _part(part: overview.Part) -> JSON:
-    return {
-        "name": part.name,
-        "value": number(part.value),
-        "share": number(part.share),
-        "then": [number(value) for value in part.then],
-    }
+def _parts(parts: Sequence[overview.Part], whole: Decimal) -> list[JSON]:
+    """`parts` with their shares of `whole` to the tenth (`tenths`), not the services' two
+    decimals, which the Jinja pages show."""
+    return [
+        {
+            "name": part.name,
+            "value": number(part.value),
+            "share": share,
+            "then": [number(value) for value in part.then],
+        }
+        for part, share in zip(parts, tenths([p.value for p in parts], whole), strict=True)
+    ]
 
 
 def _change(change: overview.Change) -> JSON:
@@ -130,10 +138,10 @@ def summary(shown: overview.Overview) -> JSON:
         "through": day(shown.through),
         "total": number(shown.total),
         "changes": [_change(change) for change in shown.changes],
-        "assets": [_part(part) for part in shown.assets],
-        "held": [_part(part) for part in shown.held],
-        "people": [_part(part) for part in shown.people],
-        "securities": _part(shown.securities),
+        "assets": _parts(shown.assets, shown.total),
+        "held": _parts(shown.held, sum((part.value for part in shown.held), Decimal(0))),
+        "people": _parts(shown.people, shown.total),
+        "securities": _parts([shown.securities], shown.total)[0],
     }
 
 
@@ -199,6 +207,15 @@ def whole_percents(fractions: Sequence[Decimal | None]) -> list[str | None]:
     if len(known) < len(fractions):
         return [None] * len(fractions)
     return [number(part) for part in portfolio.shared_out([f * 100 for f in known], _WHOLE)]
+
+
+def tenths(values: Sequence[Decimal], whole: Decimal) -> list[str | None]:
+    """Each of `values` in percent of `whole`, to the tenth the app shows, shared out so that
+    they add up as the values do (to 100 when they are all of it); rounded once, from the
+    values. None for each when `whole` is not above zero."""
+    if whole <= 0:
+        return [None] * len(values)
+    return [number(p) for p in portfolio.shared_out([v * 100 / whole for v in values], _TENTH)]
 
 
 def _month(first: date | None) -> str | None:
@@ -292,12 +309,29 @@ def _returns(returned: holding_returns.Returns | None) -> JSON | None:
     }
 
 
+def _of_securities(values: Sequence[Decimal], total: Decimal) -> list[str]:
+    """`tenths` of what all securities are worth; zero, as `portfolio` has it, when that is
+    not above zero (no holding is then sent without a share)."""
+    return [share or "0" for share in tenths(values, total)]
+
+
+def _spread(slices: Sequence[portfolio.Slice], total: Decimal) -> list[JSON]:
+    return [
+        {"name": s.name, "value": number(s.value), "share": share}
+        for s, share in zip(slices, _of_securities([s.value for s in slices], total), strict=True)
+    ]
+
+
 def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None = None) -> JSON:
     """What is held on `day`: the totals, each instrument with its positions account by
     account and what each returned (`holding_returns`), how it is spread
     (`portfolio.SPREADS`), and the bills by maturity. The API asks it without the 3a fund units,
     which the pensions (`pensions_report`) count instead."""
     returned = returned or holding_returns.Found()
+    instruments = held.holdings
+    # Of all securities, to the tenth the app shows (`tenths`): not the two decimals of
+    # `portfolio`, which the Jinja page shows.
+    shares = _of_securities([h.value for h in instruments], held.total)
     positions: dict[tuple[str, str, str], list[portfolio.Position]] = {}
     for position in held.positions:
         key = (position.symbol, position.currency, position.asset)
@@ -319,7 +353,7 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
                 "asset": h.asset,
                 "currency": h.currency,
                 "value": number(h.value),
-                "share": number(h.share),
+                "share": share,
                 "cost": number(h.cost),
                 "gain": number(h.gain),
                 "return_percent": number(h.return_percent),
@@ -332,15 +366,9 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
                     )
                 ],
             }
-            for h in held.holdings
+            for h, share in zip(instruments, shares, strict=True)
         ],
-        "spread": {
-            by: [
-                {"name": s.name, "value": number(s.value), "share": number(s.share)}
-                for s in held.spread(by)
-            ]
-            for by in portfolio.SPREADS
-        },
+        "spread": {by: _spread(held.spread(by), held.total) for by in portfolio.SPREADS},
         "ladder_day": day(held.ladder_day),
         "ladder": [
             {
