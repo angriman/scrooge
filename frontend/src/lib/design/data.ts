@@ -30,6 +30,17 @@ export const INCOME_SLOTS: Readonly<Record<string, Slot>> = {
 	Other: 6
 };
 
+/** The benchmarks the investments are set beside (`benchmarks` in scrooge.yaml), in the order
+ * the config names them: sky for the first (VT), amber for the second (VOO), then lime and
+ * coral. Never the brand's indigo: that is the investments' own line. */
+export const BENCHMARK_SLOTS: readonly Slot[] = [3, 2, 4, 8];
+
+/** The colour of a benchmark by its place in the config; the rest share the colour of the
+ * rest. */
+export function benchmarkColor(index: number): string {
+	return color(BENCHMARK_SLOTS[index]);
+}
+
 /** The colour of `slot`, as CSS takes it (a `fill`, a `stroke`, a `background`). */
 export function color(slot: Slot | null | undefined): string {
 	return slot ? `var(--data-${slot})` : 'var(--data-other)';

@@ -41,6 +41,7 @@ const report = (changes: Partial<PerformanceReport> = {}): PerformanceReport => 
 	totals: measured,
 	series: [],
 	accounts: [],
+	benchmarks: [],
 	...changes
 });
 

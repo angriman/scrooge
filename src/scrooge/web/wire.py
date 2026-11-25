@@ -881,7 +881,10 @@ def performance_report(shown: performance.Performance) -> JSON:
     """What the investment accounts returned over a range, in one currency: in all and account
     by account, and day by day (week by week over a long range) what they were worth against
     the money put in. `twr` is in percent over the range, from `twr_since` when that is later
-    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise."""
+    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise.
+    `benchmarks` are what holding each returned in percent over the days `twr` counts; each
+    day's `benchmarks` are their lines, in the same order: what the money put in would be
+    worth in each (`scrooge.benchmark`)."""
     return {
         "currency": shown.currency,
         "range": shown.range,
@@ -893,6 +896,7 @@ def performance_report(shown: performance.Performance) -> JSON:
                 "day": point.day.isoformat(),
                 "value": number(point.value),
                 "invested": number(point.invested),
+                "benchmarks": [number(value) for value in point.benchmarks],
             }
             for point in shown.points
         ],
@@ -904,6 +908,9 @@ def performance_report(shown: performance.Performance) -> JSON:
                 **_measured(holder.measured),
             }
             for holder in shown.holders
+        ],
+        "benchmarks": [
+            {"symbol": each.symbol, "return": number(each.returned)} for each in shown.benchmarks
         ],
     }
 
