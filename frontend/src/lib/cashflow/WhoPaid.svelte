@@ -32,16 +32,29 @@ other, and each person's share after settling up.
 		split(names, Object.fromEntries(paidBy.people.map((person) => [person.name, person.spent])))
 	);
 	const settled = $derived(
-		split(names, Object.fromEntries(paidBy.people.map((person) => [person.name, person.settled])))
+		split(
+			names,
+			Object.fromEntries(paidBy.people.map((person) => [person.name, person.settled]))
+		)
 	);
 	/** What a bar says to whoever cannot see it: each person and what they spent. */
-	const said = (parts: Part[]) => parts.map((part) => `${part.name} ${money(part.spent, 0)}`).join(', ');
+	const said = (parts: Part[]) =>
+		parts.map((part) => `${part.name} ${money(part.spent, 0)}`).join(', ');
 </script>
 
 {#snippet bar(parts: Part[], label: string)}
-	<span class="flex h-1.5 overflow-hidden rounded-mark bg-sunken" role="img" aria-label={label} title={label}>
+	<span
+		class="flex h-1.5 overflow-hidden rounded-mark bg-sunken"
+		role="img"
+		aria-label={label}
+		title={label}
+	>
 		{#each parts as part (part.name)}
-			<span class="block h-full" style:width="{part.width}%" style:background-color={colors.get(part.name)}></span>
+			<span
+				class="block h-full"
+				style:width="{part.width}%"
+				style:background-color={colors.get(part.name)}
+			></span>
 		{/each}
 	</span>
 {/snippet}
@@ -51,9 +64,17 @@ other, and each person's share after settling up.
 		{#each paidBy.people as person (person.name)}
 			{@const share = amount === 'spent' ? person.share : person.settled_share}
 			<li class="flex items-baseline gap-2">
-				<span class="size-2 shrink-0 self-center rounded-[2px]" style:background={colors.get(person.name)}></span>
+				<span
+					class="size-2 shrink-0 self-center rounded-[2px]"
+					style:background={colors.get(person.name)}
+				></span>
 				<span class="min-w-0 truncate text-body text-ink">{person.name}</span>
-				<Amount value={person[amount]} {currency} places={0} class="ml-auto text-title text-ink" />
+				<Amount
+					value={person[amount]}
+					{currency}
+					places={0}
+					class="ml-auto text-title text-ink"
+				/>
 				<span class="w-12 text-right text-small text-ink-secondary tabular-nums">
 					{share === null ? '–' : percent(share, 0)}
 				</span>
@@ -70,7 +91,8 @@ other, and each person's share after settling up.
 		<div class="mt-4 rounded-control bg-sunken px-3 py-2.5">
 			{#each paidBy.moves as move (move.sender + move.receiver)}
 				<p class="text-small text-ink-secondary">
-					{move.sender} sent {move.receiver} <Amount value={move.amount} {currency} places={0} class="text-ink" /> over these months.
+					{move.sender} sent {move.receiver}
+					<Amount value={move.amount} {currency} places={0} class="text-ink" /> over these months.
 				</p>
 			{/each}
 			<p class="mt-2 mb-1.5 text-caption text-ink-muted">After settling up</p>
@@ -85,10 +107,22 @@ other, and each person's share after settling up.
 			<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-1 py-2">
 				<span class="truncate text-body text-ink">{category.name}</span>
 				<Amount value={category.spent} places={0} class="text-right text-body text-ink" />
-				<span class="col-span-2">{@render bar(parts, `${category.name}: ${said(parts)}`)}</span>
-				<span class="col-span-2 flex flex-wrap gap-x-3 text-caption text-ink-muted" aria-hidden="true">
+				<span class="col-span-2"
+					>{@render bar(parts, `${category.name}: ${said(parts)}`)}</span
+				>
+				<span
+					class="col-span-2 flex flex-wrap gap-x-3 text-caption text-ink-muted"
+					aria-hidden="true"
+				>
 					{#each parts as part (part.name)}
-						<span>{part.name} <Amount value={part.spent} places={0} class="text-ink-secondary" /></span>
+						<span
+							>{part.name}
+							<Amount
+								value={part.spent}
+								places={0}
+								class="text-ink-secondary"
+							/></span
+						>
 					{/each}
 				</span>
 			</li>

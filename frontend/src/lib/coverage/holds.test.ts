@@ -12,21 +12,49 @@ describe('heldLines', () => {
 			months: []
 		};
 		expect(heldLines(holds, 'CHF')).toEqual([
-			{ label: 'Cash in USD', amount: '1250.00', currency: 'USD', converted: '1000.00', securities: false },
-			{ label: 'Cash', amount: '100.00', currency: 'CHF', converted: null, securities: false },
-			{ label: 'Securities', amount: '400.00', currency: 'CHF', converted: null, securities: true }
+			{
+				label: 'Cash in USD',
+				amount: '1250.00',
+				currency: 'USD',
+				converted: '1000.00',
+				securities: false
+			},
+			{
+				label: 'Cash',
+				amount: '100.00',
+				currency: 'CHF',
+				converted: null,
+				securities: false
+			},
+			{
+				label: 'Securities',
+				amount: '400.00',
+				currency: 'CHF',
+				converted: null,
+				securities: true
+			}
 		]);
 	});
 
 	it('gives a bank account the one line it has', () => {
-		const holds = { cash: [{ asset: 'Cash', currency: 'CHF', amount: '700.00', converted: '700.00' }], securities: null, months: [] };
+		const holds = {
+			cash: [{ asset: 'Cash', currency: 'CHF', amount: '700.00', converted: '700.00' }],
+			securities: null,
+			months: []
+		};
 		expect(heldLines(holds, 'CHF').map((line) => line.label)).toEqual(['Cash']);
 	});
 
 	it('names a card’s balance, a 3a’s cash and a pension fund’s balance by what they are', () => {
 		const line = (asset: string, currency = 'CHF') =>
-			heldLines({ cash: [{ asset, currency, amount: '-1.00', converted: '-1.00' }], securities: null, months: [] }, 'CHF')[0]
-				.label;
+			heldLines(
+				{
+					cash: [{ asset, currency, amount: '-1.00', converted: '-1.00' }],
+					securities: null,
+					months: []
+				},
+				'CHF'
+			)[0].label;
 		expect([line('Card'), line('Card', 'EUR'), line('Pillar 3a'), line('Pillar 2')]).toEqual([
 			'Card balance',
 			'Card balance in EUR',
@@ -50,7 +78,9 @@ describe('sparkline', () => {
 
 describe('securitiesQuery', () => {
 	it('opens the holdings of the account’s owner, in the currency the address names', () => {
-		expect(securitiesQuery('Anna Lee', 'USD')).toBe('view=holdings&owner=Anna+Lee&currency=USD');
+		expect(securitiesQuery('Anna Lee', 'USD')).toBe(
+			'view=holdings&owner=Anna+Lee&currency=USD'
+		);
 		expect(securitiesQuery('Anna', null)).toBe('view=holdings&owner=Anna');
 	});
 });
@@ -60,7 +90,9 @@ describe('trend', () => {
 		balances.map((balance, index) => ({ day: `2026-0${index + 1}-28`, balance }));
 
 	it('says which way the balance went since the first month-end of its line', () => {
-		expect(trend(months('41000.40', '35000', '42000'), 'CHF')).toBe('up from 41’000 CHF at the end of Jan 2026');
+		expect(trend(months('41000.40', '35000', '42000'), 'CHF')).toBe(
+			'up from 41’000 CHF at the end of Jan 2026'
+		);
 		expect(trend(months('500', '400'), 'USD')).toBe('down from 500 USD at the end of Jan 2026');
 		expect(trend(months('0.26', '0.26'), 'EUR')).toBe('unchanged since the end of Jan 2026');
 	});

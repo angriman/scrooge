@@ -32,7 +32,11 @@ export function fold(text: string): string {
  * starts with what is typed first, then those with a word that starts with its first word,
  * then the others, each in the order given (the largest first). Nothing typed: the first
  * `most`. */
-export function narrow<T extends Offered>(merchants: readonly T[], typed: string, most = LISTED): T[] {
+export function narrow<T extends Offered>(
+	merchants: readonly T[],
+	typed: string,
+	most = LISTED
+): T[] {
 	const wanted = fold(typed);
 	if (!wanted) return merchants.slice(0, most);
 	const words = wanted.split(' ');
@@ -41,7 +45,8 @@ export function narrow<T extends Offered>(merchants: readonly T[], typed: string
 		const name = fold(merchant.name);
 		if (!words.every((word) => name.includes(word))) continue;
 		if (name.startsWith(wanted)) ranked[0].push(merchant);
-		else if (name.split(' ').some((part) => part.startsWith(words[0]))) ranked[1].push(merchant);
+		else if (name.split(' ').some((part) => part.startsWith(words[0])))
+			ranked[1].push(merchant);
 		else ranked[2].push(merchant);
 	}
 	return ranked.flat().slice(0, most);

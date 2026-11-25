@@ -24,7 +24,10 @@ A share of a whole as a bar on its track: how much of everything a holding is.
 	);
 </script>
 
-<span class={cn('block h-1.5 overflow-hidden rounded-mark bg-sunken', className)} aria-hidden="true">
+<span
+	class={cn('block h-1.5 overflow-hidden rounded-mark bg-sunken', className)}
+	aria-hidden="true"
+>
 	<span class="block h-full rounded-mark" style:width="{width}%" style:background-color={color}
 	></span>
 </span>

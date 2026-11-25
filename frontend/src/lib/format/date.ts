@@ -85,5 +85,7 @@ export function monthName(text: string): string {
 /** How many days from `first` to `last`, both ISO days: 1 from one day to the next. */
 export function daysBetween(first: string, last: string): number {
 	const [a, b] = [parts(first), parts(last)];
-	return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000);
+	return Math.round(
+		(Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000
+	);
 }

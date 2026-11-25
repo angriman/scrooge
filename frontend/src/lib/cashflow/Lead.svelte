@@ -26,7 +26,9 @@ came in, what went out, the salary and how much of the income was earned by work
 	// the amounts. The sentence writes out the space before the bracket, as Svelte trims a plain
 	// one at the start of a block; without a change there is neither the space nor the bracket.
 	const points = $derived(
-		totals.rate !== null && yearBefore?.rate != null ? difference(totals.rate, yearBefore.rate) : null
+		totals.rate !== null && yearBefore?.rate != null
+			? difference(totals.rate, yearBefore.rate)
+			: null
 	);
 </script>
 
@@ -42,10 +44,13 @@ came in, what went out, the salary and how much of the income was earned by work
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.rate !== null && !short}
 					<span class="text-title font-medium text-brand">{percent(totals.rate)}</span>
-					of what came in was kept{#if points !== null}{' '}(<span class={cn(points.startsWith('-') ? 'text-loss' : 'text-gain')}
+					of what came in was kept{#if points !== null}{' '}(<span
+							class={cn(points.startsWith('-') ? 'text-loss' : 'text-gain')}
 							>{signed(points, 1)} points</span
 						> on the same months a year before){/if}{#if totals.rate_salary !== null},
-						<span class="text-title font-medium text-brand">{percent(totals.rate_salary)}</span>
+						<span class="text-title font-medium text-brand"
+							>{percent(totals.rate_salary)}</span
+						>
 						of salary{/if}.
 				{:else if short}
 					Savings, or money from earlier, made up the difference.
@@ -69,7 +74,9 @@ came in, what went out, the salary and how much of the income was earned by work
 			</div>
 			<div>
 				<dt class="text-ink-secondary">From work</dt>
-				<dd class="text-title text-ink">{totals.from_work === null ? '–' : percent(totals.from_work, 0)}</dd>
+				<dd class="text-title text-ink">
+					{totals.from_work === null ? '–' : percent(totals.from_work, 0)}
+				</dd>
 			</div>
 			{#if approximate(paidBack) > 0}
 				<p class="col-span-full text-caption text-ink-muted">

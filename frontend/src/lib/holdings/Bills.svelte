@@ -28,19 +28,26 @@ repayment, the money that comes back first.
 			...first,
 			face: sum(
 				dated
-					.filter((rung) => rung.maturity === first.maturity && rung.currency === first.currency)
+					.filter(
+						(rung) =>
+							rung.maturity === first.maturity && rung.currency === first.currency
+					)
 					.map((rung) => rung.face)
 			)
 		}
 	);
 	// A line says something only with bills repaid on more than one day.
 	const days = $derived(new Set(dated.map((rung) => rung.maturity)).size);
-	const span = $derived(
-		Math.max(1, ...dated.map((rung) => daysBetween(from, rung.maturity!)))
-	);
+	const span = $derived(Math.max(1, ...dated.map((rung) => daysBetween(from, rung.maturity!))));
 	const tallest = $derived(Math.max(1, ...dated.map((rung) => approximate(rung.face))));
 	const when = (rung: Rung) =>
-		rung.days === null ? '' : rung.days < 0 ? 'matured' : rung.days === 0 ? 'today' : `in ${rung.days} days`;
+		rung.days === null
+			? ''
+			: rung.days < 0
+				? 'matured'
+				: rung.days === 0
+					? 'today'
+					: `in ${rung.days} days`;
 </script>
 
 <Panel title="Bills by maturity">
@@ -88,7 +95,8 @@ repayment, the money that comes back first.
 						</span>
 					</td>
 					<td class="py-2 text-right tabular-nums">
-						{money(rung.face, 0)} <span class="text-caption text-ink-muted">{rung.currency}</span>
+						{money(rung.face, 0)}
+						<span class="text-caption text-ink-muted">{rung.currency}</span>
 					</td>
 					<td class="py-2 text-right tabular-nums">{money(rung.value_native)}</td>
 					<td class="py-2 text-right tabular-nums text-gain">

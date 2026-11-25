@@ -50,21 +50,31 @@ source at once, or whole folders; each file is recognised on its own.
 	ondrop={dropped}
 	class={cn(
 		'flex items-center rounded-lead border-2 border-dashed text-center transition-colors',
-		compact ? 'flex-wrap justify-center gap-x-4 gap-y-2 px-4 py-3' : 'flex-col gap-3 px-6 py-10',
+		compact
+			? 'flex-wrap justify-center gap-x-4 gap-y-2 px-4 py-3'
+			: 'flex-col gap-3 px-6 py-10',
 		over ? 'border-brand bg-brand-soft' : 'border-line-strong bg-panel'
 	)}
 >
 	{#if busy}
-		<LoaderCircle class="size-6 animate-spin text-brand motion-reduce:animate-none" aria-hidden="true" />
+		<LoaderCircle
+			class="size-6 animate-spin text-brand motion-reduce:animate-none"
+			aria-hidden="true"
+		/>
 		<p class="text-body text-ink" role="status">Reading and reconciling…</p>
 	{:else}
-		<FileUp class={compact ? 'size-5 text-ink-muted' : 'size-8 text-ink-muted'} aria-hidden="true" />
+		<FileUp
+			class={compact ? 'size-5 text-ink-muted' : 'size-8 text-ink-muted'}
+			aria-hidden="true"
+		/>
 		<p class={compact ? 'text-body text-ink' : 'text-title text-ink'}>
-			Drop statements here{#if owner}{' '}<span class="text-ink-secondary">for {owner}</span>{/if}
+			Drop statements here{#if owner}{' '}<span class="text-ink-secondary">for {owner}</span
+				>{/if}
 		</p>
 		<p class={compact ? 'sr-only' : 'max-w-prose text-small text-ink-secondary'}>
-			Any number, of any bank or broker, or whole folders. Each is recognised and reconciled on
-			its own, and one that fails stops no other. Days already committed are left as they are.
+			Any number, of any bank or broker, or whole folders. Each is recognised and reconciled
+			on its own, and one that fails stops no other. Days already committed are left as they
+			are.
 		</p>
 		<div class={cn('flex flex-wrap justify-center gap-2', !compact && 'mt-1')}>
 			<button

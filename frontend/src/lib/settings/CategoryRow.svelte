@@ -71,9 +71,12 @@ rows no rule matches stays as it is.
 		} else if (doing === 'move' && target) {
 			await act(() => onmove(target));
 		} else if (doing === 'merge' && target) {
-			const gone = category.built_in ? 'It stays, with nothing in it.' : 'It is then taken out.';
+			const gone = category.built_in
+				? 'It stays, with nothing in it.'
+				: 'It is then taken out.';
 			const rows = rowsName(category.rows);
-			if (!confirm(`Give ${category.name}'s ${rows} and its rules ${target}? ${gone}`)) return;
+			if (!confirm(`Give ${category.name}'s ${rows} and its rules ${target}? ${gone}`))
+				return;
 			await act(() => onmerge(target));
 		}
 	}
@@ -112,7 +115,11 @@ rows no rule matches stays as it is.
 				</select>
 			{:else}
 				<span class="text-small text-ink-secondary">Merge {category.name} into</span>
-				<CategorySelect bind:value={target} leaves={into} label={`Merge ${category.name} into`} />
+				<CategorySelect
+					bind:value={target}
+					leaves={into}
+					label={`Merge ${category.name} into`}
+				/>
 			{/if}
 			<button type="button" class={quiet} onclick={() => (doing = null)}>Cancel</button>
 			<button
@@ -128,7 +135,9 @@ rows no rule matches stays as it is.
 			<span class="min-w-0 flex-1 text-body text-ink">
 				{category.name}
 				{#if !category.built_in}
-					<span class="ml-1 rounded-control bg-brand-soft px-1.5 text-caption text-brand">Added</span>
+					<span class="ml-1 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
+						>Added</span
+					>
 				{/if}
 				{#if category.name === unmatched}
 					<span class="ml-1 text-caption text-ink-muted" title="scrooge.yaml: unmatched">
@@ -140,16 +149,24 @@ rows no rule matches stays as it is.
 			{#if editable}
 				<span class="flex gap-3">
 					{#if renamable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('rename')}>Rename</button>
+						<button type="button" class={quiet} onclick={() => start('rename')}
+							>Rename</button
+						>
 					{/if}
 					{#if movable(category)}
-						<button type="button" class={quiet} onclick={() => start('move')}>Move</button>
+						<button type="button" class={quiet} onclick={() => start('move')}
+							>Move</button
+						>
 					{/if}
 					{#if into.length && mergeable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('merge')}>Merge</button>
+						<button type="button" class={quiet} onclick={() => start('merge')}
+							>Merge</button
+						>
 					{/if}
 					{#if removable(category, unmatched)}
-						<button type="button" class={quiet} disabled={busy} onclick={remove}>Remove</button>
+						<button type="button" class={quiet} disabled={busy} onclick={remove}
+							>Remove</button
+						>
 					{/if}
 				</span>
 			{/if}

@@ -33,7 +33,9 @@ on bills without a maturity offers to look them up and import the same files aga
 			...(found.already
 				? [`${rows(found.already)} on days already committed, and left as they were there.`]
 				: []),
-			...(found.later ? [`${rows(found.later)} booked today or later: the next import takes them.`] : [])
+			...(found.later
+				? [`${rows(found.later)} booked today or later: the next import takes them.`]
+				: [])
 		];
 	});
 </script>
@@ -52,12 +54,15 @@ on bills without a maturity offers to look them up and import the same files aga
 			onclick={() => onlookup(answer.undated!.held!)}
 			class="mb-3 h-9 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 		>
-			{looking ? 'Looking up…' : `Look up ${answer.undated.bills.join(', ')} on TreasuryDirect and import again`}
+			{looking
+				? 'Looking up…'
+				: `Look up ${answer.undated.bills.join(', ')} on TreasuryDirect and import again`}
 		</button>
 	{:else if answer.undated}
 		<p class="mb-3 text-body text-ink-secondary">
-			Add when {answer.undated.bills.join(', ')} mature{answer.undated.bills.length === 1 ? 's' : ''} to
-			instruments.yaml, then import the files again.
+			Add when {answer.undated.bills.join(', ')} mature{answer.undated.bills.length === 1
+				? 's'
+				: ''} to instruments.yaml, then import the files again.
 		</p>
 	{/if}
 
@@ -70,7 +75,10 @@ on bills without a maturity offers to look them up and import the same files aga
 					{:else if file.staged}
 						<CircleCheck class="mt-0.5 size-4 shrink-0 text-gain" aria-hidden="true" />
 					{:else}
-						<CircleMinus class="mt-0.5 size-4 shrink-0 text-ink-muted" aria-hidden="true" />
+						<CircleMinus
+							class="mt-0.5 size-4 shrink-0 text-ink-muted"
+							aria-hidden="true"
+						/>
 					{/if}
 					<span class="min-w-0 flex-1">
 						<span class="block truncate text-body text-ink">{file.name}</span>
@@ -95,7 +103,9 @@ on bills without a maturity offers to look them up and import the same files aga
 				<Amount value={certificate.balance} currency={certificate.currency} /> on
 				{day(certificate.as_of)}, read off {certificate.filename}.
 				{#if !certificate.adds_up}
-					<span class="text-caution">Nothing on it adds up to that figure: compare it with the paper.</span>
+					<span class="text-caution"
+						>Nothing on it adds up to that figure: compare it with the paper.</span
+					>
 				{/if}
 			</p>
 		{/each}
@@ -106,7 +116,10 @@ on bills without a maturity offers to look them up and import the same files aga
 					<li class="text-caution">Differs from what is committed: {line}.</li>
 				{/each}
 				{#if answer.imported.differences.length}
-					<li>Nothing committed was changed: take the statement back to import these rows again.</li>
+					<li>
+						Nothing committed was changed: take the statement back to import these rows
+						again.
+					</li>
 				{/if}
 			</ul>
 		{/if}

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { draw, flow } from './context.js';
 
 const months = (...amounts: string[]) =>
-	amounts.map((amount, index) => ({ month: `2026-${String(index + 1).padStart(2, '0')}`, amount }));
+	amounts.map((amount, index) => ({
+		month: `2026-${String(index + 1).padStart(2, '0')}`,
+		amount
+	}));
 
 describe('the chart of one category, merchant or account', () => {
 	it('gives each month a bar of its share of the largest, side by side', () => {

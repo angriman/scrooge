@@ -78,7 +78,9 @@ each holding, what paid the most first, opening its transactions.
 			</p>
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if moved !== null}
-					<span class={cn('font-medium', moved.startsWith('-') ? 'text-loss' : 'text-gain')}>
+					<span
+						class={cn('font-medium', moved.startsWith('-') ? 'text-loss' : 'text-gain')}
+					>
 						{signedPercent(moved)}
 					</span>
 					on the same months a year before.
@@ -88,7 +90,12 @@ each holding, what paid the most first, opening its transactions.
 			</p>
 			{#if trailing}
 				<p class="mt-1 max-w-prose text-small text-ink-secondary">
-					The last 12 months paid <Amount value={paid(trailing)} {currency} places={0} class="text-ink" />,
+					The last 12 months paid <Amount
+						value={paid(trailing)}
+						{currency}
+						places={0}
+						class="text-ink"
+					/>,
 					<Amount value={trailing.net} {currency} places={0} class="text-ink" /> after tax.
 				</p>
 			{/if}
@@ -96,15 +103,21 @@ each holding, what paid the most first, opening its transactions.
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
 				<dt class="text-ink-secondary">Dividends</dt>
-				<dd class="text-title text-ink"><Amount value={income.totals.dividends} places={0} /></dd>
+				<dd class="text-title text-ink">
+					<Amount value={income.totals.dividends} places={0} />
+				</dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Interest</dt>
-				<dd class="text-title text-ink"><Amount value={income.totals.interest} places={0} /></dd>
+				<dd class="text-title text-ink">
+					<Amount value={income.totals.interest} places={0} />
+				</dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Tax withheld</dt>
-				<dd class="text-title text-ink"><Amount value={withheld(income.totals.tax)} places={0} /></dd>
+				<dd class="text-title text-ink">
+					<Amount value={withheld(income.totals.tax)} places={0} />
+				</dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Net</dt>
@@ -122,8 +135,12 @@ each holding, what paid the most first, opening its transactions.
 			role="img"
 			aria-label="Dividends and interest paid each month, stacked, before tax"
 		>
-			<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption">{short(String(top))}</text>
-			<text x={LEFT - 6} y={TOP + plot} text-anchor="end" class="fill-ink-muted text-caption">0</text>
+			<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption"
+				>{short(String(top))}</text
+			>
+			<text x={LEFT - 6} y={TOP + plot} text-anchor="end" class="fill-ink-muted text-caption"
+				>0</text
+			>
 			{#each columns as column, index (column.month.month)}
 				<g
 					role="presentation"
@@ -131,9 +148,21 @@ each holding, what paid the most first, opening its transactions.
 					onpointerleave={() => (shown = null)}
 					opacity={shown === null || shown === index ? 1 : 0.45}
 				>
-					<rect x={LEFT + step * index} y={TOP} width={step} height={plot} fill="transparent" />
+					<rect
+						x={LEFT + step * index}
+						y={TOP}
+						width={step}
+						height={plot}
+						fill="transparent"
+					/>
 					{#if column.dividends > 0}
-						<rect x={column.x} y={column.base - column.dividends} width={bar} height={column.dividends} fill={DIVIDENDS_COLOR} />
+						<rect
+							x={column.x}
+							y={column.base - column.dividends}
+							width={bar}
+							height={column.dividends}
+							fill={DIVIDENDS_COLOR}
+						/>
 					{/if}
 					{#if column.interest > 0}
 						<rect
@@ -145,7 +174,12 @@ each holding, what paid the most first, opening its transactions.
 						/>
 					{/if}
 					{#if (columns.length - 1 - index) % every === 0}
-						<text x={column.x + bar / 2} y={HEIGHT - 6} text-anchor="middle" class="fill-ink-muted text-caption">
+						<text
+							x={column.x + bar / 2}
+							y={HEIGHT - 6}
+							text-anchor="middle"
+							class="fill-ink-muted text-caption"
+						>
 							{monthLabel(column.month.month)}
 						</text>
 					{/if}
@@ -155,17 +189,44 @@ each holding, what paid the most first, opening its transactions.
 		</svg>
 
 		{#if detail}
-			<p class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary" aria-live="polite">
-				<span class="font-medium text-ink">{monthLabel(detail.month)} {detail.month.slice(0, 4)}</span>
-				<span>Dividends <Amount value={detail.dividends} {currency} places={0} class="text-ink" /></span>
-				<span>Interest <Amount value={detail.interest} {currency} places={0} class="text-ink" /></span>
-				<span>Tax withheld <Amount value={withheld(detail.tax)} {currency} places={0} class="text-ink" /></span>
+			<p
+				class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary"
+				aria-live="polite"
+			>
+				<span class="font-medium text-ink"
+					>{monthLabel(detail.month)} {detail.month.slice(0, 4)}</span
+				>
+				<span
+					>Dividends <Amount
+						value={detail.dividends}
+						{currency}
+						places={0}
+						class="text-ink"
+					/></span
+				>
+				<span
+					>Interest <Amount
+						value={detail.interest}
+						{currency}
+						places={0}
+						class="text-ink"
+					/></span
+				>
+				<span
+					>Tax withheld <Amount
+						value={withheld(detail.tax)}
+						{currency}
+						places={0}
+						class="text-ink"
+					/></span
+				>
 			</p>
 		{/if}
 
 		<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-secondary">
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={DIVIDENDS_COLOR}></span>Dividends
+				<span class="size-2 rounded-[2px]" style:background={DIVIDENDS_COLOR}
+				></span>Dividends
 			</li>
 			<li class="flex items-center gap-1.5">
 				<span class="size-2 rounded-[2px]" style:background={INTEREST_COLOR}></span>Interest
@@ -178,7 +239,9 @@ each holding, what paid the most first, opening its transactions.
 <section class="mt-10" aria-labelledby="paying-title">
 	<header class="mb-4 border-b border-line pb-3">
 		<h2 id="paying-title" class="text-heading font-medium text-ink">
-			{income.holdings.length === 1 ? '1 holding paid' : `${income.holdings.length} holdings paid`}
+			{income.holdings.length === 1
+				? '1 holding paid'
+				: `${income.holdings.length} holdings paid`}
 		</h2>
 		<p class="text-small text-ink-secondary">
 			By what each payment names: a payment that names nothing is under its account.
@@ -209,13 +272,19 @@ each holding, what paid the most first, opening its transactions.
 						<span class="flex min-w-0 items-center gap-3">
 							{#if withLogos}
 								{#if logo}
-									<img src={logo} alt="" class="size-7 shrink-0 rounded-control bg-ink object-contain p-0.5" />
+									<img
+										src={logo}
+										alt=""
+										class="size-7 shrink-0 rounded-control bg-ink object-contain p-0.5"
+									/>
 								{:else}
 									<span class="size-7 shrink-0" aria-hidden="true"></span>
 								{/if}
 							{/if}
 							<span class="min-w-0">
-								<span class="block truncate font-medium text-ink">{holding.name}</span>
+								<span class="block truncate font-medium text-ink"
+									>{holding.name}</span
+								>
 								<span class="flex gap-1.5 text-small text-ink-muted">
 									{#if holding.account}
 										<span class="truncate">payments that name nothing</span>
@@ -230,11 +299,19 @@ each holding, what paid the most first, opening its transactions.
 							<Amount value={paid(holding)} {currency} />
 						</span>
 						{#each [holding.dividends, holding.interest, withheld(holding.tax)] as value, column (column)}
-							<span class={cn('hidden text-right sm:block', column === 2 && 'text-ink-secondary')}>
-								{#if approximate(value) === 0}<span class="text-ink-muted">–</span>{:else}<Amount {value} />{/if}
+							<span
+								class={cn(
+									'hidden text-right sm:block',
+									column === 2 && 'text-ink-secondary'
+								)}
+							>
+								{#if approximate(value) === 0}<span class="text-ink-muted">–</span
+									>{:else}<Amount {value} />{/if}
 							</span>
 						{/each}
-						<span class="hidden text-right text-small text-ink-secondary sm:block">{day(holding.last)}</span>
+						<span class="hidden text-right text-small text-ink-secondary sm:block"
+							>{day(holding.last)}</span
+						>
 					</a>
 				</li>
 			{/each}

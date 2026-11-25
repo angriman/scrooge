@@ -22,18 +22,26 @@ changed here, and a row waiting can be given one of its own, apart from its coun
 
 <ul class="divide-y divide-line">
 	{#each rows as row (row.id)}
-		<li class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 md:grid-cols-[3rem_minmax(0,1fr)_auto_14rem]">
+		<li
+			class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 md:grid-cols-[3rem_minmax(0,1fr)_auto_14rem]"
+		>
 			<span class="text-small text-ink-muted tabular-nums">{dayOfYear(row.date)}</span>
 			<span class="min-w-0">
-				<span class="block truncate text-body text-ink">{row.counterparty || row.description}</span>
+				<span class="block truncate text-body text-ink"
+					>{row.counterparty || row.description}</span
+				>
 				<span class="block truncate text-small text-ink-muted">
-					{#if row.counterparty && row.description !== row.counterparty}{row.description}, {/if}{row.account}
+					{#if row.counterparty && row.description !== row.counterparty}{row.description},
+					{/if}{row.account}
 				</span>
 			</span>
 			<Amount
 				value={row.amount}
 				currency={row.currency}
-				class={cn('text-right text-body', row.amount.startsWith('-') ? 'text-ink' : 'text-gain')}
+				class={cn(
+					'text-right text-body',
+					row.amount.startsWith('-') ? 'text-ink' : 'text-gain'
+				)}
 			/>
 			<span class="col-span-3 md:col-span-1">
 				{#if row.choosable}
@@ -42,11 +50,15 @@ changed here, and a row waiting can be given one of its own, apart from its coun
 						onchange={(value) => (own[row.id] = value)}
 						{leaves}
 						placeholder={row.category ?? 'Waiting for a category'}
-						label="Category of {row.counterparty || row.description} on {dayOfYear(row.date)}"
+						label="Category of {row.counterparty || row.description} on {dayOfYear(
+							row.date
+						)}"
 						class="w-full"
 					/>
 				{:else}
-					<span class="block truncate px-2 text-small text-ink-secondary">{row.category}</span>
+					<span class="block truncate px-2 text-small text-ink-secondary"
+						>{row.category}</span
+					>
 				{/if}
 			</span>
 		</li>

@@ -96,7 +96,8 @@ function moved(value: string | null, write: (text: string) => string, zero: stri
  * it is written plain, like a total. */
 function cellOf(figure: MonthEndFigure, key: Column['key']): Cell {
 	if (key === 'change') return moved(figure.change, (text) => signed(text, 0), '0');
-	if (key === 'percent') return moved(figure.percent, (text) => signedPercent(text), percent('0'));
+	if (key === 'percent')
+		return moved(figure.percent, (text) => signedPercent(text), percent('0'));
 	const value = figure[key];
 	return { text: value === null ? '–' : money(value, 0), way: 'none' };
 }

@@ -142,15 +142,26 @@
 		<div class="mt-5">
 			<Context
 				{context}
-				merchant={(name) => withQuery(page.url, { merchant: name, category: null, account: null, currency: context.currency })}
+				merchant={(name) =>
+					withQuery(page.url, {
+						merchant: name,
+						category: null,
+						account: null,
+						currency: context.currency
+					})}
 			/>
 		</div>
 	{/if}
 
-	<div class="mt-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2" aria-live="polite">
+	<div
+		class="mt-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2"
+		aria-live="polite"
+	>
 		<p class="text-body text-ink-secondary">
 			<span class="text-title font-medium text-ink">
-				{listed.count === 1 ? '1 transaction' : `${money(String(listed.count), 0)} transactions`}
+				{listed.count === 1
+					? '1 transaction'
+					: `${money(String(listed.count), 0)} transactions`}
 			</span>
 			{#if listed.totals.length}
 				<span class="ml-1">add up to</span>
@@ -166,7 +177,10 @@
 		<span class="flex items-center gap-4">
 			{#if cut}
 				<a
-					href={withQuery(page.url, Object.fromEntries(FIELDS.map((name) => [name, null])))}
+					href={withQuery(
+						page.url,
+						Object.fromEntries(FIELDS.map((name) => [name, null]))
+					)}
 					class="text-small text-brand hover:text-brand-hover"
 				>
 					Clear filters
@@ -217,8 +231,15 @@
 					onchange={recategorize}
 				/>
 				{#if rows.length < listed.count}
-					<div class="mt-4 flex items-center justify-center gap-3 text-small text-ink-secondary">
-						<span>{money(String(rows.length), 0)} of {money(String(listed.count), 0)}</span>
+					<div
+						class="mt-4 flex items-center justify-center gap-3 text-small text-ink-secondary"
+					>
+						<span
+							>{money(String(rows.length), 0)} of {money(
+								String(listed.count),
+								0
+							)}</span
+						>
 						<button
 							type="button"
 							onclick={showMore}

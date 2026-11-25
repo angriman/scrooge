@@ -31,7 +31,9 @@ scrolls sideways, the months staying in sight.
 
 <div class={className}>
 	{#await months}
-		<p class="py-16 text-center text-small text-ink-muted" role="status">Working out the month-ends…</p>
+		<p class="py-16 text-center text-small text-ink-muted" role="status">
+			Working out the month-ends…
+		</p>
 	{:then sent}
 		{@const shown = table(sent, currency)}
 		{#each sent.errors as error, n (n)}
@@ -39,7 +41,9 @@ scrolls sideways, the months staying in sight.
 		{/each}
 		{#if shown.rows.length}
 			<div class="max-h-[28rem] overflow-auto">
-				<table class="w-full min-w-max border-separate border-spacing-0 text-small tabular-nums">
+				<table
+					class="w-full min-w-max border-separate border-spacing-0 text-small tabular-nums"
+				>
 					<thead class="sticky top-0 z-20 bg-panel text-caption text-ink-muted">
 						<tr>
 							<th
@@ -86,7 +90,10 @@ scrolls sideways, the months staying in sight.
 									<span class="sm:hidden">{row.short}</span>
 									<span class="hidden sm:inline">{row.label}</span>
 									{#if row.partial}
-										<span class="ml-1 text-caption text-ink-muted" title="Up to {day(row.day)}">
+										<span
+											class="ml-1 text-caption text-ink-muted"
+											title="Up to {day(row.day)}"
+										>
 											to date
 										</span>
 									{/if}

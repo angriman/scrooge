@@ -33,7 +33,9 @@ that the next import gives it again.
 	let problem = $state<string | null>(null);
 
 	const who = $derived(row.counterparty || row.description);
-	const what = $derived(row.counterparty && row.description !== row.counterparty ? row.description : '');
+	const what = $derived(
+		row.counterparty && row.description !== row.counterparty ? row.description : ''
+	);
 	const tone = $derived(
 		row.kind === 'internal' || row.kind === 'transfer'
 			? 'text-ink-secondary'
@@ -69,7 +71,9 @@ that the next import gives it again.
 </script>
 
 <li class="border-t border-line first:border-t-0">
-	<div class="grid grid-cols-[1fr_auto] items-start gap-x-4 gap-y-1 px-4 py-2.5 md:grid-cols-[minmax(0,1fr)_12rem_auto]">
+	<div
+		class="grid grid-cols-[1fr_auto] items-start gap-x-4 gap-y-1 px-4 py-2.5 md:grid-cols-[minmax(0,1fr)_12rem_auto]"
+	>
 		<div class="min-w-0">
 			<p class="flex items-center gap-1.5 text-body text-ink">
 				<span class="truncate">{who}</span>
@@ -115,7 +119,10 @@ that the next import gives it again.
 	</div>
 
 	{#if editing}
-		<form onsubmit={save} class="mx-4 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-control bg-sunken px-3 py-2.5">
+		<form
+			onsubmit={save}
+			class="mx-4 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-control bg-sunken px-3 py-2.5"
+		>
 			<label class="flex min-w-0 items-center gap-2 text-small text-ink-secondary">
 				Category
 				<!-- svelte-ignore a11y_autofocus -->

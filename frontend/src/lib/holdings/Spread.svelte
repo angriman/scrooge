@@ -40,7 +40,9 @@ how much the largest single holding weighs. The overview has the allocation of n
 	{#if largest}
 		<p class="mb-4 text-body text-ink-secondary">
 			The largest holding, <span class="text-ink">{largest.name || largest.symbol}</span>, is
-			<span class={approximate(largest.share) >= 25 ? 'text-caution' : 'text-ink'}>{percent(largest.share)}</span>
+			<span class={approximate(largest.share) >= 25 ? 'text-caution' : 'text-ink'}
+				>{percent(largest.share)}</span
+			>
 			of securities.
 		</p>
 	{/if}
@@ -58,13 +60,19 @@ how much the largest single holding weighs. The overview has the allocation of n
 						></span>
 					{/each}
 				</div>
-				<ul class="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_3.5rem] items-center gap-x-2 gap-y-1 text-small">
+				<ul
+					class="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_3.5rem] items-center gap-x-2 gap-y-1 text-small"
+				>
 					{#each lens.slices as slice (slice.name)}
 						<li class="contents">
 							<Swatch color={colors.get(slice.name) ?? 'var(--data-other)'} />
 							<span class="truncate text-ink-secondary">{slice.name}</span>
-							<span class="text-right"><Amount value={slice.value} {currency} places={0} /></span>
-							<span class="text-right text-ink-muted tabular-nums">{percent(slice.share)}</span>
+							<span class="text-right"
+								><Amount value={slice.value} {currency} places={0} /></span
+							>
+							<span class="text-right text-ink-muted tabular-nums"
+								>{percent(slice.share)}</span
+							>
 						</li>
 					{/each}
 				</ul>

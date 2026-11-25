@@ -63,7 +63,11 @@
 	const range = $derived(returns.rangeOf(page.url.searchParams.get('range')));
 	const ranges = $derived(data.income?.ranges ?? []);
 	const chosen = $derived(
-		chosenRange(ranges, page.url.searchParams.get('from') ?? '', page.url.searchParams.get('to') ?? '')
+		chosenRange(
+			ranges,
+			page.url.searchParams.get('from') ?? '',
+			page.url.searchParams.get('to') ?? ''
+		)
 	);
 
 	let open = $state<string | null>(null);
@@ -89,7 +93,11 @@
 				page.url,
 				value === 'performance'
 					? { view: null, from: null, to: null }
-					: { view: value, range: null, ...(value === 'holdings' ? { from: null, to: null } : {}) }
+					: {
+							view: value,
+							range: null,
+							...(value === 'holdings' ? { from: null, to: null } : {})
+						}
 			)}
 	/>
 	{#if view === 'performance' && data.performance?.performance.totals}
@@ -97,7 +105,8 @@
 			label="Range"
 			value={range}
 			options={returns.RANGES}
-			onchange={(value) => show(page.url, { range: value === returns.DEFAULT_RANGE ? null : value })}
+			onchange={(value) =>
+				show(page.url, { range: value === returns.DEFAULT_RANGE ? null : value })}
 		/>
 	{/if}
 	{#if view === 'income' && ranges.length}
@@ -107,7 +116,12 @@
 			options={ranges.map((range) => ({ value: range.label, label: range.label }))}
 			onchange={(label) => {
 				const range = ranges.find((r) => r.label === label)!;
-				show(page.url, label === DEFAULT_RANGE ? { from: null, to: null } : { from: range.from, to: range.to || null });
+				show(
+					page.url,
+					label === DEFAULT_RANGE
+						? { from: null, to: null }
+						: { from: range.from, to: range.to || null }
+				);
 			}}
 		/>
 	{/if}
@@ -129,8 +143,8 @@
 			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
 				<h1 class="text-heading font-medium text-ink">No investment accounts yet</h1>
 				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-					What your investments returned shows here once a statement of a broker or a stock plan
-					is committed.
+					What your investments returned shows here once a statement of a broker or a
+					stock plan is committed.
 				</p>
 			</section>
 		{/if}
@@ -173,7 +187,10 @@
 	</section>
 {:else}
 	<!-- The lead: what securities are worth, what they gained since bought, and their map. -->
-	<section class="rounded-lead border border-line bg-panel px-5 pt-5 pb-4" aria-labelledby="securities">
+	<section
+		class="rounded-lead border border-line bg-panel px-5 pt-5 pb-4"
+		aria-labelledby="securities"
+	>
 		<div
 			class="grid grid-cols-1 gap-x-10 [grid-template-areas:'title'_'figure'_'when'_'span'_'moved'] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline sm:[grid-template-areas:'title_span'_'figure_moved'_'when_note']"
 		>
@@ -195,8 +212,10 @@
 			/>
 			{#if held.unknown_cost && costed}
 				<p class="mt-1 text-small text-ink-muted [grid-area:note] sm:text-right">
-					On {costed.count === 1 ? '1 holding' : `${costed.count} holdings`}, {percent(costed.share, 0)} of
-					securities: the cost of the others is not known
+					On {costed.count === 1 ? '1 holding' : `${costed.count} holdings`}, {percent(
+						costed.share,
+						0
+					)} of securities: the cost of the others is not known
 				</p>
 			{/if}
 		</div>
@@ -215,12 +234,7 @@
 	/>
 
 	<div class="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
-		<Spread
-			spread={held.spread}
-			largest={held.holdings[0]}
-			currency={held.currency}
-			{people}
-		/>
+		<Spread spread={held.spread} largest={held.holdings[0]} currency={held.currency} {people} />
 		{#if held.ladder.length && held.ladder_day}
 			<Bills ladder={held.ladder} from={held.ladder_day} {people} />
 		{/if}

@@ -74,9 +74,16 @@ reader is already looking, in the headline and the legend.
 					value: (row: Day) => part.values[row.index],
 					color: colors.get(part.name) ?? 'var(--data-other)'
 				}))
-				: series.parts.length
+			: series.parts.length
 				? []
-				: [{ key: 'total', label: 'Net worth', value: (row: Day) => total[row.index], color }]
+				: [
+						{
+							key: 'total',
+							label: 'Net worth',
+							value: (row: Day) => total[row.index],
+							color
+						}
+					]
 	);
 
 	// A change of range moves the chart to its new days instead of redrawing it, unless the
@@ -90,7 +97,6 @@ reader is already looking, in the headline and the legend.
 	$effect(() => {
 		hovered = context?.tooltip.data ?? null;
 	});
-
 </script>
 
 <div class={className}>
@@ -116,12 +122,18 @@ reader is already looking, in the headline and the legend.
 				tickLabelProps: { dx: 10 }
 			},
 			grid: { class: '[&_line]:stroke-chart-grid' },
-			highlight: { points: { r: 3, class: 'stroke-panel stroke-2' }, lines: { class: 'stroke-ink-muted' } }
+			highlight: {
+				points: { r: 3, class: 'stroke-panel stroke-2' },
+				lines: { class: 'stroke-ink-muted' }
+			}
 		}}
 	>
 		{#snippet aboveMarks()}
 			{#if parts.length}
-				<Spline y={(row: Day) => line[row.index]} class="fill-none stroke-ink stroke-[1.5]" />
+				<Spline
+					y={(row: Day) => line[row.index]}
+					class="fill-none stroke-ink stroke-[1.5]"
+				/>
 			{/if}
 		{/snippet}
 		{#snippet tooltip()}{/snippet}

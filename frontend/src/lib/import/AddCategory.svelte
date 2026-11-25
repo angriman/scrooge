@@ -33,7 +33,9 @@ in a group of its own, or income. Every import from now on has it.
 </script>
 
 <details class="group rounded-panel bg-panel px-4 py-3">
-	<summary class="cursor-pointer text-body text-ink-secondary marker:text-ink-muted hover:text-ink">
+	<summary
+		class="cursor-pointer text-body text-ink-secondary marker:text-ink-muted hover:text-ink"
+	>
 		{summary}
 	</summary>
 	<form onsubmit={submit} class="mt-3 flex flex-wrap items-end gap-3">

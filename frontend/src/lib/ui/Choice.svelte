@@ -47,7 +47,10 @@ One choice of many in a menu: a currency. Typing a letter jumps to it.
 					>
 						{#snippet children({ selected })}
 							{item.label}
-							{#if selected}<Check class="size-3.5 text-brand" aria-hidden="true" />{/if}
+							{#if selected}<Check
+									class="size-3.5 text-brand"
+									aria-hidden="true"
+								/>{/if}
 						{/snippet}
 					</Select.Item>
 				{/each}

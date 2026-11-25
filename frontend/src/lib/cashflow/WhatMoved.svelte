@@ -35,14 +35,25 @@ of the usual month is not coloured. Nothing shows when no category has a usual m
 						class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 rounded-control px-1 py-2 hover:bg-sunken"
 					>
 						<span class="flex min-w-0 items-center gap-2 text-body text-ink">
-							<span class="size-2 shrink-0 rounded-[2px]" style:background={colors.get(each.name) ?? 'var(--data-other)'}></span>
+							<span
+								class="size-2 shrink-0 rounded-[2px]"
+								style:background={colors.get(each.name) ?? 'var(--data-other)'}
+							></span>
 							<span class="truncate">{each.name}</span>
 						</span>
-						<span class={cn('text-right text-body tabular-nums whitespace-nowrap', tone ? TONES[tone] : 'text-ink-secondary')}>
-							{signed(each.change, 0)}{#if each.percent !== null}<span class="ml-1 text-small">({signedPercent(each.percent, 0)})</span>{/if}
+						<span
+							class={cn(
+								'text-right text-body tabular-nums whitespace-nowrap',
+								tone ? TONES[tone] : 'text-ink-secondary'
+							)}
+						>
+							{signed(each.change, 0)}{#if each.percent !== null}<span
+									class="ml-1 text-small">({signedPercent(each.percent, 0)})</span
+								>{/if}
 						</span>
 						<span class="col-span-2 pl-4 text-caption text-ink-muted">
-							<Amount value={each.monthly} places={0} class="text-ink-secondary" /> a month, usually
+							<Amount value={each.monthly} places={0} class="text-ink-secondary" /> a month,
+							usually
 							<Amount value={each.usual} places={0} class="text-ink-secondary" />
 						</span>
 					</a>

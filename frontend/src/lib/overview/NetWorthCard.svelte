@@ -24,7 +24,14 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import MonthEnds from './MonthEnds.svelte';
-	import { arrivedBetween, change as moveOf, daysBack, RANGES, rangeLabel, type Range } from './range.js';
+	import {
+		arrivedBetween,
+		change as moveOf,
+		daysBack,
+		RANGES,
+		rangeLabel,
+		type Range
+	} from './range.js';
 
 	interface Props {
 		series: Series;
@@ -88,7 +95,9 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	const leftOut = $derived(change && change.arrived !== '0' ? change.arrived : null);
 
 	const listed = (names: string[]) =>
-		names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+		names.length < 3
+			? names.join(' and ')
+			: `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 	// What the headline adds up: the fewer names, whether those left out or those kept.
 	const shownTitle = $derived(
 		hidden.size === 0
@@ -116,7 +125,10 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		<h1 id="net-worth" class="truncate text-small text-ink-secondary [grid-area:title]">
 			{shownTitle}
 		</h1>
-		<p class="mt-1 text-hero font-medium tracking-tight text-ink [grid-area:figure]" aria-live="polite">
+		<p
+			class="mt-1 text-hero font-medium tracking-tight text-ink [grid-area:figure]"
+			aria-live="polite"
+		>
 			<Amount value={headline} {currency} />
 		</p>
 		<p class="mt-1 text-small text-ink-muted [grid-area:when]">
@@ -137,7 +149,8 @@ headline and the legend. The chart can give way to a table of the month-ends.
 			/>
 			{#if leftOut}
 				<p class="mt-1 text-small text-ink-muted">
-					Leaves out {money(leftOut, 0)} {currency} that accounts held when first counted
+					Leaves out {money(leftOut, 0)}
+					{currency} that accounts held when first counted
 				</p>
 			{/if}
 		</div>
@@ -145,7 +158,10 @@ headline and the legend. The chart can give way to a table of the month-ends.
 
 	<div class="mt-4 flex flex-wrap items-center justify-between gap-3 px-5">
 		{#if view === 'chart' && series.parts.length}
-			<ul class="flex flex-wrap items-center gap-x-1 gap-y-1" aria-label="Parts shown on the chart">
+			<ul
+				class="flex flex-wrap items-center gap-x-1 gap-y-1"
+				aria-label="Parts shown on the chart"
+			>
 				{#each series.parts as part (part.name)}
 					{@const shown = !hidden.has(part.name)}
 					<li>
@@ -160,10 +176,14 @@ headline and the legend. The chart can give way to a table of the month-ends.
 							)}
 						>
 							<Swatch
-								color={shown ? (colors.get(part.name) ?? 'var(--data-other)') : 'transparent'}
+								color={shown
+									? (colors.get(part.name) ?? 'var(--data-other)')
+									: 'transparent'}
 								class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
 							/>
-							<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
+							<span
+								class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}
+							>
 								{part.name}
 							</span>
 							<span class="text-ink tabular-nums">{short(part.values[at])}</span>

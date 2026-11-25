@@ -26,11 +26,15 @@ pointed at is said in full beneath.
 	const HEIGHT = 64;
 
 	let width = $state(480);
-	const drawn = $derived(draw(context.months, context.usual, context.partial, width, HEIGHT, context.net));
+	const drawn = $derived(
+		draw(context.months, context.usual, context.partial, width, HEIGHT, context.net)
+	);
 	const first = $derived(context.months[0]);
 	const last = $derived(context.months.at(-1));
 	const verb = $derived(context.net ? 'Net flow' : context.earned ? 'Earned' : 'Spent');
-	const said = $derived(context.net ? 'money in less money out, last two years' : 'last two years');
+	const said = $derived(
+		context.net ? 'money in less money out, last two years' : 'last two years'
+	);
 
 	/** The colour of a bar: of a net flow, money put aside is a gain and money taken out a
 	 * loss; the last month is lighter while it is not over. */
@@ -52,7 +56,11 @@ pointed at is said in full beneath.
 		</div>
 		{#if context.balance !== null}
 			<p class="text-small text-ink-secondary">
-				Holds <Amount value={context.balance} currency={context.currency} class="text-body text-ink" /> now
+				Holds <Amount
+					value={context.balance}
+					currency={context.currency}
+					class="text-body text-ink"
+				/> now
 			</p>
 		{/if}
 	</header>
@@ -74,10 +82,9 @@ pointed at is said in full beneath.
 						viewBox="0 0 {width} {HEIGHT}"
 						class="block h-16 w-full overflow-visible"
 						role="img"
-						aria-label="{verb} each month from {month(`${first.month}-01`)} to {month(`${last.month}-01`)}{context.usual ===
-						null
-							? ''
-							: ', against the usual month'}"
+						aria-label="{verb} each month from {month(`${first.month}-01`)} to {month(
+							`${last.month}-01`
+						)}{context.usual === null ? '' : ', against the usual month'}"
 					>
 						{#each drawn.bars as bar, index (bar.month)}
 							<g
@@ -86,7 +93,13 @@ pointed at is said in full beneath.
 								onpointerleave={() => (shown = null)}
 								opacity={shown === null || shown === index ? 1 : 0.45}
 							>
-								<rect x={bar.x - (width / drawn.bars.length - bar.width) / 2} y="0" width={width / drawn.bars.length} height={HEIGHT} fill="transparent" />
+								<rect
+									x={bar.x - (width / drawn.bars.length - bar.width) / 2}
+									y="0"
+									width={width / drawn.bars.length}
+									height={HEIGHT}
+									fill="transparent"
+								/>
 								{#if bar.height > 0}
 									<rect
 										x={bar.x}
@@ -101,7 +114,13 @@ pointed at is said in full beneath.
 								{/if}
 							</g>
 						{/each}
-						<line x1="0" x2={width} y1={Math.min(drawn.zero, HEIGHT - 0.5)} y2={Math.min(drawn.zero, HEIGHT - 0.5)} class="stroke-line" />
+						<line
+							x1="0"
+							x2={width}
+							y1={Math.min(drawn.zero, HEIGHT - 0.5)}
+							y2={Math.min(drawn.zero, HEIGHT - 0.5)}
+							class="stroke-line"
+						/>
 						{#if drawn.usual !== null}
 							<line
 								x1="0"
@@ -120,27 +139,53 @@ pointed at is said in full beneath.
 					<span>{month(`${last.month}-01`)}{context.partial ? ', so far' : ''}</span>
 				</div>
 
-				<p class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary" aria-live="polite">
+				<p
+					class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary"
+					aria-live="polite"
+				>
 					<span>
 						{#if context.net}
 							{@const moved = flow(told.amount)}
 							{moved.said} in {monthName(told.month)}{sofar}
-							<Amount value={moved.amount} currency={context.currency} places={0} class="text-body text-ink" />
+							<Amount
+								value={moved.amount}
+								currency={context.currency}
+								places={0}
+								class="text-body text-ink"
+							/>
 						{:else}
 							{verb} in {monthName(told.month)}{sofar}
-							<Amount value={told.amount} currency={context.currency} places={0} class="text-body text-ink" />
+							<Amount
+								value={told.amount}
+								currency={context.currency}
+								places={0}
+								class="text-body text-ink"
+							/>
 						{/if}
 					</span>
 					<span class="inline-flex items-baseline gap-1.5">
-						<span class="inline-block w-3 border-t border-dashed border-ink-secondary" aria-hidden="true"></span>
+						<span
+							class="inline-block w-3 border-t border-dashed border-ink-secondary"
+							aria-hidden="true"
+						></span>
 						{#if context.usual === null}
 							Usual month not known yet
 						{:else if context.net}
 							{@const usual = flow(context.usual)}
 							Usual month: {usual.said.toLowerCase()}
-							<Amount value={usual.amount} currency={context.currency} places={0} class="text-body text-ink" />
+							<Amount
+								value={usual.amount}
+								currency={context.currency}
+								places={0}
+								class="text-body text-ink"
+							/>
 						{:else}
-							Usual month <Amount value={context.usual} currency={context.currency} places={0} class="text-body text-ink" />
+							Usual month <Amount
+								value={context.usual}
+								currency={context.currency}
+								places={0}
+								class="text-body text-ink"
+							/>
 						{/if}
 					</span>
 				</p>
@@ -148,7 +193,9 @@ pointed at is said in full beneath.
 
 			{#if context.merchants?.length}
 				<div>
-					<h3 class="text-caption text-ink-muted">{context.earned ? 'Most came from' : 'Most was spent at'}</h3>
+					<h3 class="text-caption text-ink-muted">
+						{context.earned ? 'Most came from' : 'Most was spent at'}
+					</h3>
 					<ul class="mt-1 divide-y divide-line">
 						{#each context.merchants as payee (payee.name)}
 							<li>
@@ -156,9 +203,16 @@ pointed at is said in full beneath.
 									href={merchant(payee.name)}
 									class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
 								>
-									<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
+									<span class="min-w-0 flex-1 truncate text-body text-ink"
+										>{payee.name}</span
+									>
 									<span class="text-caption text-ink-muted">{payee.count}×</span>
-									<Amount value={payee.amount} currency={context.currency} places={0} class="text-body text-ink" />
+									<Amount
+										value={payee.amount}
+										currency={context.currency}
+										places={0}
+										class="text-body text-ink"
+									/>
 								</a>
 							</li>
 						{/each}
@@ -167,6 +221,8 @@ pointed at is said in full beneath.
 			{/if}
 		</div>
 	{:else if !context.errors.length}
-		<p class="mt-2 text-small text-ink-secondary">Nothing is committed yet to show it over time.</p>
+		<p class="mt-2 text-small text-ink-secondary">
+			Nothing is committed yet to show it over time.
+		</p>
 	{/if}
 </section>

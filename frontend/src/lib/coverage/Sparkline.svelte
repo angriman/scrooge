@@ -22,7 +22,14 @@ and only the words stay. Nothing is drawn or said for fewer than two months.
 
 	const WIDTH = 56;
 	const HEIGHT = 20;
-	const points = $derived(sparkline(months.map((month) => month.balance), WIDTH, HEIGHT, 2.5));
+	const points = $derived(
+		sparkline(
+			months.map((month) => month.balance),
+			WIDTH,
+			HEIGHT,
+			2.5
+		)
+	);
 	const last = $derived(points.split(' ').at(-1)?.split(',').map(Number) ?? [0, 0]);
 	const said = $derived(trend(months, currency));
 </script>

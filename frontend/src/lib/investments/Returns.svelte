@@ -12,7 +12,15 @@ and the same figures account by account.
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { described, direction, mwrPer, nearest, over, plot, type Range } from './performance.js';
+	import {
+		described,
+		direction,
+		mwrPer,
+		nearest,
+		over,
+		plot,
+		type Range
+	} from './performance.js';
 
 	interface Props {
 		performance: PerformanceReport;
@@ -42,7 +50,8 @@ and the same figures account by account.
 	const shown = $derived(performance.series[pointed ?? performance.series.length - 1]);
 	// Over a long range the API sends a point a week.
 	const weekly = $derived(
-		performance.series.length > 2 && daysBetween(performance.series[1].day, performance.series[2].day) > 1
+		performance.series.length > 2 &&
+			daysBetween(performance.series[1].day, performance.series[2].day) > 1
 	);
 
 	function point(event: PointerEvent) {
@@ -75,21 +84,25 @@ and the same figures account by account.
 			{/if}
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.mwr !== null}
-					Money-weighted <span class={cn('font-medium', tone(totals.mwr))}>{signedPercent(totals.mwr)}</span>
+					Money-weighted <span class={cn('font-medium', tone(totals.mwr))}
+						>{signedPercent(totals.mwr)}</span
+					>
 					{mwrPer(totals)}, on the money as it was put in.
 				{:else}
 					The money-weighted return has no rate to give over these days.
 				{/if}
 				{#if totals.twr_since}
-					The time-weighted return counts from {day(totals.twr_since)}: before it, next to nothing
-					was invested.
+					The time-weighted return counts from {day(totals.twr_since)}: before it, next to
+					nothing was invested.
 				{/if}
 			</p>
 		</div>
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
 				<dt class="text-ink-secondary">Gain</dt>
-				<dd class={cn('text-title tabular-nums', tone(totals.gain))}>{signed(totals.gain, 0)}</dd>
+				<dd class={cn('text-title tabular-nums', tone(totals.gain))}>
+					{signed(totals.gain, 0)}
+				</dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Put in</dt>
@@ -101,16 +114,22 @@ and the same figures account by account.
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Now</dt>
-				<dd class="text-title text-ink"><Amount value={totals.end} {currency} places={0} /></dd>
+				<dd class="text-title text-ink">
+					<Amount value={totals.end} {currency} places={0} />
+				</dd>
 			</div>
 		</dl>
 	</div>
 	<p class="mt-4 max-w-prose text-small text-ink-muted">
 		Of the change of <Amount value={change} {currency} places={0} class="text-ink-secondary" />
 		from {day(performance.series[0].day)} to {day(performance.last!)},
-		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money put in
-		or taken out and <Amount value={totals.gain} {currency} places={0} class="text-ink-secondary" /> what
-		the investments made, the moves of exchange rates included.
+		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money
+		put in or taken out and <Amount
+			value={totals.gain}
+			{currency}
+			places={0}
+			class="text-ink-secondary"
+		/> what the investments made, the moves of exchange rates included.
 	</p>
 </section>
 
@@ -127,13 +146,29 @@ and the same figures account by account.
 				onpointerleave={() => (pointed = null)}
 			>
 				{#each [drawn.high, (drawn.high + drawn.low) / 2, drawn.low] as tick (tick)}
-					<line x1={frame.left} x2={width - frame.right} y1={drawn.y(tick)} y2={drawn.y(tick)} class="stroke-chart-grid" />
-					<text x={frame.left - 6} y={drawn.y(tick) + 4} text-anchor="end" class="fill-ink-muted text-caption">
+					<line
+						x1={frame.left}
+						x2={width - frame.right}
+						y1={drawn.y(tick)}
+						y2={drawn.y(tick)}
+						class="stroke-chart-grid"
+					/>
+					<text
+						x={frame.left - 6}
+						y={drawn.y(tick) + 4}
+						text-anchor="end"
+						class="fill-ink-muted text-caption"
+					>
 						{short(String(Math.round(tick)))}
 					</text>
 				{/each}
 				<path d={drawn.area} class="fill-brand-soft" />
-				<path d={drawn.invested} class="fill-none stroke-ink-muted" stroke-width="1.5" stroke-dasharray="4 3" />
+				<path
+					d={drawn.invested}
+					class="fill-none stroke-ink-muted"
+					stroke-width="1.5"
+					stroke-dasharray="4 3"
+				/>
 				<path d={drawn.value} class="fill-none stroke-brand" stroke-width="2" />
 				{#if pointed !== null}
 					<line
@@ -144,28 +179,41 @@ and the same figures account by account.
 						class="stroke-ink-muted"
 					/>
 				{/if}
-				<text x={frame.left} y={HEIGHT - 6} class="fill-ink-muted text-caption">{day(performance.series[0].day)}</text>
-				<text x={width - frame.right} y={HEIGHT - 6} text-anchor="end" class="fill-ink-muted text-caption">
+				<text x={frame.left} y={HEIGHT - 6} class="fill-ink-muted text-caption"
+					>{day(performance.series[0].day)}</text
+				>
+				<text
+					x={width - frame.right}
+					y={HEIGHT - 6}
+					text-anchor="end"
+					class="fill-ink-muted text-caption"
+				>
 					{day(performance.last!)}
 				</text>
 			</svg>
 		{/if}
 		{#if shown}
-			<p class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary" aria-live="polite">
+			<p
+				class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary"
+				aria-live="polite"
+			>
 				<span class="font-medium text-ink">{day(shown.day)}</span>
 				<span class="flex items-center gap-1.5">
 					<span class="h-0.5 w-3 bg-brand" aria-hidden="true"></span>Worth
 					<Amount value={shown.value} {currency} places={0} class="text-ink" />
 				</span>
 				<span class="flex items-center gap-1.5">
-					<span class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted" aria-hidden="true"></span>Put in
+					<span
+						class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted"
+						aria-hidden="true"
+					></span>Put in
 					<Amount value={shown.invested} {currency} places={0} class="text-ink" />
 				</span>
 			</p>
 		{/if}
 		<p class="mt-1 text-caption text-ink-muted">
-			Put in is what the accounts were worth at the start and the money put in since, less what was taken
-			out.{weekly ? ' One point a week.' : ''}
+			Put in is what the accounts were worth at the start and the money put in since, less
+			what was taken out.{weekly ? ' One point a week.' : ''}
 		</p>
 	</div>
 </Panel>
@@ -173,7 +221,9 @@ and the same figures account by account.
 <section class="mt-10" aria-labelledby="accounts-title">
 	<header class="mb-4 border-b border-line pb-3">
 		<h2 id="accounts-title" class="text-heading font-medium text-ink">
-			{performance.accounts.length === 1 ? '1 account' : `${performance.accounts.length} accounts`}
+			{performance.accounts.length === 1
+				? '1 account'
+				: `${performance.accounts.length} accounts`}
 		</h2>
 		<p class="text-small text-ink-secondary">
 			Brokers and stock plans, with their cash; a broker’s accounts in each currency are one.
@@ -200,18 +250,30 @@ and the same figures account by account.
 					<span class="block truncate font-medium text-ink">{row.name}</span>
 					<span class="block truncate text-small text-ink-muted">
 						<span class="hidden sm:inline">{about}</span>
-						<span class="sm:hidden">{about ? `${about} · ` : ''}gain {signed(row.gain, 0)}</span>
+						<span class="sm:hidden"
+							>{about ? `${about} · ` : ''}gain {signed(row.gain, 0)}</span
+						>
 					</span>
 				</span>
 				<span class="text-right sm:hidden">
 					<span class={cn('block font-medium tabular-nums', tone(row.twr))}>
 						{row.twr === null ? '–' : signedPercent(row.twr)}
 					</span>
-					<Amount value={row.end} {currency} places={0} class="text-small text-ink-secondary" />
+					<Amount
+						value={row.end}
+						{currency}
+						places={0}
+						class="text-small text-ink-secondary"
+					/>
 				</span>
-				<span class="hidden text-right sm:block"><Amount value={row.end} places={0} /></span>
-				<span class="hidden text-right text-ink-secondary sm:block">{signed(row.net_flows, 0)}</span>
-				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.gain))}>{signed(row.gain, 0)}</span>
+				<span class="hidden text-right sm:block"><Amount value={row.end} places={0} /></span
+				>
+				<span class="hidden text-right text-ink-secondary sm:block"
+					>{signed(row.net_flows, 0)}</span
+				>
+				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.gain))}
+					>{signed(row.gain, 0)}</span
+				>
 				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.twr))}>
 					{row.twr === null ? '–' : signedPercent(row.twr)}
 				</span>

@@ -13,7 +13,13 @@
 	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
 	import { statementsUpTo } from '#lib/overview/through.js';
-	import { daysBack, DEFAULT_RANGE, RANGES, rangeLabel, type Range } from '#lib/overview/range.js';
+	import {
+		daysBack,
+		DEFAULT_RANGE,
+		RANGES,
+		rangeLabel,
+		type Range
+	} from '#lib/overview/range.js';
 	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
@@ -50,9 +56,7 @@
 		)
 	);
 	const months = $derived(view === 'table' ? data.monthEnds() : null);
-	const lastDay = $derived(
-		series?.first ? addDays(series.first, series.total.length - 1) : null
-	);
+	const lastDay = $derived(series?.first ? addDays(series.first, series.total.length - 1) : null);
 	const back = $derived(lastDay ? daysBack(range, lastDay) : null);
 
 	// The investments card follows the range: each is asked once, when first chosen. Signed out
@@ -125,7 +129,11 @@
 				through={statementsUpTo(figures.through, figures.day, covered)}
 				{range}
 				onrange={(chosen: Range) =>
-					show(here(), { range: chosen === DEFAULT_RANGE ? null : chosen }, { shallow: true })}
+					show(
+						here(),
+						{ range: chosen === DEFAULT_RANGE ? null : chosen },
+						{ shallow: true }
+					)}
 				{breakdowns}
 				by={data.by}
 				onby={(by) => show(here(), { by: by === 'asset' ? null : by })}
@@ -153,5 +161,4 @@
 			<Investments {returned} paid={data.paid} {range} {returnsHref} {incomeHref} />
 		</div>
 	</div>
-
 {/if}

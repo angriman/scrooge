@@ -37,10 +37,7 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		let asked = returns.get(over);
 		if (!asked) {
 			const query = new URLSearchParams([...whose, ['range', over]]);
-			asked = loaded(
-				get<InvestmentPerformance>(fetch, '/api/performance', query),
-				RETURNED
-			);
+			asked = loaded(get<InvestmentPerformance>(fetch, '/api/performance', query), RETURNED);
 			returns.set(over, asked);
 		}
 		return asked;

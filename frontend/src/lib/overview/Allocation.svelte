@@ -66,7 +66,9 @@ of securities alone.
 			<div class="pointer-events-none absolute inset-0 grid place-content-center text-center">
 				{#if pointed}
 					<span class="text-caption text-ink-secondary">{pointed.name}</span>
-					<span class="text-title font-medium text-ink">{pointed.share === null ? '' : percent(pointed.share)}</span>
+					<span class="text-title font-medium text-ink"
+						>{pointed.share === null ? '' : percent(pointed.share)}</span
+					>
 				{:else}
 					<span class="text-caption text-ink-secondary">Owned</span>
 					<span class="text-title font-medium text-ink">{money(heldTotal, 0)}</span>
@@ -80,7 +82,9 @@ of securities alone.
 				<tr>
 					<th class="pb-2 text-left font-normal"><span class="sr-only">Type</span></th>
 					<th class="pb-2 text-right font-normal"><span class="sr-only">Value</span></th>
-					<th class="hidden pb-2 pl-4 text-left font-normal sm:table-cell">Of net worth</th>
+					<th class="hidden pb-2 pl-4 text-left font-normal sm:table-cell"
+						>Of net worth</th
+					>
 					<th class="pb-2 text-right font-normal">{label}</th>
 				</tr>
 			</thead>
@@ -94,12 +98,20 @@ of securities alone.
 								{named(part)}
 							</span>
 						</td>
-						<td class="py-2.5 text-right"><Amount value={part.value} {currency} places={0} /></td>
+						<td class="py-2.5 text-right"
+							><Amount value={part.value} {currency} places={0} /></td
+						>
 						<td class="hidden py-2.5 pl-4 sm:table-cell">
 							{#if part.share !== null}
 								<span class="flex items-center gap-2">
-									<Share share={part.share} color={colorOf(part.name)} class="w-24" />
-									<span class="w-12 text-right text-small text-ink-secondary">{percent(part.share)}</span>
+									<Share
+										share={part.share}
+										color={colorOf(part.name)}
+										class="w-24"
+									/>
+									<span class="w-12 text-right text-small text-ink-secondary"
+										>{percent(part.share)}</span
+									>
 								</span>
 							{/if}
 						</td>

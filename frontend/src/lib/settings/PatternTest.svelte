@@ -33,9 +33,12 @@ newest of them. Nothing is saved.
 		if (!match.trim()) return;
 		trying = true;
 		try {
-			const response = await fetch(`/api/settings/rules/test?${testQuery(match, direction, owner)}`, {
-				headers: { 'x-token': token }
-			});
+			const response = await fetch(
+				`/api/settings/rules/test?${testQuery(match, direction, owner)}`,
+				{
+					headers: { 'x-token': token }
+				}
+			);
 			found = await response.json();
 		} catch {
 			found = { count: 0, rows: [], errors: ['The app could not be reached: try again.'] };
@@ -84,16 +87,24 @@ newest of them. Nothing is saved.
 		{/each}
 		{#if !found.errors.length}
 			<p class="text-small text-ink-secondary">
-				Matches {rows(found.count)}{found.count > found.rows.length ? `; the newest ${found.rows.length}:` : found.count ? ':' : '.'}
+				Matches {rows(found.count)}{found.count > found.rows.length
+					? `; the newest ${found.rows.length}:`
+					: found.count
+						? ':'
+						: '.'}
 			</p>
 			{#if found.rows.length}
 				<ul class="mt-2 max-h-80 divide-y divide-line overflow-y-auto">
 					{#each found.rows as row (row.id)}
-						<li class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 py-1.5 text-small">
+						<li
+							class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 py-1.5 text-small"
+						>
 							<span class="text-ink-muted tabular-nums">{day(row.date)}</span>
 							<span class="min-w-0 truncate text-ink" title={row.description}>
 								{row.counterparty || row.description}
-								<span class="text-ink-muted">· {row.owner} · {row.category ?? 'no category'}</span>
+								<span class="text-ink-muted"
+									>· {row.owner} · {row.category ?? 'no category'}</span
+								>
 							</span>
 							<Amount value={row.amount} currency={row.currency} class="text-ink" />
 						</li>

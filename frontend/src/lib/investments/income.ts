@@ -47,7 +47,8 @@ export function highest(months: readonly Payout[]): number {
 	return Math.max(
 		1,
 		...months.map(
-			(month) => Math.max(0, approximate(month.dividends)) + Math.max(0, approximate(month.interest))
+			(month) =>
+				Math.max(0, approximate(month.dividends)) + Math.max(0, approximate(month.interest))
 		)
 	);
 }
