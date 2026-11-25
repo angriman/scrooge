@@ -808,3 +808,16 @@ def test_migrations_another_process_applies_meanwhile_are_left_to_it(
     assert read(conn) == db.latest()
     assert conn.execute("SELECT count(*) FROM schema_version").fetchone()[0] == db.latest()
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_migrations_can_be_applied_up_to_a_version_and_each_is_named_by_its_file() -> None:
+    conn = db.connect(":memory:")
+    every = [number for number, _ in db.migrations()]
+    assert [number for number, _ in db.pending(conn)] == every
+    assert db.migrate(conn, NOW, through=2) == [1, 2]
+    assert [number for number, _ in db.pending(conn)] == every[2:]
+    assert db.migrate(conn, NOW) == every[2:]
+    assert db.pending(conn) == []
+    names = db.names()
+    assert sorted(names) == every
+    assert names[1] == "0001_initial"

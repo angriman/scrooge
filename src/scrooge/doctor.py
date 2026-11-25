@@ -44,7 +44,7 @@ def examine(
     try:
         with db.reading(database) as conn:
             schema = _schema(conn)
-            checks = [schema, _integrity(conn), rules]
+            checks = [schema, integrity(conn), rules]
             if schema.problems:
                 skipped = f"not looked at: they read schema version {db.latest()}"
                 return (*checks, Check("originals", skipped), Check("prices", skipped))
@@ -65,12 +65,12 @@ def _schema(conn: sqlite3.Connection) -> Check:
     problem = f"version {found}: this code brings it to {latest}"
     advice = (
         "The next command that opens it to write migrates it, after a copy in backups/; "
-        "take a copy of your own first if it matters."
+        "'scrooge migrate --dry-run' tries it on a copy first."
     )
     return Check("schema", "older than this code", (problem,), advice)
 
 
-def _integrity(conn: sqlite3.Connection) -> Check:
+def integrity(conn: sqlite3.Connection) -> Check:
     """SQLite's own check of the file, and every reference between tables."""
     damage = [str(row[0]) for row in conn.execute("PRAGMA quick_check")]
     found = [line for line in damage if line != "ok"]

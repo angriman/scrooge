@@ -88,6 +88,7 @@ scrooge uncommit <id>       # take a committed statement back: it is staged agai
 scrooge discard <id>        # remove a staged statement and everything it staged
 scrooge keep <path>...      # keep the files of statements imported before originals/ existed
 scrooge doctor              # the schema, the database file, the rules, the originals, the prices
+scrooge migrate --dry-run   # what this version would do to the database, tried on a copy
 scrooge query --from 2026-09 --to 2026-09 --category Groceries --summary
 ```
 
@@ -177,9 +178,10 @@ docker compose up -d                                       # http://localhost:87
 Everything else, from updates to reaching it from other devices and a Synology NAS:
 [deploy/README.md](deploy/README.md). GitHub builds the image on every tag `v*` once
 `make check` passes; `make release VERSION=v1.2.3` tags `main` and waits for it, and
-`make deploy-update` pulls it where the app runs (`Makefile.local` says where); after it,
-`scrooge doctor` there says the database was brought up to date, and "A new version" in
-deploy/README.md lists what else an update may ask for.
+`make deploy-update` pulls it where the app runs (`Makefile.local` says where), tries its
+migrations on a copy of the database (`scrooge migrate --dry-run`) and only then restarts;
+after it, `scrooge doctor` there says the database was brought up to date, and "A new
+version" in deploy/README.md lists what else an update may ask for.
 
 ## Everything in this folder
 

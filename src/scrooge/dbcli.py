@@ -1,6 +1,6 @@
 """`scrooge init | import | commit | statements | uncommit | discard | balance | position | close |
-keep | logo | prices | query | serve | password | publish | migrate-files | doctor`: the database
-from the terminal.
+keep | logo | prices | query | serve | password | publish | migrate-files | doctor | migrate`: the
+database from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/,
                               its database too (--container: for the app in a container, its
@@ -34,6 +34,8 @@ from the terminal.
                               today's category names (--write; without it, only say what)
     scrooge doctor            say what is wrong: the schema, the database file, the rules,
                               the originals, the prices; changes nothing
+    scrooge migrate           bring the database to this code's schema, as every command does
+                              (--dry-run: try it on a copy and say how it went; changes nothing)
 
 There are no months to close (decided 2026-10-16): statements of any period are imported
 whenever they are at hand, and `commit` commits what is staged. Of an account, what is
@@ -91,6 +93,12 @@ next command would migrate it. It reads the rules files, each person's own, cate
 `unmatched` and instruments.yaml as `import` would and lists every problem in them; it lists
 the statements whose file is not in `originals`, and the holdings and currencies with no close
 or rate of the week before yesterday. It exits 1 when anything is wrong.
+`migrate --dry-run` says what this code would do to the database before it does it, as before
+an update: the database is read without being changed and copied into a temporary folder, the
+copy is brought up to date one migration at a time, each says whether it went through, and the
+copy is checked as `doctor` checks a database (`quick_check`, every reference) and removed. It
+exits 1 when a migration fails or the copy is damaged. `migrate` without it does what every
+command does first, and says so.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
@@ -149,6 +157,7 @@ from scrooge import (
     classification,
     closing,
     doctor,
+    dryrun,
     importing,
     marketdata,
     migratefiles,
@@ -192,9 +201,10 @@ COMMANDS = (
     "init",
     "migrate-files",
     "doctor",
+    "migrate",
 )
 # Commands that are not about one person's statements.
-_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish", "doctor")
+_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish", "doctor", "migrate")
 # What a machine that only shows a copy of the database may run: the rest would write to it.
 _SHOWING = ("serve", "query", "statements")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
@@ -383,7 +393,8 @@ def _care_parsers(
     setup: argparse.ArgumentParser,
     files: argparse.ArgumentParser,
 ) -> None:
-    """The commands that look after the setup: `publish`, `migrate-files`, `doctor`."""
+    """The commands that look after the setup: `publish`, `migrate-files`, `doctor`,
+    `migrate`."""
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
         "folder",
@@ -397,6 +408,14 @@ def _care_parsers(
     _migrate_flags(migrate)
     check = commands.add_parser("doctor", parents=[files], help="say what is wrong; change nothing")
     _rules_flags(check)
+    schema = commands.add_parser(
+        "migrate", parents=[files], help="bring the database to this code's schema"
+    )
+    schema.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="try it on a temporary copy and say how it went; the database is not changed",
+    )
 
 
 def _setup_flags() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
@@ -761,9 +780,11 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     if reach.read_only and args.command != "serve":
         _check_copy(path)  # a copy is read where it is, never opened to write
         return _show(args, config, (path, owner, people), console, now)
-    if args.command == "doctor":  # never migrates: whether it would is one of its answers
+    if args.command == "doctor" or (args.command == "migrate" and args.dry_run):
+        # Neither migrates: whether it would, and how it would go, is what they say.
         _refuse_missing(path, "database", origin, _ONLY_INIT)
-        return _doctor(path, args, config, out, now)
+        doctor_run = args.command == "doctor"
+        return _doctor(path, args, config, out, now) if doctor_run else _dry_run(path, out, now)
     if args.command == "serve":  # the pages open the database themselves, read-only
         if reach.read_only:
             _check_copy(path)
@@ -793,6 +814,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             "query": lambda: _query(conn, args, out),
             "keep": lambda: _keep(conn, path, _files(args.paths, path), out),
             "logo": lambda: _logo(conn, args, now, out),
+            "migrate": lambda: _migrated(path, out),
         }
         if args.command in about_data:
             return about_data[args.command]()
@@ -880,6 +902,37 @@ def _doctor(
         return OK
     out.write(f"{path}: {found} problem{'' if found == 1 else 's'} found.\n")
     return FAILED
+
+
+def _dry_run(path: Path, out: TextIO, now: datetime) -> int:
+    """`migrate --dry-run`: the migrations tried on a copy, each with how it went."""
+    tried = dryrun.run(path, now)
+    if not tried.steps:
+        out.write(f"{path}: schema version {tried.found}, the one this code expects: nothing to ")
+        out.write("migrate.\n")
+    else:
+        out.write(
+            f"{path}: schema version {tried.found}, this code brings it to {tried.latest}. "
+            "Tried on a copy:\n"
+        )
+    for step in tried.steps:
+        said = "done" if step.failed is None else f"failed: {step.failed}"
+        out.write(f"  {step.name}: {said if step.tried else 'not tried'}\n")
+    check = tried.integrity
+    out.write(f"copy {check.name}: {check.said}\n")
+    out.writelines(f"  - {problem}\n" for problem in check.problems)
+    if not tried.ok:
+        out.write(f"{path}: the copy did not come through; the database is as it was.\n")
+        return FAILED
+    if tried.steps:
+        out.write(f"{path}: the copy came through; the database is as it was.\n")
+    return OK
+
+
+def _migrated(path: Path, out: TextIO) -> int:
+    """`migrate`: what `_open` did, said."""
+    out.write(f"{path}: schema version {db.latest()}, the one this code expects.\n")
+    return OK
 
 
 def _create(path: Path, now: datetime, out: TextIO) -> int:

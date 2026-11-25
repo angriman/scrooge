@@ -759,7 +759,7 @@ def test_a_missing_database_is_refused_by_every_command_and_none_is_made(run: Ru
     run.without_database()
     run.config.write_text(CONFIG.format(database="data/scrooge.db"), encoding="utf-8")
     before = everything_under(run.folder)
-    for command in [*WRITERS, ("query",), ("statements",), ("doctor",)]:
+    for command in [*WRITERS, ("query",), ("statements",), ("doctor",), ("migrate", "--dry-run")]:
         assert run(*command) == dbcli.FAILED, command
         assert run.output == (
             f"error: no database at {run.database}: 'database' in {run.config} is relative to "
@@ -1488,6 +1488,52 @@ def test_serve_does_not_start_on_a_database_a_migration_fails_on(
     assert [path.name for path in copy.parent.iterdir()] == [copy.name]
 
 
+def test_migrate_dry_run_tries_the_migrations_on_a_copy_and_changes_nothing(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    latest, names = db.latest(), db.names()
+    before = everything_under(run.folder)
+    assert run("migrate", "--dry-run") == dbcli.OK
+    assert run.output == (
+        f"{run.database}: schema version {was}, this code brings it to {latest}. Tried on a "
+        f"copy:\n  {names[latest]}: done\ncopy integrity: no damage found\n"
+        f"{run.database}: the copy came through; the database is as it was.\n"
+    )
+    assert everything_under(run.folder) == before  # no copy in backups/ either
+
+    assert run("migrate") == dbcli.OK  # what every command does first, said
+    copy = run.database.parent / "backups" / "scrooge-20261006T120000.db"
+    assert run.output == (
+        f"{run.database}: schema version {was} brought up to {latest}. Copy from before: "
+        f"{copy}\n{run.database}: schema version {latest}, the one this code expects.\n"
+    )
+    assert schema_of(run.database) == latest
+    assert run("migrate", "--dry-run") == dbcli.OK
+    assert run.output == (
+        f"{run.database}: schema version {latest}, the one this code expects: nothing to "
+        "migrate.\ncopy integrity: no damage found\n"
+    )
+
+
+def test_migrate_dry_run_says_which_migration_fails_and_exits_1(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    every = db.migrations()
+    broken = (every[-1][0] + 1, "CREATE TABLE owners (x INTEGER) STRICT;")
+    monkeypatch.setattr(db, "migrations", lambda: [*every, broken])
+    before = everything_under(run.folder)
+    assert run("migrate", "--dry-run") == dbcli.FAILED
+    assert run.output == (
+        f"{run.database}: schema version {was}, this code brings it to {broken[0]}. Tried on a "
+        f"copy:\n  {db.names()[every[-1][0]]}: done\n  {broken[0]:04d}: failed: table owners "
+        "already exists\ncopy integrity: no damage found\n"
+        f"{run.database}: the copy did not come through; the database is as it was.\n"
+    )
+    assert everything_under(run.folder) == before
+
+
 def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1533,6 +1579,7 @@ WRITERS = [
     ("logo", "VTI", "vti.svg"),
     ("prices",),
     ("publish", "share"),
+    ("migrate",),
 ]
 
 
@@ -1568,6 +1615,8 @@ def test_a_machine_that_only_shows_a_copy_has_no_doctor_it_has_no_rules_or_origi
     read_only(closed)
     assert closed("doctor") == dbcli.FAILED
     assert "so 'doctor' is refused here: run it where the data is" in closed.output
+    assert closed("migrate", "--dry-run") == dbcli.FAILED
+    assert "so 'migrate' is refused here: run it where the data is" in closed.output
 
 
 def test_a_machine_that_only_shows_a_copy_can_still_list_and_query_it(closed: Run) -> None:
