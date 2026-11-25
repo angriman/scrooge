@@ -19,6 +19,7 @@
 	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
+	import { choose, chosen as presetOf } from '#lib/period.js';
 	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
@@ -28,14 +29,9 @@
 	const report = $derived(flow.report);
 	const colors = $derived(partColors(report?.parts ?? []));
 
-	// The range asked for: one offered, matched by its ends; none asked is the year to date.
-	const from = $derived(page.url.searchParams.get('from') ?? '');
-	const to = $derived(page.url.searchParams.get('to') ?? '');
-	const chosen = $derived(
-		!from && !to
-			? (flow.ranges[0]?.key ?? '')
-			: (flow.ranges.find((range) => range.from === from && range.to === to)?.key ?? '')
-	);
+	// The range asked for: one offered, by its ends or by the period another page chose; none
+	// asked is the year to date.
+	const chosen = $derived(presetOf(flow.ranges, page.url));
 	const byOptions = $derived([
 		{ value: 'month' as const, label: t('cashflow.byMonth') },
 		{ value: 'quarter' as const, label: t('cashflow.byQuarter') },
@@ -86,15 +82,7 @@
 				label={t('overview.rangeAria')}
 				value={chosen}
 				options={flow.ranges.map((range) => ({ value: range.key, label: rangePillLabel(range) }))}
-				onchange={(key) => {
-					const range = flow.ranges.find((r) => r.key === key)!;
-					show(
-						here(),
-						key === flow.ranges[0].key
-							? { from: null, to: null }
-							: { from: range.from, to: range.to || null }
-					);
-				}}
+				onchange={(key) => show(here(), choose(flow.ranges, key))}
 			/>
 			<Segmented
 				label={t('cashflow.eachColumnAria')}

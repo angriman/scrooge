@@ -48,7 +48,10 @@ securities), then its statements, newest first, each with the file it came from.
 		{ value: '3y' as const, label: t('range.3y') },
 		{ value: 'all' as const, label: t('range.all') }
 	]);
-	let range = $state<'1y' | '3y' | 'all'>('1y');
+	type Line = '1y' | '3y' | 'all';
+	// Starts from the period chosen on another page when it is one the line offers.
+	const carried = page.url.searchParams.get('range');
+	let range = $state<Line>(carried === '3y' || carried === 'all' ? carried : '1y');
 
 	const earliest = $derived(
 		accounts

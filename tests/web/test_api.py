@@ -520,6 +520,23 @@ def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: Te
     assert [period["name"] for period in quarters["report"]["periods"]] == ["2026-Q3"]
 
 
+def test_a_period_of_another_page_picks_the_months_of_the_cash_flow(client: TestClient) -> None:
+    def first(**params: str) -> str | None:
+        found: str | None = client.get("/api/cashflow", params=params).json()["first"]
+        return found
+
+    # The last month committed is September 2026: the period ends with it, months whole.
+    assert first(range="1m") == "2026-09-01"
+    assert first(range="3m") == "2026-07-01"
+    assert first(range="1y") == "2025-10-01"
+    assert first(range="ytd") == "2026-01-01"
+    # A range asked for by its ends wins over a period.
+    assert first(range="3m", **{"from": "2026-05"}) == "2026-05-01"
+    sent = client.get("/api/cashflow").json()
+    assert [r["range"] for r in sent["ranges"]] == ["ytd", "1y"]
+    assert client.get("/api/cashflow", params={"range": "2w"}).status_code == 400
+
+
 def test_a_cash_flow_that_cannot_be_read_is_refused(client: TestClient) -> None:
     assert client.get("/api/cashflow", params={"by": "decade"}).status_code == 400
     assert client.get("/api/cashflow", params={"owner": "Zoe"}).status_code == 400

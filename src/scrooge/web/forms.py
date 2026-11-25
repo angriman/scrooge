@@ -36,6 +36,13 @@ class AnalysisView:
     grouping: Grouping
     currency: str
     errors: tuple[str, ...]
+    range: str | None = None  # one of PERIODS, used only when neither `from` nor `to` is given
+
+
+# The periods every page of the app is looked at over, by the same names (`range` in an
+# address): the overview's and the investments' ranges, which the cash flow and what
+# investments paid take too, so that a period chosen on one page goes along to the next.
+PERIODS = ("1m", "3m", "ytd", "1y", "3y", "all")
 
 
 BREAKDOWNS = ("total", "asset", "owner", "liquidity")  # how the chart of net worth cuts its line
@@ -97,12 +104,18 @@ def cashflow_range(params: Mapping[str, str]) -> CashFlowRange:
 
 
 def analysis_view(params: Mapping[str, str]) -> AnalysisView:
-    """`from`, `to`, `owner` and `by` as for the cash flow, and `currency` (euros when left
-    out)."""
+    """`from`, `to`, `owner` and `by` as for the cash flow, `currency` (euros when left out),
+    and `range`, one of PERIODS, for when neither `from` nor `to` is given."""
     span = cashflow_range(params)
     errors = list(span.errors)
     currency = _currency(params, errors)
-    return AnalysisView(span.first, span.last, span.owner, span.grouping, currency, tuple(errors))
+    period = _text(params, "range")
+    if period is not None and period not in PERIODS:
+        errors.append(f"'{period}' is not one of {', '.join(PERIODS)}.")
+        period = None
+    return AnalysisView(
+        span.first, span.last, span.owner, span.grouping, currency, tuple(errors), period
+    )
 
 
 def transactions_filter(params: Mapping[str, str]) -> Parsed:

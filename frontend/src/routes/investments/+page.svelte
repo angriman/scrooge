@@ -13,7 +13,8 @@
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
-	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
+	import { DEFAULT_RANGE } from '#lib/investments/income.js';
+	import { choose as choosePreset, chosen as presetOf } from '#lib/period.js';
 	import * as returns from '#lib/investments/performance.js';
 	import Pensions from '#lib/investments/Pensions.svelte';
 	import { DEFAULT_PERIOD, periodOf } from '#lib/investments/pensions.js';
@@ -80,13 +81,7 @@
 	);
 	const range = $derived(returns.rangeOf(page.url.searchParams.get('range')));
 	const ranges = $derived(data.income?.ranges ?? []);
-	const chosen = $derived(
-		chosenRange(
-			ranges,
-			page.url.searchParams.get('from') ?? '',
-			page.url.searchParams.get('to') ?? ''
-		)
-	);
+	const chosen = $derived(presetOf(ranges, page.url, DEFAULT_RANGE));
 
 	let open = $state<string | null>(null);
 	/** Open `holding` in the list, and bring it into view. */
@@ -113,7 +108,6 @@
 					? { view: null, from: null, to: null }
 					: {
 							view: value,
-							range: null,
 							...(value === 'holdings' ? { from: null, to: null } : { pension: null })
 						}
 			)}
@@ -123,8 +117,7 @@
 			label={t('overview.rangeAria')}
 			value={range}
 			options={perfRanges}
-			onchange={(value) =>
-				show(page.url, { range: value === returns.DEFAULT_RANGE ? null : value })}
+			onchange={(value) => show(page.url, { range: value })}
 		/>
 	{/if}
 	{#if view === 'income' && ranges.length}
@@ -132,15 +125,7 @@
 			label={t('overview.rangeAria')}
 			value={chosen}
 			options={ranges.map((range) => ({ value: range.key, label: rangePillLabel(range) }))}
-			onchange={(key) => {
-				const range = ranges.find((r) => r.key === key)!;
-				show(
-					page.url,
-					key === DEFAULT_RANGE
-						? { from: null, to: null }
-						: { from: range.from, to: range.to || null }
-				);
-			}}
+			onchange={(key) => show(page.url, choosePreset(ranges, key, DEFAULT_RANGE))}
 		/>
 	{/if}
 </div>

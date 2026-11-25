@@ -27,7 +27,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		// What investing cost each year is under what was paid, whatever the range. Costs that
 		// cannot be loaded leave what was paid shown, and their panel says why.
 		const [income, costs] = await Promise.all([
-			get<InvestmentIncome>(fetch, '/api/income', pick(url, ['owner', 'currency', 'from', 'to'])),
+			get<InvestmentIncome>(
+				fetch,
+				'/api/income',
+				pick(url, ['owner', 'currency', 'from', 'to', 'range'])
+			),
 			get<InvestmentCosts>(fetch, '/api/costs', pick(url, ['owner', 'currency'])).then(
 				(sent) => ({ sent, unavailable: '' }),
 				(failed: unknown) => {

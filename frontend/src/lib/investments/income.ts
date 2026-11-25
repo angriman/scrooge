@@ -103,14 +103,5 @@ export function isTrailing(income: Pick<PayoutsReport, 'first' | 'last' | 'throu
 	);
 }
 
-/** The range chosen of those offered, by its ends; none asked is the last twelve months. */
-export function chosenRange(
-	ranges: readonly { key: string; from: string; to: string }[],
-	from: string,
-	to: string
-): string {
-	if (!from && !to) return DEFAULT_RANGE;
-	return ranges.find((range) => range.from === from && range.to === to)?.key ?? '';
-}
-
+/** The range shown when none is asked for (`lib/period.ts` picks the one asked). */
 export const DEFAULT_RANGE = '12m';

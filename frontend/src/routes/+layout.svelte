@@ -61,9 +61,10 @@
 		...data.session.people.map((person) => ({ value: person.name, label: person.name }))
 	]);
 
-	// Between pages, whose figures and their currency go along; a page's own view does not.
+	// Between pages, whose figures, their currency and the period go along (`lib/period.ts`);
+	// a page's own view does not.
 	const along = $derived.by(() => {
-		const query = pick(here(), ['owner', 'currency']).toString();
+		const query = pick(here(), ['owner', 'currency', 'range']).toString();
 		return query ? `?${query}` : '';
 	});
 	const ours = (

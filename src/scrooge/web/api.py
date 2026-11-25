@@ -944,18 +944,47 @@ def _ranges(through: date, start: int) -> list[dict[str, str]]:
     twelve = analysis.add_months(through, -11)
     years = range(through.year - 1, max(start, through.year - 2) - 1, -1)
     return [
-        {"key": "ytd", "label": "Year to date", "from": str(through.year), "to": ""},
-        {"key": "12m", "label": "Last 12 months", "from": f"{twelve:%Y-%m}", "to": ""},
+        {
+            "key": "ytd",
+            "label": "Year to date",
+            "from": str(through.year),
+            "to": "",
+            "range": "ytd",
+        },
+        {
+            "key": "12m",
+            "label": "Last 12 months",
+            "from": f"{twelve:%Y-%m}",
+            "to": "",
+            "range": "1y",
+        },
         *(
-            {"key": str(year), "label": str(year), "from": str(year), "to": str(year)}
+            {"key": str(year), "label": str(year), "from": str(year), "to": str(year), "range": ""}
             for year in years
         ),
         *(
-            [{"key": "all", "label": "All", "from": str(start), "to": ""}]
+            [{"key": "all", "label": "All", "from": str(start), "to": "", "range": "all"}]
             if start < through.year
             else []
         ),
     ]
+
+
+# How many months before the last one committed each of `forms.PERIODS` starts, the last
+# included: the month itself, two before it, and so on; the year to date and all of it apart.
+_MONTHS_BACK = {"1m": 0, "3m": 2, "1y": 11, "3y": 35}
+
+
+def _period_start(period: str | None, through: date | None, start: int | None) -> date | None:
+    """The first day of `period` (one of `forms.PERIODS`), by whole months up to the last day
+    committed, `through`; `start` is the year the statements start. None for no period."""
+    if period is None or through is None:
+        return None
+    if period == "ytd":
+        return date(through.year, 1, 1)
+    if period == "all":
+        return date(start, 1, 1) if start is not None else None
+    return analysis.add_months(through, -_MONTHS_BACK[period])
 
 
 def _cashflow(request: Request) -> Response:
@@ -973,6 +1002,8 @@ def _cashflow(request: Request) -> Response:
         through = analysis.through(conn, asked.owner)
         firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
         first, last = asked.first, asked.last
+        if first is None and last is None:
+            first = _period_start(asked.range, through, min(firsts).year if firsts else None)
         if first is None and last is None and through is not None:
             first = date(through.year, 1, 1)
         shown = wire.unless_rate_missing(
@@ -1014,8 +1045,11 @@ def _income(request: Request) -> Response:
             return _refused((wire.sentence(exc),))
         through = analysis.through(conn, asked.owner)
         firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
+        first = asked.first
+        if first is None and asked.last is None:
+            first = _period_start(asked.range, through, min(firsts).year if firsts else None)
         shown = payouts.run(
-            conn, first=asked.first, last=asked.last, owner=asked.owner, currency=asked.currency
+            conn, first=first, last=asked.last, owner=asked.owner, currency=asked.currency
         )
         found = logos(request, conn)
     return JSONResponse(
