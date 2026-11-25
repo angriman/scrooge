@@ -38,7 +38,7 @@ from scrooge.errors import ConfigError
 from scrooge.storage import db, store, taxonomy
 
 SHOWN = 50  # rows a test of a pattern lists; how many match is counted all the same
-LONGEST = 200  # characters of a pattern tried or saved here
+LONGEST = classification.LONGEST  # characters of a pattern tried or saved here
 BUDGET = 2.0  # seconds a pattern is tried for, newest rows first
 COUNTING = 5.0  # seconds the rules of the page are counted for, in their order
 DIRECTIONS = ("", "in", "out")

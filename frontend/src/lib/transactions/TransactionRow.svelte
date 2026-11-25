@@ -159,10 +159,10 @@ that the next import gives it again.
 					{/each}
 				</select>
 			</label>
-			{#if rules && row.counterparty}
+			{#if rules && who.trim()}
 				<label class="flex items-center gap-2 text-small text-ink">
 					<input type="checkbox" bind:checked={remember} class="size-4 accent-brand" />
-					{t('transactions.rememberFor', { merchant: row.counterparty })}
+					{t('transactions.rememberFor', { merchant: who.trim() })}
 				</label>
 			{/if}
 			<span class="ml-auto flex gap-2">

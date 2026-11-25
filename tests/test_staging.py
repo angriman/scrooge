@@ -1882,6 +1882,15 @@ def test_a_choice_that_cannot_be_made_changes_nothing(
     # The same id twice is one row; a row without text can still be set for itself alone.
     assert choose(conn, [ids["6"], ids["6"]], categories.GIFTS) == 1
 
+    # A text whose pattern exceeds the settings page's limit cannot become a rule.
+    conn.execute(
+        "UPDATE transactions SET description = ? WHERE id = ?",
+        ("A" * classification.LONGEST, ids["KIOSK1"]),
+    )
+    with pytest.raises(staging.StagingError, match="too long to become a rule"):
+        choose(conn, [ids["KIOSK1"]], categories.GIFTS, remember)
+    assert not list(tmp_path.iterdir())
+
 
 def choose_all(
     conn: sqlite3.Connection,
