@@ -1,6 +1,6 @@
 """`scrooge init | import | commit | statements | uncommit | discard | balance | position | close |
-keep | logo | prices | query | serve | password | publish | migrate-files | doctor | migrate`: the
-database from the terminal.
+keep | logo | prices | query | serve | password | publish | migrate-files | doctor | migrate |
+backup`: the database from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/,
                               its database too (--container: for the app in a container, its
@@ -36,6 +36,8 @@ database from the terminal.
                               the originals, the prices; changes nothing
     scrooge migrate           bring the database to this code's schema, as every command does
                               (--dry-run: try it on a copy and say how it went; changes nothing)
+    scrooge backup            copy the database into backups/ beside it, and remove the older
+                              copies the retention does not keep
 
 There are no months to close (decided 2026-10-16): statements of any period are imported
 whenever they are at hand, and `commit` commits what is staged. Of an account, what is
@@ -99,6 +101,11 @@ copy is brought up to date one migration at a time, each says whether it went th
 copy is checked as `doctor` checks a database (`quick_check`, every reference) and removed. It
 exits 1 when a migration fails or the copy is damaged. `migrate` without it does what every
 command does first, and says so.
+`backup` copies the database, as it is and without bringing its schema up to date, into
+`backups/` next to it as `<name>-backup-YYYYMMDDTHHMMSSZ.db` (UTC), and of the files so named
+keeps the newest of each of the 7 latest days, 8 latest weeks and 12 latest months that have
+one, removing the others; nothing else in `backups/` is ever removed. A copy found damaged is
+kept, nothing is removed, and it exits 1. `compose.yaml`'s `backup` service runs it daily.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
@@ -152,6 +159,7 @@ import yaml
 
 from scrooge import (
     archives,
+    backups,
     benchmark,
     categories,
     classification,
@@ -202,9 +210,10 @@ COMMANDS = (
     "migrate-files",
     "doctor",
     "migrate",
+    "backup",
 )
 # Commands that are not about one person's statements.
-_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish", "doctor", "migrate")
+_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish", "doctor", "migrate", "backup")
 # What a machine that only shows a copy of the database may run: the rest would write to it.
 _SHOWING = ("serve", "query", "statements")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
@@ -228,6 +237,7 @@ _ERRORS = (
     store.AccountMismatchError,
     query.QueryError,
     publish.PublishError,
+    backups.BackupError,
 )
 
 
@@ -394,7 +404,7 @@ def _care_parsers(
     files: argparse.ArgumentParser,
 ) -> None:
     """The commands that look after the setup: `publish`, `migrate-files`, `doctor`,
-    `migrate`."""
+    `migrate`, `backup`."""
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
         "folder",
@@ -415,6 +425,9 @@ def _care_parsers(
         "--dry-run",
         action="store_true",
         help="try it on a temporary copy and say how it went; the database is not changed",
+    )
+    commands.add_parser(
+        "backup", parents=[files], help="copy the database into backups/ and prune older copies"
     )
 
 
@@ -780,11 +793,16 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     if reach.read_only and args.command != "serve":
         _check_copy(path)  # a copy is read where it is, never opened to write
         return _show(args, config, (path, owner, people), console, now)
-    if args.command == "doctor" or (args.command == "migrate" and args.dry_run):
-        # Neither migrates: whether it would, and how it would go, is what they say.
+    if args.command in ("doctor", "backup") or (args.command == "migrate" and args.dry_run):
+        # None migrates: whether it would, and how it would go, is what two of them say, and a
+        # backup is of the database as it is.
         _refuse_missing(path, "database", origin, _ONLY_INIT)
-        doctor_run = args.command == "doctor"
-        return _doctor(path, args, config, out, now) if doctor_run else _dry_run(path, out, now)
+        readers: dict[str, Callable[[], int]] = {
+            "doctor": lambda: _doctor(path, args, config, out, now),
+            "migrate": lambda: _dry_run(path, out, now),
+            "backup": lambda: _backup(path, out, now),
+        }
+        return readers[args.command]()
     if args.command == "serve":  # the pages open the database themselves, read-only
         if reach.read_only:
             _check_copy(path)
@@ -902,6 +920,18 @@ def _doctor(
         return OK
     out.write(f"{path}: {found} problem{'' if found == 1 else 's'} found.\n")
     return FAILED
+
+
+def _backup(path: Path, out: TextIO, now: datetime) -> int:
+    """`backup`: the copy made, and the older ones removed."""
+    made = backups.take(path, now)
+    out.write(f"{path}: backed up to {made.path}\n")
+    if made.damage:
+        out.write("The copy is damaged, so no older copy was removed:\n")
+        out.writelines(f"  - {problem}\n" for problem in made.damage)
+        return FAILED
+    out.writelines(f"  removed {removed.name}\n" for removed in made.removed)
+    return OK
 
 
 def _dry_run(path: Path, out: TextIO, now: datetime) -> int:

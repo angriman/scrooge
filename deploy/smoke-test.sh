@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The first run of deploy/README.md, end to end, on this machine's Docker: a setup made by
-# `scrooge init --container`, both services of compose.yaml started, the pages signed in to,
-# a redacted statement imported and committed, the prices service running. Nothing is left
-# behind: the containers and the data folder go at the end, passed or not.
+# `scrooge init --container`, the services of compose.yaml started, the pages signed in to,
+# a redacted statement imported and committed, the prices service running, a backup made and
+# the migrations tried on a copy (`migrate --dry-run`). Nothing is left behind: the containers and the data folder go at the end, passed or not.
 #
 #   deploy/smoke-test.sh [image]    default scrooge:test, as `docker build -t scrooge:test .`
 #
@@ -65,7 +65,8 @@ grep -q '^  host: 0.0.0.0$' "$work/data/users/test/scrooge.yaml" || fail "no ser
 
 step "docker compose up"
 compose up -d || fail "the services did not start"
-# Not `up --wait`: some versions of Compose refuse it for prices, which has no health check.
+# Not `up --wait`: some versions of Compose refuse it for prices and backup, which have no
+# health check.
 health=starting
 for _ in $(seq 60); do
     health=$("${docker[@]}" inspect -f '{{.State.Health.Status}}' "$(compose ps -q scrooge)")
@@ -76,6 +77,8 @@ done
 # Not `compose ps --format`: Compose 2.20 (Synology's) takes no template there.
 running=$("${docker[@]}" inspect -f '{{.State.Status}}' "$(compose ps -q prices)")
 [ "$running" = running ] || fail "prices is $running, not running"
+running=$("${docker[@]}" inspect -f '{{.State.Status}}' "$(compose ps -q backup)")
+[ "$running" = running ] || fail "backup is $running, not running"
 
 step "the container"
 [ "$(compose exec -T scrooge id -u)" = "$(id -u)" ] || fail "not the user of .env"
@@ -103,5 +106,15 @@ cp "$repo/tests/fixtures/migros/migros.csv" "$work/data/users/test/statements/"
 compose exec -T scrooge scrooge import users/test/statements || fail "import"
 compose exec -T scrooge scrooge commit || fail "commit"
 curl -fsS -b "$jar" "$base/statements/1" | grep -q migros.csv || fail "the statement's page"
+
+step "backup and migrate --dry-run"
+backup=
+for _ in $(seq 30); do
+    backup=$(find "$work/data/users/test/backups" -name 'scrooge-backup-*Z.db' 2>/dev/null)
+    [ -n "$backup" ] && break
+    sleep 1
+done
+[ -n "$backup" ] || fail "the backup service made no copy"
+compose run --rm -T scrooge scrooge migrate --dry-run || fail "migrate --dry-run"
 
 echo "smoke test: passed on $("${docker[@]}" info --format '{{.Architecture}}') with $image"
