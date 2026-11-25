@@ -951,7 +951,7 @@ async def _copy(request: Request) -> Response:
     return PlainTextResponse(f"{_COPY}\n", status_code=403)
 
 
-class _Unsaved(Exception):
+class _UnsavedError(Exception):
     """A category chosen on the draft could not be given."""
 
 
@@ -1041,7 +1041,7 @@ async def _commit(request: Request) -> Response:
     def commit() -> tuple[int, list[str]]:
         error, changed = _apply(state, owner, fields)
         if error:
-            raise _Unsaved(error)
+            raise _UnsavedError(error)
         conn = db.connect(state.database)
         try:
             files, _ = staging.commit_with_copy(
@@ -1053,7 +1053,7 @@ async def _commit(request: Request) -> Response:
 
     try:
         count, changed = await run_in_threadpool(commit)
-    except _Unsaved as exc:
+    except _UnsavedError as exc:
         return await run_in_threadpool(_import_form, request, owner, str(exc), None, 409)
     except (staging.UncategorizedRowsError, ReconciliationError) as exc:
         # Nothing was committed, and nothing here can override it: the page says why.

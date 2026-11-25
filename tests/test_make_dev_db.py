@@ -184,7 +184,7 @@ def test_the_setups_in_users_and_the_databases_they_name_are_never_touched(
     assert make_dev_db.ROOT / "users" in make_dev_db.REAL
 
 
-def test_the_real_database_s_default_folder_is_refused(tmp_path: Path, nothing_real: Path) -> None:
+def test_the_real_database_s_default_folder_is_refused(nothing_real: Path) -> None:
     # `~` is the empty home of `nothing_real`: this is a stand-in for the user's real folder.
     assert Path("~").expanduser() == nothing_real
     real = nothing_real / ".local" / "share" / "scrooge_db"

@@ -619,7 +619,7 @@ async def _look_up(request: Request) -> Response:
     return await _stage(request, held.owner, held.uploads, notice)
 
 
-class _Refused(Exception):
+class _RefusedError(Exception):
     """What was sent cannot be done; its message says why."""
 
 
@@ -632,13 +632,13 @@ def _choices(
     rows = {row.id: row for row in staged.rows}
     chosen = sent.get("choices", [])
     if not isinstance(chosen, list) or not all(isinstance(c, dict) for c in chosen):
-        raise _Refused("Send the choices as a list of rows and their category.")
+        raise _RefusedError("Send the choices as a list of rows and their category.")
     made: list[staging.Choice] = []
     for choice in chosen:
         listed = choice.get("ids")
         ids = [str(row) for row in listed] if isinstance(listed, list) else []
         if not ids or any(row not in rows for row in ids):
-            raise _Refused("Those rows are not staged any more: load the page again.")
+            raise _RefusedError("Those rows are not staged any more: load the page again.")
         category, rule = str(choice.get("category", "")), choice.get("rule") is True
         waiting = [row for row in ids if rows[row].waiting]
         key = store.category_key(conn, category)
@@ -719,7 +719,7 @@ async def _categorize_staged(request: Request) -> Response:
 
     try:
         changed, committed, by_hand = await run_in_threadpool(apply)
-    except _Refused as exc:
+    except _RefusedError as exc:
         return JSONResponse({"errors": [str(exc)]}, 409)
     except (staging.UncategorizedRowsError, ReconciliationError) as exc:
         return JSONResponse({"errors": [f"Not committed: {wire.sentence(exc)}"]}, 409)

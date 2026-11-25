@@ -8,6 +8,7 @@ from decimal import Decimal
 from email.message import Message
 from io import BytesIO
 from pathlib import Path
+from typing import Self
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -133,12 +134,18 @@ def test_an_unknown_symbol_is_an_error_in_the_source_s_words() -> None:
         b"<html>try again later</html>",
         b"{}",
         b'{"chart":{"result":[],"error":null}}',
-        b'{"chart":{"result":[{"meta":{"currency":"USD","gmtoffset":0},"timestamp":[1,2],'
-        b'"indicators":{"quote":[{"close":[1.5]}]}}],"error":null}}',  # a close is missing
-        b'{"chart":{"result":[{"meta":{"currency":"USD","gmtoffset":0},"timestamp":["x"],'
-        b'"indicators":{"quote":[{"close":[1.5]}]}}],"error":null}}',
-        b'{"chart":{"result":[{"meta":{"currency":"USD","gmtoffset":0},"timestamp":[1],'
-        b'"indicators":{"quote":[{"close":["x"]}]}}],"error":null}}',
+        (
+            b'{"chart":{"result":[{"meta":{"currency":"USD","gmtoffset":0},"timestamp":[1,2],'
+            b'"indicators":{"quote":[{"close":[1.5]}]}}],"error":null}}'
+        ),  # a close is missing
+        (
+            b'{"chart":{"result":[{"meta":{"currency":"USD","gmtoffset":0},"timestamp":["x"],'
+            b'"indicators":{"quote":[{"close":[1.5]}]}}],"error":null}}'
+        ),
+        (
+            b'{"chart":{"result":[{"meta":{"currency":"USD","gmtoffset":0},"timestamp":[1],'
+            b'"indicators":{"quote":[{"close":["x"]}]}}],"error":null}}'
+        ),
     ],
 )
 def test_an_answer_in_another_form_is_an_error(answer: bytes) -> None:
@@ -205,7 +212,7 @@ def test_closes_keep_the_digits_a_single_precision_float_can_be_trusted_for() ->
 
 
 class Answer(BytesIO):
-    def __enter__(self) -> "Answer":
+    def __enter__(self) -> Self:
         return self
 
 
@@ -230,7 +237,8 @@ def test_the_default_fetch_asks_over_https_and_reads_the_answer(
 def test_a_refusal_is_read_like_an_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     body = b'{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found"}}}'
 
-    def urlopen(request: urllib.request.Request, timeout: float) -> Answer:
+    def urlopen(request: urllib.request.Request, *, timeout: float) -> Answer:
+        assert timeout > 0
         raise urllib.error.HTTPError(request.full_url, 404, "Not Found", Message(), BytesIO(body))
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
@@ -239,7 +247,8 @@ def test_a_refusal_is_read_like_an_answer(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_no_connection_is_an_error_of_its_own(monkeypatch: pytest.MonkeyPatch) -> None:
-    def urlopen(request: urllib.request.Request, timeout: float) -> Answer:
+    def urlopen(_request: urllib.request.Request, *, timeout: float) -> Answer:
+        assert timeout > 0
         raise urllib.error.URLError("no route to host")
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
@@ -272,8 +281,10 @@ def test_a_bill_treasury_direct_does_not_know_has_no_maturity() -> None:
         (b'[{"cusip": "912797XX3"}]', "not in the expected form"),
         (b'[{"cusip": "912797XX3", "maturityDate": "soon"}]', "not in the expected form"),
         (
-            b'[{"cusip": "912797XX3", "maturityDate": "2026-11-27T00:00:00"},'
-            b' {"cusip": "912797XX3", "maturityDate": "2026-12-04T00:00:00"}]',
+            (
+                b'[{"cusip": "912797XX3", "maturityDate": "2026-11-27T00:00:00"},'
+                b' {"cusip": "912797XX3", "maturityDate": "2026-12-04T00:00:00"}]'
+            ),
             "more than one maturity",
         ),
     ],

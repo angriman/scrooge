@@ -103,10 +103,12 @@ def test_the_retention_keeps_dailies_weeklies_and_monthlies() -> None:
     kept = sorted(backups.keep(moments))
     days = [at(last - timedelta(days=day), 15) for day in range(7)]  # the newest of each day
     sundays = [at(date(2026, 10, 4) - timedelta(weeks=week), 15) for week in range(7)]
-    month_ends = [at(date(2026, 9, 30), 15)]
-    for month in range(8, 0, -1):
-        month_ends.append(at(date(2026, month + 1, 1) - timedelta(days=1), 15))
-    month_ends += [at(date(2025, 12, 31), 15), at(date(2025, 11, 30), 15)]
+    month_ends = [
+        at(date(2026, 9, 30), 15),
+        *(at(date(2026, month + 1, 1) - timedelta(days=1), 15) for month in range(8, 0, -1)),
+        at(date(2025, 12, 31), 15),
+        at(date(2025, 11, 30), 15),
+    ]
     assert kept == sorted({*days, *sundays, *month_ends})
 
 

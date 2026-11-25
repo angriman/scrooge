@@ -131,8 +131,10 @@ def test_every_problem_of_every_file_an_import_reads_is_listed(
     assert rules.said == "an import would be refused"
     assert rules.problems == (
         f"no rules file at {gone}",
-        f"{tmp_path / 'categories.yaml'}: line 2: expected the node content, but found "
-        "'<stream end>'",
+        (
+            f"{tmp_path / 'categories.yaml'}: line 2: expected the node content, but found "
+            "'<stream end>'"
+        ),
         f"{tmp_path / 'rules.anna.yaml'} rule 1: unknown category 'Vacanze'",
         f"{tmp_path / 'rules.anna.yaml'} rule 2: unknown category 'Holidays'",
         f"{shared} rule 1: missing ), unterminated subpattern at position 0",

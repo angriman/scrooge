@@ -113,13 +113,13 @@ def parse_iso_date(text: str, what: str) -> date:
 def parse_swiss_date(text: str, what: str) -> date:
     """Read `30.09.2026`."""
     match = _SWISS_DATE.fullmatch(text.strip())
-    try:
-        if match is None:
-            raise ValueError
-        return date(int(match[3]), int(match[2]), int(match[1]))
-    except ValueError:
-        msg = f"cannot read date {text!r} ({what})"
-        raise ExtractionError(msg) from None
+    if match is not None:
+        try:
+            return date(int(match[3]), int(match[2]), int(match[1]))
+        except ValueError:
+            pass
+    msg = f"cannot read date {text!r} ({what})"
+    raise ExtractionError(msg)
 
 
 def month_start(day: date) -> date:

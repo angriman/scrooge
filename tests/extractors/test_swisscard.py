@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import TracebackType
+from typing import Self
 
 import pytest
 
@@ -133,7 +134,7 @@ class _Page:
 class _Pdf:
     pages = (_Page("page one"), _Page(None), _Page("page three"))
 
-    def __enter__(self) -> "_Pdf":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(

@@ -78,7 +78,7 @@ def _steps(copy: sqlite3.Connection, now: datetime) -> tuple[Step, ...]:
             continue
         try:
             db.migrate(copy, now, through=number)
-        except Exception as exc:  # whatever stops a migration is what is said of it
+        except Exception as exc:  # noqa: BLE001  # whatever stops a migration is what dry-run reports
             steps.append(Step(number, name, str(exc) or type(exc).__name__))
             failed = True
         else:

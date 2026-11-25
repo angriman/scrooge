@@ -122,13 +122,13 @@ def _classify(description: str, n: int) -> tuple[Kind, str]:
 def _date(text: str) -> date:
     """Read the date of `Sep 30, 2026, 2:12:10 AM`."""
     match = _DATE.match(text)
-    try:
-        if match is None:
-            raise ValueError
-        return date(int(match[3]), _MONTHS[match[1]], int(match[2]))
-    except (KeyError, ValueError):
-        msg = f"cannot read date {text!r} (Revolut Savings)"
-        raise ExtractionError(msg) from None
+    if match is not None:
+        try:
+            return date(int(match[3]), _MONTHS[match[1]], int(match[2]))
+        except (KeyError, ValueError):
+            pass
+    msg = f"cannot read date {text!r} (Revolut Savings)"
+    raise ExtractionError(msg)
 
 
 SOURCE = Source(

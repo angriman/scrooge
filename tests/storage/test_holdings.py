@@ -169,9 +169,11 @@ def test_a_statement_that_does_not_follow_blocks_the_commit(conn: sqlite3.Connec
     stage(conn, AUGUST, ibkr(AUGUST, {"WIDG": "10"}))
     staged = stage(conn, SEPTEMBER, ibkr(SEPTEMBER, {"WIDG": "20"}, buy("4", day(15))))
     assert staged.gaps == (
-        "IBKR USD: the statement says 20 WIDG were held on 2026-09-30, but the holdings before "
-        "it and what was booked since give 14 (a statement in between is missing, or a split "
-        "is not stored)",
+        (
+            "IBKR USD: the statement says 20 WIDG were held on 2026-09-30, but the holdings before "
+            "it and what was booked since give 14 (a statement in between is missing, or a split "
+            "is not stored)"
+        ),
     )
     owner = store.owner_id(conn, OWNER) or 0
     [refused] = staging.would_refuse(conn, owner)

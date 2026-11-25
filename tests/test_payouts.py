@@ -181,7 +181,7 @@ def test_a_range_that_ends_before_it_starts_has_nothing(conn: sqlite3.Connection
     assert (shown.months, shown.holdings, shown.totals) == ((), (), payouts.NOTHING)
 
 
-def test_nothing_committed_has_no_range(conn: sqlite3.Connection) -> None:
+def test_nothing_committed_has_no_range() -> None:
     empty = db.connect(":memory:")
     db.migrate(empty, CLOSED_AT)
     shown = payouts.run(empty)

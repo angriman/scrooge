@@ -67,8 +67,10 @@ def test_an_account_that_held_money_is_refused_with_the_reason(site: Site) -> No
     assert refused.status_code == 409
     assert refused.json() == {
         "errors": [
-            "Migros of Lukas held 99.00 CHF at the end of 2026-09-30: "
-            "close it on a day it held nothing."
+            (
+                "Migros of Lukas held 99.00 CHF at the end of 2026-09-30: "
+                "close it on a day it held nothing."
+            )
         ]
     }
     assert _closed(site) == [("Migros", None)]

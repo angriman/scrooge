@@ -86,7 +86,7 @@ def test_a_python_migration_that_raises_without_a_message_is_named_by_its_error(
     path = tmp_path / "scrooge.db"
     was = older(path, monkeypatch, behind=0)
 
-    def fails(conn: sqlite3.Connection) -> None:
+    def fails(_conn: sqlite3.Connection) -> None:
         raise KeyError
 
     every = _EVERY()

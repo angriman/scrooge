@@ -56,29 +56,61 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = [
-    "E", "W",   # pycodestyle
-    "F",        # pyflakes
-    "I",        # isort
+    "A",        # builtins
+    "ANN",      # annotations
+    "ARG",      # unused arguments
+    "ASYNC",    # async/await pitfalls
     "B",        # bugbear
-    "UP",       # pyupgrade
-    "SIM",      # simplify
+    "BLE",      # blind except
     "C4",       # comprehensions
+    "C90",      # mccabe complexity
+    "DTZ",      # naive datetimes
+    "E", "W",   # pycodestyle
+    "ERA",      # no commented-out code
+    "EXE",      # executable shebangs
+    "F",        # pyflakes
+    "FA",       # future annotations
+    "FLY",      # f-string joins
+    "FURB",     # refurb
+    "G",        # logging format
+    "I",        # isort
+    "ICN",      # import conventions
+    "INP",      # no implicit namespace packages
+    "ISC",      # implicit string concatenation
+    "LOG",      # logging
+    "N",        # pep8-naming
+    "PERF",     # perflint
+    "PGH",      # pygrep-hooks
+    "PIE",      # misc lints
     "PL",       # pylint
+    "PT",       # pytest style
+    "PTH",      # pathlib
+    "PYI",      # type/stub checks
+    "Q",        # quotes
+    "RET",      # return style
+    "RSE",      # raise style
     "RUF",      # ruff-specific
     "S",        # bandit (security)
-    "DTZ",      # naive datetimes
-    "PT",       # pytest style
-    "ANN",      # annotations
-    "FURB",     # refurb
+    "SIM",      # simplify
+    "SLF",      # private member access
+    "SLOT",     # __slots__ checks
+    "T10",      # no breakpoints/debuggers
     "T20",      # no print()
-    "ERA",      # no commented-out code
+    "TID",      # tidy imports
+    "TRY",      # exception handling
+    "UP",       # pyupgrade
+    "YTT",      # sys.version checks
 ]
 ignore = [
     "PLR2004",  # magic values are fine in parsers/specs
+    "TRY003",   # descriptive error messages are constructed at raise sites
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ANN", "PLR0913"]
+"tests/**" = ["ANN", "ARG005", "N802", "N817", "PLR0913", "S101", "SLF001"]
 
 [tool.ruff.format]
 quote-style = "double"

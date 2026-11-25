@@ -1426,7 +1426,7 @@ def test_a_database_newer_than_this_code_is_refused_by_every_command(
     assert f"{run.database}: schema version 99, where this code reads" in run.output
 
 
-def older(run: Run, monkeypatch: pytest.MonkeyPatch) -> int:
+def older(run: Run) -> int:
     """The database as code one migration older left it, with an owner in it; its version."""
     every = db.migrations()
     run.without_database()
@@ -1448,7 +1448,7 @@ def schema_of(path: Path) -> int:
 def test_serve_copies_a_database_at_an_older_schema_before_bringing_it_up_to_date(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    was = older(run, monkeypatch)
+    was = older(run)
     (how,) = serve_with(run, monkeypatch, "{}")
     assert isinstance(how["app"], Starlette)
     copy = run.database.parent / "backups" / "scrooge-20261006T120000.db"
@@ -1468,7 +1468,7 @@ def test_serve_copies_a_database_at_an_older_schema_before_bringing_it_up_to_dat
 def test_serve_does_not_start_on_a_database_a_migration_fails_on(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    was = older(run, monkeypatch)
+    was = older(run)
     every = db.migrations()
     broken = (every[-1][0] + 1, "CREATE TABLE owners (x INTEGER) STRICT;")
     monkeypatch.setattr(db, "migrations", lambda: [*every, broken])
@@ -1489,9 +1489,9 @@ def test_serve_does_not_start_on_a_database_a_migration_fails_on(
 
 
 def test_migrate_dry_run_tries_the_migrations_on_a_copy_and_changes_nothing(
-    run: Run, monkeypatch: pytest.MonkeyPatch
+    run: Run,
 ) -> None:
-    was = older(run, monkeypatch)
+    was = older(run)
     latest, names = db.latest(), db.names()
     before = everything_under(run.folder)
     assert run("migrate", "--dry-run") == dbcli.OK
@@ -1519,7 +1519,7 @@ def test_migrate_dry_run_tries_the_migrations_on_a_copy_and_changes_nothing(
 def test_migrate_dry_run_says_which_migration_fails_and_exits_1(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    was = older(run, monkeypatch)
+    was = older(run)
     every = db.migrations()
     broken = (every[-1][0] + 1, "CREATE TABLE owners (x INTEGER) STRICT;")
     monkeypatch.setattr(db, "migrations", lambda: [*every, broken])
@@ -1535,9 +1535,9 @@ def test_migrate_dry_run_says_which_migration_fails_and_exits_1(
 
 
 def test_backup_copies_the_database_as_it_is_and_keeps_what_the_retention_keeps(
-    run: Run, monkeypatch: pytest.MonkeyPatch
+    run: Run,
 ) -> None:
-    was = older(run, monkeypatch)
+    was = older(run)
     folder = run.database.parent / "backups"
     folder.mkdir()
     commit_copy = folder / "scrooge-20261001T120000.db"  # a copy a commit kept: never removed

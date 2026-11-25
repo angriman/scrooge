@@ -432,8 +432,10 @@ def test_no_rule_makes_a_transfer_of_money_from_the_other_person(tmp_path: Path)
         ("rules: []\n", 'rules:\n  - {match: "(?m)^KIOSK$", category: "Gifts", direction: out}\n'),
         (
             "# mine\nrules:\n  - {match: 'KIOSK', category: Groceries}\n",
-            '# mine\nrules:\n  - {match: "(?m)^KIOSK$", category: "Gifts", direction: out}\n'
-            "  - {match: 'KIOSK', category: Groceries}\n",
+            (
+                '# mine\nrules:\n  - {match: "(?m)^KIOSK$", category: "Gifts", direction: out}\n'
+                "  - {match: 'KIOSK', category: Groceries}\n"
+            ),
         ),
     ],
 )

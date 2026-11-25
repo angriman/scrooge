@@ -271,7 +271,8 @@ def test_in_a_container_without_names_the_pages_are_localhost(
     assert serve["names"] == ["localhost"]
 
 
-def test_without_a_setup_the_app_says_how_to_make_one(here: Path) -> None:
+@pytest.mark.usefixtures("here")
+def test_without_a_setup_the_app_says_how_to_make_one() -> None:
     out = io.StringIO()
     assert dbcli.main(["serve"], out, now=lambda: NOW) == dbcli.FAILED
     assert out.getvalue() == (

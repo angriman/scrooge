@@ -178,8 +178,10 @@ def test_a_frozen_name_no_account_has_is_said_and_freezes_nothing(deposit: Path)
     app = webapp.create_app(deposit, currency="CHF", currencies=("CHF", "USD"), frozen=named)
     sent = TestClient(app, base_url=SITE).get("/api/networth/months").json()
     assert sent["errors"] == [
-        "No account is called Rent depot, which 'frozen' in scrooge.yaml names: write it as "
-        "the pages name the account."
+        (
+            "No account is called Rent depot, which 'frozen' in scrooge.yaml names: write it as "
+            "the pages name the account."
+        )
     ]
     september = next(m for m in sent["months"] if m["month"] == "2026-09")["values"]
     assert september["CHF"]["frozen"] == "20500.00"

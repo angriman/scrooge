@@ -118,8 +118,10 @@ def monthly_migros(
                     '"Denominazione:";"Conto privato"',
                     f'"Saldo:";"CHF {balance:.2f}"',
                     ";",
-                    '"Data";"Testo di registrazione";"Comunicazione";"Numero di riferimento";'
-                    '"Importo";"Saldo";"Valuta"',
+                    (
+                        '"Data";"Testo di registrazione";"Comunicazione";"Numero di riferimento";'
+                        '"Importo";"Saldo";"Valuta"'
+                    ),
                     *lines,
                     "",
                 ]

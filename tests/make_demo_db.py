@@ -350,8 +350,10 @@ class Bank:
                 '"8000 Zürich"',
                 ";",
                 ";",
-                '"Data";"Testo di registrazione";"Comunicazione";"Numero di riferimento";'
-                '"Importo";"Saldo";"Valuta"',
+                (
+                    '"Data";"Testo di registrazione";"Comunicazione";"Numero di riferimento";'
+                    '"Importo";"Saldo";"Valuta"'
+                ),
                 *lines,
                 "",
             ]
@@ -525,8 +527,10 @@ class Broker:
         """One month's activity statement: the deposit, any USD exchange, the buys, the dividend."""
         opening = dict(self.cash)
         deposits = [
-            f"Deposits & Withdrawals,Data,EUR,{start.replace(day=12)},"
-            f"Electronic Fund Transfer,{deposit}"
+            (
+                f"Deposits & Withdrawals,Data,EUR,{start.replace(day=12)},"
+                f"Electronic Fund Transfer,{deposit}"
+            )
         ]
         self.cash["EUR"] += deposit
         trades: list[str] = []
@@ -581,8 +585,10 @@ class Broker:
                 "Statement,Header,Field Name,Field Value",
                 "Statement,Data,BrokerName,Interactive Brokers Ireland Limited",
                 "Statement,Data,Title,Activity Statement",
-                f'Statement,Data,Period,"{start:%B} {start.day}, {start.year} - '
-                f'{end:%B} {end.day}, {end.year}"',
+                (
+                    f'Statement,Data,Period,"{start:%B} {start.day}, {start.year} - '
+                    f'{end:%B} {end.day}, {end.year}"'
+                ),
                 "Account Information,Header,Field Name,Field Value",
                 "Account Information,Data,Name,Lukas Meier",
                 "Account Information,Data,Account,U1234567",
@@ -596,15 +602,22 @@ class Broker:
                         ("Ending Cash", self.cash[currency]),
                     )
                 ),
-                "Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,"
-                "Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Unrealized P/L %,Code",
+                (
+                    "Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,"
+                    "Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,"
+                    "Unrealized P/L %,Code"
+                ),
                 *self._positions(end),
-                "Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,"
-                "Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,Realized P/L %,"
-                "MTM P/L,Code",
+                (
+                    "Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,"
+                    "Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,"
+                    "Realized P/L %,MTM P/L,Code"
+                ),
                 *trades,
-                "Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,"
-                "T. Price,,Proceeds,Comm in EUR,,,,MTM in EUR,Code",
+                (
+                    "Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,"
+                    "Quantity,T. Price,,Proceeds,Comm in EUR,,,,MTM in EUR,Code"
+                ),
                 *forex,
                 "Deposits & Withdrawals,Header,Currency,Settle Date,Description,Amount",
                 *deposits,
@@ -612,16 +625,26 @@ class Broker:
                 *dividends,
                 "Withholding Tax,Header,Currency,Date,Description,Amount,Code",
                 *withheld,
-                "Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,"
-                "Security ID,Underlying,Listing Exch,Multiplier,Type,Code",
-                "Financial Instrument Information,Data,Stocks,ACME,ACME CORP,1001,US0000000001,"
-                "ACME,NYSE,1,COMMON,",
-                "Financial Instrument Information,Data,Stocks,WIDG,WIDGET WORLD ETF,1003,"
-                "DE0000000002,WIDG,IBIS,1,ETF,",
-                "Financial Instrument Information,Data,Stocks,GOOG,ALPHABET INC-CL C,1004,"
-                "US0000000003,GOOG,NASDAQ,1,COMMON,",
-                "Financial Instrument Information,Data,Stocks,VELO,VELOX INDUSTRIE SE,1005,"
-                "DE0000000004,VELO,IBIS,1,COMMON,",
+                (
+                    "Financial Instrument Information,Header,Asset Category,Symbol,Description,"
+                    "Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code"
+                ),
+                (
+                    "Financial Instrument Information,Data,Stocks,ACME,ACME CORP,1001,US0000000001,"
+                    "ACME,NYSE,1,COMMON,"
+                ),
+                (
+                    "Financial Instrument Information,Data,Stocks,WIDG,WIDGET WORLD ETF,1003,"
+                    "DE0000000002,WIDG,IBIS,1,ETF,"
+                ),
+                (
+                    "Financial Instrument Information,Data,Stocks,GOOG,ALPHABET INC-CL C,1004,"
+                    "US0000000003,GOOG,NASDAQ,1,COMMON,"
+                ),
+                (
+                    "Financial Instrument Information,Data,Stocks,VELO,VELOX INDUSTRIE SE,1005,"
+                    "DE0000000004,VELO,IBIS,1,COMMON,"
+                ),
                 "",
             ]
         )
@@ -681,8 +704,10 @@ class Pension:
     def statement(self) -> str:
         return "\n".join(
             [
-                "Date\tCategory\tAsset Name\tISIN\tNumber of Shares\tAsset Currency\t"
-                "Currency Rate\tAsset Price in CHF\tCash Flow\tBalance",
+                (
+                    "Date\tCategory\tAsset Name\tISIN\tNumber of Shares\tAsset Currency\t"
+                    "Currency Rate\tAsset Price in CHF\tCash Flow\tBalance"
+                ),
                 *self.rows,
                 "",
             ]

@@ -166,8 +166,10 @@ def test_rules_time_did_not_reach_are_listed_uncounted(
         (None, False),
     ]
     assert problems == [
-        "counting the rules took too long: 2 of them, from the first left out, "
-        "say no number of rows"
+        (
+            "counting the rules took too long: 2 of them, from the first left out, "
+            "say no number of rows"
+        )
     ]
 
 

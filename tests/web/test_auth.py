@@ -136,7 +136,7 @@ def test_a_guess_made_while_another_is_being_checked_is_refused_unchecked(
     started, release = threading.Event(), threading.Event()
     checked: list[str] = []
 
-    def slow(password: str, stored: str) -> bool:
+    def slow(password: str, _stored: str) -> bool:
         checked.append(password)
         started.set()
         release.wait(5)
@@ -165,7 +165,7 @@ def test_guesses_sent_at_once_are_checked_one_at_a_time(
     checked: list[str] = []
     outcomes: list[str | None] = []
 
-    def slow(password: str, stored: str) -> bool:
+    def slow(password: str, _stored: str) -> bool:
         with lock:
             checked.append(password)
         time.sleep(0.05)

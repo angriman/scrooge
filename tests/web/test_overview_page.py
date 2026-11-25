@@ -167,7 +167,7 @@ def test_the_ring_is_what_is_held_and_what_is_owed_is_a_note(client: TestClient)
     assert '<title id="held-title">What is held, 30,997.50 EUR: ' in page
     assert "Owed, and not in the ring: Card -150.00 EUR." in text(page)
     hers = client.get("/", params={"owner": PARTNER, "currency": "CHF"}).text
-    assert [slice[4:] for slice in ring(hers)] == [
+    assert [part[4:] for part in ring(hers)] == [
         ("Cash", "7.8k", "96.04% of assets"),
         ("ETFs", "320", "3.96% of assets"),
     ]
