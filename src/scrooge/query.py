@@ -76,8 +76,13 @@ def merchant(kind: Kind, account: str, counterparty: str) -> str:
     account for a fee, a tax, interest, or a row that names nobody."""
     if kind in _FEES:
         return account
-    name = re.sub(r"[\W\d_]+", " ", counterparty.partition(",")[0])
-    return " ".join(name.split()) or account
+    return " ".join(merchant_words(counterparty)) or account
+
+
+def merchant_words(text: str) -> list[str]:
+    """The words of `text` that name who was paid: its runs of letters, up to its first comma
+    (an address or a place follows it)."""
+    return re.findall(r"[^\W\d_]+", text.partition(",")[0])
 
 
 @dataclass(frozen=True, slots=True)

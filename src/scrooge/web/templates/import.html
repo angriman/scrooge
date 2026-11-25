@@ -22,6 +22,36 @@
 {%- if committed is not none %}
 <p class="done" role="status">{{ committed }} statement{{ "" if committed == 1 else "s" }} committed{% if committed %}: the other pages show them now{% endif %}.</p>
 {%- endif %}
+{%- if offered %}
+<section id="suggested">
+  <h2>Rules to add</h2>
+  <p class="note">You changed these categories by hand. The next import gives these merchants' rows their old category again, unless you add a rule. A rule is saved only when you add it.</p>
+  <table class="cards">
+    <thead>
+      <tr><th>Merchant</th><th>Money</th><th>Category</th><th>Rules file</th><th>Add</th></tr>
+    </thead>
+    <tbody>
+      {%- for rule in offered %}
+      <tr>
+        <td class="lead">{{ rule.merchant }}</td>
+        <td data-label="Money">{{ "received" if rule.direction == "in" else "paid" }}</td>
+        <td data-label="Category">{{ label(rule.category) }}</td>
+        <td class="wide" data-label="Rules file">{{ rule.file.name }}, first<small><code>{{ rule.match }}</code></small></td>
+        <td class="wide">
+          <form method="post" action="{{ url_for('add_rule') }}">
+            <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="owner" value="{{ owner }}">
+            <input type="hidden" name="id" value="{{ rule.row }}">
+            <input type="hidden" name="suggest" value="{{ suggest }}">
+            <button>Add rule</button>
+          </form>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</section>
+{%- endif %}
 {%- if done %}
 {%- set found = done %}
 <section id="uploaded">

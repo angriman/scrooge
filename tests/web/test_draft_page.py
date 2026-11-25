@@ -543,3 +543,105 @@ def test_a_browser_that_withholds_the_origin_can_still_send_the_forms(client: Te
 def test_a_draft_cannot_be_changed_by_following_a_link(client: TestClient) -> None:
     assert client.get("/import/commit").status_code == 405
     assert client.get("/import/save").status_code == 405
+    assert client.get("/import/rule").status_code == 405
+
+
+def remembering(database: Path, tmp_path: Path) -> tuple[TestClient, webapp.Rules]:
+    rules = webapp.Rules(tmp_path / "rules.yaml", PEOPLE)
+    app = webapp.create_app(database, clock=lambda: CLICKED, rules=rules)
+    return TestClient(app, base_url=SITE, follow_redirects=False), rules
+
+
+def suggested(page: str) -> str:
+    found = re.search(r'<section id="suggested">.*?</section>', page, re.DOTALL)
+    return found[0] if found else ""
+
+
+def test_a_category_changed_by_hand_is_offered_as_a_rule_that_is_added_on_request(
+    database: Path, tmp_path: Path
+) -> None:
+    client, rules = remembering(database, tmp_path)
+    bakery = row_id(database, "Lukas", "Bakery")
+    kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")  # waiting: its first choice is no change
+    sent = form(client) | {f"category:{bakery}": categories.GIFTS, f"category:{kiosk}": "Gifts"}
+    response = client.post("/import/save", data=sent)
+    assert response.headers["location"] == f"{SITE}/import?owner=Lukas&suggest={bakery}"
+    offered = suggested(client.get(response.headers["location"]).text)
+    assert not rules.shared.exists()  # offered, not written
+    ((row,),) = tables(offered)
+    assert row[:3] == ["Bakery", "paid", "Gifts"]
+    assert row[3].startswith("rules.yaml, first")
+    assert f'name="id" value="{bakery}"' in offered
+    assert f'name="suggest" value="{bakery}"' in offered
+    added = client.post("/import/rule", data=form(client, id=bakery, suggest=bakery))
+    assert added.status_code == 303
+    assert added.headers["location"] == f"{SITE}/import?owner=Lukas&suggest={bakery}&rule=1"
+    written = rules.shared.read_text(encoding="utf-8")
+    assert written.startswith("rules:\n  - {match: ")
+    assert written.endswith('*(?:,.*)?$", category: "Gifts", direction: out}\n')
+    assert "Bakery" in written
+    after = client.get(added.headers["location"]).text
+    assert "Rule added: the next import gives" in after
+    assert not suggested(after)  # the rule gives it now: nothing more to offer
+    again = client.post("/import/rule", data=form(client, id=bakery, suggest=bakery))
+    assert again.status_code == 409
+    assert "No rule was added: that rule is not needed any more" in again.text
+
+
+def test_a_commit_offers_the_rules_of_its_changes_too(database: Path, tmp_path: Path) -> None:
+    client, _ = remembering(database, tmp_path)
+    bakery = row_id(database, "Lukas", "Bakery")
+    kiosk = row_id(database, "Lukas", "<i>Kiosk</i>")
+    sent = form(client) | {f"category:{bakery}": categories.GIFTS, f"category:{kiosk}": "Gifts"}
+    response = client.post("/import/commit", data=sent)
+    assert response.headers["location"] == (
+        f"{SITE}/import?owner=Lukas&committed=1&suggest={bakery}"
+    )
+    assert suggested(client.get(response.headers["location"]).text)
+
+
+def test_only_rows_named_as_ids_are_offered_rules(database: Path, tmp_path: Path) -> None:
+    client, _ = remembering(database, tmp_path)
+    bakery = row_id(database, "Lukas", "Bakery")
+    sent = form(client) | {f"category:{bakery}": categories.GIFTS}
+    assert client.post("/import/save", data=sent).status_code == 303
+    for asked in ["", "nothing", bakery.upper(), "1" * 24]:
+        page = client.get("/import", params={"owner": "Lukas", "suggest": asked}).text
+        assert not suggested(page), asked
+    twice = client.get("/import", params={"owner": "Lukas", "suggest": f"x,{bakery},{bakery}"})
+    assert suggested(twice.text).count('name="id"') == 1
+
+
+def test_a_rules_file_that_cannot_be_read_offers_nothing_and_says_why(
+    database: Path, tmp_path: Path
+) -> None:
+    client, rules = remembering(database, tmp_path)
+    bakery = row_id(database, "Lukas", "Bakery")
+    sent = form(client) | {f"category:{bakery}": categories.GIFTS}
+    assert client.post("/import/save", data=sent).status_code == 303
+    rules.shared.write_text("rules: [\n", encoding="utf-8")
+    page = client.get("/import", params={"owner": "Lukas", "suggest": bakery}).text
+    assert not suggested(page)
+    assert "No rule can be offered:" in page
+    refused = client.post("/import/rule", data=form(client, id=bakery, suggest=bakery))
+    assert refused.status_code == 409
+    assert "No rule was added:" in refused.text
+
+
+def test_without_a_rules_file_no_rule_is_offered_or_added(
+    client: TestClient, database: Path
+) -> None:
+    bakery = row_id(database, "Lukas", "Bakery")
+    sent = form(client) | {f"category:{bakery}": categories.GIFTS}
+    assert client.post("/import/save", data=sent).status_code == 303
+    page = client.get("/import", params={"owner": "Lukas", "suggest": bakery}).text
+    assert not suggested(page)
+    assert client.post("/import/rule", data=form(client, id=bakery)).status_code == 404
+
+
+def test_a_copy_adds_no_rule(database: Path, tmp_path: Path) -> None:
+    rules = webapp.Rules(tmp_path / "rules.yaml", PEOPLE)
+    copy = TestClient(webapp.create_app(database, rules=rules, read_only=True), base_url=SITE)
+    bakery = row_id(database, "Lukas", "Bakery")
+    assert copy.post("/import/rule", data=form(copy, id=bakery)).status_code == 403
+    assert not rules.shared.exists()

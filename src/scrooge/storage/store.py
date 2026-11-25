@@ -1151,6 +1151,33 @@ def waiting(
     return [Waiting(r[0], int(r[1]), r[2], r[3], r[4]) for r in rows]
 
 
+@dataclass(frozen=True, slots=True)
+class Categorized:
+    """A row whose category can be changed, with what a rule reads of it."""
+
+    id: str
+    account: str
+    amount_nano: int
+    kind: str
+    description: str
+    counterparty: str
+    category: str  # the key
+    side: str  # of the category: expenses, income or transfer
+
+
+def categorized(conn: sqlite3.Connection, owner: int, ids: Collection[str]) -> list[Categorized]:
+    """Those of `ids` that are rows of the owner whose category can be changed (`CHANGEABLE`),
+    staged or committed, in the order of their ids."""
+    rows = conn.execute(
+        "SELECT t.id, a.name, t.amount_nano, t.kind, t.description, t.counterparty, c.key, "  # noqa: S608  # only "?" marks and the fixed text above are interpolated
+        "c.side FROM transactions t JOIN accounts a ON a.id = t.account_id "
+        f"JOIN categories c ON c.id = t.category_id WHERE a.owner_id = ? AND {CHANGEABLE} "
+        f"AND t.id IN ({marks(len(ids))}) ORDER BY t.id",
+        (owner, *ids),
+    ).fetchall()
+    return [Categorized(r[0], r[1], int(r[2]), r[3], r[4], r[5], r[6], r[7]) for r in rows]
+
+
 def set_category(
     conn: sqlite3.Connection, txn_id: str, category: int, source: str, kind: str
 ) -> None:

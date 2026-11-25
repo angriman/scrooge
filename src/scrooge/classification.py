@@ -107,8 +107,26 @@ def append_rule(
     choice that corrects one of them belongs. The file is read and written under the lock
     of every writer of rules (`yamlfiles`).
     """
-    match = quoted(f"(?m)^{re.escape(counterparty)}$")
-    rule = f"  - {{match: {match}, category: {quoted(category)}, direction: {flow}}}\n"
+    append_match(path, f"(?m)^{re.escape(counterparty)}$", flow, category, first=first)
+
+
+# Between two words of a merchant: what is not a letter (digits, signs, spaces), short of a
+# comma or the end of the line.
+_BETWEEN = r"(?:[\d_]|[^\w\n,])"
+
+
+def merchant_match(words: Sequence[str]) -> str:
+    """The pattern of a rule for the merchant named by `words` (`query.merchant_words`): a
+    line of the text that starts with them, in this order, whatever digits or signs come
+    before, between and after them, up to its end or a comma. So it matches the rows the cash
+    flow names after that merchant, whatever their shop numbers or addresses."""
+    joined = f"{_BETWEEN}+".join(re.escape(word) for word in words)
+    return f"(?m)^{_BETWEEN}*{joined}{_BETWEEN}*(?:,.*)?$"
+
+
+def append_match(path: Path, match: str, flow: str, category: str, *, first: bool = False) -> None:
+    """Save the rule `match` -> `category` for money going `flow`, as `append_rule` does."""
+    rule = f"  - {{match: {quoted(match)}, category: {quoted(category)}, direction: {flow}}}\n"
     with yamlfiles.LOCK:
         text = path.read_text(encoding="utf-8") if path.exists() else ""
         if "rules:" not in text:
