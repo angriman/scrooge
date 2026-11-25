@@ -3,10 +3,13 @@ month and holding by holding. The income view of the investments page.
 
 The rows are those of the categories `Dividends`, `Interest` and `Withholding tax` that the
 cash-flow page counts, each converted at the rate of its own day into one currency, as the
-analysis views do. The range runs, unless asked otherwise, over the twelve months up to the
-last day committed: the month of that day and the eleven before it. Those twelve months are
-added up whatever the range, so the page can say what a year pays now. Rows in a currency no
-rate is stored for are left out, and said to be, rather than leaving the whole page empty.
+analysis views do. Interest below nothing is interest charged (on a debit balance, a margin
+loan): a cost, not a payout, and left out rather than taken off the interest received.
+
+The range runs, unless asked otherwise, over the twelve months up to the last day committed:
+the month of that day and the eleven before it. Those twelve months are added up whatever the
+range, so the page can say what a year pays now. Rows in a currency no rate is stored for are
+left out, and said to be, rather than leaving the whole page empty.
 
 A row carries no link to an instrument: what paid it is named, if at all, only in its
 counterparty. IBKR, Tastytrade and Schwab write the symbol there, Finpension the fund's ISIN,
@@ -122,7 +125,9 @@ class _Sums:
 
 
 def is_payout(row: Counted) -> bool:
-    return row.leaf in CATEGORIES
+    """Whether `row` is a payout or tax withheld from one: interest charged (on a debit
+    balance, a margin loan) is what the account cost, and is not."""
+    return row.leaf in CATEGORIES and not (row.leaf == INTEREST and row.amount_nano < 0)
 
 
 def run(

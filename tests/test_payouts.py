@@ -319,3 +319,21 @@ def test_for_everyone_a_holding_both_have_is_one_and_their_accounts_of_a_name_tw
         ("Migros", None),
         ("Revolut", None),
     ]
+
+
+def test_interest_charged_is_no_payout() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    span = (date(2026, 1, 1), date(2026, 6, 30))
+    broker = {"account": "IBKR", "source_file": "ibkr.csv"}
+    rows = [
+        paid("20", date(2026, 3, 1), "1", **INTEREST, **broker),
+        # Interest on a debit balance: what the account cost, not what it paid.
+        paid("-7", date(2026, 3, 2), "2", **INTEREST, **broker),
+    ]
+    close(connection, OWNER, span, span[1], ("ibkr", rows))
+    shown = his(connection, currency="CHF")
+    connection.close()
+    assert shown.totals == amounts("0", "20")
+    [holding] = shown.holdings
+    assert (holding.paid, holding.count) == (amounts("0", "20"), 1)
