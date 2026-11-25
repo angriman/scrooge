@@ -105,15 +105,58 @@ class Account:
     kind: str
     currency: str
     source: str | None
+    closed: date | None = None  # the day it was closed; None while it is open
 
 
 def account_of(conn: sqlite3.Connection, owner: int, name: str) -> Account | None:
     """The owner's account `name`, if there is one."""
     row = conn.execute(
-        "SELECT id, kind, currency, source FROM accounts WHERE owner_id = ? AND name = ?",
+        "SELECT id, kind, currency, source, closed_on FROM accounts "
+        "WHERE owner_id = ? AND name = ?",
         (owner, name),
     ).fetchone()
-    return None if row is None else Account(int(row[0]), row[1], row[2], row[3])
+    if row is None:
+        return None
+    closed = None if row[4] is None else date.fromisoformat(row[4])
+    return Account(int(row[0]), row[1], row[2], row[3], closed)
+
+
+def set_closed(conn: sqlite3.Connection, account: int, day: date | None) -> None:
+    """Close the account on `day`, or open it again with None."""
+    conn.execute(
+        "UPDATE accounts SET closed_on = ? WHERE id = ?",
+        (None if day is None else day.isoformat(), account),
+    )
+
+
+def closed_accounts(conn: sqlite3.Connection, owner: int) -> list[tuple[int, str, date]]:
+    """The owner's closed accounts: id, name and the day each was closed."""
+    rows = conn.execute(
+        "SELECT id, name, closed_on FROM accounts WHERE owner_id = ? AND closed_on IS NOT NULL "
+        "ORDER BY id",
+        (owner,),
+    )
+    return [(int(r[0]), str(r[1]), date.fromisoformat(r[2])) for r in rows]
+
+
+def has_staged(conn: sqlite3.Connection, account: int) -> bool:
+    """Whether a statement not committed yet covers the account."""
+    found = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM statement_accounts s "
+        "JOIN statement_files f ON f.id = s.statement_file_id "
+        "WHERE s.account_id = ? AND f.committed_at IS NULL)",
+        (account,),
+    ).fetchone()[0]
+    return bool(found)
+
+
+def booked_after(conn: sqlite3.Connection, account: int, day: date) -> date | None:
+    """The last day a row of the account is booked on after `day`, staged or committed."""
+    last = conn.execute(
+        "SELECT max(booking_date) FROM transactions WHERE account_id = ? AND booking_date > ?",
+        (account, day.isoformat()),
+    ).fetchone()[0]
+    return None if last is None else date.fromisoformat(last)
 
 
 def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra] = ()) -> None:
@@ -854,6 +897,11 @@ class Instrument:
     type: str
     currency: str
     price_symbol: str | None  # where its prices are fetched; None until that is known
+
+
+def symbols(conn: sqlite3.Connection) -> dict[int, str]:
+    """Each instrument's symbol, by its id."""
+    return {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, symbol FROM instruments")}
 
 
 def instruments(conn: sqlite3.Connection) -> list[Instrument]:

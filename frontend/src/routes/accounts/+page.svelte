@@ -24,7 +24,10 @@
 	const now = new Date();
 	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-	const staged = $derived(listed.accounts.filter((account) => account.staged).length);
+	// A closed account keeps its history but is listed apart, and is never behind.
+	const opened = $derived(listed.accounts.filter((account) => !account.closed));
+	const closed = $derived(listed.accounts.filter((account) => account.closed));
+	const staged = $derived(opened.filter((account) => account.staged).length);
 
 	let problem = $state<string | null>(null);
 	// Taking a statement back stages it again; either way it then waits on the import page.
@@ -45,7 +48,7 @@
 		}
 		await goto(`${resolve('/import')}?owner=${encodeURIComponent(done.sent.owner)}`);
 	}
-	const behind = $derived(listed.accounts.filter((account) => account.behind).length);
+	const behind = $derived(opened.filter((account) => account.behind).length);
 	const held = $derived(heldTogether(listed.accounts));
 	const title = $derived(
 		single ? 'Accounts' : owner ? `${owner}’s accounts` : 'Household accounts'
@@ -97,8 +100,8 @@
 			{/if}
 		</p>
 		<p class="mt-1 text-small text-ink-muted">
-			{listed.accounts.length === 1 ? '1 account' : `${listed.accounts.length} accounts`}, {#if listed.covered}all
-				in up to {day(listed.covered)}{:else}nothing committed yet{/if}{#if behind},
+			{opened.length === 1 ? '1 account' : `${opened.length} accounts`}, {#if listed.covered}all in
+				up to {day(listed.covered)}{:else}nothing committed yet{/if}{#if behind},
 				<span class="text-caution">{behind} behind</span>{/if}{#if staged},
 				<span class="text-brand">{staged} with statements staged</span
 				>{/if}{#if !behind && !staged}, none behind and nothing staged{/if}.
@@ -115,13 +118,25 @@
 	{#if problem}
 		<p class="mt-4 text-body text-loss" role="alert">{problem}</p>
 	{/if}
-	<Coverage
-		accounts={listed.accounts}
-		currency={listed.currency}
-		{today}
-		{people}
-		onremove={data.session.read_only ? undefined : remove}
-	/>
+	{#if opened.length}
+		<Coverage
+			accounts={opened}
+			currency={listed.currency}
+			{today}
+			{people}
+			onremove={data.session.read_only ? undefined : remove}
+		/>
+	{/if}
+	{#if closed.length}
+		<Coverage
+			accounts={closed}
+			currency={listed.currency}
+			{today}
+			{people}
+			onremove={data.session.read_only ? undefined : remove}
+			title={closed.length === 1 ? '1 closed account' : `${closed.length} closed accounts`}
+		/>
+	{/if}
 
 	{#if listed.checks.length}
 		<div class="mt-10">

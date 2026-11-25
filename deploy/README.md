@@ -88,6 +88,7 @@ What the pages do not do runs inside the container, in `/data`, from the folder 
 docker compose exec scrooge scrooge statements --owner Name
 docker compose exec scrooge scrooge balance --owner Name "Account" 2026-10-31 1234.50 CHF
 docker compose exec scrooge scrooge position --owner Name "Broker" 2026-10-31 ACME 120 USD
+docker compose exec scrooge scrooge close --owner Name "Account" 2026-10-31   # --reopen
 docker compose exec scrooge scrooge uncommit --owner Name 42
 docker compose exec scrooge scrooge query --from 2026-09 --text rent
 docker compose exec scrooge scrooge password

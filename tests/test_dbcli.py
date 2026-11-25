@@ -482,6 +482,31 @@ def test_a_balance_can_be_typed_for_an_account_without_statements(
     assert "'1,5' is not an amount like 1234.56" in capsys.readouterr().err
 
 
+def test_an_account_that_holds_nothing_is_closed_and_opened_again(run: Run) -> None:
+    assert run("balance", "Kasse", "2023-01-31", "5", "EUR") == dbcli.OK
+    assert run("close", "Kasse", "2023-02-28") == dbcli.FAILED
+    assert "Kasse of Lukas held 5.00 EUR at the end of 2023-02-28" in run.output
+    assert run("balance", "Kasse", "2023-02-28", "0", "EUR") == dbcli.OK
+    assert run("close", "Kasse", "2023-02-28") == dbcli.OK
+    assert run.output == (
+        "Kasse of Lukas is closed on 2023-02-28: its history stays, listed with the closed "
+        "accounts.\n"
+    )
+    assert run("balance", "Kasse", "2023-03-31", "1", "EUR") == dbcli.FAILED
+    assert "Kasse was closed on 2023-02-28, and after it it held 1.00 on 2023-03-31" in run.output
+    assert run("close", "Kasse") == dbcli.FAILED
+    assert "`close` needs the day the account was closed" in run.output
+    assert run("close", "Kasse", "2023-03-01", "--reopen") == dbcli.FAILED
+    assert "`close --reopen` takes no day" in run.output
+    assert run("close", "Kasse", "--reopen") == dbcli.OK
+    assert run.output == "Kasse of Lukas is open again (it was closed on 2023-02-28).\n"
+    tomorrow = (NOW.date() + timedelta(days=1)).isoformat()
+    assert run("close", "Kasse", tomorrow) == dbcli.FAILED
+    assert f"{tomorrow} is after today" in run.output
+    assert run("close", "Nowhere", "2023-02-28") == dbcli.FAILED
+    assert "Lukas has no account 'Nowhere'" in run.output
+
+
 AXA_READ = (
     "Pillar 2 AXA of Lukas: 35,802.00 CHF on 2026-03-01, read off the axa certificate "
     "Scan 0001.pdf (mandatory part 12,345.65).\n"

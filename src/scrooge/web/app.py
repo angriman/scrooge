@@ -773,6 +773,7 @@ async def _look_up(request: Request) -> Response:
 
 
 _WIDE = Decimal(1000)  # the timeline of statements, in the units of its SVG
+_CLOSED = "Closed accounts"  # the group of the timeline, after the people's
 
 
 @dataclass(frozen=True, slots=True)
@@ -785,6 +786,10 @@ class _Account:
     @property
     def certificate(self) -> bool:
         return self.coverage.source in months.NOT_MONTHLY
+
+    @property
+    def closed(self) -> date | None:
+        return self.coverage.closed
 
 
 def _accounts(lines: Sequence[months.Coverage]) -> list[_Account]:
@@ -804,11 +809,13 @@ class _Row:
     track: months.Track
     behind: bool
     runs: list[_Run]
+    closed: date | None  # the day the account was closed; None while it is open
 
 
 @dataclass(frozen=True, slots=True)
 class _Timeline:
-    """The statements of every account along the months, a row each, a group per person."""
+    """The statements of every account along the months, a row each, a group per person and
+    the closed accounts last."""
 
     first: date
     last: date
@@ -827,13 +834,17 @@ def _timeline(
         return None
     first = min(span.first for span in spans).replace(day=1)
     last = month_end(max(today, *(span.last for span in spans)))
-    behind = {(a.coverage.owner, a.coverage.account, a.coverage.source): a.behind for a in accounts}
+    known = {(a.coverage.owner, a.coverage.account, a.coverage.source): a for a in accounts}
     groups: dict[str, list[_Row]] = {}
+    closed: list[_Row] = []
     for track in tracks:
         found = shapes.bands([(span.first, span.last) for span in track.spans], first, last, _WIDE)
         runs = [_Run(span, band) for span, band in zip(track.spans, found, strict=True)]
-        key = (track.owner, track.account, track.source)
-        groups.setdefault(track.owner, []).append(_Row(track, behind[key], runs))
+        account = known[track.owner, track.account, track.source]
+        row = _Row(track, account.behind, runs, account.closed)
+        (closed if row.closed else groups.setdefault(track.owner, [])).append(row)
+    if closed:
+        groups[_CLOSED] = closed
     ticks = shapes.months_axis(first, last, _WIDE)
     return _Timeline(first, last, _WIDE, ticks, list(groups.items()))
 

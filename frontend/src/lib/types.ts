@@ -307,6 +307,8 @@ export interface StatementsAccount extends Account {
 	/** The last day staged beyond what is committed. */
 	staged: Day | null;
 	behind: boolean;
+	/** The day it was closed (`scrooge close`); null while it is open. */
+	closed: Day | null;
 	/** Whether its statements run month by month to their end. */
 	monthly: boolean;
 	/** What it holds now, cash and securities, in the currency asked for. */

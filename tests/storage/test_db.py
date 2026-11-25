@@ -361,6 +361,8 @@ def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     monkeypatch.setattr(pairs, "mark", lambda conn: 0)
     # the categories are found by their key since 0011: it is there while today's code stages
     conn.execute("ALTER TABLE categories ADD COLUMN key TEXT NOT NULL DEFAULT ''")
+    # and it looks for closed accounts (0013): none is
+    conn.execute("ALTER TABLE accounts ADD COLUMN closed_on TEXT")
     # and it names the sides in English (0012): the CHECK of then waits while it stages
     conn.execute("PRAGMA ignore_check_constraints = ON")
     rows = _revolut_rows()
@@ -374,6 +376,7 @@ def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     )
     conn.execute("PRAGMA ignore_check_constraints = OFF")
     conn.execute("ALTER TABLE categories DROP COLUMN key")
+    conn.execute("ALTER TABLE accounts DROP COLUMN closed_on")
     monkeypatch.undo()
     return conn
 
@@ -773,7 +776,7 @@ def test_migration_0012_keeps_every_reference_of_a_database_at_schema_6(
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):  # and a parent real
         conn.execute(add, ("y", "Y", 999, "expenses"))
     monkeypatch.undo()
-    assert db.migrate(conn, NOW) == []
+    assert db.migrate(conn, NOW) == list(range(13, db.latest() + 1))  # those after it
     count = "SELECT count(*) FROM categories"
     before_seed = conn.execute(count).fetchone()[0]
     store.seed_categories(conn)  # the taxonomy of today finds every category on its side

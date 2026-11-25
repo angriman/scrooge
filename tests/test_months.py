@@ -359,3 +359,13 @@ def test_every_monthly_account_is_covered_up_to_the_earliest_end() -> None:
     # Those that report less often than monthly hold nothing back by ending earlier.
     assert months.covered(lines) == date(2026, 9, 30)
     assert months.covered(lines[2:]) is None
+
+
+def test_a_closed_account_is_never_behind_and_holds_nothing_back() -> None:
+    closed = Coverage("Anna", "Old bank", "migros", date(2026, 3, 31), None, date(2026, 3, 31))
+    lines = (_line("Anna", "Migros", date(2026, 10, 31)), closed)
+    assert months.behind(lines) == (False, False)
+    assert months.covered(lines) == date(2026, 10, 31)
+    # nor is it the newest its person's other accounts are measured against
+    later = Coverage("Anna", "Gone", "migros", date(2026, 12, 31), None, date(2026, 12, 31))
+    assert months.behind((lines[0], later)) == (False, False)

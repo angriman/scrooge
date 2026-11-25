@@ -189,6 +189,7 @@ class Coverage:
     source: str
     committed: date | None  # the last day committed; None: nothing is
     staged: date | None  # the last day staged beyond it; None: nothing is
+    closed: date | None = None  # the day it was closed (`closing`); None while it is open
 
     @property
     def label(self) -> str:
@@ -289,7 +290,7 @@ def coverage(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Covera
     found = conn.execute(
         "SELECT o.name, a.name, f.source, "
         "max(f.period_end) FILTER (WHERE f.committed_at IS NOT NULL), "
-        "max(f.period_end) FILTER (WHERE f.committed_at IS NULL) "
+        "max(f.period_end) FILTER (WHERE f.committed_at IS NULL), a.closed_on "
         "FROM statement_accounts s JOIN statement_files f ON f.id = s.statement_file_id "
         "JOIN accounts a ON a.id = s.account_id JOIN owners o ON o.id = a.owner_id "
         "WHERE o.name = coalesce(?, o.name) "
@@ -297,14 +298,11 @@ def coverage(conn: sqlite3.Connection, owner: str | None = None) -> tuple[Covera
         (owner,),
     ).fetchall()
     lines: list[Coverage] = []
-    for name, account, source, committed, staged in found:
+    for name, account, source, committed, staged, closed in found:
         last = committed and _day(committed)
         ahead = staged and _day(staged)
-        lines.append(
-            Coverage(
-                name, account, source, last, ahead if ahead and (not last or ahead > last) else None
-            )
-        )
+        later = ahead if ahead and (not last or ahead > last) else None
+        lines.append(Coverage(name, account, source, last, later, closed and _day(closed)))
     return tuple(lines)
 
 
@@ -329,13 +327,14 @@ def monthly(line: Coverage) -> bool:
 def behind(lines: Sequence[Coverage]) -> tuple[bool, ...]:
     """Of each of `lines`, whether what is committed of it ends further before the newest of
     its person's accounts than its source may (`BEHIND` days for one that reports monthly): a
-    statement is probably missing."""
+    statement is probably missing. A closed account never is."""
     newest: dict[str, date] = {}
     for line in lines:
-        if line.committed and line.source not in NOT_MONTHLY:
+        if line.committed and line.closed is None and line.source not in NOT_MONTHLY:
             newest[line.owner] = max(newest.get(line.owner, line.committed), line.committed)
     return tuple(
         line.committed is not None
+        and line.closed is None
         and line.source not in NOT_MONTHLY
         and (newest[line.owner] - line.committed).days > _SLOWER.get(line.source, BEHIND)
         for line in lines
@@ -343,9 +342,12 @@ def behind(lines: Sequence[Coverage]) -> tuple[bool, ...]:
 
 
 def covered(lines: Sequence[Coverage]) -> date | None:
-    """The last day every monthly account of `lines` is committed to: before it, every
-    statement is in. None when no monthly account has anything committed."""
-    return min((line.committed for line in lines if line.committed and monthly(line)), default=None)
+    """The last day every monthly account of `lines` still open is committed to: before it,
+    every statement is in. None when no such account has anything committed."""
+    return min(
+        (line.committed for line in lines if line.committed and monthly(line) and not line.closed),
+        default=None,
+    )
 
 
 def joined(spans: list[tuple[date, date]], committed: bool) -> list[Span]:

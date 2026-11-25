@@ -30,9 +30,12 @@ securities), then its statements, newest first, each with the file it came from.
 		people: boolean;
 		/** Take back a committed statement or remove a staged one; none over a copy. */
 		onremove?: (statement: StatementsAccount['statements'][number]) => void;
+		/** What the list is called; how many accounts it has unless given. */
+		title?: string;
 	}
 
-	let { accounts, currency, today, people, onremove }: Props = $props();
+	let { accounts, currency, today, people, onremove, title }: Props = $props();
+	const titleId = $props.id();
 
 	const RANGES = [
 		{ value: '1y', label: '1Y' },
@@ -102,10 +105,10 @@ securities), then its statements, newest first, each with the file it came from.
 				: `${day(first)} to ${day(last)}`;
 </script>
 
-<section class="mt-10" aria-labelledby="coverage-title">
+<section class="mt-10" aria-labelledby={titleId}>
 	<header class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-		<h2 id="coverage-title" class="text-heading font-medium text-ink">
-			{accounts.length === 1 ? '1 account' : `${accounts.length} accounts`}
+		<h2 id={titleId} class="text-heading font-medium text-ink">
+			{title ?? (accounts.length === 1 ? '1 account' : `${accounts.length} accounts`)}
 		</h2>
 		<div class="flex flex-wrap items-center gap-4">
 			<span class="flex items-center gap-3 text-caption text-ink-muted" aria-hidden="true">

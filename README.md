@@ -121,6 +121,18 @@ runs to the day in it), then type once what Schwab shows: a `position` and a `ba
 account `Schwab`. A later figure that does not follow from it and the rows in between is
 refused. Don't also type those shares in another account: they would count twice.
 
+### Closing an account
+
+An account that is closed, or a pension fund left, is closed on a day it held nothing at the
+end of. It keeps its history and is listed apart, under closed accounts, and it is never
+behind. After that day nothing may be booked, stated or typed for it but zero.
+
+```sh
+scrooge balance "Pillar 2 AXA" 2026-06-30 0 CHF   # a fund left without a certificate of zero
+scrooge close "Pillar 2 AXA" 2026-06-30
+scrooge close Sparkasse --reopen                  # it is in use again
+```
+
 ## Prices and net worth
 
 `scrooge prices` is the one command that goes online: it fetches from Yahoo the daily closes,
