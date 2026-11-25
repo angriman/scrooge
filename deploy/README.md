@@ -1,199 +1,208 @@
-# The app on the NAS
+# The app in Docker
 
-A container that runs `scrooge serve` over the one database: statements are imported and
-committed from the pages (or with `docker exec`, below), prices are fetched there, and the
-other machines only look at it. The Mac is for development, with a test database
-(`make dev-db`).
+A container that runs `scrooge serve` over the one database, and a second one that fetches
+prices every day. Statements are imported and committed from the pages (or with
+`docker compose exec`, below), and every device with a browser looks at them.
 
-Meant for a Synology NAS with an x86-64 processor and Container Manager. Paths and names
-below are placeholders: `/volume1/docker/scrooge` on the NAS, `nas.example.ts.net` for what
-the devices call it.
-
-## What is where
-
-| On the NAS, in `/volume1/docker/scrooge/` | What |
-|---|---|
-| `compose.yaml` | copied once from `deploy/compose.yaml` and adapted |
-| `data/` | everything personal, mounted read-write as `/data` (below) |
-
-| In `data/` | What |
-|---|---|
-| `scrooge.yaml` | the config (below) |
-| `scrooge.db` | the database |
-| `backups/` | a copy of the database before every commit and before a new schema |
-| `originals/` | every statement imported, as it came |
-| `rules.yaml`, `rules.<owner>.yaml` | the category rules, both people's and each one's |
-| `categories.yaml` | the categories added to the built-in ones |
-| `instruments.yaml` | the asset tab of what is held, bill maturities, price symbols |
-
-The image holds only the code. `src/scrooge/starter/` in the project has a starting point for
-the three YAML files that are not the config (`scrooge init` makes a setup from them on the
-Mac: its files can be copied here as they are).
-
-`scrooge.yaml` on the NAS:
-
-```yaml
-database: /data/scrooge.db
-owners:                        # as on the Mac
-  ...
-account_labels:                # as on the Mac, if any
-  ...
-serve:
-  host: 0.0.0.0                # inside the container; compose.yaml says what the NAS publishes
-  names: [nas.example.ts.net]  # every name or address typed in a browser to reach it
-  password: scrypt$...         # the line `scrooge password` prints
-```
-
-Not `read_only` and not `publish`: this is the database itself, not a copy. The app refuses
-to start beyond its own machine without the password, and answers only to the names listed
-(an address used instead of a name is listed too). `rules` and `instruments` need not be
-named: the container runs in `/data`, where they are.
-
-The data folder must belong to the user `compose.yaml` names: the app writes there. In a
-terminal on the NAS: `sudo chown -R 1026:100 /volume1/docker/scrooge/data` (the numbers of
-that user).
-
-## The image is built by GitHub
-
-Every tag `v*` pushed to GitHub runs `make check` and, when it passes, builds the image and
-pushes it to GitHub's registry, private like the repository: `ghcr.io/<owner>/scrooge:<tag>`
-and `:latest` (`.github/workflows/image.yml`; `<owner>` in lower case). The NAS only pulls
-it: nothing is built there, and no code or git is kept there. The image is built for x86-64,
-the NAS's processor.
-
-## On this machine, once
-
-`make nas-update` reaches the NAS by `ssh nas`. In `~/.ssh/config`:
-
-```
-Host nas
-  HostName nas.example.ts.net
-  Port 22
-  User <DSM user>
-```
-
-Another name works too: `make nas-update NAS=<name>`. `make release` needs `gh`, signed in.
+Any machine with Docker and Docker Compose runs it: a Linux server, a NAS (Synology,
+QNAP, Unraid), a Raspberry Pi 4 or 5 with a 64-bit system, a Mac or a Windows PC with Docker
+Desktop. The image is built for x86-64 and 64-bit ARM, and is public:
+`ghcr.io/angriman/scrooge`.
 
 ## First time
 
-1. On GitHub, Settings > Developer settings > Personal access tokens > Tokens (classic): a
-   token for the NAS with the one scope `read:packages`, nothing else. It can read the
-   images and change nothing.
+In a folder of its own, say `~/scrooge`:
 
-2. In a terminal on the NAS, sign in once (the token is the password; Docker keeps it):
+```sh
+mkdir -p ~/scrooge/data && cd ~/scrooge
+curl -fsSLO https://raw.githubusercontent.com/angriman/scrooge/main/deploy/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deploy/.env.example
+```
 
-   ```sh
-   sudo docker login ghcr.io -u <github-user>
-   ```
+1. **`.env`**: `SCROOGE_UID` and `SCROOGE_GID` are the user and group that own `data/`
+   (`id -u` and `id -g` print them). The rest can stay as it is: the newest release, `data/`
+   next to `compose.yaml`, port 8765. Make `data/` yourself, as that user: a folder Docker
+   makes belongs to root, and the app could not write there.
 
-3. Copy `deploy/compose.yaml` to `/volume1/docker/scrooge/` on the NAS (Finder or File
-   Station) and adapt the three lines marked `PLACEHOLDER`: the image's owner, the data
-   folder, and `user`, the numbers of the NAS user that owns it (`id <user>` in a terminal
-   on the NAS prints them). Put the data in `data` next to it (the move itself:
-   `docs/nas-migration.md`).
-
-4. On this machine, with `main` pushed, `make release VERSION=v1.0.0`: it tags `main`,
-   pushes the tag and waits for the image.
-
-5. Container Manager > Project > Create: name `scrooge`, path `/volume1/docker/scrooge`,
-   use the `compose.yaml` found there, and start. In a terminal on the NAS it is:
+2. **The setup**, once. It asks who you are, how your name is printed on statements, what
+   is typed in a browser to reach the pages (`localhost`, the machine's name, its address,
+   all of them) and a password for them:
 
    ```sh
-   cd /volume1/docker/scrooge
-   sudo docker compose up -d
+   docker compose run --rm scrooge scrooge init --container
    ```
 
-6. Open `http://nas.example.ts.net:8765`: it asks for the password.
+   It writes `data/users/<name>/`: the config, the rules, the categories, the instruments,
+   and `statements/`. The database is made there on the first import.
 
-A NAS that built the image from an `app/` folder before: steps 1 to 4 (in step 3, only the
-`image:` line changes and the `build:` line goes), then `make nas-update`; the folder
-`app/` can then be removed.
+3. **Start**:
+
+   ```sh
+   docker compose up -d
+   ```
+
+4. Open `http://localhost:8765`, or the machine's name with `:8765` from another device: it
+   asks for the password. Statements go in on the Import page.
+
+## What is where
+
+| In `data/` | What |
+|---|---|
+| `users/<name>/scrooge.yaml` | the config |
+| `users/<name>/scrooge.db` | the database |
+| `users/<name>/backups/` | a copy of the database before every commit and before a new schema |
+| `users/<name>/originals/` | every statement imported, as it came |
+| `users/<name>/rules.yaml`, `rules.<owner>.yaml` | the category rules, both people's and each one's |
+| `users/<name>/categories.yaml` | the categories added to the built-in ones |
+| `users/<name>/instruments.yaml` | the asset tab of what is held, bill maturities, price symbols |
+
+The image holds only the code. Back up `data/`, and that is everything.
+
+A config in `data/scrooge.yaml` itself, with its paths under `/data`, is used instead of the
+setup in `users/` (a setup made before `scrooge init` existed). The container reads the one
+setup there is; with several, `SCROOGE_USER=<name>` in the `environment` of both services
+chooses.
+
+The part of the config that `init --container` writes about the pages:
+
+```yaml
+serve:
+  host: 0.0.0.0                       # every address of the container; compose.yaml says
+                                      # which port of the machine leads there
+  names: [localhost, nas.example.ts.net]  # every name or address typed in a browser
+  password: scrypt$...                # the line `scrooge password` prints
+```
+
+The app refuses to start beyond its own container without the password, and answers only to
+the names listed, besides `localhost` and `127.0.0.1`. A name added later goes in that list,
+then `docker compose restart scrooge`.
 
 ## Commands
 
-What the pages do not do runs inside the container, in `/data`, as the container's user:
+What the pages do not do runs inside the container, in `/data`, from the folder of
+`compose.yaml`:
 
 ```sh
-sudo docker exec scrooge scrooge statements --owner Name
-sudo docker exec scrooge scrooge balance --owner Name "Account" 2026-10-31 1234.50 CHF
-sudo docker exec scrooge scrooge position --owner Name "Broker" 2026-10-31 ACME 120 USD
-sudo docker exec scrooge scrooge uncommit --owner Name 42
-sudo docker exec scrooge scrooge query --from 2026-09 --text rent
-sudo docker exec scrooge scrooge keep originals-to-add/
-sudo docker exec -it scrooge scrooge import --owner Name --review statements/
-sudo docker exec scrooge scrooge migrate-files          # then with --write
+docker compose exec scrooge scrooge statements --owner Name
+docker compose exec scrooge scrooge balance --owner Name "Account" 2026-10-31 1234.50 CHF
+docker compose exec scrooge scrooge position --owner Name "Broker" 2026-10-31 ACME 120 USD
+docker compose exec scrooge scrooge uncommit --owner Name 42
+docker compose exec scrooge scrooge query --from 2026-09 --text rent
+docker compose exec scrooge scrooge password
+docker compose exec scrooge scrooge keep originals-to-add/
+docker compose exec scrooge scrooge import --owner Name --review users/name/statements/
+docker compose exec scrooge scrooge migrate-files          # then with --write
 ```
 
 A path given to a command is a path inside the container: under `/data`.
 
 ## Prices, every day
 
-`scrooge prices` is the one command that goes online (D10). DSM > Control Panel > Task
-Scheduler > Create > Scheduled Task > User-defined script, user `root`, daily after the
-markets close (say 23:30), script:
+The service `prices` runs `scrooge prices`, the one command that goes online (D10), as it
+starts and then every 24 hours. It asks only for the days not stored yet, so a missed day is
+caught up the next time. `docker compose logs prices` shows what it fetched.
+
+To run it from the machine's own scheduler instead, remove that service from `compose.yaml`
+and schedule `docker compose exec -T scrooge scrooge prices` in the folder of `compose.yaml`
+(cron, a systemd timer, the NAS's task scheduler).
+
+## A new version
 
 ```sh
-/usr/local/bin/docker exec scrooge scrooge prices
+docker compose pull
+docker compose up -d
+docker image prune -f      # the image it replaced
 ```
 
-By its path: a scheduled task has no login shell, and DSM's `docker` is not on its `PATH`.
-Run it once by hand (select the task, Run; Action > View Result shows what it printed).
+With `:latest` in `SCROOGE_IMAGE` that is the newest release; with a tag, the update is that
+tag changed first. Going back is the same with the older tag.
 
-It asks only for the days not stored yet, so a missed day is caught up the next time.
-
-## A new version of the app
-
-On this machine, once the new version is committed to `main` and pushed:
-
-```sh
-make release VERSION=v1.2.3     # tag main, push the tag, wait for GitHub to build the image
-make nas-update                 # on the NAS: pull it, restart, drop the image it replaced
-```
-
-`nas-update` asks for the DSM password (`sudo`). It is, on the NAS:
-
-```sh
-cd /volume1/docker/scrooge
-sudo docker compose pull
-sudo docker compose up -d
-sudo docker image prune -f
-```
-
-With `image: ...:latest` that is the newest tag; with a tag in `compose.yaml`, the update is
-that line changed first. A release whose `make check` fails builds no image, and the NAS
-keeps running the one it has. Going back is the same with the older tag in `image:`.
-
-A version with a new schema brings the database up to date as it starts, after copying it
-to `data/backups/`; the log says so. When that fails the container does not start, and the
-log says why and where the copy is. Everyone signs in again: sessions live in the app's
-memory.
+A version with a new schema brings the database up to date as it starts, after copying it to
+`backups/`; the log says so. When that fails the container does not start, and the log says
+why and where the copy is. Everyone signs in again: sessions live in the app's memory.
 
 ## Looking at it
 
-Container Manager > Container > scrooge shows the state (`healthy` once `/login`
-answers) and, under Log, what the app printed. In a terminal:
-
 ```sh
-cd /volume1/docker/scrooge
-sudo docker compose ps            # running, healthy
-sudo docker compose logs -f       # what it printed; Ctrl-C to leave
-sudo docker compose restart       # after changing scrooge.yaml
-sudo docker compose down          # stop and remove the container; the data stays
+docker compose ps                 # running; the pages healthy once /login answers
+docker compose logs -f            # what both printed; Ctrl-C to leave
+docker compose restart scrooge    # after changing the config
+docker compose down               # stop and remove the containers; the data stays
 ```
 
-A container that keeps restarting says why in its log: a config `serve` refuses, a data
-folder its user cannot write, a migration that failed.
+A container that keeps restarting says why in its log: no setup yet (step 2), a config
+`serve` refuses, a data folder its user cannot write, a migration that failed.
 
-## Building on this machine instead
+## From other devices
 
-With a container engine here, the same `Dockerfile` builds the image for the NAS, from
-the project folder:
+- **At home**: the machine's name or address, listed in `names`.
+- **Away**: a VPN such as Tailscale or WireGuard, the tailnet's name listed in `names`.
+  `SCROOGE_PORT=100.x.y.z:8765` answers on the tailnet's address alone.
+- **Behind a reverse proxy** (Caddy, Traefik, nginx) for HTTPS: `SCROOGE_PORT=127.0.0.1:8765`
+  when the proxy runs on the same machine, the proxy's public name in `names`, and the proxy
+  passing the `Host` it was asked for.
+
+The pages hold a household's finances behind one password: keep them off the open internet.
+
+## Platform notes
+
+### Synology NAS
+
+- The folder: `/volume1/docker/scrooge`, with `compose.yaml`, `.env` and `data/` in it
+  (File Station, or a terminal on the NAS).
+- `SCROOGE_UID`/`SCROOGE_GID`: `id <user>` in a terminal on the NAS, for the DSM user that
+  owns `data/`; `sudo chown -R <uid>:<gid> /volume1/docker/scrooge/data` if needed.
+- `chmod 755 /volume1/docker/scrooge/data`, as the user that owns it, before the first start.
+  A folder made on a share takes the share's access lists, which let write the
+  administrators group: the container runs as `SCROOGE_UID:SCROOGE_GID` alone, in no other
+  group, and could only read. `chmod` gives the folder plain permissions instead, and the
+  folders made in it follow.
+- Container Manager > Project > Create: name `scrooge`, path `/volume1/docker/scrooge`, use
+  the `compose.yaml` found there. Or in a terminal: `sudo docker compose up -d` there.
+- Commands need `sudo`, and in a scheduled task or over ssh DSM's docker is
+  `/usr/local/bin/docker`: no login shell puts it on the `PATH`.
+
+### Raspberry Pi
+
+A 64-bit Raspberry Pi OS (or any arm64 system) on a Pi 4 or 5; a 32-bit system cannot run the
+image. Docker's convenience script installs Docker with Compose.
+
+### Mac and Windows
+
+Docker Desktop. `SCROOGE_UID`/`SCROOGE_GID` as `id -u` and `id -g` print on a Mac; on
+Windows the defaults work.
+
+## Building the image yourself
+
+From a clone of the repository, for the machine's own processor:
 
 ```sh
-docker build --platform linux/amd64 -t scrooge:latest .
-docker save scrooge:latest | gzip > output/scrooge-image.tar.gz
+docker build -t scrooge:local .
 ```
 
-Then Container Manager > Image > Action > Import > Add From File, or
-`sudo docker load -i scrooge-image.tar.gz` on the NAS, and `image: scrooge:latest` in
-`compose.yaml`.
+and `SCROOGE_IMAGE=scrooge:local` in `.env`. For another machine:
+`docker build --platform linux/arm64 -t scrooge:local .` (or `linux/amd64`), then
+`docker save scrooge:local | gzip > scrooge.tar.gz` and `docker load -i scrooge.tar.gz` there.
+
+## For the maintainer: releases
+
+Every tag `v*` pushed to GitHub runs `make check` and, when it passes, builds the image for
+both processors and pushes `ghcr.io/<owner>/scrooge:<tag>` and `:latest`
+(`.github/workflows/image.yml`). Nothing is built where the app runs.
+
+```sh
+make release VERSION=v1.2.3     # tag main, push the tag, wait for GitHub to build the image
+make deploy-update              # where the app runs: pull it, restart, drop the image replaced
+```
+
+`deploy-update` runs the three commands of "A new version" over ssh. Where is set in
+`Makefile.local` (git-ignored), for example for a Synology NAS:
+
+```make
+DEPLOY_HOST = nas                     # a Host of ~/.ssh/config
+DEPLOY_DIR = /volume1/docker/scrooge  # the folder of compose.yaml
+DEPLOY_DOCKER = /usr/local/bin/docker # by its path: ssh gives no login shell
+DEPLOY_SUDO = sudo                    # asks the DSM password
+```
+
+A release whose `make check` fails builds no image, and the app keeps running the one it has.
