@@ -234,6 +234,22 @@ def test_a_snapshot_is_the_whole_database_in_one_file_that_stays_one(tmp_path: P
     assert [file.name for file in folder.iterdir()] == ["scrooge.db"]
 
 
+def test_create_makes_a_database_with_the_whole_schema_and_its_folder(tmp_path: Path) -> None:
+    path = tmp_path / "new" / "scrooge.db"
+    db.create(path, NOW)
+    with db.reading(path) as conn:
+        assert db.version(conn) == db.latest()
+        assert conn.execute("SELECT count(*) FROM owners").fetchone()[0] == 0
+
+
+def test_create_never_touches_a_database_that_is_there(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    path.write_bytes(b"what was there")
+    with pytest.raises(FileExistsError):
+        db.create(path, NOW)
+    assert path.read_bytes() == b"what was there"
+
+
 def test_a_reading_connection_cannot_change_the_database(tmp_path: Path) -> None:
     path = tmp_path / "with space" / "scrooge.db"
     path.parent.mkdir()
