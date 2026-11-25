@@ -1,5 +1,6 @@
 """`scrooge init | import | commit | statements | uncommit | discard | balance | keep | logo |
-prices | query | serve | password | publish | migrate-files`: the database from the terminal.
+prices | query | serve | password | publish | migrate-files | doctor`: the database from the
+terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/,
                               its database too (--container: for the app in a container, its
@@ -28,6 +29,8 @@ prices | query | serve | password | publish | migrate-files`: the database from 
     scrooge publish [folder]  copy the database to the folder another machine shows it from
     scrooge migrate-files     write the rules, categories.yaml and the config again with
                               today's category names (--write; without it, only say what)
+    scrooge doctor            say what is wrong: the schema, the database file, the rules,
+                              the originals, the prices; changes nothing
 
 There are no months to close (decided 2026-10-16): statements of any period are imported
 whenever they are at hand, and `commit` commits what is staged. Of an account, what is
@@ -79,6 +82,11 @@ It reads the files `import` and `serve` read, as they find them, and each person
 file; it says what it would change and changes nothing unless given `--write`, which keeps
 each file it changes as it was, next to it (`<name>.before-migrate-files`). It needs no
 database.
+`doctor` reads the database without bringing its schema up to date, so it says whether the
+next command would migrate it. It reads the rules files, each person's own, categories.yaml,
+`unmatched` and instruments.yaml as `import` would and lists every problem in them; it lists
+the statements whose file is not in `originals`, and the holdings and currencies with no close
+or rate of the week before yesterday. It exits 1 when anything is wrong.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
@@ -134,6 +142,7 @@ from scrooge import (
     benchmark,
     categories,
     classification,
+    doctor,
     importing,
     marketdata,
     migratefiles,
@@ -148,7 +157,7 @@ from scrooge import (
     staging,
 )
 from scrooge.classification import UnknownInstrumentError
-from scrooge.errors import ConfigError, ExtractionError
+from scrooge.errors import ConfigError, ExtractionError, not_yaml
 from scrooge.models import Kind, TypedHolding
 from scrooge.staging import People, StagingError
 from scrooge.storage import db, logos, money, originals, store
@@ -175,9 +184,10 @@ COMMANDS = (
     "publish",
     "init",
     "migrate-files",
+    "doctor",
 )
 # Commands that are not about one person's statements.
-_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish")
+_READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish", "doctor")
 # What a machine that only shows a copy of the database may run: the rest would write to it.
 _SHOWING = ("serve", "query", "statements")
 OK, FAILED, NEEDS_REVIEW = 0, 1, 2
@@ -185,6 +195,7 @@ OK, FAILED, NEEDS_REVIEW = 0, 1, 2
 RULES = ["rules.yaml"]
 INSTRUMENTS = "instruments.yaml"
 USER = "SCROOGE_USER"  # the setup in users/ to use, when --user does not say
+_ONLY_INIT = "Only 'scrooge init' makes a database ('scrooge init --db <path>' an empty one alone)"
 _CODE = 3  # letters in a currency code
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
@@ -342,6 +353,16 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="make only an empty database there, for a config written by hand; nothing is asked",
     )
+    _care_parsers(commands, setup, files)
+    return parser
+
+
+def _care_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+    setup: argparse.ArgumentParser,
+    files: argparse.ArgumentParser,
+) -> None:
+    """The commands that look after the setup: `publish`, `migrate-files`, `doctor`."""
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
         "folder",
@@ -353,7 +374,8 @@ def _parser() -> argparse.ArgumentParser:
         "migrate-files", parents=[setup], help="write the files again with today's names"
     )
     _migrate_flags(migrate)
-    return parser
+    check = commands.add_parser("doctor", parents=[files], help="say what is wrong; change nothing")
+    _rules_flags(check)
 
 
 def _setup_flags() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
@@ -502,11 +524,7 @@ def _config(path: Path) -> dict[str, object]:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
-        where = f"line {mark.line + 1}" if mark is not None else "not valid YAML"
-        problem = getattr(exc, "problem", None) or "not valid YAML"
-        msg = f"{path}: {where}: {problem}"
-        raise ConfigError(msg) from None
+        raise ConfigError(not_yaml(path, exc)) from None
     if not isinstance(data, dict):
         msg = f"{path}: expected a mapping"
         raise ConfigError(msg)
@@ -722,6 +740,9 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
     if reach.read_only and args.command != "serve":
         _check_copy(path)  # a copy is read where it is, never opened to write
         return _show(args, config, (path, owner, people), console, now)
+    if args.command == "doctor":  # never migrates: whether it would is one of its answers
+        _refuse_missing(path, "database", origin, _ONLY_INIT)
+        return _doctor(path, args, config, out, now)
     if args.command == "serve":  # the pages open the database themselves, read-only
         if reach.read_only:
             _check_copy(path)
@@ -744,9 +765,10 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         return _serve(path, args.port, pages, reach, out)
     conn = _open(path, origin, now, out)
     try:
-        if args.command == "publish":
-            return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
         about_data: dict[str, Callable[[], int]] = {
+            "publish": lambda: _publish(
+                conn, path, args.folder or config.get("publish"), args.config, out
+            ),
             "query": lambda: _query(conn, args, out),
             "keep": lambda: _keep(conn, path, _files(args.paths, path), out),
             "logo": lambda: _logo(conn, args, now, out),
@@ -786,8 +808,7 @@ def _open(path: Path, origin: str, now: datetime, out: TextIO) -> sqlite3.Connec
     said. A migration that fails is refused with its reason: the migrations applied before it
     stay (each is one transaction), and the copy is dropped when none was.
     """
-    then = "Only 'scrooge init' makes a database ('scrooge init --db <path>' an empty one alone)"
-    _refuse_missing(path, "database", origin, then)
+    _refuse_missing(path, "database", origin, _ONLY_INIT)
     conn = db.connect(path)
     try:
         found, latest = db.version(conn), db.latest()
@@ -813,6 +834,31 @@ def _open(path: Path, origin: str, now: datetime, out: TextIO) -> sqlite3.Connec
             f"{path}: schema version {found} brought up to {latest}. Copy from before: {copy}\n"
         )
     return conn
+
+
+def _doctor(
+    path: Path, args: argparse.Namespace, config: dict[str, object], out: TextIO, now: datetime
+) -> int:
+    """Every check of `doctor`, each with its problems; exit 1 if there is any."""
+    setup = importing.Setup(
+        _rules(args, config, present=False),  # a missing one is one of the problems
+        _instruments(args, config),
+        _people(config, args.config),
+        _labels(config, args.config),
+        _unmatched(config, args.config),
+    )
+    checks = doctor.examine(path, setup, now.date(), networth.CURRENCIES)
+    for check in checks:
+        out.write(f"{check.name}: {check.said}\n")
+        out.writelines(f"  - {problem}\n" for problem in check.problems)
+        if check.problems and check.advice:
+            out.write(f"  {check.advice}\n")
+    found = doctor.problems(checks)
+    if not found:
+        out.write(f"{path}: nothing wrong found.\n")
+        return OK
+    out.write(f"{path}: {found} problem{'' if found == 1 else 's'} found.\n")
+    return FAILED
 
 
 def _create(path: Path, now: datetime, out: TextIO) -> int:

@@ -358,3 +358,27 @@ def test_maturities_are_looked_up_and_the_unknown_bills_named() -> None:
     assert looked.found == {"912797XX3": date(2026, 11, 27)}
     assert looked.unknown == ("912797ZZ1",)
     assert source.asked == ["912797XX3", "912797ZZ1"]
+
+
+def test_stale_lists_what_is_held_or_counted_in_without_a_close_or_rate_of_the_last_week(
+    conn: sqlite3.Connection,
+) -> None:
+    assert marketdata.stale(conn, day(30), ["EUR"]) == []  # nothing known: nothing to value
+    bill = bought("912797ZZ1", "10000", day(3), asset_tab="Bonds", maturity=date(2026, 12, 24))
+    gone = [bought("GONE", "10", day(3)), bought("GONE", "-10", day(4))]
+    hold(conn, bought("WIDG", "10", day(3)), bought("ACME", "5", day(3)), *gone, bill)
+    source = FakeSource({"WIDG": WEEK, "ACME": WEEK[:3], "USDCHF=X": USD})
+    marketdata.refresh(conn, source, through=END, now=NOW)
+    # Yesterday is 30 September: ACME's newest close, of the 16th, is more than a week before;
+    # GONE was sold, a bill has no close, and EUR has never been fetched.
+    assert marketdata.stale(conn, date(2026, 10, 1), ["EUR"]) == [
+        "ACME: the newest close is of 2026-09-16",
+        "EUR: no rate stored",
+    ]
+    # A week later nothing is new: everything held is behind, and so is every rate.
+    assert marketdata.stale(conn, date(2026, 10, 9)) == [
+        "WIDG: the newest close is of 2026-09-30",
+        "ACME: the newest close is of 2026-09-16",
+        "USD: the newest rate is of 2026-09-30",
+    ]
+    assert "GONE: no close stored" not in marketdata.stale(conn, date(2026, 10, 9))

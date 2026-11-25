@@ -27,7 +27,7 @@ from pathlib import Path
 import yaml
 
 from scrooge import categories, yamlfiles
-from scrooge.errors import ConfigError
+from scrooge.errors import ConfigError, not_yaml
 from scrooge.models import Holding, Kind, SecurityTrade, Transaction
 
 ASSET_TABS = frozenset({"ETFs", "Stocks", "Bonds"})
@@ -136,33 +136,62 @@ def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -
     """
     rules: list[Rule] = []
     for path in paths:
-        if not path.exists():
-            continue
-        entries = _load(path, "rules") or []
-        if not isinstance(entries, list):
-            msg = f"{path}: expected a top-level 'rules' list"
-            raise ConfigError(msg)
-        for n, entry in enumerate(entries, start=1):
-            where = f"{path} rule {n}"
-            if not isinstance(entry, dict) or not {"match", "category"} <= entry.keys():
-                msg = f"{where}: needs 'match' and 'category'"
-                raise ConfigError(msg)
-            category = categories.key(str(entry["category"]))
-            if category not in known:
-                msg = f"{where}: unknown category {str(entry['category'])!r}"
-                raise ConfigError(msg)
-            try:
-                pattern = re.compile(str(entry["match"]), re.IGNORECASE)
-                kind = Kind(entry["kind"]) if "kind" in entry else None
-            except (re.error, ValueError) as exc:
-                msg = f"{where}: {exc}"
-                raise ConfigError(msg) from None
-            flow = str(entry.get("direction", ""))
-            if flow not in {"", "in", "out"}:
-                msg = f"{where}: direction must be 'in' or 'out', not {flow!r}"
-                raise ConfigError(msg)
-            rules.append(Rule(pattern, category, kind, str(entry.get("account", "")), flow))
+        for where, entry in _entries(path):
+            rules.append(_rule(entry, where, known))
     return tuple(rules)
+
+
+def problems(paths: Iterable[Path], known: Collection[str] = categories.ALL) -> list[str]:
+    """What `load_rules` would refuse in each existing file, every rule of it, not only the
+    first: a file that cannot be read at all is one problem."""
+    found: list[str] = []
+    for path in paths:
+        try:
+            entries = _entries(path)
+        except ConfigError as exc:
+            found.append(str(exc))
+            continue
+        except yaml.YAMLError as exc:
+            found.append(not_yaml(path, exc))
+            continue
+        for where, entry in entries:
+            try:
+                _rule(entry, where, known)
+            except ConfigError as exc:
+                found.append(str(exc))
+    return found
+
+
+def _entries(path: Path) -> list[tuple[str, object]]:
+    """Each rule of the file, named as messages name it; none when the file is not there."""
+    if not path.exists():
+        return []
+    entries = _load(path, "rules") or []
+    if not isinstance(entries, list):
+        msg = f"{path}: expected a top-level 'rules' list"
+        raise ConfigError(msg)
+    return [(f"{path} rule {n}", entry) for n, entry in enumerate(entries, start=1)]
+
+
+def _rule(entry: object, where: str, known: Collection[str]) -> Rule:
+    if not isinstance(entry, dict) or not {"match", "category"} <= entry.keys():
+        msg = f"{where}: needs 'match' and 'category'"
+        raise ConfigError(msg)
+    category = categories.key(str(entry["category"]))
+    if category not in known:
+        msg = f"{where}: unknown category {str(entry['category'])!r}"
+        raise ConfigError(msg)
+    try:
+        pattern = re.compile(str(entry["match"]), re.IGNORECASE)
+        kind = Kind(entry["kind"]) if "kind" in entry else None
+    except (re.error, ValueError) as exc:
+        msg = f"{where}: {exc}"
+        raise ConfigError(msg) from None
+    flow = str(entry.get("direction", ""))
+    if flow not in {"", "in", "out"}:
+        msg = f"{where}: direction must be 'in' or 'out', not {flow!r}"
+        raise ConfigError(msg)
+    return Rule(pattern, category, kind, str(entry.get("account", "")), flow)
 
 
 def load_instruments(path: Path) -> dict[str, Instrument]:

@@ -885,6 +885,20 @@ def rate_days(conn: sqlite3.Connection, currency: str, source: str) -> tuple[dat
     return None if row[0] is None else (date.fromisoformat(row[0]), date.fromisoformat(row[1]))
 
 
+def newest_price(conn: sqlite3.Connection, instrument: int) -> date | None:
+    """The latest day a close of the instrument is stored for, from any source."""
+    row = conn.execute("SELECT max(date) FROM prices WHERE instrument_id = ?", (instrument,))
+    found = row.fetchone()[0]
+    return None if found is None else date.fromisoformat(found)
+
+
+def newest_rate(conn: sqlite3.Connection, currency: str) -> date | None:
+    """The latest day a rate of the currency is stored for, from any source."""
+    found = conn.execute("SELECT max(date) FROM fx_rates WHERE currency = ?", (currency,))
+    day = found.fetchone()[0]
+    return None if day is None else date.fromisoformat(day)
+
+
 def asked_from(conn: sqlite3.Connection, series: str, source: str) -> date | None:
     """The earliest day a request to `source` for the series began on, if one was made."""
     row = conn.execute(

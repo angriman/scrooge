@@ -32,6 +32,8 @@ PRICED = frozenset({"etf", "stock", "fund"})  # a bill has no quoted price (D20)
 # A request starts a few days early: the first day wanted may be a weekend or a holiday,
 # and the close of the day before is then the one that counts.
 _MARGIN = timedelta(days=10)
+# A week without a close is more than a weekend and a holiday: `prices` has not run.
+STALE = timedelta(days=7)
 _ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}[0-9]")
 
 
@@ -94,6 +96,33 @@ def refresh(  # noqa: PLR0913  # what to fetch, from where, up to when, and thre
             for day, rate in history.closes:
                 added[1] += store.add_rate(conn, day, currency, rate, source=name, fetched_at=stamp)
     return Refreshed(added[0], added[1], added[2], tuple(problems))
+
+
+def stale(conn: sqlite3.Connection, today: date, currencies: Collection[str] = ()) -> list[str]:
+    """What `refresh` would bring up to yesterday and has not: each share, ETF or fund still
+    held, and each currency of the database and of `currencies`, whose newest close or rate
+    stored is more than `STALE` before yesterday, or that has none. Nothing is fetched."""
+    through = today - timedelta(days=1)
+    oldest = through - STALE
+    found: list[str] = []
+    spans = _held_spans(conn, through)
+    for instrument in store.instruments(conn):
+        if instrument.type not in PRICED or spans.get(instrument.id, (through, None))[1] != through:
+            continue
+        newest = store.newest_price(conn, instrument.id)
+        if newest is None or newest < oldest:
+            found.append(f"{instrument.symbol}: {_newest('close', newest)}")
+    if store.first_day(conn) is None:  # nothing to value yet, in any currency
+        return found
+    for currency in sorted({*store.currencies(conn), *currencies} - {BASE}):
+        newest = store.newest_rate(conn, currency)
+        if newest is None or newest < oldest:
+            found.append(f"{currency}: {_newest('rate', newest)}")
+    return found
+
+
+def _newest(what: str, day: date | None) -> str:
+    return f"no {what} stored" if day is None else f"the newest {what} is of {day}"
 
 
 def _closes(

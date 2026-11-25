@@ -734,7 +734,7 @@ def test_a_missing_database_is_refused_by_every_command_and_none_is_made(run: Ru
     run.without_database()
     run.config.write_text(CONFIG.format(database="data/scrooge.db"), encoding="utf-8")
     before = everything_under(run.folder)
-    for command in [*WRITERS, ("query",), ("statements",)]:
+    for command in [*WRITERS, ("query",), ("statements",), ("doctor",)]:
         assert run(*command) == dbcli.FAILED, command
         assert run.output == (
             f"error: no database at {run.database}: 'database' in {run.config} is relative to "
@@ -1537,6 +1537,14 @@ def test_a_missing_copy_is_not_made_by_a_command_that_would_write(
     assert not run.database.parent.exists()
 
 
+def test_a_machine_that_only_shows_a_copy_has_no_doctor_it_has_no_rules_or_originals(
+    closed: Run,
+) -> None:
+    read_only(closed)
+    assert closed("doctor") == dbcli.FAILED
+    assert "so 'doctor' is refused here: run it where the data is" in closed.output
+
+
 def test_a_machine_that_only_shows_a_copy_can_still_list_and_query_it(closed: Run) -> None:
     assert closed("query") == dbcli.OK
     wanted = closed.output
@@ -1785,6 +1793,56 @@ def test_prices_uses_the_real_source_unless_given_another(
     assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.NEEDS_REVIEW
     assert len(made) == 1
     assert made[0].asked
+
+
+def test_doctor_says_what_is_wrong_and_changes_nothing(closed: Run) -> None:
+    folder = closed.database.parent / "originals"
+    digest = hashlib.sha256((closed.folder / "Migros.csv").read_bytes()).hexdigest()
+    (folder / f"{digest}.csv").unlink()
+    before = everything_under(closed.folder)
+    assert closed("doctor") == dbcli.FAILED
+    assert closed.output == (
+        f"schema: version {db.latest()}, the one this code expects\n"
+        "integrity: no damage found\n"
+        "rules: 5 rules in 1 file\n"
+        "originals: 1 of 7 statements without their file\n"
+        "  - Migros.csv\n"
+        f"  'scrooge keep <folder>' copies them into {folder} from a folder that holds the "
+        "files.\n"
+        "prices: out of date: no close or rate in the 7 days before yesterday\n"
+        "  - ACME: no close stored\n"
+        "  - WIDG: no close stored\n"
+        "  - GOOG: no close stored\n"
+        "  - EUR: no rate stored\n"
+        "  - GBP: no rate stored\n"
+        "  - JPY: no rate stored\n"
+        "  - USD: no rate stored\n"
+        "  'scrooge prices' fetches what is missing; one it still cannot find needs a "
+        "price_symbol in instruments.yaml.\n"
+        f"{closed.database}: 8 problems found.\n"
+    )
+    assert everything_under(closed.folder) == before
+
+
+def test_doctor_finds_nothing_wrong_once_it_is_put_right(closed: Run) -> None:
+    yesterday = NOW.date() - timedelta(days=1)
+    closed.source = FakeSource(
+        {symbol: [(yesterday, "1")] for symbol in ("ACME", "WIDG", "GOOG")}
+        | {f"{currency}CHF=X": [(yesterday, "1")] for currency in ("EUR", "GBP", "JPY", "USD")}
+    )
+    assert closed("prices", "--instruments", str(closed.instruments)) == dbcli.OK
+    # The rules a flag names are those looked at, as for `import`.
+    other = closed.folder / "other.yaml"
+    other.write_text("rules: []\n", encoding="utf-8")
+    assert closed("doctor", "--rules", str(other)) == dbcli.OK
+    assert "rules: 0 rules in 1 file\n" in closed.output
+    assert closed.output.endswith(f"{closed.database}: nothing wrong found.\n")
+    closed.rules.unlink()
+    assert closed("doctor") == dbcli.FAILED  # a missing rules file is a problem, not refused
+    assert f"rules: an import would be refused\n  - no rules file at {closed.rules}\n" in (
+        closed.output
+    )
+    assert closed.output.endswith(f"{closed.database}: 1 problem found.\n")
 
 
 def kept(run: Run) -> list[str]:

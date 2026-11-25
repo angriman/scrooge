@@ -15,3 +15,11 @@ class OcrUnavailableError(ExtractionError):
 
 class ConfigError(Exception):
     """rules.yaml, categories.yaml or instruments.yaml is malformed."""
+
+
+def not_yaml(path: object, exc: Exception) -> str:
+    """What is wrong with a file YAML could not read, in one line: where, and what."""
+    mark = getattr(exc, "problem_mark", None)
+    where = f"line {mark.line + 1}" if mark is not None else "not valid YAML"
+    problem = getattr(exc, "problem", None) or "not valid YAML"
+    return f"{path}: {where}: {problem}"

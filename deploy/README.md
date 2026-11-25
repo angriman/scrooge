@@ -94,6 +94,7 @@ docker compose exec scrooge scrooge password
 docker compose exec scrooge scrooge keep originals-to-add/
 docker compose exec scrooge scrooge import --owner Name --review users/name/statements/
 docker compose exec scrooge scrooge migrate-files          # then with --write
+docker compose exec scrooge scrooge doctor                 # what is wrong; changes nothing
 ```
 
 A path given to a command is a path inside the container: under `/data`.
@@ -122,6 +123,10 @@ tag changed first. Going back is the same with the older tag.
 A version with a new schema brings the database up to date as it starts, after copying it to
 `backups/`; the log says so. When that fails the container does not start, and the log says
 why and where the copy is. Everyone signs in again: sessions live in the app's memory.
+
+Before an update, `scrooge doctor` (see Commands) says whether the database's schema is older
+than the code's, which the new version would migrate, and whatever else is wrong: the rules,
+the originals, the prices. It changes nothing.
 
 ## Looking at it
 

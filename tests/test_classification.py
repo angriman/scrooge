@@ -17,6 +17,7 @@ from scrooge.classification import (
     load_instruments,
     load_rules,
     personal_file,
+    problems,
     resolve_instruments,
     uncategorized,
     unmatched,
@@ -175,6 +176,25 @@ def test_uncategorized_lists_rows_that_block_the_write() -> None:
 def test_malformed_rules_raise(tmp_path: Path, text: str, message: str) -> None:
     with pytest.raises(ConfigError, match=message):
         load_rules([_rules(tmp_path, text)])
+
+
+def test_problems_lists_every_rule_load_rules_would_refuse_in_every_file(tmp_path: Path) -> None:
+    bad = _rules(
+        tmp_path,
+        "rules:\n  - {match: 'x', category: Vacanze}\n  - {match: 'y', category: Groceries}\n"
+        "  - {match: '(', category: Groceries}\n",
+    )
+    other = _rules(tmp_path, "rules: {a: 1}\n", "other.yaml")
+    broken = _rules(tmp_path, "rules: [\n", "broken.yaml")
+    found = problems([bad, other, broken, tmp_path / "missing.yaml"])
+    assert found[:3] == [
+        f"{bad} rule 1: unknown category 'Vacanze'",
+        f"{bad} rule 3: missing ), unterminated subpattern at position 0",
+        f"{other}: expected a top-level 'rules' list",
+    ]
+    # A file that is not there is no rules yet, as for `load_rules`.
+    assert found[3:] == [f"{broken}: line 2: expected the node content, but found '<stream end>'"]
+    assert problems([_rules(tmp_path, "rules: []\n")]) == []
 
 
 def test_empty_rules_file_is_fine(tmp_path: Path) -> None:
