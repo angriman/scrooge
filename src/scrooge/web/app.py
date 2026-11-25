@@ -307,6 +307,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     currency: str = networth.DEFAULT_CURRENCY,
     currencies: Sequence[str] = networth.DEFAULT_COLUMNS,
     frozen: Sequence[networth.FrozenAccount] = (),
+    benchmarks: Sequence[str] = (),
     spa: Path | None = None,
 ) -> Starlette:
     """The app over `database`, whose schema is already up to date.
@@ -326,6 +327,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     `currencies` are those the month-end table of net worth shows side by side.
     `frozen` names the accounts whose money cannot be reached (a rent deposit): with the
     pensions, net worth sets them apart from what is liquid.
+    `benchmarks` are the symbols of what the investments' returns are set beside.
     `spa` is the folder of the frontend built from frontend/, served at /app: every address
     there that is not one of its files is its page. Without it there is no /app.
     """
@@ -422,6 +424,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     app.state.currency = currency
     app.state.currencies = tuple(currencies)
     app.state.frozen = tuple(frozen)
+    app.state.benchmarks = tuple(benchmarks)
     app.state.held = {}
     app.state.access = access
     app.state.read_only = read_only

@@ -647,6 +647,17 @@ export interface InvestedDay {
 	day: Day;
 	value: Amount;
 	invested: Amount;
+	/** The line of each of `PerformanceReport.benchmarks`, in its order: what the money put in
+	 * would be worth in it. */
+	benchmarks: Amount[];
+}
+
+/** What holding a benchmark returned in percent, over the days the time-weighted return
+ * counts, in the currency asked for; its price alone, what it paid out left out
+ * (src/scrooge/benchmark.py). */
+export interface BenchmarkReturn {
+	symbol: string;
+	return: Amount;
 }
 
 export interface PerformanceReport {
@@ -658,6 +669,8 @@ export interface PerformanceReport {
 	totals: Measured | null;
 	series: InvestedDay[];
 	accounts: MeasuredAccount[];
+	/** The benchmarks of the config that have the closes and rates they need. */
+	benchmarks: BenchmarkReturn[];
 }
 
 /** `/api/performance`. `errors` names each currency whose accounts were left out for want of a

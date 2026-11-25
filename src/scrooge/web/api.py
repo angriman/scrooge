@@ -736,21 +736,27 @@ def _income(request: Request) -> Response:
 
 def _performance(request: Request) -> Response:
     """What the investment accounts of `owner`, or of everyone, returned over `range` (the year
-    to date when left out), in `currency`. Accounts with a currency without a rate are left
-    out, each such currency said in `errors`."""
+    to date when left out), in `currency`, beside the benchmarks of the config. Accounts with
+    a currency without a rate are left out, each such currency said in `errors`, and so is a
+    benchmark without the closes or the rate it needs."""
     asked = forms.performance_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
     with db.reading(request.app.state.database) as conn:
         try:
             shown = performance.run(
-                conn, owner=asked.owner, currency=asked.currency, range_=asked.range
+                conn,
+                owner=asked.owner,
+                currency=asked.currency,
+                range_=asked.range,
+                benchmarks=request.app.state.benchmarks,
             )
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
     errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
     if shown.left_out:
         errors.append(f"Left out for want of a rate: {', '.join(shown.left_out)}.")
+    errors += [wire.sentence(Exception(why)) for why in shown.unbenchmarked]
     return JSONResponse({"performance": wire.performance_report(shown), "errors": errors})
 
 

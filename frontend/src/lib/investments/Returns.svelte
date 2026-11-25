@@ -1,9 +1,10 @@
 <!--
 @component
 What the investments returned over the range: the time-weighted return first, as the figure of
-the investments themselves; under it the money-weighted return, what the money put in earned
-a year, and the gain; then what the accounts were worth day by day against the money put in,
-and the same figures account by account.
+the investments themselves, and beside it what the benchmarks returned over the same days;
+under it the money-weighted return, what the money put in earned a year, and the gain; then
+what the accounts were worth day by day against the money put in and against what it would be
+worth in each benchmark, and the same figures account by account.
 -->
 <script lang="ts">
 	import { day, daysBetween } from '#lib/format/date.js';
@@ -12,7 +13,18 @@ and the same figures account by account.
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { described, direction, mwrPer, nearest, over, plot, type Range } from './performance.js';
+	import { benchmarkColor } from '#lib/design/data.js';
+	import {
+		compared,
+		described,
+		instead,
+		direction,
+		mwrPer,
+		nearest,
+		over,
+		plot,
+		type Range
+	} from './performance.js';
 
 	interface Props {
 		performance: PerformanceReport;
@@ -28,6 +40,7 @@ and the same figures account by account.
 	const span = $derived(over(range, performance.first!, performance.last!));
 	const way = $derived(direction(totals.twr, 1));
 	const change = $derived(difference(totals.end, totals.start));
+	const beside = $derived(compared(totals.twr, performance.benchmarks));
 
 	let width = $state(640);
 	const HEIGHT = 240;
@@ -71,6 +84,13 @@ and the same figures account by account.
 					)}
 				>
 					{signedPercent(totals.twr)}
+				</p>
+			{/if}
+			{#if beside}
+				<p class="mt-1 text-body text-ink">{beside}</p>
+				<p class="text-caption text-ink-muted">
+					What holding each returned over the days the return above counts, in {currency}: its price
+					alone, without what it paid out.
 				</p>
 			{/if}
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
@@ -121,7 +141,7 @@ and the same figures account by account.
 				viewBox="0 0 {width} {HEIGHT}"
 				class="block h-[240px] w-full touch-pan-y"
 				role="img"
-				aria-label="What the investment accounts were worth each day, against the money put in"
+				aria-label="What the investment accounts were worth each day, against the money put in and what it would be worth in each benchmark"
 				onpointermove={point}
 				onpointerdown={point}
 				onpointerleave={() => (pointed = null)}
@@ -134,6 +154,9 @@ and the same figures account by account.
 				{/each}
 				<path d={drawn.area} class="fill-brand-soft" />
 				<path d={drawn.invested} class="fill-none stroke-ink-muted" stroke-width="1.5" stroke-dasharray="4 3" />
+				{#each drawn.benchmarks as line, index (performance.benchmarks[index].symbol)}
+					<path d={line} class="fill-none" style:stroke={benchmarkColor(index)} stroke-width="1.5" stroke-dasharray="6 3" />
+				{/each}
 				<path d={drawn.value} class="fill-none stroke-brand" stroke-width="2" />
 				{#if pointed !== null}
 					<line
@@ -161,11 +184,21 @@ and the same figures account by account.
 					<span class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted" aria-hidden="true"></span>Put in
 					<Amount value={shown.invested} {currency} places={0} class="text-ink" />
 				</span>
+				{#each performance.benchmarks as benchmark, index (benchmark.symbol)}
+					<span class="flex items-center gap-1.5">
+						<span
+							class="h-0 w-3 border-t-[1.5px] border-dashed"
+							style:border-color={benchmarkColor(index)}
+							aria-hidden="true"
+						></span>In {benchmark.symbol}
+						<Amount value={shown.benchmarks[index]} {currency} places={0} class="text-ink" />
+					</span>
+				{/each}
 			</p>
 		{/if}
 		<p class="mt-1 text-caption text-ink-muted">
 			Put in is what the accounts were worth at the start and the money put in since, less what was taken
-			out.{weekly ? ' One point a week.' : ''}
+			out.{instead(performance.benchmarks)}{weekly ? ' One point a week.' : ''}
 		</p>
 	</div>
 </Panel>

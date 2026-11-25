@@ -59,6 +59,7 @@ currencies: [CHF, USD, EUR]          # the month-end table's columns; these with
 unmatched: Uncategorized             # the category of rows no rule matches
 account_labels: {U7654321: "IBKR 2"} # a second account at a broker, by its number
 frozen: [Deposito, {Anna: Risparmio}]  # frozen like the pensions; {owner: account} for one alone
+benchmarks: [VT, VOO]               # what investments are compared with, as Yahoo names them
 ```
 
 `unmatched` lets every statement be committed without choosing categories (net worth needs
@@ -119,8 +120,8 @@ refused. Don't also type those shares in another account: they would count twice
 ## Prices and net worth
 
 `scrooge prices` is the one command that goes online: it fetches from Yahoo the daily closes,
-splits and exchange rates not stored yet, and stores them for good. Run it once a day, after
-the markets close.
+splits and exchange rates not stored yet, and stores them for good, the closes of the
+`benchmarks` included. Run it once a day, after the markets close.
 
 Net worth is worked out for every day at that day's closes and rates, up to the newest close
 stored; after a person's last statement, what they held then is carried at the later closes.

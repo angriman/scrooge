@@ -7,6 +7,11 @@ the last one stored, and for those before the first only when older history was 
 since, so a committed month keeps the figures it was closed with. Everything is
 fetched first and stored in one transaction afterwards.
 
+The benchmarks the investments are compared with (`benchmarks` in scrooge.yaml) are fetched
+like a share held from the first day anything is known. A benchmark is an instrument like any
+other: the one held under its symbol, when there is one, whose closes are then fetched once
+for both; else one made on its first fetch, in the currency the source quotes it in.
+
 What cannot be fetched is reported, never guessed: a share without a close is valued at the
 price it last traded at, and the net-worth page says so.
 """
@@ -42,13 +47,13 @@ class Refreshed:
 
 @dataclass(frozen=True, slots=True)
 class _Fetched:
-    instrument: store.Instrument
+    instrument: store.Instrument | None  # None: a benchmark that is no instrument yet
     price_symbol: str
     history: History
     asked: date  # the first day asked for
 
 
-def refresh(  # noqa: PLR0913  # what to fetch, from where, up to when, and two local overrides
+def refresh(  # noqa: PLR0913  # what to fetch, from where, up to when, and three local overrides
     conn: sqlite3.Connection,
     source: PriceSource,
     *,
@@ -56,22 +61,24 @@ def refresh(  # noqa: PLR0913  # what to fetch, from where, up to when, and two 
     now: datetime,
     symbols: Mapping[str, str] | None = None,
     currencies: Collection[str] = (),
+    benchmarks: Collection[str] = (),
 ) -> Refreshed:
     """Fetch what is missing up to `through` and store it.
 
-    Closes are fetched for every share, ETF and fund ever held, over the days it was held;
-    rates for every currency of the database and for `currencies`, from the first day
-    anything is known. `symbols` says where an instrument's prices are found when that is
-    not under its own symbol (`price_symbol` in `instruments.yaml`).
+    Closes are fetched for every share, ETF and fund ever held, over the days it was held,
+    and for each of `benchmarks` (symbols as the source knows them) from the first day
+    anything is known; rates for every currency of the database and for `currencies`, from
+    that day too. `symbols` says where an instrument's prices are found when that is not
+    under its own symbol (`price_symbol` in `instruments.yaml`).
     """
     problems: list[str] = []
-    fetched = _closes(conn, source, through, symbols or {}, problems)
+    fetched = _closes(conn, source, through, (symbols or {}, benchmarks), problems)
     rates = _rates(conn, source, through, currencies, problems)
     stamp, name = db.timestamp(now), f"fetched:{source.name}"
     added = [0, 0, 0]
     with db.transaction(conn):
         for item in fetched:
-            instrument = item.instrument.id
+            instrument = _instrument_of(conn, item)
             store.set_price_symbol(conn, instrument, item.price_symbol)
             for day, close in item.history.closes:
                 added[0] += store.add_price(
@@ -93,13 +100,18 @@ def _closes(
     conn: sqlite3.Connection,
     source: PriceSource,
     through: date,
-    symbols: Mapping[str, str],
+    wanted_as: tuple[Mapping[str, str], Collection[str]],
     problems: list[str],
 ) -> list[_Fetched]:
+    """The closes of what is held and of the benchmarks (`wanted_as`: the typed symbols, and
+    the benchmarks' symbols)."""
+    symbols = wanted_as[0]
     name = f"fetched:{source.name}"
     spans = _held_spans(conn, through)
+    instruments = store.instruments(conn)
+    new = _benchmark_spans(conn, instruments, wanted_as, through, spans)
     fetched: list[_Fetched] = []
-    for instrument in store.instruments(conn):
+    for instrument in instruments:
         if instrument.type not in PRICED or instrument.id not in spans:
             continue
         first, last = spans[instrument.id]
@@ -125,7 +137,61 @@ def _closes(
                 f"{instrument.symbol}: {price_symbol} has no close since {wanted[0][0]}"
             )
         fetched.append(_Fetched(instrument, price_symbol, history, wanted[0][0]))
+    for symbol, first in new:
+        try:
+            history = source.history(symbol, first, through)
+        except PriceError as exc:
+            problems.append(f"{symbol}: no prices ({exc})")
+            continue
+        if not history.closes:
+            problems.append(f"{symbol}: {symbol} has no close since {first}")
+            continue
+        fetched.append(_Fetched(None, symbol, history, first))
     return fetched
+
+
+def _benchmark_spans(
+    conn: sqlite3.Connection,
+    instruments: list[store.Instrument],
+    wanted_as: tuple[Mapping[str, str], Collection[str]],
+    through: date,
+    spans: dict[int, tuple[date, date]],
+) -> list[tuple[str, date]]:
+    """Widen `spans` to the days from the first one anything is known for up to `through` for
+    each instrument a benchmark is, and say which benchmarks are no instrument yet, with the
+    first day to ask for them from.
+
+    A benchmark is the instrument priced under its symbol or so named, the first known."""
+    symbols, benchmarks = wanted_as
+    first = store.first_day(conn)
+    if first is None or first > through:
+        return []
+    new: list[tuple[str, date]] = []
+    for symbol in dict.fromkeys(benchmarks):
+        found = next(
+            (
+                instrument.id
+                for instrument in instruments
+                if instrument.type in PRICED
+                and symbol
+                in (instrument.symbol, symbols.get(instrument.symbol) or instrument.price_symbol)
+            ),
+            None,
+        )
+        if found is None:
+            new.append((symbol, first - _MARGIN))
+        else:
+            spans[found] = (min(first, spans.get(found, (first, through))[0]), through)
+    return new
+
+
+def _instrument_of(conn: sqlite3.Connection, item: _Fetched) -> int:
+    """The instrument the closes are of: a benchmark fetched for the first time is made one,
+    an ETF in the currency it is quoted in."""
+    if item.instrument is not None:
+        return item.instrument.id
+    store.ensure_currency(conn, item.history.currency)
+    return store.instrument_id(conn, item.price_symbol, "ETFs", item.history.currency)
 
 
 def _close_series(instrument: int) -> str:

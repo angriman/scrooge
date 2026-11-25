@@ -1,11 +1,19 @@
 // What the investments returned, as the performance view of the investments page shows it:
-// the range asked for, what it is called, and the two lines of the chart, what the accounts
-// were worth and what had been put in.
+// the range asked for, what it is called, the lines of the chart (what the accounts were
+// worth, what had been put in, and what that would be worth in each benchmark), and how the
+// return compares with the benchmarks'.
 
 import { addDays, day, daysBetween } from '#lib/format/date.js';
-import { approximate, money } from '#lib/format/number.js';
+import { approximate, money, signedPercent } from '#lib/format/number.js';
 import { daysBack, RANGES, type Range } from '#lib/overview/range.js';
-import type { Amount, Day, InvestedDay, Measured, MeasuredAccount } from '#lib/types.js';
+import type {
+	Amount,
+	BenchmarkReturn,
+	Day,
+	InvestedDay,
+	Measured,
+	MeasuredAccount
+} from '#lib/types.js';
 
 export { RANGES, type Range };
 
@@ -75,6 +83,8 @@ export interface Plot {
 	/** The paths of the two lines, in the frame's coordinates. */
 	value: string;
 	invested: string;
+	/** The path of each benchmark's line, in the order of the series' `benchmarks`. */
+	benchmarks: string[];
 	/** The value line closed down to the bottom of the plot, to fill under it. */
 	area: string;
 	/** The lowest and highest amounts the plot spans. */
@@ -85,14 +95,17 @@ export interface Plot {
 	y: (amount: number) => number;
 }
 
-/** The two lines of `series` in `frame`, across by day (the first, the day before the range,
- * at the left edge) and up by amount, both lines on one scale with a little room above and
- * below. Null without two days to draw between. */
+/** The lines of `series` in `frame`, across by day (the first, the day before the range, at
+ * the left edge) and up by amount, every line on one scale with a little room above and below.
+ * Null without two days to draw between. */
 export function plot(series: readonly InvestedDay[], frame: Frame): Plot | null {
 	if (series.length < 2) return null;
 	const values = series.map((point) => approximate(point.value));
 	const invested = series.map((point) => approximate(point.invested));
-	const every = [...values, ...invested];
+	const benchmarks = series[0].benchmarks.map((_, index) =>
+		series.map((point) => approximate(point.benchmarks[index]))
+	);
+	const every = [...values, ...invested, ...benchmarks.flat()];
 	let [low, high] = [Math.min(...every), Math.max(...every)];
 	const room = (high - low) * 0.08 || Math.abs(high) * 0.08 || 1;
 	[low, high] = [low - room, high + room];
@@ -113,12 +126,37 @@ export function plot(series: readonly InvestedDay[], frame: Frame): Plot | null 
 	return {
 		value,
 		invested: line(invested),
+		benchmarks: benchmarks.map(line),
 		area: `${value}L${round(xs.at(-1)!)},${bottom}L${round(xs[0])},${bottom}Z`,
 		low,
 		high,
 		xs,
 		y
 	};
+}
+
+/** How the benchmarks did over the days the time-weighted return counts, to set beside it:
+ * `VT +12.3%, VOO +15.0% over the same period`. Null without a return or a benchmark. */
+export function compared(
+	twr: Amount | null,
+	benchmarks: readonly BenchmarkReturn[]
+): string | null {
+	if (twr === null || !benchmarks.length) return null;
+	const each = benchmarks.map(
+		(benchmark) => `${benchmark.symbol} ${signedPercent(benchmark.return)}`
+	);
+	return `${each.join(', ')} over the same period`;
+}
+
+/** What the chart's caption says of the benchmarks' lines, after what it says of the others;
+ * nothing without a benchmark. */
+export function instead(benchmarks: readonly BenchmarkReturn[]): string {
+	const symbols = benchmarks.map((benchmark) => benchmark.symbol);
+	if (!symbols.length) return '';
+	const worth = 'what that money would be worth had it gone into';
+	if (symbols.length === 1) return ` In ${symbols[0]} is ${worth} ${symbols[0]} instead, on the same days.`;
+	const listed = `In ${symbols.slice(0, -1).join(', in ')} and in ${symbols.at(-1)}`;
+	return ` ${listed} are ${worth} each instead, on the same days.`;
 }
 
 /** The day of `xs` nearest `x`: what the pointer is over. */

@@ -67,7 +67,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from scrooge import networth
+from scrooge import benchmark, networth
 from scrooge.cashflow import _INVESTING
 from scrooge.networth import CARD, PENSION, PILLAR2, MissingRateError, Series, convert, rates_on
 from scrooge.storage.money import from_nano
@@ -120,6 +120,7 @@ class Point:
     day: date
     value: Decimal
     invested: Decimal  # the value at the start of the range and the net flows since
+    benchmarks: tuple[Decimal, ...] = ()  # the line of each of `Performance.benchmarks`
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +145,8 @@ class Performance:
     holders: tuple[Holder, ...]  # by owner, then the largest at the end first
     missing: tuple[str, ...] = ()  # why accounts were left out: a currency without a rate
     left_out: tuple[str, ...] = ()  # those accounts, named with their owner
+    benchmarks: tuple[benchmark.Benchmark, ...] = ()  # what holding each returned instead
+    unbenchmarked: tuple[str, ...] = ()  # why a benchmark asked for is left out
 
 
 # ---------------------------------------------------------------------------- rates of return
@@ -400,9 +403,11 @@ def run(
     owner: str | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
     range_: str = DEFAULT_RANGE,
+    benchmarks: Sequence[str] = (),
 ) -> Performance:
     """What the investment accounts of `owner`, or of everyone, returned over `range_` (one of
-    RANGES, ending with the last day net worth is known for), in `currency`."""
+    RANGES, ending with the last day net worth is known for), in `currency`; and beside them
+    the `benchmarks`, by symbol (`benchmark.follow`)."""
     valued = networth.value(conn, owner)
     accounts = {
         int(r[0]): _Account(int(r[0]), str(r[1]), str(r[2]), str(r[3]), r[4], r[5])
@@ -451,11 +456,16 @@ def run(
     every = _Days(*(_added(getattr(m[2], part) for m in measured) for part in _Days.__slots__))
     total, put = every.values, every.flows
     floor = _floor(currency, rates, days).after(start).values
+    totals = _rounded(_measure(every, base + _ONE_DAY, floor))
+    followed, unbenchmarked = _followed(
+        conn, benchmarks, [base, *days[start + 1 :]], every, totals=totals, currency=currency
+    )
     invested, points = total[0], []
     for at, day in enumerate([base, *days[start + 1 :]]):
         if at:
             invested += put[at]
-        points.append(Point(day, total[at].quantize(_CENT), invested.quantize(_CENT)))
+        lines = tuple(each.values[at] for each in followed)
+        points.append(Point(day, total[at].quantize(_CENT), invested.quantize(_CENT), lines))
     rows = [
         Holder(
             owner_,
@@ -468,10 +478,44 @@ def run(
     rows.sort(key=lambda row: (row.owner, -row.measured.end, row.name))
     return replace(
         found,
-        totals=_rounded(_measure(every, base + _ONE_DAY, floor)),
+        totals=totals,
         points=sampled(points),
         holders=tuple(rows),
+        benchmarks=tuple(each.benchmark for each in followed),
+        unbenchmarked=tuple(unbenchmarked),
     )
+
+
+def _followed(  # noqa: PLR0913  # the benchmarks, and the days and money of the range
+    conn: sqlite3.Connection,
+    symbols: Sequence[str],
+    days: Sequence[date],
+    every: _Days,
+    *,
+    totals: Measured,
+    currency: str,
+) -> tuple[list[benchmark.Followed], list[str]]:
+    """Each benchmark over the range's `days`, its return counted from where the time-weighted
+    return is; and why each one that cannot be is left out."""
+    start = 0 if totals.since is None else (totals.since - days[0]).days - 1
+    followed: list[benchmark.Followed] = []
+    unbenchmarked: list[str] = []
+    for symbol in symbols:
+        try:
+            followed.append(
+                benchmark.follow(
+                    conn,
+                    symbol,
+                    days,
+                    [every.values[0], *every.flows[1:]],
+                    currency=currency,
+                    late=every.late,
+                    start=start,
+                )
+            )
+        except (benchmark.BenchmarkError, MissingRateError) as exc:
+            unbenchmarked.append(f"{symbol} is left out: {exc}")
+    return followed, unbenchmarked
 
 
 def _rounded(measured: Measured) -> Measured:

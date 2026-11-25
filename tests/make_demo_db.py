@@ -33,7 +33,7 @@ from typing import TextIO
 
 import yaml
 
-from scrooge import importing, marketdata, networth, overview, prices
+from scrooge import benchmark, importing, marketdata, networth, overview, prices
 from scrooge.storage import db
 from tests.conftest import FIXTURES
 from tests.fakes import FakeSource
@@ -103,6 +103,8 @@ FUNDS = {
     "CH0000000011": ("ALPHACH.SW", "Equities Switzerland", "1402", 0.06, 0.12),
     "CH0000000029": ("ALPHAWLD.SW", "Equities World ex CH", "1158", 0.09, 0.14),
 }
+# The benchmarks the investments are set beside (`benchmark.DEFAULT`), in dollars: held by no one.
+BENCHMARKS = {"VT": ("112.30", 0.08, 0.15), "VOO": ("468.50", 0.10, 0.16)}
 RATES = {
     "USD": ("0.8850", -0.04, 0.06),
     "EUR": ("0.9420", -0.01, 0.04),
@@ -143,7 +145,12 @@ def build(
         for owner, files in _statements(folder, first, market, scans=scans).items():
             _load(conn, built.database, owner, [files], setup=setup, now=now)
         refreshed = marketdata.refresh(
-            conn, market.source(), through=market.last, now=now, currencies=networth.CURRENCIES
+            conn,
+            market.source(),
+            through=market.last,
+            now=now,
+            currencies=networth.CURRENCIES,
+            benchmarks=benchmark.DEFAULT,
         )
         shown = overview.run(conn, currency="CHF")
     finally:
@@ -209,6 +216,7 @@ class Market:
             **STOCKS,
             **{symbol: (start, drift, vol) for symbol, _, start, drift, vol in FUNDS.values()},
             **{prices.rate_symbol(c, marketdata.BASE): spec for c, spec in RATES.items()},
+            **BENCHMARKS,  # last: the walks before them stay as they were
         }
         return cls(
             {symbol: _walk(draw, days, *spec) for symbol, spec in walks.items()},
