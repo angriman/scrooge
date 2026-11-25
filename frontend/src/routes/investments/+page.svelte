@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { tick } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { day } from '#lib/format/date.js';
 	import { percent, percentOf, sum } from '#lib/format/number.js';
@@ -258,6 +259,8 @@
 		lastDay={held.day}
 		{people}
 		bind:open
+		token={data.session.read_only ? null : data.session.token}
+		onlogo={() => invalidateAll()}
 	/>
 
 	{@render pensionGroup()}

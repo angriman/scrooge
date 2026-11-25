@@ -59,6 +59,7 @@ from scrooge.errors import ConfigError
 from scrooge.models import Kind
 from scrooge.prices import PriceError
 from scrooge.storage import db, originals, store
+from scrooge.storage import logos as store_logos
 from scrooge.validation import ReconciliationError
 from scrooge.web import forms, wire
 from scrooge.web import uploads as uploads_
@@ -241,6 +242,66 @@ def _holdings(request: Request) -> Response:
         found = logos(request, conn)
     shown = wire.holdings(held, returned) if held.day else None
     return JSONResponse({"holdings": shown, "logos": found, "errors": []})
+
+
+def _logos_now(request: Request) -> Response:
+    with db.reading(request.app.state.database) as conn:
+        found = logos(request, conn)
+    return JSONResponse({"logos": found, "errors": []})
+
+
+async def _set_logo(request: Request) -> Response:
+    """Keep the image sent (`file`) as the logo of the instrument `symbol`, in place of any it
+    had, and send every logo as it then is. Nothing is fetched: the image is the user's own."""
+    _writable(request, request.headers.get("x-token", ""))
+    try:
+        async with request.form(max_files=1) as form:
+            symbol = str(form.get("symbol", ""))
+            part = form.get("file")
+            image = await part.read() if isinstance(part, UploadFile) else b""
+            name = (
+                uploads_.name(part.filename)
+                if isinstance(part, UploadFile) and part.filename
+                else ""
+            )
+    except HTTPException as exc:
+        return _refused((f"No logo was kept: {exc.detail}",))
+    state = request.app.state
+
+    def keep() -> None:
+        conn = db.connect(state.database)
+        try:
+            store_logos.add(conn, symbol, image, name, state.clock())
+        finally:
+            conn.close()
+
+    try:
+        await run_in_threadpool(keep)
+    except store_logos.LogoError as exc:
+        return JSONResponse({"errors": [f"No logo was kept: {exc}."]}, 409)
+    return _logos_now(request)
+
+
+async def _remove_logo(request: Request) -> Response:
+    """Forget the logo of the instrument `{"symbol"}`, and send every logo as it then is."""
+    sent = await _sent(request)
+    if sent is None:
+        return _refused(('Send {"symbol": ...} as JSON.',))
+    symbol = str(sent.get("symbol", ""))
+    state = request.app.state
+
+    def forget() -> None:
+        conn = db.connect(state.database)
+        try:
+            store_logos.remove(conn, symbol)
+        finally:
+            conn.close()
+
+    try:
+        await run_in_threadpool(forget)
+    except store_logos.LogoError as exc:
+        return JSONResponse({"errors": [wire.sentence(exc)]}, 409)
+    return _logos_now(request)
 
 
 def _statements(request: Request) -> Response:
@@ -1075,6 +1136,8 @@ routes = [
     Route("/month", _month, name="api_month"),
     Route("/attention", _attention, name="api_attention"),
     Route("/holdings", _holdings, name="api_holdings"),
+    Route("/logos", _set_logo, methods=["POST"], name="api_set_logo"),
+    Route("/logos/remove", _remove_logo, methods=["POST"], name="api_remove_logo"),
     Route("/statements", _statements, name="api_statements"),
     Route("/transactions", _transactions, name="api_transactions"),
     Route("/transactions/category", _categorize, methods=["POST"], name="api_categorize"),
