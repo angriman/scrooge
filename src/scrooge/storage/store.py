@@ -901,6 +901,11 @@ class Instrument:
     price_symbol: str | None  # where its prices are fetched; None until that is known
 
 
+def account_names(conn: sqlite3.Connection) -> dict[int, str]:
+    """Each account's name, by its id."""
+    return {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
+
+
 def symbols(conn: sqlite3.Connection) -> dict[int, str]:
     """Each instrument's symbol, by its id."""
     return {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, symbol FROM instruments")}

@@ -300,7 +300,7 @@ def test_lots_follow_the_quantity_held_through_splits_and_no_cost_is_lost(
     last = day(1) + timedelta(days=len(steps) - 1)
     assert holdings.timeline(changes)[1][-1].quantity == held
     later = LotTrade(last + timedelta(days=1), Event("later", D(7), 7), True)
-    events, per_share = portfolio._lot_events([*trades, later], splits, last)
+    events, per_share = portfolio.lot_events([*trades, later], splits, last)
     lots = open_lots(events)
     assert sum((left for _, left, _ in lots), D(0)) == held * per_share
     handed_out = fifo_costs(events)

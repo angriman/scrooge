@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -195,15 +195,21 @@ def _sum(rows: Iterable[Converted]) -> _Sums:
     return sums
 
 
-def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Holding, ...]:
-    """The rows grouped by what paid them, what was paid the most first."""
-    named: dict[str, tuple[str, str]] = {}  # symbol in capitals -> as stored, and its name
+def named_instruments(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
+    """Symbol in capitals -> `(symbol, name)` as stored, preferring an entry with a name."""
+    named: dict[str, tuple[str, str]] = {}
     for symbol, name in conn.execute("SELECT symbol, name FROM instruments ORDER BY id"):
         if not named.get(symbol.upper(), ("", ""))[1]:
-            named[symbol.upper()] = (symbol, name)
+            named[symbol.upper()] = (str(symbol), str(name))
+    return named
+
+
+def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Holding, ...]:
+    """The rows grouped by what paid them, what was paid the most first."""
+    named = named_instruments(conn)
     groups: dict[tuple[str, str | None, str | None], _Sums] = {}
     for each in rows:
-        key = _holding(each.row.counterparty, named)
+        key = holding_of(each.row.counterparty, named)
         where = (key, None, None) if key else (each.row.account, each.row.account, each.row.owner)
         groups.setdefault(where, _Sums()).add(each)
     owners: dict[str, set[str | None]] = {}  # an account's name -> the people who have one
@@ -227,7 +233,7 @@ def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Hold
     return tuple(holdings)
 
 
-def _holding(counterparty: str, named: dict[str, tuple[str, str]]) -> str:
+def holding_of(counterparty: str, named: Mapping[str, tuple[str, str]]) -> str:
     """What a row's counterparty names, as its holding is keyed: in capitals with its spaces
     tidied, and without an ISIN in brackets after the symbol, unless only the ISIN is an
     instrument's symbol."""

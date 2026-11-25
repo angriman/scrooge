@@ -48,9 +48,10 @@ from decimal import Decimal
 from scrooge import networth
 from scrooge.categories import DIVIDENDS, WITHHOLDING_TAX
 from scrooge.networth import LotTrade, Series, rates_on
-from scrooge.payouts import _holding
-from scrooge.performance import _on, instrument_ranges
-from scrooge.portfolio import Portfolio, Position, _lot_events, _Split
+from scrooge.payouts import holding_of, named_instruments
+from scrooge.performance import instrument_ranges, on_day
+from scrooge.portfolio import Portfolio, Position, Split, lot_events, splits_through
+from scrooge.storage import store
 from scrooge.storage.bills import Event, fifo_costs
 from scrooge.storage.money import from_nano, to_nano
 from scrooge.storage.store import committed_or_typed
@@ -121,8 +122,8 @@ def run(conn: sqlite3.Connection, valued: networth.Valued | None, held: Portfoli
         return Found()
     days, currency = valued.days, held.currency
     rates = rates_on(conn, days)
-    accounts = {int(i): str(name) for i, name in conn.execute("SELECT id, name FROM accounts")}
-    symbols = {int(i): str(s) for i, s in conn.execute("SELECT id, symbol FROM instruments")}
+    accounts = store.account_names(conn)
+    symbols = store.symbols(conn)
     positions = {(p.owner, p.account, p.symbol, p.currency, p.asset): p for p in held.positions}
     made_of: dict[_Key, _Of] = defaultdict(_Of)
     ids: dict[tuple[int, int], _Key] = {}
@@ -140,7 +141,7 @@ def run(conn: sqlite3.Connection, valued: networth.Valued | None, held: Portfoli
             made_of[key].series.append(each)
             ids[each.account_id, each.instrument_id] = key
     trades = _trades(conn, days)
-    splits = _splits(conn, days[-1])
+    splits = splits_through(conn, days[-1])
     by_position: dict[_Key, list[_Trade]] = defaultdict(list)
     for trade in trades:
         if (trade.account, trade.instrument) in ids:
@@ -244,19 +245,9 @@ def _trades(conn: sqlite3.Connection, days: Sequence[date]) -> list[_Trade]:
     ]
 
 
-def _splits(conn: sqlite3.Connection, last: date) -> dict[int, list[_Split]]:
-    splits: dict[int, list[_Split]] = defaultdict(list)
-    for instrument, day, new, old in conn.execute(
-        "SELECT instrument_id, date, numerator, denominator FROM splits WHERE date <= ?",
-        (last.isoformat(),),
-    ):
-        splits[int(instrument)].append((date.fromisoformat(day), int(new), int(old)))
-    return splits
-
-
 def _realised(  # noqa: PLR0913  # the trades, the splits, and how to convert them
     trades: Sequence[_Trade],
-    splits: Sequence[_Split],
+    splits: Sequence[Split],
     days: Sequence[date],
     native: str,
     *,
@@ -266,12 +257,12 @@ def _realised(  # noqa: PLR0913  # the trades, the splits, and how to convert th
     """What the sales of `trades` brought less what their lots cost, first in first out, in
     `currency`: each lot at the rate of the day it was bought, each sale at that of its own."""
     lots = [trade.lot for trade in trades]
-    events, _ = _lot_events(lots, splits, days[-1])
+    events, _ = lot_events(lots, splits, days[-1])
     unpriced = False
     converted: list[Event] = []
     brought: dict[str, Decimal] = {}
     for trade, event in zip(trades, events, strict=True):
-        at = _on(
+        at = on_day(
             from_nano(event.cost_nano), native, currency, rates, (trade.lot.day - days[0]).days
         )
         if event.quantity > 0:
@@ -305,10 +296,7 @@ def _paid(
     """Add to each position what it paid: the dividends booked in its account whose
     counterparty names its instrument, and the tax withheld from them; each is also taken out
     of it at the end of its day. A row in a currency without a rate is left out."""
-    named: dict[str, tuple[str, str]] = {}
-    for symbol, name in conn.execute("SELECT symbol, name FROM instruments ORDER BY id"):
-        if not named.get(symbol.upper(), ("", ""))[1]:
-            named[symbol.upper()] = (symbol, name)
+    named = named_instruments(conn)
     by_account: dict[tuple[str, str], list[_Key]] = defaultdict(list)
     for key in made_of:
         by_account[key[0], key[1]].append(key)
@@ -318,14 +306,14 @@ def _paid(
         (DIVIDENDS, WITHHOLDING_TAX, days[0].isoformat(), days[-1].isoformat()),
     )
     for owner, account, day, row_currency, nano, counterparty, category in rows:
-        names = _holding(str(counterparty or ""), named)
+        names = holding_of(str(counterparty or ""), named)
         keys = [key for key in by_account.get((owner, account), []) if key[2].upper() == names]
         if not keys or (row_currency != currency and not {row_currency, currency} <= rates.keys()):
             continue
         of = made_of[keys[0]]
         on = date.fromisoformat(day)
         amount = from_nano(nano)
-        at = _on(amount, str(row_currency), currency, rates, (on - days[0]).days)
+        at = on_day(amount, str(row_currency), currency, rates, (on - days[0]).days)
         if category == WITHHOLDING_TAX:
             of.tax += at
         else:

@@ -18,6 +18,7 @@ from datetime import date
 from decimal import Decimal
 
 from scrooge import networth
+from scrooge.storage import store
 
 MONTHS = 12  # month-ends kept for the line of an account's balance
 _CENT = Decimal("0.01")
@@ -72,7 +73,7 @@ def of(
     rates once. Raises `networth.MissingRateError` as that does."""
     if valued is None:
         return {}
-    names = {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
+    names = store.account_names(conn)
     kept = ends(valued.days)[-MONTHS:]
     days = [valued.days[index] for index in kept]
     # Only the month-ends are converted: the rates are carried to those days alone. The last

@@ -47,7 +47,7 @@ from typing import TypeVar
 from scrooge import query
 from scrooge.extractors.common import month_end
 from scrooge.models import CERTIFICATE_SOURCES
-from scrooge.storage import holdings
+from scrooge.storage import holdings, store
 from scrooge.storage.bills import Event, open_lots
 from scrooge.storage.money import from_nano
 from scrooge.storage.store import committed_or_typed
@@ -802,7 +802,7 @@ def worth_of(
         return NetWorth(currency, (), (), ())
     if rates is None:
         rates = rates_on(conn, valued.days)
-    names = _account_names(conn) if frozen else {}
+    names = store.account_names(conn) if frozen else {}
     sums: dict[tuple[str, str, str], list[list[Decimal]]] = defaultdict(list)
     came: dict[tuple[str, str, str], list[list[Decimal]]] = defaultdict(list)
     first = valued.days[0]
@@ -833,10 +833,6 @@ def worth_of(
         )
 
     return NetWorth(currency, valued.days, ordered(sums), valued.notes, ordered(came))
-
-
-def _account_names(conn: sqlite3.Connection) -> dict[int, str]:
-    return {int(r[0]): str(r[1]) for r in conn.execute("SELECT id, name FROM accounts")}
 
 
 def frozen_notes(conn: sqlite3.Connection, frozen: Iterable[FrozenAccount]) -> list[str]:
@@ -872,7 +868,7 @@ def balances(
     `currency` at that day's rates, to the cent; by its owner and name."""
     if valued is None:
         return {}
-    names = _account_names(conn)
+    names = store.account_names(conn)
     rates = rates_on(conn, valued.days[-1:])
     sums: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
     for series in valued.series:

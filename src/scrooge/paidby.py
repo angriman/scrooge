@@ -68,6 +68,7 @@ def run(
     first: date | None = None,
     last: date | None = None,
     currency: str = DEFAULT_CURRENCY,
+    prepared: analysis.Prepared | None = None,
 ) -> PaidBy | None:
     """Who paid what the household spent from `first` to `last`, both included, in `currency`,
     ranges filled in as for spending. None with fewer than two people with statements
@@ -76,7 +77,11 @@ def run(
     names = [person.name for person in query.people(conn) if person.last is not None]
     if len(names) < 2:  # a household is more than one person
         return None
-    found = analysis.rows(conn, None, currency, spending.is_expense)
+    found = (
+        analysis.rows(conn, None, currency, spending.is_expense)
+        if prepared is None
+        else prepared.select(spending.is_expense)
+    )
     span = found.span(first, last)
     if span is None:
         return None

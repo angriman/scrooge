@@ -95,10 +95,15 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     owner: str | None = None,
     grouping: Grouping = Grouping.MONTH,
     currency: str = DEFAULT_CURRENCY,
+    prepared: analysis.Prepared | None = None,
 ) -> Savings:
     """What was earned, spent and saved from `first` to `last`, both included, by `owner`
     or by everyone, in `currency`, ranges filled in as for income."""
-    found = analysis.rows(conn, owner, currency, _counts)
+    found = (
+        analysis.rows(conn, owner, currency, _counts)
+        if prepared is None
+        else prepared.select(_counts)
+    )
     span = found.span(first, last)
     if span is None:
         return Savings(currency, None, None, None, None, (), found.through)
