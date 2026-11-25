@@ -33,15 +33,23 @@ def build(folder: Path, tmp_path: Path) -> tuple[make_dev_db.Built, str]:
 def test_two_years_for_both_people_all_committed(tmp_path: Path) -> None:
     built, said = build(tmp_path / "demo", tmp_path)
     with db.reading(built.database) as conn:
-        shown = overview.run(conn, currency="CHF")
+        shown = overview.run(conn, currency="EUR")
         files = conn.execute(
             "SELECT min(period_start), max(period_end), count(*), count(committed_at) "
             "FROM statement_files"
         ).fetchone()
+        currencies = {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT i.currency FROM positions p "
+                "JOIN instruments i ON i.id = p.instrument_id"
+            )
+        }
         uncategorized = conn.execute("SELECT 1 FROM transactions WHERE category_id IS NULL")
         assert not uncategorized.fetchall()
     assert files[:2] == ("2024-10-01", "2026-09-30")
     assert files[2] == files[3]
+    assert {"EUR", "USD"} <= currencies
     assert {part.name for part in shown.people} == {"Lukas", "Anna"}
     assert {part.name for part in shown.assets} == {
         networth.CASH,
@@ -49,7 +57,7 @@ def test_two_years_for_both_people_all_committed(tmp_path: Path) -> None:
         networth.ETFS,
         networth.STOCKS,
     }
-    assert f"net worth {shown.total:,.2f} CHF on {shown.day}" in said
+    assert f"net worth {shown.total:,.2f} EUR on {shown.day}" in said
 
 
 def test_the_same_on_every_run(tmp_path: Path) -> None:

@@ -13,6 +13,12 @@ Sources: Migros Bank, Revolut, Revolut Savings, IBKR, Tastytrade, Swisscard, Mor
 stock plan, Charles Schwab Equity Awards, finpension 3a, and the scanned pension certificates
 of AXA and Servisa.
 
+![The overview: net worth over the past year by kind of asset, how it moved and what was spent last month, what is held and the largest holdings](.github/screenshots/overview.png)
+
+![The investments: every security as a map and in a sortable list, with its value, share and gain since bought](.github/screenshots/investments.png)
+
+The screenshots show `make demo`: two invented people and two years of invented statements.
+
 ## Use
 
 ```sh
@@ -205,6 +211,8 @@ To add a bank or broker, see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-source).
 `make dev-db` builds a database from those fixtures alone (two invented people, every source,
 invented prices) in `output/dev/`, made again on every run, and prints how to serve it. It
 never empties a folder it did not make, nor the real database's.
+`make demo` does the same in `output/demo/` with two years of statements written for the
+same people (the README's screenshots).
 
 ## License
 
