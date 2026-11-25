@@ -96,6 +96,7 @@ docker compose exec scrooge scrooge keep originals-to-add/
 docker compose exec scrooge scrooge import --owner Name --review users/name/statements/
 docker compose exec scrooge scrooge migrate-files          # then with --write
 docker compose exec scrooge scrooge doctor                 # what is wrong; changes nothing
+docker compose exec scrooge scrooge migrate --dry-run      # a new schema, tried on a copy
 ```
 
 A path given to a command is a path inside the container: under `/data`.
@@ -114,6 +115,7 @@ and schedule `docker compose exec -T scrooge scrooge prices` in the folder of `c
 
 ```sh
 docker compose pull
+docker compose run --rm scrooge scrooge migrate --dry-run   # the new version, on a copy
 docker compose up -d
 docker image prune -f      # the image it replaced
 ```
@@ -121,13 +123,22 @@ docker image prune -f      # the image it replaced
 With `:latest` in `SCROOGE_IMAGE` that is the newest release; with a tag, the update is that
 tag changed first. Going back is the same with the older tag.
 
+`migrate --dry-run` runs the version just pulled, beside the one still serving the pages: it
+reads the database without changing it, copies it into the container's `/tmp`, brings the
+copy to the new schema one migration at a time and says how each went, checks the copy as
+`doctor` does (`quick_check`, every reference between tables) and removes it. When it ends
+with "the copy did not come through" (exit 1), do not go on with `up -d`: the pages keep
+running the version they have, the database is as it was, and the output says which migration
+failed and why. With nothing to migrate it says so, and checks the copy all the same.
+
 A version with a new schema brings the database up to date as it starts, after copying it to
 `backups/`; the log says so. When that fails the container does not start, and the log says
 why and where the copy is. Everyone signs in again: sessions live in the app's memory.
 
 Before an update, `scrooge doctor` (see Commands) says whether the database's schema is older
 than the code's, which the new version would migrate, and whatever else is wrong: the rules,
-the originals, the prices. It changes nothing.
+the originals, the prices. It changes nothing. `migrate --dry-run`, above, is the new version
+itself trying it.
 
 After it, in the folder of `compose.yaml`:
 
@@ -213,12 +224,14 @@ both processors and pushes `ghcr.io/<owner>/scrooge:<tag>` and `:latest`
 
 ```sh
 make release VERSION=v1.2.3     # tag main, push the tag, wait for GitHub to build the image
-make deploy-update              # where the app runs: pull it, restart, drop the image replaced
+make deploy-update              # where the app runs: pull it, try its migrations on a copy,
+                                # restart, drop the image replaced
 ```
 
 Then the steps after an update of "A new version", where the app runs: `doctor` first.
 
-`deploy-update` runs the three commands of "A new version" over ssh. Where is set in
+`deploy-update` runs the four commands of "A new version" over ssh, and stops before `up -d`
+when `migrate --dry-run` fails: the app keeps the version it runs. Where is set in
 `Makefile.local` (git-ignored), for example for a Synology NAS:
 
 ```make

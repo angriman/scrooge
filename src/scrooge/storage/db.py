@@ -19,8 +19,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 
+_PACKAGE = "scrooge.storage.migrations"
 _VERSION_TABLE = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version    INTEGER NOT NULL PRIMARY KEY,
@@ -99,11 +101,9 @@ def timestamp(moment: datetime) -> str:
     return moment.isoformat(timespec="seconds")
 
 
-def migrations() -> list[tuple[int, Migration]]:
-    """(version, migration) of every migration file, in order."""
-    package = "scrooge.storage.migrations"
-    found: list[tuple[int, Migration]] = []
-    for entry in resources.files(package).iterdir():
+def _files() -> Iterator[tuple[int, str, Traversable]]:
+    """(version, name without suffix, file) of every migration file, in no order."""
+    for entry in resources.files(_PACKAGE).iterdir():
         stem, dot, suffix = entry.name.rpartition(".")
         if not dot or suffix not in {"sql", "py"} or stem.startswith("_"):
             continue
@@ -111,13 +111,25 @@ def migrations() -> list[tuple[int, Migration]]:
         if not number.isdigit():
             msg = f"migration {entry.name!r} must be named NNNN_description.{suffix}"
             raise MigrationError(msg)
-        if suffix == "sql":
-            found.append((int(number), entry.read_text(encoding="utf-8")))
+        yield int(number), stem, entry
+
+
+def migrations() -> list[tuple[int, Migration]]:
+    """(version, migration) of every migration file, in order."""
+    found: list[tuple[int, Migration]] = []
+    for number, stem, entry in _files():
+        if entry.name.endswith(".sql"):
+            found.append((number, entry.read_text(encoding="utf-8")))
         else:
-            module = importlib.import_module(f"{package}.{stem}")
+            module = importlib.import_module(f"{_PACKAGE}.{stem}")
             rebuilds = getattr(module, "REBUILDS", False)
-            found.append((int(number), Rebuild(module.migrate) if rebuilds else module.migrate))
+            found.append((number, Rebuild(module.migrate) if rebuilds else module.migrate))
     return sorted(found, key=lambda migration: migration[0])
+
+
+def names() -> dict[int, str]:
+    """The name of each migration's file, without its suffix, by its version."""
+    return {number: stem for number, stem, _ in _files()}
 
 
 def latest() -> int:
@@ -132,17 +144,24 @@ def version(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT coalesce(max(version), 0) FROM schema_version").fetchone()[0])
 
 
-def migrate(conn: sqlite3.Connection, now: datetime) -> list[int]:
-    """Apply the migrations the database has not seen yet; returns their versions."""
-    conn.execute(_VERSION_TABLE)
-    current = version(conn)
-    pending = [(number, step) for number, step in migrations() if number > current]
-    known = latest()
+def pending(conn: sqlite3.Connection) -> list[tuple[int, Migration]]:
+    """The migrations the database has not seen yet, in order; nothing is changed. A database
+    newer than this code is refused."""
+    current, known = version(conn), latest()
     if current > known:
         msg = f"the database is at schema version {current}, this code knows up to {known}"
         raise MigrationError(msg)
+    return [(number, step) for number, step in migrations() if number > current]
+
+
+def migrate(conn: sqlite3.Connection, now: datetime, through: int | None = None) -> list[int]:
+    """Apply the migrations the database has not seen yet, those up to version `through` when
+    it is given; returns their versions."""
+    conn.execute(_VERSION_TABLE)
     applied: list[int] = []
-    for number, step in pending:
+    for number, step in pending(conn):
+        if through is not None and number > through:
+            break
         try:
             if isinstance(step, Rebuild):
                 _rebuild(conn, number, step, now)

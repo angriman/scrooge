@@ -95,8 +95,8 @@ release: ## Tag what is pushed to main as VERSION (make release VERSION=v1.2.3),
 		[ -n "$$run" ] && exec gh run watch --exit-status "$$run"; sleep 2; \
 	done; echo "release: no image run for $(VERSION) yet: see GitHub > Actions"; exit 1
 
-deploy-update: ## Run the newest image where the app is (DEPLOY_HOST): pull it and restart
-	ssh -t $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose pull && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose up -d && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) image prune -f'
+deploy-update: ## Run the newest image where the app is (DEPLOY_HOST): pull it, try its migrations on a copy, restart
+	ssh -t $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose pull && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose run --rm scrooge scrooge migrate --dry-run && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) compose up -d && $(DEPLOY_SUDO) $(DEPLOY_DOCKER) image prune -f'
 
 dev-db: ## (Re)build output/dev/scrooge.db from the fixtures, for two invented people
 	$(UV) run python -m tests.make_dev_db $(DEV_DB)
