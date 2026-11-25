@@ -40,12 +40,13 @@ __pycache__/
 .idea/
 .vscode/
 
-# Internal docs and agent instructions: not committed for now.
+# Internal docs and local agent configuration: not committed.
 docs/
-CLAUDE.md
 CLAUDE.local.md
+GEMINI.local.md
 AGENTS.md
 .claude/
+.agents/
 
 # Tooling caches
 .mypy_cache/
