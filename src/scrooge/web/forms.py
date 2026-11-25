@@ -106,11 +106,12 @@ def analysis_view(params: Mapping[str, str]) -> AnalysisView:
 
 
 def transactions_filter(params: Mapping[str, str]) -> Parsed:
-    """`from`, `to`, `booking`, `owner`, `account`, `category`, `kind`, `min`, `max`, `text`,
-    `merchant`.
+    """`from`, `to`, `booking`, `owner`, `account`, `accounts`, `category`, `kind`, `min`,
+    `max`, `text`, `merchant`.
 
-    `from` and `to` are a day, a month or a year, as for `scrooge query`. `kind` may name
-    several kinds, separated by commas. An empty field is the same as a missing one.
+    `from` and `to` are a day, a month or a year, as for `scrooge query`. `accounts` is a kind
+    of account, as `query.ACCOUNTS` names them (`broker`). `kind` may name several kinds,
+    separated by commas. An empty field is the same as a missing one.
     """
     errors: list[str] = []
 
@@ -134,6 +135,11 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
             kinds.append(Kind(name))
         else:
             errors.append(f"'{name}' is not a kind of transaction.")
+    group = text("accounts")
+    if group is not None and group not in query.ACCOUNTS:
+        names = list(query.ACCOUNTS)
+        errors.append(f"'{group}' is not {', '.join(names[:-1])} or {names[-1]} accounts.")
+        group = None
     wanted = query.Filter(
         first=_day(params, "from", 0, errors),
         last=_day(params, "to", 1, errors),
@@ -147,6 +153,7 @@ def transactions_filter(params: Mapping[str, str]) -> Parsed:
         at_most=amount("max"),
         text=text("text") or "",
         merchant=text("merchant"),
+        account_kinds=query.ACCOUNTS[group] if group else (),
     )
     return Parsed(wanted, tuple(errors))
 
