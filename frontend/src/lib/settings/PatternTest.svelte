@@ -5,6 +5,7 @@ newest of them. Nothing is saved.
 -->
 <script lang="ts">
 	import { day } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { PatternTest } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { testQuery } from './rules.js';
@@ -41,19 +42,20 @@ newest of them. Nothing is saved.
 			);
 			found = await response.json();
 		} catch {
-			found = { count: 0, rows: [], errors: ['The app could not be reached: try again.'] };
+			found = { count: 0, rows: [], errors: [t('api.unreachable')] };
 		}
 		trying = false;
 	}
 
 	const field =
 		'h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none';
-	const rows = (count: number) => (count === 1 ? '1 committed row' : `${count} committed rows`);
+	const rows = (count: number) =>
+		count === 1 ? t('settings.committedRowOne') : t('settings.committedRowMany', { count });
 </script>
 
 <form onsubmit={submit} class="flex flex-wrap items-end gap-3">
 	<label class="flex min-w-0 flex-1 flex-col gap-1 text-caption text-ink-secondary">
-		Pattern to try
+		{t('settings.patternToTryLabel')}
 		<input
 			bind:value={match}
 			required
@@ -64,11 +66,11 @@ newest of them. Nothing is saved.
 		/>
 	</label>
 	<label class="flex flex-col gap-1 text-caption text-ink-secondary">
-		Money
+		{t('settings.moneyLabel')}
 		<select bind:value={direction} class={field}>
-			<option value="">In and out</option>
-			<option value="in">In</option>
-			<option value="out">Out</option>
+			<option value="">{t('settings.moneyBoth')}</option>
+			<option value="in">{t('cashflow.inShort')}</option>
+			<option value="out">{t('cashflow.outShort')}</option>
 		</select>
 	</label>
 	<button
@@ -76,7 +78,7 @@ newest of them. Nothing is saved.
 		disabled={trying}
 		class="h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60"
 	>
-		{trying ? 'Trying…' : 'Try'}
+		{trying ? t('settings.trying') : t('settings.try')}
 	</button>
 </form>
 
@@ -87,11 +89,15 @@ newest of them. Nothing is saved.
 		{/each}
 		{#if !found.errors.length}
 			<p class="text-small text-ink-secondary">
-				Matches {rows(found.count)}{found.count > found.rows.length
-					? `; the newest ${found.rows.length}:`
-					: found.count
-						? ':'
-						: '.'}
+				{t('settings.matchesCountPrefix', {
+					rows: rows(found.count),
+					tail:
+						found.count > found.rows.length
+							? t('settings.matchesNewestTail', { shown: found.rows.length })
+							: found.count
+								? ':'
+								: '.'
+				})}
 			</p>
 			{#if found.rows.length}
 				<ul class="mt-2 max-h-80 divide-y divide-line overflow-y-auto">
@@ -102,7 +108,9 @@ newest of them. Nothing is saved.
 							<span class="text-ink-muted tabular-nums">{day(row.date)}</span>
 							<span class="min-w-0 truncate text-ink" title={row.description}>
 								{row.counterparty || row.description}
-								<span class="text-ink-muted">· {row.owner} · {row.category ?? 'no category'}</span>
+								<span class="text-ink-muted"
+									>· {row.owner} · {row.category ?? t('settings.noCategoryTag')}</span
+								>
 							</span>
 							<Amount value={row.amount} currency={row.currency} class="text-ink" />
 						</li>

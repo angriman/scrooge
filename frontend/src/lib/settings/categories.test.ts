@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { ListedCategory } from '#lib/types.js';
 import {
 	categoryKey,
@@ -75,5 +76,23 @@ describe('what can be done', () => {
 	it('names rows and keys a category by its side', () => {
 		expect([rowsName(0), rowsName(1), rowsName(4)]).toEqual(['no rows', '1 row', '4 rows']);
 		expect(categoryKey(LISTED[4])).toBe('income|Trading');
+
+		setLanguage('it');
+		try {
+			expect([rowsName(0), rowsName(1), rowsName(4)]).toEqual([
+				'0 movimenti',
+				'1 movimento',
+				'4 movimenti'
+			]);
+			expect(sections(LISTED).map((s) => s.heading)).toEqual([
+				'Food',
+				'Investments',
+				'Prestiti',
+				'Entrate',
+				'Tra conti'
+			]);
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

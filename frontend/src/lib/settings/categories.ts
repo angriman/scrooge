@@ -1,6 +1,7 @@
 // The categories on the settings page: under their headings as the taxonomy has them, and what
 // each can be merged into.
 
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Headed, ListedCategory } from '#lib/types.js';
 
 export interface Section {
@@ -8,10 +9,10 @@ export interface Section {
 	categories: ListedCategory[];
 }
 
-const SIDES: Record<ListedCategory['side'], string> = {
-	expenses: 'Expenses',
-	income: 'Income',
-	transfer: 'Between accounts'
+const SIDE_KEYS: Record<ListedCategory['side'], MessageKey> = {
+	expenses: 'settings.sideExpenses',
+	income: 'settings.sideIncome',
+	transfer: 'settings.sideTransfer'
 };
 
 /** The categories under their headings: each top-level expense category, then income, then
@@ -19,7 +20,7 @@ const SIDES: Record<ListedCategory['side'], string> = {
 export function sections(listed: readonly ListedCategory[]): Section[] {
 	const found = new Map<string, ListedCategory[]>();
 	for (const category of listed) {
-		const heading = category.parent ?? SIDES[category.side];
+		const heading = category.parent ?? t(SIDE_KEYS[category.side]);
 		found.set(heading, [...(found.get(heading) ?? []), category]);
 	}
 	return [...found].map(([heading, categories]) => ({ heading, categories }));
@@ -31,8 +32,8 @@ export const categoryKey = (category: ListedCategory): string =>
 
 /** Its rows, in words. */
 export function rowsName(rows: number): string {
-	if (rows === 0) return 'no rows';
-	return rows === 1 ? '1 row' : `${rows} rows`;
+	if (rows === 0) return t('settings.rowsNone');
+	return rows === 1 ? t('settings.rowsOne') : t('settings.rowsMany', { count: rows });
 }
 
 /** The sides each name is on: a few are on both (Trading). */

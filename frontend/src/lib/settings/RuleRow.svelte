@@ -8,6 +8,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash from '@lucide/svelte/icons/trash-2';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import CategorySelect from '#lib/import/CategorySelect.svelte';
 	import type { Headed, Rule } from '#lib/types.js';
 	import { changes, directionName, draftOf, matchesName, type Draft } from './rules.js';
@@ -56,11 +57,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 	}
 
 	async function remove() {
-		if (
-			!confirm(
-				`Remove the rule ${rule.match} → ${rule.category}? Rows committed keep their category.`
-			)
-		)
+		if (!confirm(t('settings.confirmRemoveRule', { match: rule.match, category: rule.category })))
 			return;
 		await act(onremove);
 	}
@@ -75,7 +72,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 	{#if editing}
 		<form onsubmit={save} class="flex flex-wrap items-end gap-2">
 			<label class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary">
-				Pattern
+				{t('settings.patternLabel')}
 				<input
 					bind:value={draft.match}
 					required
@@ -85,19 +82,19 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				/>
 			</label>
 			<label class="flex flex-col gap-1 text-caption text-ink-secondary">
-				Category
+				{t('transactions.chipCategory')}
 				<CategorySelect
 					bind:value={draft.category}
 					{leaves}
-					label={`Category of the rule ${rule.match}`}
+					label={`${t('transactions.chipCategory')}: ${rule.match}`}
 				/>
 			</label>
 			<label class="flex flex-col gap-1 text-caption text-ink-secondary">
-				Money
+				{t('settings.moneyLabel')}
 				<select bind:value={draft.direction} class={field}>
-					<option value="">In and out</option>
-					<option value="in">In</option>
-					<option value="out">Out</option>
+					<option value="">{t('settings.moneyBoth')}</option>
+					<option value="in">{t('cashflow.inShort')}</option>
+					<option value="out">{t('cashflow.outShort')}</option>
 				</select>
 			</label>
 			<div class="flex gap-2">
@@ -106,21 +103,21 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					onclick={() => ontry(draft.match, draft.direction)}
 					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
 				>
-					Try
+					{t('settings.try')}
 				</button>
 				<button
 					type="button"
 					onclick={() => (editing = false)}
 					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
 				>
-					Cancel
+					{t('accounts.cancel')}
 				</button>
 				<button
 					type="submit"
 					disabled={busy || !draft.category}
 					class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 				>
-					{busy ? 'Saving…' : 'Save'}
+					{busy ? t('settings.saving') : t('settings.save')}
 				</button>
 			</div>
 		</form>
@@ -138,30 +135,34 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					<span class="text-ink">{rule.category}</span>
 				</p>
 				<p class="text-caption text-ink-muted">
-					{directionName(rule.direction)}{rule.account ? ` · ${rule.account} only` : ''} ·
+					{directionName(rule.direction)}{rule.account
+						? ` ${t('settings.accountOnly', { account: rule.account })}`
+						: ''} ·
 					<span class={rule.matches === null ? 'text-caution' : ''}
 						>{matchesName(rule.matches, rule.counted)}</span
 					>
 				</p>
 				{#if editable && rule.fixed}
-					<p class="text-caption text-caution">Change it in the file: {rule.fixed}.</p>
+					<p class="text-caption text-caution">
+						{t('settings.changeInFile', { file: rule.fixed })}
+					</p>
 				{/if}
 			</div>
 			<button
 				type="button"
 				class={icon}
-				aria-label={`Try ${rule.match}`}
-				title="Try its pattern"
+				aria-label={t('settings.tryRuleAria', { match: rule.match })}
+				title={t('settings.tryPatternTitle')}
 				onclick={() => ontry(rule.match, rule.direction)}
 			>
-				<span class="text-caption">Try</span>
+				<span class="text-caption">{t('settings.try')}</span>
 			</button>
 			{#if editable && !rule.fixed}
 				<button
 					type="button"
 					class={icon}
-					aria-label={`Edit the rule ${rule.match}`}
-					title="Edit"
+					aria-label={t('settings.editRuleAria', { match: rule.match })}
+					title={t('settings.edit')}
 					onclick={edit}
 				>
 					<Pencil class="size-4" aria-hidden="true" />
@@ -169,8 +170,8 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				<button
 					type="button"
 					class={icon}
-					aria-label={`Move ${rule.match} up`}
-					title="Tried earlier"
+					aria-label={t('settings.moveUpAria', { match: rule.match })}
+					title={t('settings.triedEarlierTitle')}
 					disabled={first || busy}
 					onclick={() => act(() => onmove(-1))}
 				>
@@ -179,8 +180,8 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				<button
 					type="button"
 					class={icon}
-					aria-label={`Move ${rule.match} down`}
-					title="Tried later"
+					aria-label={t('settings.moveDownAria', { match: rule.match })}
+					title={t('settings.triedLaterTitle')}
 					disabled={last || busy}
 					onclick={() => act(() => onmove(1))}
 				>
@@ -189,8 +190,8 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				<button
 					type="button"
 					class={icon}
-					aria-label={`Remove the rule ${rule.match}`}
-					title="Remove"
+					aria-label={t('settings.removeRuleAria', { match: rule.match })}
+					title={t('accounts.remove')}
 					disabled={busy}
 					onclick={remove}
 				>

@@ -10,6 +10,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	import { Command } from 'bits-ui';
 	import { untrack } from 'svelte';
 	import { month } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { KnownMerchants } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { narrow, offered, typedName } from './merchants.js';
@@ -60,18 +61,18 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	shouldFilter={false}
 	loop
 	bind:value={highlighted}
-	label="Merchants"
+	label={t('transactions.merchantsListAria')}
 	class="flex flex-col"
 >
 	<label class="relative block">
-		<span class="sr-only">Who was paid, as the cash flow names them</span>
+		<span class="sr-only">{t('transactions.merchantsSearchSr')}</span>
 		<Search
 			class="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-ink-muted"
 			aria-hidden="true"
 		/>
 		<Command.Input
 			bind:value={typed}
-			placeholder="Who was paid"
+			placeholder={t('transactions.merchantsSearchPlaceholder')}
 			autocomplete="off"
 			spellcheck="false"
 			class="h-8 w-full rounded-control border border-line bg-sunken pr-2 pl-8 text-small text-ink placeholder:text-ink-muted focus:border-brand focus:outline-none"
@@ -79,7 +80,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	</label>
 	{#if known?.since}
 		<p class="mt-2 flex justify-between px-2 text-caption text-ink-muted">
-			<span>Spent since {month(known.since)}</span>
+			<span>{t('transactions.merchantsSpentSince', { month: month(known.since) })}</span>
 			<span>{known.currency}</span>
 		</p>
 	{/if}
@@ -92,39 +93,45 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 						<span class="text-caption text-ink-muted">{merchant.count}×</span>
 						<Amount value={merchant.spent} places={0} />
 					{:else if merchant.last}
-						<span class="text-caption text-ink-muted">Last {month(merchant.last)}</span>
+						<span class="text-caption text-ink-muted"
+							>{t('transactions.merchantLastMonth', { month: month(merchant.last) })}</span
+						>
 					{/if}
 					{#if merchant.name.toLowerCase() === current.toLowerCase()}
 						<Check class="size-3.5 shrink-0 self-center text-brand" aria-hidden="true" />
-						<span class="sr-only">(chosen)</span>
+						<span class="sr-only">{t('transactions.chosenSr')}</span>
 					{/if}
 				</Command.Item>
 			{/each}
 			{#if own !== null}
 				<Command.Item value={OWN} onSelect={() => onpick(own ?? '')} class={item}>
-					<span class="min-w-0 flex-1 truncate">Show “{own}”</span>
-					<span class="text-caption text-ink-muted">As typed</span>
+					<span class="min-w-0 flex-1 truncate"
+						>{t('transactions.merchantShowTyped', { name: own })}</span
+					>
+					<span class="text-caption text-ink-muted">{t('transactions.merchantAsTyped')}</span>
 				</Command.Item>
 			{/if}
 		</Command.Viewport>
 	</Command.List>
 	{#if unloaded}
 		<p class="px-2 py-1.5 text-caption text-ink-secondary" role="status">
-			The merchants could not be loaded; a name typed can still be shown.
+			{t('transactions.merchantsLoadError')}
 		</p>
 	{:else if known === null}
-		<p class="px-2 py-1.5 text-caption text-ink-muted" role="status">Loading the merchants…</p>
+		<p class="px-2 py-1.5 text-caption text-ink-muted" role="status">
+			{t('transactions.merchantsLoading')}
+		</p>
 	{:else}
 		{#each known.errors as error (error)}
 			<p class="px-2 py-1.5 text-caption text-ink-secondary" role="status">{error}</p>
 		{/each}
 		{#if !shown.length && own === null && !known.errors.length}
 			<p class="px-2 py-1.5 text-caption text-ink-muted" role="status">
-				Nothing was spent at a merchant yet.
+				{t('transactions.merchantsEmpty')}
 			</p>
 		{/if}
 	{/if}
 	<p class="mt-1 border-t border-line px-2 pt-2 text-caption text-ink-muted">
-		Without store numbers or places; a fee is its account's.
+		{t('transactions.merchantsFootnote')}
 	</p>
 </Command.Root>

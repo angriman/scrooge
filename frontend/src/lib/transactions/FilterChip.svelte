@@ -8,6 +8,7 @@ cross that clears it. Choosing it opens what it can be set to.
 	import X from '@lucide/svelte/icons/x';
 	import { Popover } from 'bits-ui';
 	import type { Snippet } from 'svelte';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { cn } from '#lib/ui/cn.js';
 
 	interface Props {
@@ -62,7 +63,7 @@ cross that clears it. Choosing it opens what it can be set to.
 		<button
 			type="button"
 			onclick={onclear}
-			aria-label="Clear {label.toLowerCase()}"
+			aria-label={t('transactions.clearFilterAria', { label: label.toLowerCase() })}
 			class="mr-1 grid size-6 place-items-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink"
 		>
 			<X class="size-3.5" aria-hidden="true" />

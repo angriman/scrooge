@@ -5,6 +5,7 @@ changed here, and a row waiting can be given one of its own, apart from its coun
 -->
 <script lang="ts">
 	import { dayOfYear } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Headed, StagedRow } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { cn } from '#lib/ui/cn.js';
@@ -44,8 +45,11 @@ changed here, and a row waiting can be given one of its own, apart from its coun
 						value={own[row.id] ?? ''}
 						onchange={(value) => (own[row.id] = value)}
 						{leaves}
-						placeholder={row.category ?? 'Waiting for a category'}
-						label="Category of {row.counterparty || row.description} on {dayOfYear(row.date)}"
+						placeholder={row.category ?? t('import.waitingForCategory')}
+						label={t('import.categoryOfRowOnDateAria', {
+							name: row.counterparty || row.description,
+							date: dayOfYear(row.date)
+						})}
 						class="w-full"
 					/>
 				{:else}

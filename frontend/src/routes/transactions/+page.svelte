@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { get, post } from '#lib/api.js';
 	import { money } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import Context from '#lib/transactions/Context.svelte';
 	import Days from '#lib/transactions/Days.svelte';
 	import Filters from '#lib/transactions/Filters.svelte';
@@ -65,7 +66,7 @@
 			const next = await get<Transactions>(fetch, '/api/transactions', params);
 			if (page.url.search === asked) more = [...more, ...next.rows];
 		} catch {
-			unloaded = 'The next rows could not be loaded. Try again.';
+			unloaded = t('transactions.loadMoreError');
 		} finally {
 			fetching = false;
 		}
@@ -108,26 +109,26 @@
 </script>
 
 <svelte:head>
-	<title>Transactions · scrooge</title>
+	<title>{t('transactions.pageTitle')}</title>
 </svelte:head>
 
 {#if !listed.count && !cut}
 	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">No transactions yet</h1>
+		<h1 class="text-heading font-medium text-ink">{t('transactions.emptyHeading')}</h1>
 		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			Every row of the statements you commit shows here, to search and to put in its category.
+			{t('transactions.emptyBody')}
 		</p>
 		{#if !session.read_only}
 			<a
 				href={resolve('/import')}
 				class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
 			>
-				Import statements
+				{t('overview.emptyCta')}
 			</a>
 		{/if}
 	</section>
 {:else}
-	<h1 class="sr-only">Transactions</h1>
+	<h1 class="sr-only">{t('transactions.heading')}</h1>
 	<Filters
 		{values}
 		accounts={listed.choices.accounts}
@@ -159,16 +160,16 @@
 	>
 		<p class="text-body text-ink-secondary">
 			<span class="text-title font-medium text-ink">
-				{listed.count === 1 ? '1 transaction' : `${money(String(listed.count), 0)} transactions`}
+				{listed.count === 1
+					? t('transactions.countOne')
+					: t('transactions.countMany', { count: money(String(listed.count), 0) })}
 			</span>
 			{#if listed.totals.length}
-				<span class="ml-1">add up to</span>
+				<span class="ml-1">{t('transactions.addUpTo')}</span>
 				{#each listed.totals as total, index (total.currency)}
-					{index ? (index === listed.totals.length - 1 ? ' and ' : ', ') : ' '}<Amount
-						value={total.total}
-						currency={total.currency}
-						class="text-ink"
-					/>
+					{#if index === 0}{' '}{:else if index === listed.totals.length - 1}{' '}
+						{t('common.andWord')}{' '}{:else},
+					{/if}<Amount value={total.total} currency={total.currency} class="text-ink" />
 				{/each}
 			{/if}
 		</p>
@@ -178,7 +179,7 @@
 					href={withQuery(page.url, Object.fromEntries(FIELDS.map((name) => [name, null])))}
 					class="text-small text-brand hover:text-brand-hover"
 				>
-					Clear filters
+					{t('transactions.clearFilters')}
 				</a>
 			{/if}
 			{#if listed.count}
@@ -188,7 +189,7 @@
 					class="inline-flex items-center gap-1.5 text-small text-ink-secondary hover:text-ink"
 				>
 					<Download class="size-4" aria-hidden="true" />
-					Download as CSV
+					{t('transactions.downloadCsv')}
 				</a>
 			{/if}
 		</span>
@@ -196,8 +197,8 @@
 
 	{#if !listed.count}
 		<section class="mt-6 rounded-panel bg-panel px-6 py-12 text-center">
-			<p class="text-title text-ink">Nothing matches this filter</p>
-			<p class="mt-1 text-body text-ink-secondary">Search for less, or clear a chip above.</p>
+			<p class="text-title text-ink">{t('transactions.noMatchHeading')}</p>
+			<p class="mt-1 text-body text-ink-secondary">{t('transactions.noMatchBody')}</p>
 		</section>
 	{:else}
 		<div class="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -207,7 +208,7 @@
 					chosen={values.category || null}
 					onchoose={(line) =>
 						change(
-							line.name === TRANSFERS
+							(line.key ?? line.name) === TRANSFERS
 								? { kind: 'internal' }
 								: { category: values.category === line.name ? null : line.name }
 						)}
@@ -227,14 +228,19 @@
 				/>
 				{#if rows.length < listed.count}
 					<div class="mt-4 flex items-center justify-center gap-3 text-small text-ink-secondary">
-						<span>{money(String(rows.length), 0)} of {money(String(listed.count), 0)}</span>
+						<span
+							>{t('transactions.pageOf', {
+								shown: money(String(rows.length), 0),
+								total: money(String(listed.count), 0)
+							})}</span
+						>
 						<button
 							type="button"
 							onclick={showMore}
 							disabled={fetching}
 							class="h-8 rounded-control border border-line bg-panel px-3 text-ink hover:border-line-strong disabled:opacity-60"
 						>
-							{fetching ? 'Loading…' : 'Show more'}
+							{t(fetching ? 'transactions.loadingMore' : 'transactions.showMore')}
 						</button>
 					</div>
 					{#if unloaded}

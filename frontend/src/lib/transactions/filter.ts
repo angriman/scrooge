@@ -2,6 +2,7 @@
 // reads, what each is called on a chip, and the periods a chip offers.
 
 import { day, month } from '#lib/format/date.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Address } from '#lib/view.js';
 
 /** The fields of the address the API filters by (`owner` is the header's). */
@@ -20,23 +21,25 @@ export const FIELDS = [
 ] as const;
 
 /** What a kind of row is called where it is chosen. */
-const KINDS: Readonly<Record<string, string>> = {
-	expense: 'Expenses',
-	income: 'Income',
-	transfer: 'Transfers',
-	internal: 'Between own accounts',
-	fx: 'Currency exchange',
-	trading: 'Trading',
-	security_trade: 'Buying and selling securities',
-	commission: 'Fees',
-	interest: 'Interest',
-	dividend: 'Dividends',
-	tax: 'Taxes'
+const KIND_KEYS: Readonly<Record<string, MessageKey>> = {
+	expense: 'transactions.kindExpense',
+	income: 'transactions.kindIncome',
+	transfer: 'transactions.kindTransfer',
+	internal: 'transactions.kindInternal',
+	fx: 'transactions.kindFx',
+	trading: 'transactions.kindTrading',
+	security_trade: 'transactions.kindSecurityTrade',
+	commission: 'transactions.kindCommission',
+	interest: 'transactions.kindInterest',
+	dividend: 'transactions.kindDividends',
+	tax: 'transactions.kindTax'
 };
 
 export function kindName(kind: string): string {
 	if (kind.includes(',')) return kind.split(',').map(kindName).join(', ');
-	return KINDS[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1).replaceAll('_', ' ');
+	return kind in KIND_KEYS
+		? t(KIND_KEYS[kind])
+		: kind.charAt(0).toUpperCase() + kind.slice(1).replaceAll('_', ' ');
 }
 
 /** The kinds of account the rows can be cut to (`accounts`), as the API names them
@@ -47,8 +50,24 @@ export const ACCOUNT_KINDS = [
 	{ value: 'card', label: 'Cards' }
 ] as const;
 
+const ACCOUNT_KIND_KEYS: Readonly<Record<(typeof ACCOUNT_KINDS)[number]['value'], MessageKey>> = {
+	broker: 'transactions.accountsBroker',
+	bank: 'transactions.accountsBank',
+	card: 'transactions.accountsCard'
+};
+
+/** The account kind filter choices in the active language. */
+export function accountKindOptions(): { value: string; label: string }[] {
+	return ACCOUNT_KINDS.map((kind) => ({
+		value: kind.value,
+		label: t(ACCOUNT_KIND_KEYS[kind.value])
+	}));
+}
+
 export function accountsName(value: string): string {
-	return ACCOUNT_KINDS.find((kind) => kind.value === value)?.label ?? value;
+	return value in ACCOUNT_KIND_KEYS
+		? t(ACCOUNT_KIND_KEYS[value as keyof typeof ACCOUNT_KIND_KEYS])
+		: value;
 }
 
 /** What the transactions can be cut to that a context is shown for, above the list. */
@@ -85,11 +104,11 @@ export function periods(today: string): Period[] {
 	const before = at === 1 ? `${year - 1}-12` : `${year}-${pad(at - 1)}`;
 	const twelve = at === 12 ? `${year}-01` : `${year - 1}-${pad(at + 1)}`;
 	return [
-		{ label: 'This month', from: thisMonth, to: thisMonth },
-		{ label: 'Last month', from: before, to: before },
-		{ label: 'Last 12 months', from: twelve, to: thisMonth },
-		{ label: 'This year', from: String(year), to: String(year) },
-		{ label: 'Last year', from: String(year - 1), to: String(year - 1) }
+		{ label: t('transactions.periodThisMonth'), from: thisMonth, to: thisMonth },
+		{ label: t('transactions.periodLastMonth'), from: before, to: before },
+		{ label: t('transactions.periodLast12m'), from: twelve, to: thisMonth },
+		{ label: t('transactions.periodThisYear'), from: String(year), to: String(year) },
+		{ label: t('transactions.periodLastYear'), from: String(year - 1), to: String(year - 1) }
 	];
 }
 
@@ -106,9 +125,9 @@ export function periodName(from: string, to: string, today: string): string | nu
 	const offered = periods(today).find((period) => period.from === from && period.to === to);
 	if (offered) return offered.label;
 	if (from === to) return written(from);
-	if (!to) return `Since ${written(from)}`;
-	if (!from) return `Up to ${written(to)}`;
-	return `${written(from)} to ${written(to)}`;
+	if (!to) return t('transactions.periodSince', { date: written(from) });
+	if (!from) return t('transactions.periodUpTo', { date: written(to) });
+	return t('transactions.periodFromTo', { from: written(from), to: written(to) });
 }
 
 /** What the API sums the rows without a category as (`query.TRANSFERS`): money between one's

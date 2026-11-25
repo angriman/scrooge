@@ -7,6 +7,7 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 	import ArrowDownLeft from '@lucide/svelte/icons/arrow-down-left';
 	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import { dayOfYear } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Headed, Staged, StagedRow } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -30,10 +31,10 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 </script>
 
 <Panel
-	title="Need a category"
+	title={t('import.needCategoryTitle')}
 	note={left
-		? `${left} of ${groups.length} still to choose. A choice is kept for every row of its counterparty.`
-		: 'Every one has a category. Save them, or commit.'}
+		? t('import.waitingLeftNote', { left, total: groups.length })
+		: t('import.waitingAllDoneNote')}
 >
 	<ul class="divide-y divide-line">
 		{#each groups as group (key(group))}
@@ -44,13 +45,21 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 				<div class="min-w-0">
 					<p class="flex items-center gap-1.5 text-body text-ink">
 						{#if group.incoming}
-							<ArrowDownLeft class="size-4 shrink-0 text-gain" aria-label="Received" />
+							<ArrowDownLeft
+								class="size-4 shrink-0 text-gain"
+								aria-label={t('import.receivedAria')}
+							/>
 						{:else}
-							<ArrowUpRight class="size-4 shrink-0 text-ink-muted" aria-label="Paid" />
+							<ArrowUpRight
+								class="size-4 shrink-0 text-ink-muted"
+								aria-label={t('import.paidAria')}
+							/>
 						{/if}
-						<span class="truncate">{group.name || 'Rows without a description'}</span>
+						<span class="truncate">{group.name || t('import.rowsWithoutDescription')}</span>
 						<span class="shrink-0 text-small text-ink-muted">
-							{members.length === 1 ? '1 row' : `${members.length} rows`}
+							{members.length === 1
+								? t('accounts.rowsOne')
+								: t('accounts.rowsMany', { count: members.length })}
 						</span>
 					</p>
 					<ul class="mt-1 space-y-0.5 pl-5.5">
@@ -70,7 +79,7 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 							onclick={() => (open[key(group)] = true)}
 							class="mt-1 pl-5.5 text-small text-brand hover:text-brand-hover"
 						>
-							Show all {members.length}
+							{t('import.showAllCount', { count: members.length })}
 						</button>
 					{/if}
 				</div>
@@ -78,12 +87,14 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 						<CategorySelect
 							bind:value={choice.category}
 							{leaves}
-							label="Category for {group.name || 'rows without a description'}"
+							label={t('import.categoryForAria', {
+								name: group.name || t('import.rowsWithoutDescriptionLower')
+							})}
 						/>
 						{#if rules && group.name}
 							<label class="flex items-center gap-2 text-small text-ink-secondary">
 								<input type="checkbox" bind:checked={choice.rule} class="size-4 accent-brand" />
-								Remember for {group.name}
+								{t('transactions.rememberFor', { merchant: group.name })}
 							</label>
 						{/if}
 					</div>{/if}

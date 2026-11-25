@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { Rule, RulesFile } from '#lib/types.js';
 import {
 	byFile,
@@ -62,6 +63,20 @@ describe('names', () => {
 
 	it('keys a rule by its file and place', () => {
 		expect(ruleKey(rule(own, 3))).toBe('rules.lukas.yaml#3');
+	});
+
+	it('translates rule file and match labels into Italian', () => {
+		setLanguage('it');
+		try {
+			expect(fileTitle(own)).toBe('Regole personali di Lukas');
+			expect(fileTitle(shared)).toBe('Regole condivise');
+			expect(fileNote(shared)).toBe('rules.yaml: per i movimenti di tutti.');
+			expect(directionName('in')).toBe('in entrata');
+			expect(matchesName(1)).toBe('abbinerebbe 1 movimento');
+			expect(matchesName(5)).toBe('abbinerebbe 5 movimenti');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });
 
