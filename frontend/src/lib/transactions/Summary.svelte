@@ -6,6 +6,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 -->
 <script lang="ts">
 	import { approximate, negate } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { TRANSFERS } from './filter.js';
 	import type { CategoryTotal } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
@@ -37,18 +38,20 @@ Amounts in several currencies are never added: each currency is shown on its own
 	const currency = $derived(picked && currencies.includes(picked) ? picked : currencies[0]);
 
 	const mine = $derived(
-		totals.filter((total) => total.currency === currency && total.name !== TRANSFERS)
+		totals.filter((total) => total.currency === currency && (total.key ?? total.name) !== TRANSFERS)
 	);
 	const sides = $derived(
 		[
 			{
-				name: 'Money out',
+				id: 'out' as const,
+				name: t('transactions.moneyOut'),
 				lines: mine
 					.filter((total) => total.total.startsWith('-'))
 					.map((total) => ({ ...total, size: negate(total.total) }))
 			},
 			{
-				name: 'Money in',
+				id: 'in' as const,
+				name: t('transactions.moneyIn'),
 				lines: mine
 					.filter((total) => !total.total.startsWith('-') && approximate(total.total) > 0)
 					.map((total) => ({ ...total, size: total.total }))
@@ -62,11 +65,11 @@ Amounts in several currencies are never added: each currency is shown on its own
 </script>
 
 {#if sides.length}
-	<Panel title="By category">
+	<Panel title={t('transactions.byCategoryTitle')}>
 		{#snippet actions()}
 			{#if currencies.length > 1}
 				<Segmented
-					label="Currency"
+					label={t('nav.currency')}
 					value={currency}
 					options={currencies.map((code) => ({ value: code, label: code }))}
 					onchange={(code) => (picked = code)}
@@ -74,7 +77,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 			{/if}
 		{/snippet}
 		<div class="space-y-5">
-			{#each sides as side (side.name)}
+			{#each sides as side (side.id)}
 				<div>
 					<p class="mb-2 text-small text-ink-secondary">{side.name}</p>
 					<ul class="space-y-0.5">
@@ -83,9 +86,12 @@ Amounts in several currencies are never added: each currency is shown on its own
 								<button
 									type="button"
 									onclick={() => onchoose(line)}
-									title="{line.count === 1
-										? '1 transaction'
-										: `${line.count} transactions`}: show only these"
+									title={t(
+										line.count === 1
+											? 'transactions.oneTransactionTitle'
+											: 'transactions.manyTransactionsTitle',
+										{ count: line.count }
+									)}
 									aria-pressed={chosen === line.name}
 									class="block w-full rounded-control px-1.5 py-1.5 text-left hover:bg-sunken"
 								>
@@ -97,7 +103,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 										<span
 											class={[
 												'block h-full rounded-full',
-												side.name === 'Money in' ? 'bg-gain' : 'bg-data-1',
+												side.id === 'in' ? 'bg-gain' : 'bg-data-1',
 												chosen && chosen !== line.name && 'opacity-40'
 											]}
 											style:width="{Math.max(1.5, (approximate(line.size) / largest) * 100)}%"
@@ -116,7 +122,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 					onclick={() => (all = true)}
 					class={['text-small text-brand hover:text-brand-hover', !wide && 'lg:hidden']}
 				>
-					Show every category
+					{t('transactions.showEveryCategory')}
 				</button>
 			{/if}
 		</div>

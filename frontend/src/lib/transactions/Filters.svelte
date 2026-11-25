@@ -6,11 +6,12 @@ for each other field. Every change goes in the address, so a filter can be kept 
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import Search from '@lucide/svelte/icons/search';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Headed, KnownMerchants } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
 	import FilterChip from './FilterChip.svelte';
 	import MerchantPicker from './MerchantPicker.svelte';
-	import { ACCOUNT_KINDS, accountsName, kindName, periodName, periods } from './filter.js';
+	import { accountKindOptions, accountsName, kindName, periodName, periods } from './filter.js';
 
 	type Changes = Record<string, string | null>;
 
@@ -65,10 +66,11 @@ for each other field. Every change goes in the address, so a filter can be kept 
 	const period = $derived(periodName(values.from ?? '', values.to ?? '', today));
 	const amount = $derived.by(() => {
 		const [low, high] = [values.min, values.max];
-		if (low && high) return `${low} to ${high}`;
-		if (low) return `At least ${low}`;
-		return high ? `Up to ${high}` : null;
+		if (low && high) return t('transactions.amountBetween', { low, high });
+		if (low) return t('transactions.amountAtLeast', { low });
+		return high ? t('transactions.amountUpTo', { high }) : null;
 	});
+	const accountKinds = $derived(accountKindOptions());
 
 	const option =
 		'flex w-full items-center justify-between gap-3 rounded-control px-2 py-1.5 text-left text-small text-ink hover:bg-brand-soft';
@@ -102,7 +104,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 
 <div class="space-y-3">
 	<label class="relative block">
-		<span class="sr-only">Search transactions</span>
+		<span class="sr-only">{t('transactions.searchSr')}</span>
 		<Search
 			class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-ink-muted"
 			aria-hidden="true"
@@ -118,17 +120,22 @@ for each other field. Every change goes in the address, so a filter can be kept 
 					onchange({ text: text.trim() || null });
 				}
 			}}
-			placeholder="Search by who was paid or what for"
+			placeholder={t('transactions.searchPlaceholder')}
 			autocomplete="off"
 			spellcheck="false"
 			class="h-13 w-full rounded-lead border border-line bg-panel pr-4 pl-12 text-title text-ink placeholder:text-ink-muted hover:border-line-strong focus:border-brand focus:outline-none"
 		/>
 	</label>
 
-	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filters">
+	<div
+		class="flex flex-wrap items-center gap-2"
+		role="group"
+		aria-label={t('transactions.filtersAria')}
+	>
 		<FilterChip
-			label="Period"
-			value={period && (values.booking ? `${period}, by booking date` : period)}
+			label={t('transactions.chipPeriod')}
+			value={period &&
+				(values.booking ? t('transactions.byBookingDateSuffix', { period }) : period)}
 			onclear={() => onchange({ from: null, to: null, booking: null })}
 			bind:open={periodOpen}
 		>
@@ -158,7 +165,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 				>
 					<div class="grid grid-cols-2 gap-2">
 						<label class="text-caption text-ink-secondary">
-							From
+							{t('transactions.fromDateLabel')}
 							<input
 								type="date"
 								bind:value={from}
@@ -167,7 +174,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 							/>
 						</label>
 						<label class="text-caption text-ink-secondary">
-							To
+							{t('transactions.toDateLabel')}
 							<input
 								type="date"
 								bind:value={to}
@@ -183,16 +190,16 @@ for each other field. Every change goes in the address, so a filter can be kept 
 							onchange={(event) => onchange({ booking: event.currentTarget.checked ? '1' : null })}
 							class="size-4 accent-brand"
 						/>
-						By booking date, as statements count it
+						{t('transactions.byBookingDateCheckbox')}
 					</label>
-					<button type="submit" class={apply}>Show this period</button>
+					<button type="submit" class={apply}>{t('transactions.applyPeriod')}</button>
 				</form>
 			{/snippet}
 		</FilterChip>
 
 		{#if accounts.length > 1}
 			<FilterChip
-				label="Account"
+				label={t('transactions.chipAccount')}
 				value={values.account || null}
 				onclear={() => onchange({ account: null })}
 			>
@@ -208,17 +215,17 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		{/if}
 
 		<FilterChip
-			label="Kind of account"
+			label={t('transactions.chipAccountKind')}
 			value={values.accounts ? accountsName(values.accounts) : null}
 			onclear={() => onchange({ accounts: null })}
 		>
 			{#snippet children(close)}
-				{@render list(ACCOUNT_KINDS, values.accounts, 'accounts', close)}
+				{@render list(accountKinds, values.accounts, 'accounts', close)}
 			{/snippet}
 		</FilterChip>
 
 		<FilterChip
-			label="Category"
+			label={t('transactions.chipCategory')}
 			value={values.category || null}
 			onclear={() => onchange({ category: null })}
 		>
@@ -236,7 +243,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		</FilterChip>
 
 		<FilterChip
-			label="Merchant"
+			label={t('transactions.chipMerchant')}
 			value={values.merchant || null}
 			onclear={() => onchange({ merchant: null })}
 		>
@@ -253,7 +260,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		</FilterChip>
 
 		<FilterChip
-			label="Kind"
+			label={t('transactions.chipKind')}
 			value={values.kind ? kindName(values.kind) : null}
 			onclear={() => onchange({ kind: null })}
 		>
@@ -268,7 +275,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		</FilterChip>
 
 		<FilterChip
-			label="Amount"
+			label={t('transactions.chipAmount')}
 			value={amount}
 			onclear={() => onchange({ min: null, max: null })}
 			bind:open={amountOpen}
@@ -288,10 +295,10 @@ for each other field. Every change goes in the address, so a filter can be kept 
 						close();
 					}}
 				>
-					<p class="text-caption text-ink-secondary">In or out, whatever the sign.</p>
+					<p class="text-caption text-ink-secondary">{t('transactions.amountSignNote')}</p>
 					<div class="grid grid-cols-2 gap-2">
 						<label class="text-caption text-ink-secondary">
-							At least
+							{t('transactions.minAmountLabel')}
 							<input
 								inputmode="decimal"
 								bind:value={least}
@@ -300,19 +307,19 @@ for each other field. Every change goes in the address, so a filter can be kept 
 							/>
 						</label>
 						<label class="text-caption text-ink-secondary">
-							Up to
+							{t('transactions.maxAmountLabel')}
 							<input
 								inputmode="decimal"
 								bind:value={most}
-								placeholder="Any"
+								placeholder={t('transactions.anyAmountPlaceholder')}
 								class={cn(field, 'mt-1 tabular-nums')}
 							/>
 						</label>
 					</div>
 					{#if unreadable}
-						<p class="text-caption text-loss" role="alert">Write an amount like 1250 or 1250.50.</p>
+						<p class="text-caption text-loss" role="alert">{t('transactions.badAmountError')}</p>
 					{/if}
-					<button type="submit" class={apply}>Show these amounts</button>
+					<button type="submit" class={apply}>{t('transactions.applyAmount')}</button>
 				</form>
 			{/snippet}
 		</FilterChip>

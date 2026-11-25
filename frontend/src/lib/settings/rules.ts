@@ -1,6 +1,7 @@
 // The rules on the settings page: by the file they are kept in, in the order they are tried,
 // and what a change of one sends.
 
+import { t } from '#lib/i18n/index.svelte.js';
 import type { Rule, RulesFile } from '#lib/types.js';
 
 /** What a rule can be changed to there. */
@@ -22,17 +23,23 @@ export function byFile(files: readonly RulesFile[], rules: readonly Rule[]): Fil
 
 /** What a file is, for people. */
 export function fileTitle(file: RulesFile): string {
-	return file.owner ? `${file.owner}'s own rules` : 'Shared rules';
+	return file.owner
+		? t('settings.ownRulesTitle', { owner: file.owner })
+		: t('settings.sharedRulesTitle');
 }
 
 /** What a file is for, under its title. */
 export function fileNote(file: RulesFile): string {
 	return file.owner
-		? `${file.key}: for rows of ${file.owner}'s accounts, tried before the shared rules.`
-		: `${file.key}: for everybody's rows.`;
+		? t('settings.ownRulesNote', { file: file.key, owner: file.owner })
+		: t('settings.sharedRulesNote', { file: file.key });
 }
 
 /** Why rules stay in their file. */
+export function stayNote(): string {
+	return t('settings.stayNote');
+}
+
 export const STAY =
 	"A rule moves up or down within its file only: to make a person's rule a shared one, or the other way round, change the files themselves.";
 
@@ -41,18 +48,18 @@ export const ruleKey = (rule: Rule): string => `${rule.file}#${rule.position}`;
 
 /** What it says about money in or out. */
 export function directionName(direction: string): string {
-	if (direction === 'in') return 'money in';
-	if (direction === 'out') return 'money out';
-	return 'in and out';
+	if (direction === 'in') return t('settings.dirIn');
+	if (direction === 'out') return t('settings.dirOut');
+	return t('settings.dirBoth');
 }
 
 /** How many committed rows it would match on its own, in words: a rule before it may take
  * some of them first. */
 export function matchesName(matches: number | null, counted = true): string {
-	if (!counted) return 'not counted: counting took too long';
-	if (matches === null) return 'not a pattern';
-	if (matches === 0) return 'would match no rows';
-	return `would match ${matches === 1 ? '1 row' : `${matches} rows`} on its own`;
+	if (!counted) return t('settings.matchesNotCounted');
+	if (matches === null) return t('settings.matchesInvalidPattern');
+	if (matches === 0) return t('settings.matchesNone');
+	return matches === 1 ? t('settings.matchesOne') : t('settings.matchesMany', { count: matches });
 }
 
 /** A draft of `rule` as it is. */

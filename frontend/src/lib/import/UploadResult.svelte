@@ -9,6 +9,7 @@ on bills without a maturity offers to look them up and import the same files aga
 	import CircleMinus from '@lucide/svelte/icons/circle-minus';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import { day } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Upload } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -22,25 +23,30 @@ on bills without a maturity offers to look them up and import the same files aga
 
 	let { answer, owner, looking, onlookup }: Props = $props();
 
-	const rows = (count: number) => (count === 1 ? '1 row is' : `${count} rows are`);
 	const notes = $derived.by(() => {
 		const found = answer.imported;
 		if (!found) return [];
 		return [
-			...found.unreconciled.map(
-				(account) => `${account} has rows with no balance to check them against.`
-			),
+			...found.unreconciled.map((account) => t('import.unreconciledAccount', { account })),
 			...(found.already
-				? [`${rows(found.already)} on days already committed, and left as they were there.`]
+				? [
+						t(found.already === 1 ? 'import.alreadyCommittedOne' : 'import.alreadyCommittedMany', {
+							count: found.already
+						})
+					]
 				: []),
 			...(found.later
-				? [`${rows(found.later)} booked today or later: the next import takes them.`]
+				? [
+						t(found.later === 1 ? 'import.laterBookedOne' : 'import.laterBookedMany', {
+							count: found.later
+						})
+					]
 				: [])
 		];
 	});
 </script>
 
-<Panel title="This import">
+<Panel title={t('import.resultTitle')}>
 	{#if answer.notice}
 		<p class="mb-3 text-body text-gain" role="status">{answer.notice}</p>
 	{/if}
@@ -55,14 +61,17 @@ on bills without a maturity offers to look them up and import the same files aga
 			class="mb-3 h-9 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 		>
 			{looking
-				? 'Looking up…'
-				: `Look up ${answer.undated.bills.join(', ')} on TreasuryDirect and import again`}
+				? t('import.lookingUpBills')
+				: t('import.lookupBillsCta', { bills: answer.undated.bills.join(', ') })}
 		</button>
 	{:else if answer.undated}
 		<p class="mb-3 text-body text-ink-secondary">
-			Add when {answer.undated.bills.join(', ')} mature{answer.undated.bills.length === 1
-				? 's'
-				: ''} to instruments.yaml, then import the files again.
+			{t(
+				answer.undated.bills.length === 1
+					? 'import.addMaturitiesHintOne'
+					: 'import.addMaturitiesHintMany',
+				{ bills: answer.undated.bills.join(', ') }
+			)}
 		</p>
 	{/if}
 
@@ -81,13 +90,15 @@ on bills without a maturity offers to look them up and import the same files aga
 						<span class="block truncate text-body text-ink">{file.name}</span>
 						<span class="block text-small text-ink-secondary">
 							{#if file.problem}
-								<span class="text-loss">Not imported: {file.problem}</span>
+								<span class="text-loss">{t('import.notImported', { problem: file.problem })}</span>
 							{:else if !file.label || file.label === 'not a statement'}
-								Not a statement, left out
+								{t('import.notAStatement')}
+							{:else if file.label === 'not read'}
+								{t('import.notRead')}
 							{:else if file.staged}
-								{file.label}, staged
+								{t('import.fileStaged', { label: file.label })}
 							{:else}
-								{file.label}: nothing new, all of it is committed already
+								{t('import.fileAlreadyCommitted', { label: file.label })}
 							{/if}
 						</span>
 					</span>
@@ -96,13 +107,14 @@ on bills without a maturity offers to look them up and import the same files aga
 		</ul>
 		{#each answer.imported.certificates as certificate, index (index)}
 			<p class="mt-3 text-body text-ink">
-				{certificate.account} of {owner}:
-				<Amount value={certificate.balance} currency={certificate.currency} /> on
-				{day(certificate.as_of)}, read off {certificate.filename}.
+				{t('import.certificateLine', { account: certificate.account, owner })}
+				<Amount value={certificate.balance} currency={certificate.currency} />
+				{t('import.certificateAsOf', {
+					date: day(certificate.as_of),
+					filename: certificate.filename
+				})}
 				{#if !certificate.adds_up}
-					<span class="text-caution"
-						>Nothing on it adds up to that figure: compare it with the paper.</span
-					>
+					<span class="text-caution">{t('import.certificateDoesNotAddUp')}</span>
 				{/if}
 			</p>
 		{/each}
@@ -110,11 +122,11 @@ on bills without a maturity offers to look them up and import the same files aga
 			<ul class="mt-3 space-y-1 text-small text-ink-secondary">
 				{#each notes as note (note)}<li>{note}</li>{/each}
 				{#each answer.imported.differences as line (line)}
-					<li class="text-caution">Differs from what is committed: {line}.</li>
+					<li class="text-caution">{t('import.differsCommitted', { line })}</li>
 				{/each}
 				{#if answer.imported.differences.length}
 					<li>
-						Nothing committed was changed: take the statement back to import these rows again.
+						{t('import.differsAdvice')}
 					</li>
 				{/if}
 			</ul>

@@ -6,6 +6,7 @@ that the next import gives it again.
 -->
 <script lang="ts">
 	import Repeat from '@lucide/svelte/icons/repeat';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { kindName } from './filter.js';
 	import type { Headed, Transaction } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
@@ -80,10 +81,16 @@ that the next import gives it again.
 				{#if row.recurring}
 					<span
 						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-sunken px-1.5 py-px text-caption text-ink-secondary"
-						title="Comes back every {row.recurring === 'monthly' ? 'month' : 'year'}"
+						title={t(
+							row.recurring === 'monthly'
+								? 'transactions.repeatsMonthlyTitle'
+								: 'transactions.repeatsYearlyTitle'
+						)}
 					>
 						<Repeat class="size-3" aria-hidden="true" />
-						{row.recurring === 'monthly' ? 'Monthly' : 'Yearly'}
+						{t(
+							row.recurring === 'monthly' ? 'cashflow.recurringMonthly' : 'cashflow.recurringYearly'
+						)}
 					</span>
 				{/if}
 			</p>
@@ -95,8 +102,8 @@ that the next import gives it again.
 				<button
 					type="button"
 					onclick={edit}
-					title="Change the category"
-					aria-label="{row.category}: change the category"
+					title={t('transactions.changeCategoryTitle')}
+					aria-label={t('transactions.changeCategoryAria', { category: row.category ?? '' })}
 					class="max-w-full truncate rounded-full border border-dashed border-line-strong px-2 py-0.5 text-small text-ink-secondary hover:border-brand hover:text-ink"
 				>
 					{row.category}
@@ -124,7 +131,7 @@ that the next import gives it again.
 			class="mx-4 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-control bg-sunken px-3 py-2.5"
 		>
 			<label class="flex min-w-0 items-center gap-2 text-small text-ink-secondary">
-				Category
+				{t('transactions.chipCategory')}
 				<!-- svelte-ignore a11y_autofocus -->
 				<select
 					bind:value={category}
@@ -143,7 +150,7 @@ that the next import gives it again.
 			{#if rules && row.counterparty}
 				<label class="flex items-center gap-2 text-small text-ink">
 					<input type="checkbox" bind:checked={remember} class="size-4 accent-brand" />
-					Remember for {row.counterparty}
+					{t('transactions.rememberFor', { merchant: row.counterparty })}
 				</label>
 			{/if}
 			<span class="ml-auto flex gap-2">
@@ -152,14 +159,14 @@ that the next import gives it again.
 					onclick={() => (editing = false)}
 					class="h-8 rounded-control px-3 text-small text-ink-secondary hover:text-ink"
 				>
-					Cancel
+					{t('accounts.cancel')}
 				</button>
 				<button
 					type="submit"
 					disabled={saving}
 					class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 				>
-					{saving ? 'Changing…' : 'Change category'}
+					{t(saving ? 'transactions.savingCategory' : 'transactions.saveCategory')}
 				</button>
 			</span>
 			{#if problem}

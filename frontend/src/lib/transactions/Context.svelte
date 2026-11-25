@@ -10,6 +10,7 @@ pointed at is said in full beneath.
 <script lang="ts">
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { month, monthName } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { TransactionsContext } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { draw, flow } from './context.js';
@@ -22,7 +23,11 @@ pointed at is said in full beneath.
 
 	let { context, merchant }: Props = $props();
 
-	const KINDS = { category: 'Category', merchant: 'Merchant', account: 'Account' } as const;
+	const KINDS = $derived({
+		category: t('transactions.kindCategory'),
+		merchant: t('transactions.kindMerchant'),
+		account: t('transactions.kindAccount')
+	});
 	const HEIGHT = 64;
 
 	let width = $state(480);
@@ -31,8 +36,18 @@ pointed at is said in full beneath.
 	);
 	const first = $derived(context.months[0]);
 	const last = $derived(context.months.at(-1));
-	const verb = $derived(context.net ? 'Net flow' : context.earned ? 'Earned' : 'Spent');
-	const said = $derived(context.net ? 'money in less money out, last two years' : 'last two years');
+	const verb = $derived(
+		t(
+			context.net
+				? 'transactions.verbNetFlow'
+				: context.earned
+					? 'transactions.verbEarned'
+					: 'transactions.verbSpent'
+		)
+	);
+	const said = $derived(
+		t(context.net ? 'transactions.lastTwoYearsNet' : 'transactions.lastTwoYears')
+	);
 
 	/** The colour of a bar: of a net flow, money put aside is a gain and money taken out a
 	 * loss; the last month is lighter while it is not over. */
@@ -46,7 +61,10 @@ pointed at is said in full beneath.
 	const pointed = $derived(shown === null ? null : context.months[shown]);
 </script>
 
-<section class="rounded-panel bg-panel p-4" aria-label="{context.name} over the last two years">
+<section
+	class="rounded-panel bg-panel p-4"
+	aria-label={t('transactions.contextSectionAria', { name: context.name })}
+>
 	<header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 		<div class="min-w-0">
 			<p class="text-caption text-ink-muted">{KINDS[context.kind]}, {said}</p>
@@ -54,11 +72,13 @@ pointed at is said in full beneath.
 		</div>
 		{#if context.balance !== null}
 			<p class="text-small text-ink-secondary">
-				Holds <Amount
+				{t('transactions.holdsNowBefore')}
+				<Amount
 					value={context.balance}
 					currency={context.currency}
 					class="text-body text-ink"
-				/> now
+				/>{#if t('transactions.holdsNowAfter')}
+					{t('transactions.holdsNowAfter')}{/if}
 			</p>
 		{/if}
 	</header>
@@ -72,7 +92,7 @@ pointed at is said in full beneath.
 
 	{#if first && last}
 		{@const told = pointed ?? last}
-		{@const sofar = context.partial && told === last ? ' so far' : ''}
+		{@const sofar = context.partial && told === last ? t('transactions.contextSoFarSuffix') : ''}
 		<div class="mt-3 grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_16rem]">
 			<div class="min-w-0">
 				<div bind:clientWidth={width}>
@@ -80,9 +100,12 @@ pointed at is said in full beneath.
 						viewBox="0 0 {width} {HEIGHT}"
 						class="block h-16 w-full overflow-visible"
 						role="img"
-						aria-label="{verb} each month from {month(`${first.month}-01`)} to {month(
-							`${last.month}-01`
-						)}{context.usual === null ? '' : ', against the usual month'}"
+						aria-label={t('transactions.contextChartAria', {
+							verb,
+							first: month(`${first.month}-01`),
+							last: month(`${last.month}-01`),
+							against: context.usual === null ? '' : t('transactions.contextAgainstUsualAria')
+						})}
 					>
 						{#each drawn.bars as bar, index (bar.month)}
 							<g
@@ -134,7 +157,11 @@ pointed at is said in full beneath.
 				</div>
 				<div class="mt-1 flex justify-between text-caption text-ink-muted">
 					<span>{month(`${first.month}-01`)}</span>
-					<span>{month(`${last.month}-01`)}{context.partial ? ', so far' : ''}</span>
+					<span
+						>{month(`${last.month}-01`)}{context.partial
+							? t('transactions.contextCommaSoFar')
+							: ''}</span
+					>
 				</div>
 
 				<p
@@ -144,7 +171,11 @@ pointed at is said in full beneath.
 					<span>
 						{#if context.net}
 							{@const moved = flow(told.amount)}
-							{moved.said} in {monthName(told.month)}{sofar}
+							{t('transactions.contextInMonth', {
+								verb: moved.said,
+								month: monthName(told.month),
+								sofar
+							})}
 							<Amount
 								value={moved.amount}
 								currency={context.currency}
@@ -152,7 +183,11 @@ pointed at is said in full beneath.
 								class="text-body text-ink"
 							/>
 						{:else}
-							{verb} in {monthName(told.month)}{sofar}
+							{t('transactions.contextInMonth', {
+								verb,
+								month: monthName(told.month),
+								sofar
+							})}
 							<Amount
 								value={told.amount}
 								currency={context.currency}
@@ -167,10 +202,15 @@ pointed at is said in full beneath.
 							aria-hidden="true"
 						></span>
 						{#if context.usual === null}
-							Usual month not known yet
+							{t('transactions.contextUsualUnknown')}
 						{:else if context.net}
 							{@const usual = flow(context.usual)}
-							Usual month: {usual.said.toLowerCase()}
+							{@const usualLower = t(
+								context.usual.startsWith('-')
+									? 'transactions.contextTakenOutLower'
+									: 'transactions.contextPutAsideLower'
+							)}
+							{t('transactions.contextUsualNet', { flow: usualLower })}
 							<Amount
 								value={usual.amount}
 								currency={context.currency}
@@ -178,7 +218,8 @@ pointed at is said in full beneath.
 								class="text-body text-ink"
 							/>
 						{:else}
-							Usual month <Amount
+							{t('transactions.contextUsual')}
+							<Amount
 								value={context.usual}
 								currency={context.currency}
 								places={0}
@@ -192,7 +233,7 @@ pointed at is said in full beneath.
 			{#if context.merchants?.length}
 				<div>
 					<h3 class="text-caption text-ink-muted">
-						{context.earned ? 'Most came from' : 'Most was spent at'}
+						{t(context.earned ? 'transactions.mostCameFrom' : 'transactions.mostSpentAt')}
 					</h3>
 					<ul class="mt-1 divide-y divide-line">
 						{#each context.merchants as payee (payee.name)}
@@ -217,6 +258,6 @@ pointed at is said in full beneath.
 			{/if}
 		</div>
 	{:else if !context.errors.length}
-		<p class="mt-2 text-small text-ink-secondary">Nothing is committed yet to show it over time.</p>
+		<p class="mt-2 text-small text-ink-secondary">{t('transactions.contextEmpty')}</p>
 	{/if}
 </section>

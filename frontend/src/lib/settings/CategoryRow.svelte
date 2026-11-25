@@ -6,6 +6,7 @@ merged into another of its kind, which its rows and rules then give. What the co
 rows no rule matches stays as it is.
 -->
 <script lang="ts">
+	import { t } from '#lib/i18n/index.svelte.js';
 	import CategorySelect from '#lib/import/CategorySelect.svelte';
 	import type { Headed, ListedCategory } from '#lib/types.js';
 	import { mergeable, movable, removable, renamable, rowsName } from './categories.js';
@@ -62,15 +63,17 @@ rows no rule matches stays as it is.
 		} else if (doing === 'move' && target) {
 			await act(() => onmove(target));
 		} else if (doing === 'merge' && target) {
-			const gone = category.built_in ? 'It stays, with nothing in it.' : 'It is then taken out.';
+			const gone = category.built_in
+				? t('settings.mergeBuiltInGone')
+				: t('settings.mergeCustomGone');
 			const rows = rowsName(category.rows);
-			if (!confirm(`Give ${category.name}'s ${rows} and its rules ${target}? ${gone}`)) return;
+			if (!confirm(t('settings.confirmMerge', { name: category.name, rows, target, gone }))) return;
 			await act(() => onmerge(target));
 		}
 	}
 
 	async function remove() {
-		if (!confirm(`Remove the category ${category.name}?`)) return;
+		if (!confirm(t('settings.confirmRemoveCategory', { name: category.name }))) return;
 		await act(onremove);
 	}
 
@@ -87,31 +90,51 @@ rows no rule matches stays as it is.
 					bind:value={name}
 					required
 					maxlength="60"
-					aria-label={`New name of ${category.name}`}
+					aria-label={t('settings.newNameAria', { name: category.name })}
 					class="{field} w-56"
 				/>
 			{:else if doing === 'move'}
-				<span class="text-small text-ink-secondary">Put {category.name} under</span>
-				<select bind:value={target} aria-label={`Put ${category.name} under`} class={field}>
-					<option value="">Choose a group</option>
+				<span class="text-small text-ink-secondary"
+					>{t('settings.putUnder', { name: category.name })}</span
+				>
+				<select
+					bind:value={target}
+					aria-label={t('settings.putUnder', { name: category.name })}
+					class={field}
+				>
+					<option value="">{t('settings.chooseGroup')}</option>
 					{#if category.parent !== category.name}
-						<option value={category.name}>A group of its own</option>
+						<option value={category.name}>{t('settings.ownGroup')}</option>
 					{/if}
 					{#each elsewhere as group (group)}
 						{#if group !== category.name}<option value={group}>{group}</option>{/if}
 					{/each}
 				</select>
 			{:else}
-				<span class="text-small text-ink-secondary">Merge {category.name} into</span>
-				<CategorySelect bind:value={target} leaves={into} label={`Merge ${category.name} into`} />
+				<span class="text-small text-ink-secondary"
+					>{t('settings.mergeInto', { name: category.name })}</span
+				>
+				<CategorySelect
+					bind:value={target}
+					leaves={into}
+					label={t('settings.mergeInto', { name: category.name })}
+				/>
 			{/if}
-			<button type="button" class={quiet} onclick={() => (doing = null)}>Cancel</button>
+			<button type="button" class={quiet} onclick={() => (doing = null)}
+				>{t('accounts.cancel')}</button
+			>
 			<button
 				type="submit"
 				disabled={busy || (doing !== 'rename' && !target)}
 				class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 			>
-				{busy ? 'Saving…' : { rename: 'Rename', move: 'Move', merge: 'Merge' }[doing]}
+				{busy
+					? t('settings.saving')
+					: {
+							rename: t('settings.rename'),
+							move: t('settings.move'),
+							merge: t('settings.merge')
+						}[doing]}
 			</button>
 		</form>
 	{:else}
@@ -120,12 +143,12 @@ rows no rule matches stays as it is.
 				{category.name}
 				{#if !category.built_in}
 					<span class="ml-1 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
-						>Added</span
+						>{t('settings.addedBadge')}</span
 					>
 				{/if}
 				{#if category.name === unmatched}
 					<span class="ml-1 text-caption text-ink-muted" title="scrooge.yaml: unmatched">
-						for rows no rule matches
+						{t('settings.unmatchedHint')}
 					</span>
 				{/if}
 			</span>
@@ -133,16 +156,24 @@ rows no rule matches stays as it is.
 			{#if editable}
 				<span class="flex gap-3">
 					{#if renamable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('rename')}>Rename</button>
+						<button type="button" class={quiet} onclick={() => start('rename')}
+							>{t('settings.rename')}</button
+						>
 					{/if}
 					{#if movable(category)}
-						<button type="button" class={quiet} onclick={() => start('move')}>Move</button>
+						<button type="button" class={quiet} onclick={() => start('move')}
+							>{t('settings.move')}</button
+						>
 					{/if}
 					{#if into.length && mergeable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('merge')}>Merge</button>
+						<button type="button" class={quiet} onclick={() => start('merge')}
+							>{t('settings.merge')}</button
+						>
 					{/if}
 					{#if removable(category, unmatched)}
-						<button type="button" class={quiet} disabled={busy} onclick={remove}>Remove</button>
+						<button type="button" class={quiet} disabled={busy} onclick={remove}
+							>{t('accounts.remove')}</button
+						>
 					{/if}
 				</span>
 			{/if}

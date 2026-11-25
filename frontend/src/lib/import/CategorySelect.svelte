@@ -4,6 +4,7 @@ The categories a row can be given, under their headings, as the device's own men
 letter jumps to it, and a phone shows its own picker.
 -->
 <script lang="ts">
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Headed } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
 
@@ -22,7 +23,7 @@ letter jumps to it, and a phone shows its own picker.
 		value = $bindable(),
 		leaves,
 		label,
-		placeholder = 'Choose a category',
+		placeholder = t('import.chooseCategoryPlaceholder'),
 		onchange,
 		class: className
 	}: Props = $props();

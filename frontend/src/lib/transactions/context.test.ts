@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import { draw, flow } from './context.js';
 
 const months = (...amounts: string[]) =>
@@ -73,5 +74,13 @@ describe('the net flow of an account', () => {
 		expect(flow('1200.50')).toEqual({ said: 'Put aside', amount: '1200.50' });
 		expect(flow('0.00')).toEqual({ said: 'Put aside', amount: '0.00' });
 		expect(flow('-80.00')).toEqual({ said: 'Taken out', amount: '80.00' });
+
+		setLanguage('it');
+		try {
+			expect(flow('1200.50')).toEqual({ said: 'Accantonato', amount: '1200.50' });
+			expect(flow('-80.00')).toEqual({ said: 'Prelevato', amount: '80.00' });
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

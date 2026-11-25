@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import {
 	FIELDS,
 	accountsName,
@@ -73,5 +74,17 @@ describe('the filter of the transactions page', () => {
 		expect(accountsName('broker')).toBe('Broker accounts');
 		expect(accountsName('something')).toBe('something');
 		expect(filtered(at('?accounts=broker'))).toBe(true);
+	});
+
+	it('translates period, kind and account labels into Italian', () => {
+		setLanguage('it');
+		try {
+			expect(periodName('2026-10', '2026-10', '2026-11-23')).toBe('Mese scorso');
+			expect(kindName('internal')).toBe('Tra propri conti');
+			expect(kindName('dividend,interest,tax')).toBe('Dividendi, Interessi, Ritenute');
+			expect(accountsName('broker')).toBe('Conti broker');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

@@ -3,6 +3,7 @@
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { send } from '#lib/api.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import AddCategory from '#lib/import/AddCategory.svelte';
 	import CategoryRow from '#lib/settings/CategoryRow.svelte';
 	import PatternTest from '#lib/settings/PatternTest.svelte';
@@ -16,7 +17,7 @@
 		moved,
 		ruleKey,
 		seen,
-		STAY,
+		stayNote,
 		type Draft
 	} from '#lib/settings/rules.js';
 	import type { Rule } from '#lib/types.js';
@@ -48,7 +49,7 @@
 	/** Send a change, and load the page again when it is made: what went wrong, or null. */
 	async function change(path: string, body: unknown): Promise<string | null> {
 		const done = await send(`/api/settings/${path}`, body, token);
-		if (!done.ok) return (done.sent.errors ?? []).join(' ') || 'The change was refused.';
+		if (!done.ok) return (done.sent.errors ?? []).join(' ') || t('api.changeRefused');
 		await invalidate('api:settings');
 		return null;
 	}
@@ -62,23 +63,19 @@
 </script>
 
 <svelte:head>
-	<title>Settings · scrooge</title>
+	<title>{t('settings.pageTitle')}</title>
 </svelte:head>
 
 <div class="flex flex-col gap-6">
 	<header>
-		<h1 class="text-heading font-medium text-ink">Settings</h1>
+		<h1 class="text-heading font-medium text-ink">{t('settings.title')}</h1>
 		<p class="text-body text-ink-secondary">
-			The categories rows are given, and the rules every import gives them with.
-			{#if !rules.editable}They can only be looked at here.{/if}
+			{t('settings.subtitle')}{#if !rules.editable}{t('settings.readOnlySuffix')}{/if}
 		</p>
 	</header>
 
 	<div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-		<Panel
-			title="Categories"
-			note="Built in, then those added. A rename or a merge changes the committed rows and the rules too."
-		>
+		<Panel title={t('settings.categoriesTitle')} note={t('settings.categoriesNote')}>
 			{#each listed.errors as error (error)}
 				<p class="mb-2 text-small text-caution" role="status">{error}</p>
 			{/each}
@@ -104,19 +101,21 @@
 					</section>
 				{/each}
 				{#if listed.editable}
-					<AddCategory under={listed.groups} onadd={add} summary="Add a category" />
+					<AddCategory
+						under={listed.groups}
+						onadd={add}
+						summary={t('settings.addCategorySummary')}
+					/>
 				{/if}
 			</div>
 		</Panel>
 
 		<div class="flex flex-col gap-6">
 			<Panel
-				title="Rules"
-				note={owner
-					? `Those tried on ${owner}'s rows, in the order they are tried: the first that matches gives the category.`
-					: 'In the order they are tried: the first that matches gives the category.'}
+				title={t('settings.rulesTitle')}
+				note={owner ? t('settings.rulesNoteOwner', { owner }) : t('settings.rulesNoteAll')}
 			>
-				{#if rules.editable}<p class="mb-3 text-small text-ink-secondary">{STAY}</p>{/if}
+				{#if rules.editable}<p class="mb-3 text-small text-ink-secondary">{stayNote()}</p>{/if}
 				{#each rules.errors as error (error)}
 					<p class="mb-2 text-small text-caution" role="status">{error}</p>
 				{/each}
@@ -124,7 +123,7 @@
 					<PatternTest bind:this={tester} {owner} {token} bind:match bind:direction />
 				</div>
 				{#if !files.length}
-					<p class="text-body text-ink-secondary">This app has no rules files to show.</p>
+					<p class="text-body text-ink-secondary">{t('settings.noRulesFiles')}</p>
 				{/if}
 				<div class="flex flex-col gap-5">
 					{#each files as group (group.file.key)}
@@ -148,10 +147,7 @@
 									{/each}
 								</ul>
 							{:else}
-								<p class="mt-1 text-small text-ink-secondary">
-									No rules yet: choosing a category on Import or Transactions with “remember” adds
-									them.
-								</p>
+								<p class="mt-1 text-small text-ink-secondary">{t('settings.noRulesYet')}</p>
 							{/if}
 						</section>
 					{/each}

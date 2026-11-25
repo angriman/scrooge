@@ -3,6 +3,7 @@
 // here, and how an account's net flow is said; the amounts written beside it are the API's.
 
 import { approximate, negate } from '#lib/format/number.js';
+import { t } from '#lib/i18n/index.svelte.js';
 import type { Amount } from '#lib/types.js';
 
 export interface Bar {
@@ -71,8 +72,8 @@ export function draw(
 
 /** An account's net flow in a month, as it is said: money put aside when more came in than
  * went out, money taken out otherwise; `amount` is how much, without its sign. */
-export function flow(amount: Amount): { said: 'Put aside' | 'Taken out'; amount: Amount } {
+export function flow(amount: Amount): { said: string; amount: Amount } {
 	return amount.startsWith('-')
-		? { said: 'Taken out', amount: negate(amount) }
-		: { said: 'Put aside', amount };
+		? { said: t('transactions.contextTakenOut'), amount: negate(amount) }
+		: { said: t('transactions.contextPutAside'), amount };
 }

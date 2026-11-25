@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { send } from '#lib/api.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import AddCategory from '#lib/import/AddCategory.svelte';
 	import DropZone from '#lib/import/DropZone.svelte';
 	import RuleOffers from '#lib/import/RuleOffers.svelte';
@@ -43,10 +44,9 @@
 	const blocked = $derived.by(() => {
 		const given = new Set(pending.flatMap((choice) => choice.ids));
 		const left = staged.rows.filter((row) => row.category === null && !given.has(row.id)).length;
-		const waiting =
-			left === 1
-				? '1 transaction still needs a category'
-				: `${left} transactions still need a category`;
+		const waiting = t(left === 1 ? 'import.oneUncategorized' : 'import.manyUncategorized', {
+			count: left
+		});
 		return [...staged.gaps, ...(left ? [waiting] : [])];
 	});
 
@@ -104,7 +104,11 @@
 	}
 
 	async function remove(file: Staged['files'][number]) {
-		if (!confirm(`Remove ${file.filename}? Its ${file.transactions} rows go with it.`)) return;
+		const asked = t(
+			file.transactions === 1 ? 'accounts.confirmDiscardOne' : 'accounts.confirmDiscardMany',
+			{ filename: file.filename, count: file.transactions }
+		);
+		if (!confirm(asked)) return;
 		removing = file.id;
 		const done = await send(`/api/statements/${file.id}/discard`, {}, token);
 		problems = done.sent.errors ?? [];
@@ -149,7 +153,7 @@
 		} else {
 			offerErrors = {
 				...offerErrors,
-				[offer.id]: (done.sent.errors ?? []).join(' ') || 'No rule was added.'
+				[offer.id]: (done.sent.errors ?? []).join(' ') || t('import.noRuleAdded')
 			};
 		}
 	}
@@ -161,7 +165,8 @@
 		return null;
 	}
 
-	const statements = (count: number) => (count === 1 ? '1 statement' : `${count} statements`);
+	const statements = (count: number) =>
+		count === 1 ? t('import.oneStatement') : t('import.manyStatements', { count });
 	const transactions = $derived(
 		resolve('/transactions') +
 			(page.url.searchParams.get('owner') ? `?owner=${encodeURIComponent(staged.owner)}` : '')
@@ -169,14 +174,14 @@
 </script>
 
 <svelte:head>
-	<title>Import · scrooge</title>
+	<title>{t('import.pageTitle')}</title>
 </svelte:head>
 
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-	<h1 class="text-heading font-medium text-ink">Import statements</h1>
+	<h1 class="text-heading font-medium text-ink">{t('import.heading')}</h1>
 	{#if staged.owners.length > 1}
 		<Segmented
-			label="Whose statements"
+			label={t('import.whoseAria')}
 			value={staged.owner}
 			options={staged.owners.map((name) => ({ value: name, label: name }))}
 			onchange={(name) => show(here(), { owner: name })}
@@ -192,12 +197,12 @@
 		<CircleCheck class="size-4 text-gain" aria-hidden="true" />
 		<span class="flex-1">
 			{committed
-				? `${statements(committed)} committed: every page counts them now.`
-				: 'Nothing was staged to commit.'}
+				? t(committed === 1 ? 'import.oneCommitted' : 'import.manyCommitted', { count: committed })
+				: t('import.nothingStagedToCommit')}
 		</span>
 		{#if committed}
 			<a href={transactions} class="text-small font-medium text-brand hover:text-brand-hover"
-				>See the transactions</a
+				>{t('import.seeTransactions')}</a
 			>
 		{/if}
 	</p>
@@ -224,7 +229,7 @@
 
 {#if !staged.files.length}
 	<p class="mt-8 text-center text-body text-ink-secondary">
-		Nothing is staged for {staged.owner}. Statements show here once imported, to check and commit.
+		{t('import.noneStagedFor', { owner: staged.owner })}
 	</p>
 {:else}
 	<div
@@ -243,13 +248,11 @@
 
 			<details class="rounded-panel bg-panel px-4 py-3" open={!staged.groups.length}>
 				<summary class="cursor-pointer text-title font-medium text-ink">
-					Every staged row <span class="text-body font-normal text-ink-muted"
-						>{staged.rows.length}</span
-					>
+					{t('import.everyStagedRow')}
+					<span class="text-body font-normal text-ink-muted">{staged.rows.length}</span>
 				</summary>
 				<p class="mt-1 mb-2 text-small text-ink-secondary">
-					A category a rule gave can be changed here; a row chosen on its own keeps its choice over
-					its counterparty's.
+					{t('import.everyStagedRowNote')}
 				</p>
 				<StagedRows rows={staged.rows} leaves={staged.choices.leaves} bind:own />
 			</details>
@@ -271,7 +274,9 @@
 					disabled={saving !== null}
 					class="h-10 w-full rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 				>
-					{saving === 'commit' ? 'Committing…' : `Commit ${statements(staged.files.length)}`}
+					{saving === 'commit'
+						? t('import.committing')
+						: t('import.commitCta', { statements: statements(staged.files.length) })}
 				</button>
 				{#if pending.length}
 					<button
@@ -280,21 +285,23 @@
 						disabled={saving !== null}
 						class="h-9 w-full rounded-control border border-line px-4 text-body text-ink hover:border-line-strong disabled:opacity-60"
 					>
-						{saving === 'save' ? 'Saving…' : 'Save categories and keep them staged'}
+						{t(saving === 'save' ? 'import.savingCategories' : 'import.saveCategoriesCta')}
 					</button>
 				{/if}
 				<p class="text-caption text-ink-muted">
-					The categories chosen are saved with the commit. A copy of the database is kept first.
+					{t('import.commitHint')}
 				</p>
 			</div>
 
-			<Panel title="Once committed" note="What the rows staged add up to, by category.">
+			<Panel title={t('import.onceCommittedTitle')} note={t('import.onceCommittedNote')}>
 				<ul class="space-y-1">
 					{#each staged.totals as line (`${line.side}:${line.category}:${line.currency}`)}
 						<li class="flex items-baseline justify-between gap-3 text-small">
 							<span class="min-w-0 truncate {line.category ? 'text-ink' : 'text-caution'}">
-								{line.category ?? 'Waiting for a category'}
-								{#if line.side === 'transfer'}<span class="text-ink-muted">transfer</span>{/if}
+								{line.category ?? t('import.waitingForCategory')}
+								{#if line.side === 'transfer'}<span class="text-ink-muted"
+										>{t('import.transferTag')}</span
+									>{/if}
 							</span>
 							<span class="shrink-0 text-ink-secondary">
 								<Amount value={line.total} currency={line.currency} class="text-ink" />
