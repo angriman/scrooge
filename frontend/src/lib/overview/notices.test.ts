@@ -55,10 +55,7 @@ describe('what needs a look', () => {
 				],
 				differ: 1,
 				uncategorised: [{ owner: 'Anna', count: 3 }],
-				recurring: [
-					payment({}),
-					payment({ id: 'g1', name: 'Gymly', kind: 'new', change: '50.00' })
-				]
+				recurring: [payment({}), payment({ id: 'g1', name: 'Gymly', kind: 'new', change: '50.00' })]
 			},
 			household,
 			links

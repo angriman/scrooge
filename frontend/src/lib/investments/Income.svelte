@@ -78,9 +78,7 @@ each holding, what paid the most first, opening its transactions.
 			</p>
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if moved !== null}
-					<span
-						class={cn('font-medium', moved.startsWith('-') ? 'text-loss' : 'text-gain')}
-					>
+					<span class={cn('font-medium', moved.startsWith('-') ? 'text-loss' : 'text-gain')}>
 						{signedPercent(moved)}
 					</span>
 					on the same months a year before.
@@ -103,15 +101,11 @@ each holding, what paid the most first, opening its transactions.
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
 				<dt class="text-ink-secondary">Dividends</dt>
-				<dd class="text-title text-ink">
-					<Amount value={income.totals.dividends} places={0} />
-				</dd>
+				<dd class="text-title text-ink"><Amount value={income.totals.dividends} places={0} /></dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Interest</dt>
-				<dd class="text-title text-ink">
-					<Amount value={income.totals.interest} places={0} />
-				</dd>
+				<dd class="text-title text-ink"><Amount value={income.totals.interest} places={0} /></dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Tax withheld</dt>
@@ -148,13 +142,7 @@ each holding, what paid the most first, opening its transactions.
 					onpointerleave={() => (shown = null)}
 					opacity={shown === null || shown === index ? 1 : 0.45}
 				>
-					<rect
-						x={LEFT + step * index}
-						y={TOP}
-						width={step}
-						height={plot}
-						fill="transparent"
-					/>
+					<rect x={LEFT + step * index} y={TOP} width={step} height={plot} fill="transparent" />
 					{#if column.dividends > 0}
 						<rect
 							x={column.x}
@@ -205,12 +193,7 @@ each holding, what paid the most first, opening its transactions.
 					/></span
 				>
 				<span
-					>Interest <Amount
-						value={detail.interest}
-						{currency}
-						places={0}
-						class="text-ink"
-					/></span
+					>Interest <Amount value={detail.interest} {currency} places={0} class="text-ink" /></span
 				>
 				<span
 					>Tax withheld <Amount
@@ -225,8 +208,7 @@ each holding, what paid the most first, opening its transactions.
 
 		<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-secondary">
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={DIVIDENDS_COLOR}
-				></span>Dividends
+				<span class="size-2 rounded-[2px]" style:background={DIVIDENDS_COLOR}></span>Dividends
 			</li>
 			<li class="flex items-center gap-1.5">
 				<span class="size-2 rounded-[2px]" style:background={INTEREST_COLOR}></span>Interest
@@ -239,9 +221,7 @@ each holding, what paid the most first, opening its transactions.
 <section class="mt-10" aria-labelledby="paying-title">
 	<header class="mb-4 border-b border-line pb-3">
 		<h2 id="paying-title" class="text-heading font-medium text-ink">
-			{income.holdings.length === 1
-				? '1 holding paid'
-				: `${income.holdings.length} holdings paid`}
+			{income.holdings.length === 1 ? '1 holding paid' : `${income.holdings.length} holdings paid`}
 		</h2>
 		<p class="text-small text-ink-secondary">
 			By what each payment names: a payment that names nothing is under its account.
@@ -282,9 +262,7 @@ each holding, what paid the most first, opening its transactions.
 								{/if}
 							{/if}
 							<span class="min-w-0">
-								<span class="block truncate font-medium text-ink"
-									>{holding.name}</span
-								>
+								<span class="block truncate font-medium text-ink">{holding.name}</span>
 								<span class="flex gap-1.5 text-small text-ink-muted">
 									{#if holding.account}
 										<span class="truncate">payments that name nothing</span>
@@ -299,14 +277,10 @@ each holding, what paid the most first, opening its transactions.
 							<Amount value={paid(holding)} {currency} />
 						</span>
 						{#each [holding.dividends, holding.interest, withheld(holding.tax)] as value, column (column)}
-							<span
-								class={cn(
-									'hidden text-right sm:block',
-									column === 2 && 'text-ink-secondary'
-								)}
-							>
-								{#if approximate(value) === 0}<span class="text-ink-muted">–</span
-									>{:else}<Amount {value} />{/if}
+							<span class={cn('hidden text-right sm:block', column === 2 && 'text-ink-secondary')}>
+								{#if approximate(value) === 0}<span class="text-ink-muted">–</span>{:else}<Amount
+										{value}
+									/>{/if}
 							</span>
 						{/each}
 						<span class="hidden text-right text-small text-ink-secondary sm:block"

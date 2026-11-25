@@ -67,9 +67,7 @@ when it is not the last day), what it cost and what it gained, in the instrument
 </script>
 
 <section class="mt-10" aria-labelledby="holdings-title">
-	<header
-		class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3"
-	>
+	<header class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
 		<h2 id="holdings-title" class="text-heading font-medium text-ink">
 			{holdings.length === 1 ? '1 holding' : `${holdings.length} holdings`}
 		</h2>
@@ -112,8 +110,7 @@ when it is not the last day), what it cost and what it gained, in the instrument
 							<span class="flex items-center gap-1.5 text-small text-ink-muted">
 								<Swatch {color} class="size-2 rounded-full" />
 								<span class="text-ink-secondary">{holding.asset}</span>
-								{#if holding.name}<span class="truncate">{holding.symbol}</span
-									>{/if}
+								{#if holding.name}<span class="truncate">{holding.symbol}</span>{/if}
 								{#if holding.positions.length > 1}<span class="shrink-0"
 										>in {holding.positions.length} accounts</span
 									>{/if}
@@ -122,9 +119,7 @@ when it is not the last day), what it cost and what it gained, in the instrument
 					</span>
 					<span class="hidden items-center gap-2 sm:flex">
 						<Share share={holding.share} {color} class="w-14" />
-						<span class="text-small text-ink-secondary tabular-nums"
-							>{percent(holding.share)}</span
-						>
+						<span class="text-small text-ink-secondary tabular-nums">{percent(holding.share)}</span>
 					</span>
 					<span class="text-right">
 						<Amount value={holding.value} {currency} places={0} />
@@ -133,18 +128,11 @@ when it is not the last day), what it cost and what it gained, in the instrument
 						{#if holding.gain === null}
 							<span class="text-small text-ink-muted">cost not known</span>
 						{:else}
-							<Change
-								amount={holding.gain}
-								percent={holding.return_percent}
-								class="text-small"
-							/>
+							<Change amount={holding.gain} percent={holding.return_percent} class="text-small" />
 						{/if}
 					</span>
 					<ChevronDown
-						class={cn(
-							'size-4 text-ink-muted transition-transform',
-							expanded && 'rotate-180'
-						)}
+						class={cn('size-4 text-ink-muted transition-transform', expanded && 'rotate-180')}
 						aria-hidden="true"
 					/>
 				</button>
@@ -175,36 +163,26 @@ when it is not the last day), what it cost and what it gained, in the instrument
 								{#each holding.positions as position (position.owner + position.account)}
 									<tr class="border-t border-line">
 										<td class="py-2 whitespace-nowrap">
-											{position.account}{#if people}<span
-													class="text-ink-muted">, {position.owner}</span
+											{position.account}{#if people}<span class="text-ink-muted"
+													>, {position.owner}</span
 												>{/if}
 										</td>
-										<td class="py-2 text-right tabular-nums"
-											>{exact(position.quantity)}</td
-										>
+										<td class="py-2 text-right tabular-nums">{exact(position.quantity)}</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
 											{priced(position)}
-											{#if priceNote(position)}<span
-													class="block text-caption text-ink-muted"
+											{#if priceNote(position)}<span class="block text-caption text-ink-muted"
 													>{priceNote(position)}</span
 												>{/if}
 										</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
 											{money(position.value_native)}
-											<span class="text-caption text-ink-muted"
-												>{holding.currency}</span
-											>
+											<span class="text-caption text-ink-muted">{holding.currency}</span>
 										</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
-											{position.cost_native === null
-												? 'not known'
-												: money(position.cost_native)}
+											{position.cost_native === null ? 'not known' : money(position.cost_native)}
 										</td>
 										<td class="py-2 text-right whitespace-nowrap">
-											<Change
-												amount={position.gain_native}
-												percent={position.gain_percent}
-											/>
+											<Change amount={position.gain_native} percent={position.gain_percent} />
 										</td>
 									</tr>
 								{/each}

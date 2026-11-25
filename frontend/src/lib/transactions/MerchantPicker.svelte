@@ -86,11 +86,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	<Command.List class="mt-1 max-h-72 overflow-y-auto">
 		<Command.Viewport>
 			{#each shown as merchant (merchant.name)}
-				<Command.Item
-					value={merchant.name}
-					onSelect={() => onpick(merchant.name)}
-					class={item}
-				>
+				<Command.Item value={merchant.name} onSelect={() => onpick(merchant.name)} class={item}>
 					<span class="min-w-0 flex-1 truncate">{merchant.name}</span>
 					{#if merchant.count && merchant.spent}
 						<span class="text-caption text-ink-muted">{merchant.count}×</span>
@@ -99,10 +95,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 						<span class="text-caption text-ink-muted">Last {month(merchant.last)}</span>
 					{/if}
 					{#if merchant.name.toLowerCase() === current.toLowerCase()}
-						<Check
-							class="size-3.5 shrink-0 self-center text-brand"
-							aria-hidden="true"
-						/>
+						<Check class="size-3.5 shrink-0 self-center text-brand" aria-hidden="true" />
 						<span class="sr-only">(chosen)</span>
 					{/if}
 				</Command.Item>

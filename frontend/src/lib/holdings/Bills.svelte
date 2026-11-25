@@ -28,10 +28,7 @@ repayment, the money that comes back first.
 			...first,
 			face: sum(
 				dated
-					.filter(
-						(rung) =>
-							rung.maturity === first.maturity && rung.currency === first.currency
-					)
+					.filter((rung) => rung.maturity === first.maturity && rung.currency === first.currency)
 					.map((rung) => rung.face)
 			)
 		}
@@ -95,8 +92,7 @@ repayment, the money that comes back first.
 						</span>
 					</td>
 					<td class="py-2 text-right tabular-nums">
-						{money(rung.face, 0)}
-						<span class="text-caption text-ink-muted">{rung.currency}</span>
+						{money(rung.face, 0)} <span class="text-caption text-ink-muted">{rung.currency}</span>
 					</td>
 					<td class="py-2 text-right tabular-nums">{money(rung.value_native)}</td>
 					<td class="py-2 text-right tabular-nums text-gain">

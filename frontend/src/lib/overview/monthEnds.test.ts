@@ -123,10 +123,7 @@ describe('the month-end table', () => {
 
 	it('shows dashes in the columns of a currency without values, the others kept', () => {
 		const { CHF, USD } = sent.months[0].values;
-		const partly = table(
-			{ ...sent, months: [{ ...sent.months[0], values: { CHF, USD } }] },
-			'EUR'
-		);
+		const partly = table({ ...sent, months: [{ ...sent.months[0], values: { CHF, USD } }] }, 'EUR');
 		const [euros, francs] = partly.rows[0].groups;
 		expect(euros.map((cell) => cell.text)).toEqual(['–', '–', '–', '–', '–']);
 		expect(francs[0].text).toBe('9’900');
@@ -159,10 +156,7 @@ describe('what came into view in the month-end table', () => {
 		// Neither a gain nor a loss: written plain, and a dash before the first change.
 		expect(october[COLUMNS.length]).toEqual({ text: '2’500', way: 'none' });
 		expect(september[COLUMNS.length]).toEqual({ text: '–', way: 'none' });
-		expect(october.slice(COLUMNS.length + 1).map((cell) => cell.text)).toEqual([
-			'5’444',
-			'5’556'
-		]);
+		expect(october.slice(COLUMNS.length + 1).map((cell) => cell.text)).toEqual(['5’444', '5’556']);
 		expect(shown.note).toBe(ARRIVED_NOTE);
 	});
 

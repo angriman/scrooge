@@ -19,20 +19,8 @@ describe('heldLines', () => {
 				converted: '1000.00',
 				securities: false
 			},
-			{
-				label: 'Cash',
-				amount: '100.00',
-				currency: 'CHF',
-				converted: null,
-				securities: false
-			},
-			{
-				label: 'Securities',
-				amount: '400.00',
-				currency: 'CHF',
-				converted: null,
-				securities: true
-			}
+			{ label: 'Cash', amount: '100.00', currency: 'CHF', converted: null, securities: false },
+			{ label: 'Securities', amount: '400.00', currency: 'CHF', converted: null, securities: true }
 		]);
 	});
 
@@ -78,9 +66,7 @@ describe('sparkline', () => {
 
 describe('securitiesQuery', () => {
 	it('opens the holdings of the account’s owner, in the currency the address names', () => {
-		expect(securitiesQuery('Anna Lee', 'USD')).toBe(
-			'view=holdings&owner=Anna+Lee&currency=USD'
-		);
+		expect(securitiesQuery('Anna Lee', 'USD')).toBe('view=holdings&owner=Anna+Lee&currency=USD');
 		expect(securitiesQuery('Anna', null)).toBe('view=holdings&owner=Anna');
 	});
 });

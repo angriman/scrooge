@@ -32,9 +32,7 @@ pointed at is said in full beneath.
 	const first = $derived(context.months[0]);
 	const last = $derived(context.months.at(-1));
 	const verb = $derived(context.net ? 'Net flow' : context.earned ? 'Earned' : 'Spent');
-	const said = $derived(
-		context.net ? 'money in less money out, last two years' : 'last two years'
-	);
+	const said = $derived(context.net ? 'money in less money out, last two years' : 'last two years');
 
 	/** The colour of a bar: of a net flow, money put aside is a gain and money taken out a
 	 * loss; the last month is lighter while it is not over. */
@@ -203,9 +201,7 @@ pointed at is said in full beneath.
 									href={merchant(payee.name)}
 									class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
 								>
-									<span class="min-w-0 flex-1 truncate text-body text-ink"
-										>{payee.name}</span
-									>
+									<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
 									<span class="text-caption text-ink-muted">{payee.count}×</span>
 									<Amount
 										value={payee.amount}
@@ -221,8 +217,6 @@ pointed at is said in full beneath.
 			{/if}
 		</div>
 	{:else if !context.errors.length}
-		<p class="mt-2 text-small text-ink-secondary">
-			Nothing is committed yet to show it over time.
-		</p>
+		<p class="mt-2 text-small text-ink-secondary">Nothing is committed yet to show it over time.</p>
 	{/if}
 </section>

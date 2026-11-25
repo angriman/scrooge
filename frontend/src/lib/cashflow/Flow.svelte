@@ -94,9 +94,7 @@ its amount. When more went out than came in, the difference comes from savings.
 							<path
 								d="M{from},{link.y0} C{middle},{link.y0} {middle},{link.y1} {to},{link.y1}"
 								fill="none"
-								stroke={fill(
-									link.target.id === IN ? link.source.id : link.target.id
-								)}
+								stroke={fill(link.target.id === IN ? link.source.id : link.target.id)}
 								stroke-opacity="0.35"
 								stroke-width={Math.max(1, link.width ?? 1)}
 							/>

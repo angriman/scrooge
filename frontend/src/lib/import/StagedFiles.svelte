@@ -26,13 +26,9 @@ a way to remove it. Below them, what stands in the way of committing them, if an
 			<li class="flex items-center gap-3 py-2">
 				<span class="min-w-0 flex-1">
 					<span class="block truncate text-body text-ink">{file.label}</span>
-					<span
-						class="block truncate text-small text-ink-secondary"
-						title={file.filename}
-					>
+					<span class="block truncate text-small text-ink-secondary" title={file.filename}>
 						{day(file.first)} to {day(file.last)}, {file.transactions}
-						{file.transactions === 1 ? 'row' : 'rows'}{#if !file.checked}, nothing to
-							check against{/if}
+						{file.transactions === 1 ? 'row' : 'rows'}{#if !file.checked}, nothing to check against{/if}
 					</span>
 				</span>
 				<button

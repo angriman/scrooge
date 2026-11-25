@@ -43,17 +43,14 @@ read as complete.
 	const widest = $derived(Math.max(1, ...listed.map((category) => approximate(category.spent))));
 
 	const step = (month: string | null, label: string) =>
-		month
-			? { href: withQuery(here(), { month }), label: `${label}: ${monthName(month)}` }
-			: null;
+		month ? { href: withQuery(here(), { month }), label: `${label}: ${monthName(month)}` } : null;
 	const earlier = $derived(step(recap.earlier, 'Earlier month'));
 	const later = $derived(step(recap.later, 'Later month'));
 
 	const missingNames = $derived(recap.missing.map((account) => account.account));
 	/** `2.5×` the usual month, for what was more than double it: a percent that large says less. */
 	const times = (category: MonthCategory) => {
-		const percent =
-			category.usual === null ? null : percentOf(category.spent, category.usual, 0);
+		const percent = category.usual === null ? null : percentOf(category.spent, category.usual, 0);
 		return percent === null ? '' : `${(Number(percent) / 100).toFixed(1)}×`;
 	};
 </script>
@@ -80,10 +77,7 @@ read as complete.
 							/>{/if}
 					</a>
 				{:else}
-					<span
-						class="grid size-8 place-items-center text-ink-muted/40"
-						aria-hidden="true"
-					>
+					<span class="grid size-8 place-items-center text-ink-muted/40" aria-hidden="true">
 						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight
 								class="size-4"
 							/>{/if}
@@ -125,8 +119,7 @@ read as complete.
 				/>
 			{:else}
 				<p class="py-6 text-body text-ink-secondary">
-					The history starts within this month, so how net worth moved over it is not
-					known.
+					The history starts within this month, so how net worth moved over it is not known.
 				</p>
 			{/if}
 			<dl class="mt-3 flex flex-wrap gap-x-8 gap-y-2 border-t border-line pt-3">
@@ -166,27 +159,19 @@ read as complete.
 				>
 			{/snippet}
 			{#if listed.length}
-				<ul
-					class="grid grid-cols-[minmax(0,auto)_1fr_auto_4.5rem] items-center gap-x-3 gap-y-2.5"
-				>
+				<ul class="grid grid-cols-[minmax(0,auto)_1fr_auto_4.5rem] items-center gap-x-3 gap-y-2.5">
 					{#each listed as category (category.name)}
 						{@const against =
-							category.against_usual === null
-								? null
-								: approximate(category.against_usual)}
+							category.against_usual === null ? null : approximate(category.against_usual)}
 						<li class="contents">
 							<span class="truncate text-body text-ink">{category.name}</span>
 							<span class="block h-1.5 rounded-mark bg-sunken" aria-hidden="true">
 								<span
 									class="block h-full rounded-mark bg-ink-muted"
-									style:width="{(Math.max(0, approximate(category.spent)) /
-										widest) *
-										100}%"
+									style:width="{(Math.max(0, approximate(category.spent)) / widest) * 100}%"
 								></span>
 							</span>
-							<span class="text-right"
-								><Amount value={category.spent} places={0} /></span
-							>
+							<span class="text-right"><Amount value={category.spent} places={0} /></span>
 							<span
 								class={cn(
 									'text-right text-small',

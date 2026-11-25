@@ -40,8 +40,7 @@ first. A source opens its transactions over the same range.
 						style:background={incomeColor(group)}
 					></span>
 					<span class="flex-1 font-medium">{group}</span>
-					{#if share !== null}<span class="text-caption text-ink-muted"
-							>{percent(share, 0)}</span
+					{#if share !== null}<span class="text-caption text-ink-muted">{percent(share, 0)}</span
 						>{/if}
 					<Amount value={total} places={0} />
 				</p>
@@ -52,9 +51,7 @@ first. A source opens its transactions over the same range.
 								href={transactions({ category: source.name })}
 								class="flex items-baseline gap-3 rounded-control px-1 py-1 text-small hover:bg-sunken"
 							>
-								<span class="min-w-0 flex-1 truncate text-ink-secondary"
-									>{source.name}</span
-								>
+								<span class="min-w-0 flex-1 truncate text-ink-secondary">{source.name}</span>
 								<span class="text-caption text-ink-muted">{source.count}×</span>
 								<Amount
 									value={source.total}

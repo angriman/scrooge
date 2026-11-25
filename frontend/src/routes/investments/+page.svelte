@@ -97,11 +97,7 @@
 				page.url,
 				value === 'performance'
 					? { view: null, from: null, to: null }
-					: {
-							view: value,
-							range: null,
-							...(value === 'holdings' ? { from: null, to: null } : {})
-						}
+					: { view: value, range: null, ...(value === 'holdings' ? { from: null, to: null } : {}) }
 			)}
 	/>
 	{#if view === 'performance' && data.performance?.performance.totals}
@@ -147,8 +143,8 @@
 			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
 				<h1 class="text-heading font-medium text-ink">No investment accounts yet</h1>
 				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-					What your investments returned shows here once a statement of a broker or a
-					stock plan is committed.
+					What your investments returned shows here once a statement of a broker or a stock plan is
+					committed.
 				</p>
 			</section>
 		{/if}
@@ -173,11 +169,7 @@
 			{owner}
 		/>
 		{#if data.costs}
-			<Costs
-				costs={data.costs.sent?.costs ?? null}
-				unavailable={data.costs.unavailable}
-				{owner}
-			/>
+			<Costs costs={data.costs.sent?.costs ?? null} unavailable={data.costs.unavailable} {owner} />
 		{/if}
 	{/if}
 {:else if !held || !held.day}

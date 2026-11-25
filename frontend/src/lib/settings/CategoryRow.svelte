@@ -26,17 +26,8 @@ rows no rule matches stays as it is.
 		onremove: () => Promise<string | null>;
 	}
 
-	let {
-		category,
-		into,
-		groups,
-		unmatched,
-		editable,
-		onrename,
-		onmerge,
-		onmove,
-		onremove
-	}: Props = $props();
+	let { category, into, groups, unmatched, editable, onrename, onmerge, onmove, onremove }: Props =
+		$props();
 
 	let doing = $state<'rename' | 'merge' | 'move' | null>(null);
 	let name = $state('');
@@ -71,12 +62,9 @@ rows no rule matches stays as it is.
 		} else if (doing === 'move' && target) {
 			await act(() => onmove(target));
 		} else if (doing === 'merge' && target) {
-			const gone = category.built_in
-				? 'It stays, with nothing in it.'
-				: 'It is then taken out.';
+			const gone = category.built_in ? 'It stays, with nothing in it.' : 'It is then taken out.';
 			const rows = rowsName(category.rows);
-			if (!confirm(`Give ${category.name}'s ${rows} and its rules ${target}? ${gone}`))
-				return;
+			if (!confirm(`Give ${category.name}'s ${rows} and its rules ${target}? ${gone}`)) return;
 			await act(() => onmerge(target));
 		}
 	}
@@ -115,11 +103,7 @@ rows no rule matches stays as it is.
 				</select>
 			{:else}
 				<span class="text-small text-ink-secondary">Merge {category.name} into</span>
-				<CategorySelect
-					bind:value={target}
-					leaves={into}
-					label={`Merge ${category.name} into`}
-				/>
+				<CategorySelect bind:value={target} leaves={into} label={`Merge ${category.name} into`} />
 			{/if}
 			<button type="button" class={quiet} onclick={() => (doing = null)}>Cancel</button>
 			<button
@@ -149,24 +133,16 @@ rows no rule matches stays as it is.
 			{#if editable}
 				<span class="flex gap-3">
 					{#if renamable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('rename')}
-							>Rename</button
-						>
+						<button type="button" class={quiet} onclick={() => start('rename')}>Rename</button>
 					{/if}
 					{#if movable(category)}
-						<button type="button" class={quiet} onclick={() => start('move')}
-							>Move</button
-						>
+						<button type="button" class={quiet} onclick={() => start('move')}>Move</button>
 					{/if}
 					{#if into.length && mergeable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('merge')}
-							>Merge</button
-						>
+						<button type="button" class={quiet} onclick={() => start('merge')}>Merge</button>
 					{/if}
 					{#if removable(category, unmatched)}
-						<button type="button" class={quiet} disabled={busy} onclick={remove}
-							>Remove</button
-						>
+						<button type="button" class={quiet} disabled={busy} onclick={remove}>Remove</button>
 					{/if}
 				</span>
 			{/if}

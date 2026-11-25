@@ -67,12 +67,8 @@ how much the largest single holding weighs. The overview has the allocation of n
 						<li class="contents">
 							<Swatch color={colors.get(slice.name) ?? 'var(--data-other)'} />
 							<span class="truncate text-ink-secondary">{slice.name}</span>
-							<span class="text-right"
-								><Amount value={slice.value} {currency} places={0} /></span
-							>
-							<span class="text-right text-ink-muted tabular-nums"
-								>{percent(slice.share)}</span
-							>
+							<span class="text-right"><Amount value={slice.value} {currency} places={0} /></span>
+							<span class="text-right text-ink-muted tabular-nums">{percent(slice.share)}</span>
 						</li>
 					{/each}
 				</ul>

@@ -48,9 +48,7 @@ came in, what went out, the salary and how much of the income was earned by work
 							class={cn(points.startsWith('-') ? 'text-loss' : 'text-gain')}
 							>{signed(points, 1)} points</span
 						> on the same months a year before){/if}{#if totals.rate_salary !== null},
-						<span class="text-title font-medium text-brand"
-							>{percent(totals.rate_salary)}</span
-						>
+						<span class="text-title font-medium text-brand">{percent(totals.rate_salary)}</span>
 						of salary{/if}.
 				{:else if short}
 					Savings, or money from earlier, made up the difference.

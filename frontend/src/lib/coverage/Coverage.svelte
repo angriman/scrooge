@@ -103,9 +103,7 @@ securities), then its statements, newest first, each with the file it came from.
 </script>
 
 <section class="mt-10" aria-labelledby="coverage-title">
-	<header
-		class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3"
-	>
+	<header class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
 		<h2 id="coverage-title" class="text-heading font-medium text-ink">
 			{accounts.length === 1 ? '1 account' : `${accounts.length} accounts`}
 		</h2>
@@ -146,9 +144,7 @@ securities), then its statements, newest first, each with the file it came from.
 							class="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_14rem_auto]"
 						>
 							<span class="min-w-0">
-								<span class="block truncate font-medium text-ink"
-									>{account.account}</span
-								>
+								<span class="block truncate font-medium text-ink">{account.account}</span>
 								<span
 									class={cn(
 										'block truncate text-small',
@@ -156,12 +152,11 @@ securities), then its statements, newest first, each with the file it came from.
 									)}
 								>
 									{#if account.behind}
-										Behind: ends on {account.committed
-											? day(account.committed)
-											: 'no day'}
+										Behind: ends on {account.committed ? day(account.committed) : 'no day'}
 									{:else if account.committed}
-										Up to {day(account.committed)}{#if account.staged}, staged
-											to {day(account.staged)}{/if}
+										Up to {day(account.committed)}{#if account.staged}, staged to {day(
+												account.staged
+											)}{/if}
 									{:else}
 										Staged only
 									{/if}
@@ -171,9 +166,7 @@ securities), then its statements, newest first, each with the file it came from.
 							<span class="relative hidden h-5 md:block" aria-hidden="true">
 								<span class="absolute inset-x-0 top-1/2 h-px bg-line"></span>
 								{#each ticks as tick, index (index)}
-									<span
-										class="absolute top-0 h-full w-px bg-line/60"
-										style:left="{tick.left}%"
+									<span class="absolute top-0 h-full w-px bg-line/60" style:left="{tick.left}%"
 									></span>
 								{/each}
 								{#each account.spans as run, index (index)}
@@ -191,9 +184,7 @@ securities), then its statements, newest first, each with the file it came from.
 							</span>
 							<!-- What it holds: the figure of the row, beside the line on a wide screen, after
 							     the small line of its last month-ends (on a phone, the figure alone). -->
-							<span
-								class="flex items-center justify-end gap-3 text-right md:justify-between"
-							>
+							<span class="flex items-center justify-end gap-3 text-right md:justify-between">
 								{#if account.balance !== null}
 									<Amount
 										value={account.balance}
@@ -203,21 +194,14 @@ securities), then its statements, newest first, each with the file it came from.
 									/>
 									{#if account.holds}
 										<!-- Drawn before the figure, said after it. -->
-										<Sparkline
-											months={account.holds.months}
-											{currency}
-											class="order-first"
-										/>
+										<Sparkline months={account.holds.months} {currency} class="order-first" />
 									{/if}
 								{:else}
 									<span class="text-small text-ink-muted">Not known</span>
 								{/if}
 							</span>
 							<ChevronDown
-								class={cn(
-									'size-4 text-ink-muted transition-transform',
-									expanded && 'rotate-180'
-								)}
+								class={cn('size-4 text-ink-muted transition-transform', expanded && 'rotate-180')}
 								aria-hidden="true"
 							/>
 						</button>
@@ -228,15 +212,10 @@ securities), then its statements, newest first, each with the file it came from.
 									{@const lines = heldLines(account.holds, currency)}
 									{#if lines.length}
 										<table class="mb-4 w-full max-w-md text-body">
-											<caption
-												class="mb-1 text-left text-small text-ink-secondary"
-												>Holds</caption
-											>
+											<caption class="mb-1 text-left text-small text-ink-secondary">Holds</caption>
 											<tbody>
 												{#each lines as line (line.label)}
-													<tr
-														class="border-b border-line last:border-b-0"
-													>
+													<tr class="border-b border-line last:border-b-0">
 														<th
 															scope="row"
 															class="py-1.5 pr-4 text-left align-top font-normal text-ink-secondary"
@@ -244,8 +223,7 @@ securities), then its statements, newest first, each with the file it came from.
 															{#if line.securities}
 																<a
 																	href={securities(account.owner)}
-																	class="text-brand hover:text-brand-hover"
-																	>{line.label}</a
+																	class="text-brand hover:text-brand-hover">{line.label}</a
 																>
 															{:else}
 																{line.label}
@@ -275,8 +253,8 @@ securities), then its statements, newest first, each with the file it came from.
 									{account.label}{#if account.parts.length > 1}<span class="block"
 											>{bookedAs(account.parts)}</span
 										>{/if}{#if !account.monthly}<span class="block"
-											>Reports less often than monthly, so it counts as behind
-											only after a longer wait.</span
+											>Reports less often than monthly, so it counts as behind only after a longer
+											wait.</span
 										>{/if}
 								</p>
 								<ul class="grid gap-1">
@@ -284,8 +262,7 @@ securities), then its statements, newest first, each with the file it came from.
 										<li
 											class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 rounded-control px-2 py-2 hover:bg-raised sm:grid-cols-[14rem_minmax(0,1fr)_auto_auto]"
 										>
-											<span class="text-body text-ink"
-												>{span(statement.first, statement.last)}</span
+											<span class="text-body text-ink">{span(statement.first, statement.last)}</span
 											>
 											<span
 												class="order-last col-span-2 truncate text-small text-ink-muted sm:order-none sm:col-span-1"
@@ -293,27 +270,17 @@ securities), then its statements, newest first, each with the file it came from.
 											>
 												{statement.filename}
 											</span>
-											<span
-												class="flex items-center gap-2 text-small whitespace-nowrap"
-											>
-												<span
-													class={statement.committed
-														? 'text-ink-secondary'
-														: 'text-caution'}
-												>
+											<span class="flex items-center gap-2 text-small whitespace-nowrap">
+												<span class={statement.committed ? 'text-ink-secondary' : 'text-caution'}>
 													{statement.committed ? 'Committed' : 'Staged'}
 												</span>
 												<span class="text-ink-muted">
 													{statement.transactions}
-													{statement.transactions === 1
-														? 'row'
-														: 'rows'}{#if !statement.checked}, nothing
-														to check{/if}
+													{statement.transactions === 1 ? 'row' : 'rows'}{#if !statement.checked},
+														nothing to check{/if}
 												</span>
 											</span>
-											<span
-												class="hidden items-center gap-3 text-small sm:flex"
-											>
+											<span class="hidden items-center gap-3 text-small sm:flex">
 												{#if statement.original}
 													<a
 														href={statement.original}
@@ -321,10 +288,7 @@ securities), then its statements, newest first, each with the file it came from.
 														class="inline-flex items-center gap-1 text-brand hover:text-brand-hover"
 														aria-label="Download {statement.filename}"
 													>
-														<Download
-															class="size-3.5"
-															aria-hidden="true"
-														/>File
+														<Download class="size-3.5" aria-hidden="true" />File
 													</a>
 												{/if}
 												{#if onremove}
@@ -336,9 +300,7 @@ securities), then its statements, newest first, each with the file it came from.
 															: 'Remove'} {statement.filename}"
 														class="text-brand hover:text-brand-hover"
 													>
-														{statement.committed
-															? 'Take back'
-															: 'Remove'}
+														{statement.committed ? 'Take back' : 'Remove'}
 													</button>
 												{/if}
 											</span>

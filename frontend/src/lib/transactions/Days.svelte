@@ -35,9 +35,7 @@ currencies, and its rows under it.
 			const currencies = [...new Set(group.rows.map((row) => row.currency))];
 			const totals = currencies.map((currency) => ({
 				currency,
-				total: sum(
-					group.rows.filter((row) => row.currency === currency).map((row) => row.amount)
-				)
+				total: sum(group.rows.filter((row) => row.currency === currency).map((row) => row.amount))
 			}));
 			return { ...group, totals };
 		});
@@ -48,9 +46,7 @@ currencies, and its rows under it.
 	{#each days as group (group.day)}
 		<section aria-label={weekday(group.day, thisYear)}>
 			<header class="flex items-baseline justify-between gap-4 px-4 pb-1.5">
-				<h3 class="text-small font-medium text-ink-secondary">
-					{weekday(group.day, thisYear)}
-				</h3>
+				<h3 class="text-small font-medium text-ink-secondary">{weekday(group.day, thisYear)}</h3>
 				<p class="text-caption text-ink-muted tabular-nums">
 					{#each group.totals as total, index (total.currency)}{index ? ', ' : ''}{signed(
 							total.total

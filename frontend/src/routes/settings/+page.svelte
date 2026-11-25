@@ -85,9 +85,7 @@
 			<div class="flex flex-col gap-4">
 				{#each sections(listed.categories) as section (section.heading)}
 					<section>
-						<h3 class="text-caption font-medium text-ink-secondary">
-							{section.heading}
-						</h3>
+						<h3 class="text-caption font-medium text-ink-secondary">{section.heading}</h3>
 						<ul class="divide-y divide-line">
 							{#each section.categories as category (categoryKey(category))}
 								<CategoryRow
@@ -96,14 +94,10 @@
 									groups={listed.groups}
 									unmatched={listed.unmatched}
 									editable={listed.editable}
-									onrename={(to) =>
-										change('categories/rename', { name: category.name, to })}
-									onmerge={(into) =>
-										change('categories/merge', { name: category.name, into })}
-									onmove={(under) =>
-										change('categories/move', { name: category.name, under })}
-									onremove={() =>
-										change('categories/remove', { name: category.name })}
+									onrename={(to) => change('categories/rename', { name: category.name, to })}
+									onmerge={(into) => change('categories/merge', { name: category.name, into })}
+									onmove={(under) => change('categories/move', { name: category.name, under })}
+									onremove={() => change('categories/remove', { name: category.name })}
 								/>
 							{/each}
 						</ul>
@@ -155,8 +149,8 @@
 								</ul>
 							{:else}
 								<p class="mt-1 text-small text-ink-secondary">
-									No rules yet: choosing a category on Import or Transactions with
-									“remember” adds them.
+									No rules yet: choosing a category on Import or Transactions with “remember” adds
+									them.
 								</p>
 							{/if}
 						</section>

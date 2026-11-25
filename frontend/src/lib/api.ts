@@ -64,8 +64,7 @@ export async function post<T>(path: string, body: unknown, token: string): Promi
 	const answer = await send<T>(path, body, token);
 	if (!answer.ok) {
 		throw new Error(
-			answer.sent.errors?.join(' ') ||
-				'The change was refused. Reload the page and try again.'
+			answer.sent.errors?.join(' ') || 'The change was refused. Reload the page and try again.'
 		);
 	}
 	return answer.sent;

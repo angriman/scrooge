@@ -22,11 +22,7 @@ the percent beside it. What span it is over is the caller's to say, above it.
 	const written = $derived(amount === null ? null : signed(amount, 0));
 	// Which way, as the whole francs written say it: a few cents either way is no change.
 	const way = $derived(
-		amount === null || money(amount, 0) === '0'
-			? 'flat'
-			: written!.startsWith('+')
-				? 'up'
-				: 'down'
+		amount === null || money(amount, 0) === '0' ? 'flat' : written!.startsWith('+') ? 'up' : 'down'
 	);
 </script>
 

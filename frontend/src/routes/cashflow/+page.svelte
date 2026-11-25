@@ -139,10 +139,7 @@
 	{@const moved = whatMoved(report.categories)}
 	{#if report.paid_by || moved.length}
 		<div
-			class={[
-				'mt-6 grid items-start gap-6',
-				report.paid_by && moved.length && 'lg:grid-cols-2'
-			]}
+			class={['mt-6 grid items-start gap-6', report.paid_by && moved.length && 'lg:grid-cols-2']}
 		>
 			{#if moved.length}<WhatMoved {moved} {colors} {transactions} />{/if}
 			{#if report.paid_by}<WhoPaid

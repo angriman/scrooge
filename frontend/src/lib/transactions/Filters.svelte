@@ -95,10 +95,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 			}}
 		>
 			{item.label}
-			{#if current === item.value}<Check
-					class="size-3.5 text-brand"
-					aria-hidden="true"
-				/>{/if}
+			{#if current === item.value}<Check class="size-3.5 text-brand" aria-hidden="true" />{/if}
 		</button>
 	{/each}
 {/snippet}
@@ -183,8 +180,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 						<input
 							type="checkbox"
 							checked={Boolean(values.booking)}
-							onchange={(event) =>
-								onchange({ booking: event.currentTarget.checked ? '1' : null })}
+							onchange={(event) => onchange({ booking: event.currentTarget.checked ? '1' : null })}
 							class="size-4 accent-brand"
 						/>
 						By booking date, as statements count it
@@ -314,9 +310,7 @@ for each other field. Every change goes in the address, so a filter can be kept 
 						</label>
 					</div>
 					{#if unreadable}
-						<p class="text-caption text-loss" role="alert">
-							Write an amount like 1250 or 1250.50.
-						</p>
+						<p class="text-caption text-loss" role="alert">Write an amount like 1250 or 1250.50.</p>
 					{/if}
 					<button type="submit" class={apply}>Show these amounts</button>
 				</form>

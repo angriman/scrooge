@@ -60,8 +60,7 @@ worked out here for the same accounts and day. Folded away unless asked for (`#c
 							<span class="text-caption text-ink-muted">{check.currency}</span>
 						</td>
 						<td class="py-2 text-right whitespace-nowrap">
-							{#if check.derived === null}<span class="text-ink-muted"
-									>not counted</span
+							{#if check.derived === null}<span class="text-ink-muted">not counted</span
 								>{:else}{money(check.derived)}{/if}
 						</td>
 						<td

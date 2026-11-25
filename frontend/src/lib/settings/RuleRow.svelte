@@ -74,9 +74,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 <li class="py-2">
 	{#if editing}
 		<form onsubmit={save} class="flex flex-wrap items-end gap-2">
-			<label
-				class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary"
-			>
+			<label class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary">
 				Pattern
 				<input
 					bind:value={draft.match}

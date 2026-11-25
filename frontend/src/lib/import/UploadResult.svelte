@@ -75,10 +75,7 @@ on bills without a maturity offers to look them up and import the same files aga
 					{:else if file.staged}
 						<CircleCheck class="mt-0.5 size-4 shrink-0 text-gain" aria-hidden="true" />
 					{:else}
-						<CircleMinus
-							class="mt-0.5 size-4 shrink-0 text-ink-muted"
-							aria-hidden="true"
-						/>
+						<CircleMinus class="mt-0.5 size-4 shrink-0 text-ink-muted" aria-hidden="true" />
 					{/if}
 					<span class="min-w-0 flex-1">
 						<span class="block truncate text-body text-ink">{file.name}</span>
@@ -117,8 +114,7 @@ on bills without a maturity offers to look them up and import the same files aga
 				{/each}
 				{#if answer.imported.differences.length}
 					<li>
-						Nothing committed was changed: take the statement back to import these rows
-						again.
+						Nothing committed was changed: take the statement back to import these rows again.
 					</li>
 				{/if}
 			</ul>

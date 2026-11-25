@@ -26,9 +26,7 @@ A block of a page: a title, what it shows, the controls that change it, and its 
 				{#if title}<h2 class="text-title font-medium text-ink">{title}</h2>{/if}
 				{#if note}<p class="text-small text-ink-secondary">{note}</p>{/if}
 			</div>
-			{#if actions}<div class="flex flex-wrap items-center gap-2">
-					{@render actions()}
-				</div>{/if}
+			{#if actions}<div class="flex flex-wrap items-center gap-2">{@render actions()}</div>{/if}
 		</header>
 	{/if}
 	{@render children()}

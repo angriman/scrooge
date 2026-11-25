@@ -13,13 +13,7 @@
 	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
 	import { statementsUpTo } from '#lib/overview/through.js';
-	import {
-		daysBack,
-		DEFAULT_RANGE,
-		RANGES,
-		rangeLabel,
-		type Range
-	} from '#lib/overview/range.js';
+	import { daysBack, DEFAULT_RANGE, RANGES, rangeLabel, type Range } from '#lib/overview/range.js';
 	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
@@ -129,11 +123,7 @@
 				through={statementsUpTo(figures.through, figures.day, covered)}
 				{range}
 				onrange={(chosen: Range) =>
-					show(
-						here(),
-						{ range: chosen === DEFAULT_RANGE ? null : chosen },
-						{ shallow: true }
-					)}
+					show(here(), { range: chosen === DEFAULT_RANGE ? null : chosen }, { shallow: true })}
 				{breakdowns}
 				by={data.by}
 				onby={(by) => show(here(), { by: by === 'asset' ? null : by })}

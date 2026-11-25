@@ -102,9 +102,7 @@ newest of them. Nothing is saved.
 							<span class="text-ink-muted tabular-nums">{day(row.date)}</span>
 							<span class="min-w-0 truncate text-ink" title={row.description}>
 								{row.counterparty || row.description}
-								<span class="text-ink-muted"
-									>· {row.owner} · {row.category ?? 'no category'}</span
-								>
+								<span class="text-ink-muted">· {row.owner} · {row.category ?? 'no category'}</span>
 							</span>
 							<Amount value={row.amount} currency={row.currency} class="text-ink" />
 						</li>

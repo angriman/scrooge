@@ -47,13 +47,12 @@ of the usual month is not coloured. Nothing shows when no category has a usual m
 								tone ? TONES[tone] : 'text-ink-secondary'
 							)}
 						>
-							{signed(each.change, 0)}{#if each.percent !== null}<span
-									class="ml-1 text-small">({signedPercent(each.percent, 0)})</span
+							{signed(each.change, 0)}{#if each.percent !== null}<span class="ml-1 text-small"
+									>({signedPercent(each.percent, 0)})</span
 								>{/if}
 						</span>
 						<span class="col-span-2 pl-4 text-caption text-ink-muted">
-							<Amount value={each.monthly} places={0} class="text-ink-secondary" /> a month,
-							usually
+							<Amount value={each.monthly} places={0} class="text-ink-secondary" /> a month, usually
 							<Amount value={each.usual} places={0} class="text-ink-secondary" />
 						</span>
 					</a>

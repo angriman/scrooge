@@ -45,8 +45,7 @@ export function narrow<T extends Offered>(
 		const name = fold(merchant.name);
 		if (!words.every((word) => name.includes(word))) continue;
 		if (name.startsWith(wanted)) ranked[0].push(merchant);
-		else if (name.split(' ').some((part) => part.startsWith(words[0])))
-			ranked[1].push(merchant);
+		else if (name.split(' ').some((part) => part.startsWith(words[0]))) ranked[1].push(merchant);
 		else ranked[2].push(merchant);
 	}
 	return ranked.flat().slice(0, most);

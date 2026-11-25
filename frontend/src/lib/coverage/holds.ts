@@ -66,8 +66,7 @@ export function sparkline(
 	const round = (n: number) => Math.round(n * 100) / 100;
 	return values
 		.map((value, index) => {
-			const y =
-				span === 0 ? height / 2 : pad + (1 - (value - low) / span) * (height - 2 * pad);
+			const y = span === 0 ? height / 2 : pad + (1 - (value - low) / span) * (height - 2 * pad);
 			return `${round(index * step)},${round(y)}`;
 		})
 		.join(' ');

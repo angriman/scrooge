@@ -104,17 +104,15 @@ worth in each benchmark, and the same figures account by account.
 					The money-weighted return has no rate to give over these days.
 				{/if}
 				{#if totals.twr_since}
-					The time-weighted return counts from {day(totals.twr_since)}: before it, next to
-					nothing was invested.
+					The time-weighted return counts from {day(totals.twr_since)}: before it, next to nothing
+					was invested.
 				{/if}
 			</p>
 		</div>
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
 				<dt class="text-ink-secondary">Gain</dt>
-				<dd class={cn('text-title tabular-nums', tone(totals.gain))}>
-					{signed(totals.gain, 0)}
-				</dd>
+				<dd class={cn('text-title tabular-nums', tone(totals.gain))}>{signed(totals.gain, 0)}</dd>
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Put in</dt>
@@ -126,17 +124,15 @@ worth in each benchmark, and the same figures account by account.
 			</div>
 			<div>
 				<dt class="text-ink-secondary">Now</dt>
-				<dd class="text-title text-ink">
-					<Amount value={totals.end} {currency} places={0} />
-				</dd>
+				<dd class="text-title text-ink"><Amount value={totals.end} {currency} places={0} /></dd>
 			</div>
 		</dl>
 	</div>
 	<p class="mt-4 max-w-prose text-small text-ink-muted">
 		Of the change of <Amount value={change} {currency} places={0} class="text-ink-secondary" />
 		from {day(performance.series[0].day)} to {day(performance.last!)},
-		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money
-		put in or taken out and <Amount
+		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money put
+		in or taken out and <Amount
 			value={totals.gain}
 			{currency}
 			places={0}
@@ -175,9 +171,20 @@ worth in each benchmark, and the same figures account by account.
 					</text>
 				{/each}
 				<path d={drawn.area} class="fill-brand-soft" />
-				<path d={drawn.invested} class="fill-none stroke-ink-muted" stroke-width="1.5" stroke-dasharray="4 3" />
+				<path
+					d={drawn.invested}
+					class="fill-none stroke-ink-muted"
+					stroke-width="1.5"
+					stroke-dasharray="4 3"
+				/>
 				{#each drawn.benchmarks as line, index (performance.benchmarks[index].symbol)}
-					<path d={line} class="fill-none" style:stroke={benchmarkColor(index)} stroke-width="1.5" stroke-dasharray="6 3" />
+					<path
+						d={line}
+						class="fill-none"
+						style:stroke={benchmarkColor(index)}
+						stroke-width="1.5"
+						stroke-dasharray="6 3"
+					/>
 				{/each}
 				<path d={drawn.value} class="fill-none stroke-brand" stroke-width="2" />
 				{#if pointed !== null}
@@ -213,9 +220,7 @@ worth in each benchmark, and the same figures account by account.
 					<Amount value={shown.value} {currency} places={0} class="text-ink" />
 				</span>
 				<span class="flex items-center gap-1.5">
-					<span
-						class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted"
-						aria-hidden="true"
+					<span class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted" aria-hidden="true"
 					></span>Put in
 					<Amount value={shown.invested} {currency} places={0} class="text-ink" />
 				</span>
@@ -232,8 +237,8 @@ worth in each benchmark, and the same figures account by account.
 			</p>
 		{/if}
 		<p class="mt-1 text-caption text-ink-muted">
-			Put in is what the accounts were worth at the start and the money put in since, less what was taken
-			out.{instead(performance.benchmarks)}{weekly ? ' One point a week.' : ''}
+			Put in is what the accounts were worth at the start and the money put in since, less what was
+			taken out.{instead(performance.benchmarks)}{weekly ? ' One point a week.' : ''}
 		</p>
 	</div>
 </Panel>
@@ -241,9 +246,7 @@ worth in each benchmark, and the same figures account by account.
 <section class="mt-10" aria-labelledby="accounts-title">
 	<header class="mb-4 border-b border-line pb-3">
 		<h2 id="accounts-title" class="text-heading font-medium text-ink">
-			{performance.accounts.length === 1
-				? '1 account'
-				: `${performance.accounts.length} accounts`}
+			{performance.accounts.length === 1 ? '1 account' : `${performance.accounts.length} accounts`}
 		</h2>
 		<p class="text-small text-ink-secondary">
 			Brokers and stock plans, with their cash; a broker’s accounts in each currency are one.
@@ -270,26 +273,17 @@ worth in each benchmark, and the same figures account by account.
 					<span class="block truncate font-medium text-ink">{row.name}</span>
 					<span class="block truncate text-small text-ink-muted">
 						<span class="hidden sm:inline">{about}</span>
-						<span class="sm:hidden"
-							>{about ? `${about} · ` : ''}gain {signed(row.gain, 0)}</span
-						>
+						<span class="sm:hidden">{about ? `${about} · ` : ''}gain {signed(row.gain, 0)}</span>
 					</span>
 				</span>
 				<span class="text-right sm:hidden">
 					<span class={cn('block font-medium tabular-nums', tone(row.twr))}>
 						{row.twr === null ? '–' : signedPercent(row.twr)}
 					</span>
-					<Amount
-						value={row.end}
-						{currency}
-						places={0}
-						class="text-small text-ink-secondary"
-					/>
+					<Amount value={row.end} {currency} places={0} class="text-small text-ink-secondary" />
 				</span>
-				<span class="hidden text-right sm:block"><Amount value={row.end} places={0} /></span
-				>
-				<span class="hidden text-right text-ink-secondary sm:block"
-					>{signed(row.net_flows, 0)}</span
+				<span class="hidden text-right sm:block"><Amount value={row.end} places={0} /></span>
+				<span class="hidden text-right text-ink-secondary sm:block">{signed(row.net_flows, 0)}</span
 				>
 				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.gain))}
 					>{signed(row.gain, 0)}</span

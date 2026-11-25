@@ -34,12 +34,7 @@ describe('the merchants the chip offers', () => {
 	});
 
 	it('puts a name that starts with what is typed first, then one with a word that does', () => {
-		const shops = known(
-			'Bäckerei Zur Ecke',
-			'Zurich Insurance',
-			'Hotel Zurlinden',
-			'Café Zürich'
-		);
+		const shops = known('Bäckerei Zur Ecke', 'Zurich Insurance', 'Hotel Zurlinden', 'Café Zürich');
 		expect(names(narrow(shops, 'zur'))).toEqual([
 			'Zurich Insurance',
 			'Bäckerei Zur Ecke',
@@ -55,9 +50,7 @@ describe('the merchants the chip offers', () => {
 	});
 
 	it('lists no more than asked', () => {
-		const many = known(
-			...Array.from({ length: 80 }, (_, n) => `Shop ${'abcdefghij'[n % 10]}${n}`)
-		);
+		const many = known(...Array.from({ length: 80 }, (_, n) => `Shop ${'abcdefghij'[n % 10]}${n}`));
 		expect(narrow(many, 'shop')).toHaveLength(50);
 		expect(narrow(many, 'shop', 5)).toHaveLength(5);
 	});

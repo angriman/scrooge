@@ -61,9 +61,7 @@ describe('what investing costs', () => {
 		expect(costsOf({ category: 'fees', year: 2026 }, 'Lukas').toString()).toBe(
 			'owner=Lukas&category=fees&accounts=broker&from=2026&to=2026'
 		);
-		expect(costsOf({ category: 'fees' }, null).toString()).toBe(
-			'category=fees&accounts=broker'
-		);
+		expect(costsOf({ category: 'fees' }, null).toString()).toBe('category=fees&accounts=broker');
 	});
 
 	it('opens the tax withheld of a year wherever it was withheld', () => {
@@ -80,8 +78,8 @@ describe('what investing costs', () => {
 
 	it('opens only the tax withheld of another account: its fees are no cost of investing', () => {
 		// A bank account listed for 1.75 of tax withheld, whose fee of 5 the panel does not count.
-		expect(
-			costsOf({ account: 'Migros', owner: 'Lukas', broker: false }, 'Lukas').toString()
-		).toBe('owner=Lukas&account=Migros&category=withholding_tax');
+		expect(costsOf({ account: 'Migros', owner: 'Lukas', broker: false }, 'Lukas').toString()).toBe(
+			'owner=Lukas&account=Migros&category=withholding_tax'
+		);
 	});
 });

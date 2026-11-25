@@ -15,14 +15,7 @@ it: the other stays, with a sentence saying why.
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import {
-		incomeShown,
-		PAID,
-		refusal,
-		RETURNED,
-		returnShown,
-		type Loaded
-	} from './investments.js';
+	import { incomeShown, PAID, refusal, RETURNED, returnShown, type Loaded } from './investments.js';
 	import type { Range } from './range.js';
 
 	type Maybe<T> = Loaded<T> | Promise<Loaded<T>>;

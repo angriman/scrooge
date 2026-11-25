@@ -57,33 +57,19 @@ most was spent at. Each opens its transactions over the same range.
 						></span>
 						<span class="truncate">{category.name}</span>
 					</span>
-					<Amount
-						value={category.spent}
-						places={0}
-						class="text-right text-body text-ink"
-					/>
+					<Amount value={category.spent} places={0} class="text-right text-body text-ink" />
 					<span class="h-1.5 self-center rounded-full bg-sunken" aria-hidden="true">
 						<span
 							class="block h-full rounded-full"
-							style:width="{Math.max(
-								1.5,
-								(approximate(category.spent) / largest) * 100
-							)}%"
+							style:width="{Math.max(1.5, (approximate(category.spent) / largest) * 100)}%"
 							style:background={colors.get(category.name) ?? 'var(--data-other)'}
 						></span>
 					</span>
-					<span
-						class="flex justify-end gap-3 text-caption whitespace-nowrap text-ink-muted"
-					>
+					<span class="flex justify-end gap-3 text-caption whitespace-nowrap text-ink-muted">
 						<span
-							><Amount
-								value={category.monthly}
-								places={0}
-								class="text-ink-secondary"
-							/> a month</span
+							><Amount value={category.monthly} places={0} class="text-ink-secondary" /> a month</span
 						>
-						{#if usual !== null}<span class={tone(usual)}
-								>{signedPercent(usual, 0)} usual</span
+						{#if usual !== null}<span class={tone(usual)}>{signedPercent(usual, 0)} usual</span
 							>{/if}
 						{#if before !== null}<span class={cn('hidden sm:inline', tone(before))}
 								>{signedPercent(before, 0)} a year before</span
@@ -111,9 +97,7 @@ most was spent at. Each opens its transactions over the same range.
 							href={transactions({ merchant: merchant.name })}
 							class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
 						>
-							<span class="min-w-0 flex-1 truncate text-body text-ink"
-								>{merchant.name}</span
-							>
+							<span class="min-w-0 flex-1 truncate text-body text-ink">{merchant.name}</span>
 							<span class="hidden text-caption text-ink-muted sm:inline"
 								>{merchant.category}, {merchant.count}×</span
 							>

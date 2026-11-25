@@ -134,9 +134,7 @@
 					href={resolve('/settings') + along}
 					aria-label="Settings: categories and rules"
 					title="Categories and rules"
-					aria-current={page.url.pathname.startsWith(resolve('/settings'))
-						? 'page'
-						: undefined}
+					aria-current={page.url.pathname.startsWith(resolve('/settings')) ? 'page' : undefined}
 					class="inline-flex size-8 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink aria-[current=page]:text-brand"
 				>
 					<Settings class="size-4" aria-hidden="true" />

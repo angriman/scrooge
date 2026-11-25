@@ -70,10 +70,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 			{#if tile.w >= 44 && tile.h >= 28}
 				<span class="block px-2 pt-1.5">
 					<span
-						class={cn(
-							'block truncate font-medium text-ink',
-							roomy ? 'text-body' : 'text-caption'
-						)}
+						class={cn('block truncate font-medium text-ink', roomy ? 'text-body' : 'text-caption')}
 					>
 						{label(holding)}
 					</span>
@@ -85,9 +82,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 							<span
 								class={cn(
 									'block text-caption tabular-nums',
-									holding.return_percent.startsWith('-')
-										? 'text-loss'
-										: 'text-gain'
+									holding.return_percent.startsWith('-') ? 'text-loss' : 'text-gain'
 								)}
 							>
 								{signedPercent(holding.return_percent)}

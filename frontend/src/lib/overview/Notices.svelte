@@ -88,10 +88,7 @@ waits.
 		>
 			<CircleAlert class="size-4 shrink-0 text-caution" aria-hidden="true" />
 			<span class="flex-1">{lines.length} things need a look</span>
-			<ChevronDown
-				class="size-4 text-ink-secondary group-open:rotate-180"
-				aria-hidden="true"
-			/>
+			<ChevronDown class="size-4 text-ink-secondary group-open:rotate-180" aria-hidden="true" />
 		</summary>
 		<div class="mt-2 grid gap-2">{@render notices()}</div>
 	</details>

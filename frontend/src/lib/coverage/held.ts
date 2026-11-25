@@ -9,8 +9,6 @@ export function heldTogether(accounts: readonly { balance: Amount | null }[]): {
 	total: Amount | null;
 	unknown: number;
 } {
-	const known = accounts.flatMap((account) =>
-		account.balance === null ? [] : [account.balance]
-	);
+	const known = accounts.flatMap((account) => (account.balance === null ? [] : [account.balance]));
 	return { total: known.length ? sum(known) : null, unknown: accounts.length - known.length };
 }

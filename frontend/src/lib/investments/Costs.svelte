@@ -73,15 +73,10 @@ the costs could not be loaded, the panel says why in their place.
 				{#each years as year (year.year)}
 					<tr class="border-t border-line">
 						<th scope="row" class="py-2 text-left font-normal text-ink">
-							{year.year}{#if !year.whole}<span class="ml-1 text-ink-muted"
-									>so far</span
-								>{/if}
+							{year.year}{#if !year.whole}<span class="ml-1 text-ink-muted">so far</span>{/if}
 						</th>
 						<td class="py-2 text-right">
-							{@render figure(year.commissions, {
-								category: COMMISSIONS,
-								year: year.year
-							})}
+							{@render figure(year.commissions, { category: COMMISSIONS, year: year.year })}
 						</td>
 						<td class="py-2 text-right">
 							{@render figure(year.tax, { category: TAX, year: year.year })}
@@ -100,20 +95,14 @@ the costs could not be loaded, the panel says why in their place.
 					<tr class="border-t border-line-strong font-medium">
 						<th scope="row" class="py-2 text-left text-ink">All years</th>
 						<td class="py-2 text-right"
-							>{@render figure(costs.totals.commissions, {
-								category: COMMISSIONS
-							})}</td
+							>{@render figure(costs.totals.commissions, { category: COMMISSIONS })}</td
 						>
-						<td class="py-2 text-right"
-							>{@render figure(costs.totals.tax, { category: TAX })}</td
-						>
+						<td class="py-2 text-right">{@render figure(costs.totals.tax, { category: TAX })}</td>
 						<td class="py-2 text-right text-ink">
 							<Amount value={costs.totals.total} places={0} />
 						</td>
 						<td class="hidden py-2 text-right text-ink-secondary sm:table-cell">
-							{costs.totals.tax_share === null
-								? '–'
-								: percent(costs.totals.tax_share)}
+							{costs.totals.tax_share === null ? '–' : percent(costs.totals.tax_share)}
 						</td>
 					</tr>
 				</tfoot>
@@ -126,23 +115,14 @@ the costs could not be loaded, the panel says why in their place.
 				{#each costs.accounts as each (`${each.owner}/${each.account}`)}
 					<li class="border-t border-line first:border-t-0">
 						<a
-							href={href({
-								account: each.account,
-								owner: each.owner,
-								broker: each.broker
-							})}
+							href={href({ account: each.account, owner: each.owner, broker: each.broker })}
 							class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 py-2 text-small hover:bg-raised"
 						>
 							<span class="min-w-0">
 								<span class="block truncate text-ink">{each.name}</span>
 								<span class="block truncate text-ink-muted">{parts(each)}</span>
 							</span>
-							<Amount
-								value={each.total}
-								currency={costs.currency}
-								places={0}
-								class="text-ink"
-							/>
+							<Amount value={each.total} currency={costs.currency} places={0} class="text-ink" />
 						</a>
 					</li>
 				{/each}
@@ -151,9 +131,9 @@ the costs could not be loaded, the panel says why in their place.
 
 		<p class="mt-4 max-w-prose text-caption text-ink-muted">
 			Commissions are those charged on broker and pension accounts; a bank’s fees, of the same
-			category, are left out. From a tablet’s width on, the tax withheld is also in percent of
-			the dividends and interest paid that year, before tax. Rows in a currency left out for
-			want of a rate still show in the transactions a figure opens.
+			category, are left out. From a tablet’s width on, the tax withheld is also in percent of the
+			dividends and interest paid that year, before tax. Rows in a currency left out for want of a
+			rate still show in the transactions a figure opens.
 		</p>
 	{/if}
 </Panel>

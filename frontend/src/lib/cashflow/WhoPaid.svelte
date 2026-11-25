@@ -32,10 +32,7 @@ other, and each person's share after settling up.
 		split(names, Object.fromEntries(paidBy.people.map((person) => [person.name, person.spent])))
 	);
 	const settled = $derived(
-		split(
-			names,
-			Object.fromEntries(paidBy.people.map((person) => [person.name, person.settled]))
-		)
+		split(names, Object.fromEntries(paidBy.people.map((person) => [person.name, person.settled])))
 	);
 	/** What a bar says to whoever cannot see it: each person and what they spent. */
 	const said = (parts: Part[]) =>
@@ -69,12 +66,7 @@ other, and each person's share after settling up.
 					style:background={colors.get(person.name)}
 				></span>
 				<span class="min-w-0 truncate text-body text-ink">{person.name}</span>
-				<Amount
-					value={person[amount]}
-					{currency}
-					places={0}
-					class="ml-auto text-title text-ink"
-				/>
+				<Amount value={person[amount]} {currency} places={0} class="ml-auto text-title text-ink" />
 				<span class="w-12 text-right text-small text-ink-secondary tabular-nums">
 					{share === null ? '–' : percent(share, 0)}
 				</span>
@@ -107,21 +99,14 @@ other, and each person's share after settling up.
 			<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-1 py-2">
 				<span class="truncate text-body text-ink">{category.name}</span>
 				<Amount value={category.spent} places={0} class="text-right text-body text-ink" />
-				<span class="col-span-2"
-					>{@render bar(parts, `${category.name}: ${said(parts)}`)}</span
-				>
+				<span class="col-span-2">{@render bar(parts, `${category.name}: ${said(parts)}`)}</span>
 				<span
 					class="col-span-2 flex flex-wrap gap-x-3 text-caption text-ink-muted"
 					aria-hidden="true"
 				>
 					{#each parts as part (part.name)}
 						<span
-							>{part.name}
-							<Amount
-								value={part.spent}
-								places={0}
-								class="text-ink-secondary"
-							/></span
+							>{part.name} <Amount value={part.spent} places={0} class="text-ink-secondary" /></span
 						>
 					{/each}
 				</span>

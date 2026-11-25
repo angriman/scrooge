@@ -95,9 +95,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	const leftOut = $derived(change && change.arrived !== '0' ? change.arrived : null);
 
 	const listed = (names: string[]) =>
-		names.length < 3
-			? names.join(' and ')
-			: `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+		names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 	// What the headline adds up: the fewer names, whether those left out or those kept.
 	const shownTitle = $derived(
 		hidden.size === 0
@@ -158,10 +156,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 
 	<div class="mt-4 flex flex-wrap items-center justify-between gap-3 px-5">
 		{#if view === 'chart' && series.parts.length}
-			<ul
-				class="flex flex-wrap items-center gap-x-1 gap-y-1"
-				aria-label="Parts shown on the chart"
-			>
+			<ul class="flex flex-wrap items-center gap-x-1 gap-y-1" aria-label="Parts shown on the chart">
 				{#each series.parts as part (part.name)}
 					{@const shown = !hidden.has(part.name)}
 					<li>
@@ -176,14 +171,10 @@ headline and the legend. The chart can give way to a table of the month-ends.
 							)}
 						>
 							<Swatch
-								color={shown
-									? (colors.get(part.name) ?? 'var(--data-other)')
-									: 'transparent'}
+								color={shown ? (colors.get(part.name) ?? 'var(--data-other)') : 'transparent'}
 								class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
 							/>
-							<span
-								class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}
-							>
+							<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
 								{part.name}
 							</span>
 							<span class="text-ink tabular-nums">{short(part.values[at])}</span>

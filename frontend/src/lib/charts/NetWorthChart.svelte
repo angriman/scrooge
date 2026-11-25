@@ -76,14 +76,7 @@ reader is already looking, in the headline and the legend.
 				}))
 			: series.parts.length
 				? []
-				: [
-						{
-							key: 'total',
-							label: 'Net worth',
-							value: (row: Day) => total[row.index],
-							color
-						}
-					]
+				: [{ key: 'total', label: 'Net worth', value: (row: Day) => total[row.index], color }]
 	);
 
 	// A change of range moves the chart to its new days instead of redrawing it, unless the
@@ -130,10 +123,7 @@ reader is already looking, in the headline and the legend.
 	>
 		{#snippet aboveMarks()}
 			{#if parts.length}
-				<Spline
-					y={(row: Day) => line[row.index]}
-					class="fill-none stroke-ink stroke-[1.5]"
-				/>
+				<Spline y={(row: Day) => line[row.index]} class="fill-none stroke-ink stroke-[1.5]" />
 			{/if}
 		{/snippet}
 		{#snippet tooltip()}{/snippet}

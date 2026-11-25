@@ -82,9 +82,7 @@ of securities alone.
 				<tr>
 					<th class="pb-2 text-left font-normal"><span class="sr-only">Type</span></th>
 					<th class="pb-2 text-right font-normal"><span class="sr-only">Value</span></th>
-					<th class="hidden pb-2 pl-4 text-left font-normal sm:table-cell"
-						>Of net worth</th
-					>
+					<th class="hidden pb-2 pl-4 text-left font-normal sm:table-cell">Of net worth</th>
 					<th class="pb-2 text-right font-normal">{label}</th>
 				</tr>
 			</thead>
@@ -98,17 +96,11 @@ of securities alone.
 								{named(part)}
 							</span>
 						</td>
-						<td class="py-2.5 text-right"
-							><Amount value={part.value} {currency} places={0} /></td
-						>
+						<td class="py-2.5 text-right"><Amount value={part.value} {currency} places={0} /></td>
 						<td class="hidden py-2.5 pl-4 sm:table-cell">
 							{#if part.share !== null}
 								<span class="flex items-center gap-2">
-									<Share
-										share={part.share}
-										color={colorOf(part.name)}
-										class="w-24"
-									/>
+									<Share share={part.share} color={colorOf(part.name)} class="w-24" />
 									<span class="w-12 text-right text-small text-ink-secondary"
 										>{percent(part.share)}</span
 									>

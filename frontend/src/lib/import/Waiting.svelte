@@ -37,24 +37,16 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 >
 	<ul class="divide-y divide-line">
 		{#each groups as group (key(group))}
-			{@const members = group.ids
-				.map((id) => rows.get(id))
-				.filter((row) => row !== undefined)}
+			{@const members = group.ids.map((id) => rows.get(id)).filter((row) => row !== undefined)}
 			{@const shown = open[key(group)] ? members : members.slice(0, SHOWN)}
 			{@const choice = chosen[key(group)]}
 			<li class="grid gap-x-6 gap-y-2 py-3 md:grid-cols-[minmax(0,1fr)_18rem]">
 				<div class="min-w-0">
 					<p class="flex items-center gap-1.5 text-body text-ink">
 						{#if group.incoming}
-							<ArrowDownLeft
-								class="size-4 shrink-0 text-gain"
-								aria-label="Received"
-							/>
+							<ArrowDownLeft class="size-4 shrink-0 text-gain" aria-label="Received" />
 						{:else}
-							<ArrowUpRight
-								class="size-4 shrink-0 text-ink-muted"
-								aria-label="Paid"
-							/>
+							<ArrowUpRight class="size-4 shrink-0 text-ink-muted" aria-label="Paid" />
 						{/if}
 						<span class="truncate">{group.name || 'Rows without a description'}</span>
 						<span class="shrink-0 text-small text-ink-muted">
@@ -64,16 +56,11 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 					<ul class="mt-1 space-y-0.5 pl-5.5">
 						{#each shown as row (row.id)}
 							<li class="flex items-baseline gap-3 text-small text-ink-secondary">
-								<span class="w-12 shrink-0 tabular-nums">{dayOfYear(row.date)}</span
-								>
+								<span class="w-12 shrink-0 tabular-nums">{dayOfYear(row.date)}</span>
 								<span class="min-w-0 flex-1 truncate">
 									{row.description !== group.name ? row.description : row.account}
 								</span>
-								<Amount
-									value={row.amount}
-									currency={row.currency}
-									class="text-ink"
-								/>
+								<Amount value={row.amount} currency={row.currency} class="text-ink" />
 							</li>
 						{/each}
 					</ul>
@@ -95,11 +82,7 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 						/>
 						{#if rules && group.name}
 							<label class="flex items-center gap-2 text-small text-ink-secondary">
-								<input
-									type="checkbox"
-									bind:checked={choice.rule}
-									class="size-4 accent-brand"
-								/>
+								<input type="checkbox" bind:checked={choice.rule} class="size-4 accent-brand" />
 								Remember for {group.name}
 							</label>
 						{/if}

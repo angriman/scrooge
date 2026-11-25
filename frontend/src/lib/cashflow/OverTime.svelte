@@ -68,9 +68,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	);
 	const path = $derived(
 		rate
-			.map((point, index) =>
-				point ? `${rate[index - 1] ? 'L' : 'M'}${point.x},${point.y}` : ''
-			)
+			.map((point, index) => (point ? `${rate[index - 1] ? 'L' : 'M'}${point.x},${point.y}` : ''))
 			.join('')
 	);
 	const label = (name: string) =>
@@ -105,13 +103,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 				onpointerleave={() => (shown = null)}
 				opacity={shown === null || shown === index ? 1 : 0.45}
 			>
-				<rect
-					x={LEFT + step * index}
-					y={TOP}
-					width={step}
-					height={plot}
-					fill="transparent"
-				/>
+				<rect x={LEFT + step * index} y={TOP} width={step} height={plot} fill="transparent" />
 				{#each column.above as piece (piece.name)}
 					{#if piece.height > 0}<rect
 							x={column.x}
@@ -163,22 +155,18 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 			<span class="font-medium text-ink">{label(detail.name)} {detail.name.slice(0, 4)}</span>
 			<span>In <Amount value={detail.income} {currency} places={0} class="text-gain" /></span>
 			<span>Out <Amount value={detail.spent} {currency} places={0} class="text-ink" /></span>
-			<span>Saved <Amount value={detail.saved} {currency} places={0} class="text-ink" /></span
-			>
+			<span>Saved <Amount value={detail.saved} {currency} places={0} class="text-ink" /></span>
 			{#if detail.rate !== null}<span
 					>Rate <span class="text-brand">{percent(detail.rate, 0)}</span></span
 				>{/if}
 			{#if detail.rate_salary !== null}<span
-					>On salary <span class="text-brand">{percent(detail.rate_salary, 0)}</span
-					></span
+					>On salary <span class="text-brand">{percent(detail.rate_salary, 0)}</span></span
 				>{/if}
 			{#if detail.rate_12 !== null}<span
-					>12-month rate <span class="text-brand">{percent(detail.rate_12, 0)}</span
-					></span
+					>12-month rate <span class="text-brand">{percent(detail.rate_12, 0)}</span></span
 				>{/if}
 			{#if detail.rate_salary_12 !== null}<span
-					>12-month on salary <span class="text-brand"
-						>{percent(detail.rate_salary_12, 0)}</span
+					>12-month on salary <span class="text-brand">{percent(detail.rate_salary_12, 0)}</span
 					></span
 				>{/if}
 		</p>
@@ -187,8 +175,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-secondary">
 		{#each GROUPS as group (group)}
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={incomeColor(group)}
-				></span>{group}
+				<span class="size-2 rounded-[2px]" style:background={incomeColor(group)}></span>{group}
 			</li>
 		{/each}
 		{#each parts as name (name)}

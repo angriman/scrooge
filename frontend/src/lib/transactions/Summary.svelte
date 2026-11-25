@@ -89,31 +89,18 @@ Amounts in several currencies are never added: each currency is shown on its own
 									aria-pressed={chosen === line.name}
 									class="block w-full rounded-control px-1.5 py-1.5 text-left hover:bg-sunken"
 								>
-									<span
-										class="flex items-baseline justify-between gap-3 text-small"
-									>
+									<span class="flex items-baseline justify-between gap-3 text-small">
 										<span class="truncate text-ink">{line.name}</span>
-										<Amount
-											value={line.size}
-											{currency}
-											places={0}
-											class="text-ink"
-										/>
+										<Amount value={line.size} {currency} places={0} class="text-ink" />
 									</span>
-									<span
-										class="mt-1 block h-1.5 rounded-full bg-sunken"
-										aria-hidden="true"
-									>
+									<span class="mt-1 block h-1.5 rounded-full bg-sunken" aria-hidden="true">
 										<span
 											class={[
 												'block h-full rounded-full',
 												side.name === 'Money in' ? 'bg-gain' : 'bg-data-1',
 												chosen && chosen !== line.name && 'opacity-40'
 											]}
-											style:width="{Math.max(
-												1.5,
-												(approximate(line.size) / largest) * 100
-											)}%"
+											style:width="{Math.max(1.5, (approximate(line.size) / largest) * 100)}%"
 										></span>
 									</span>
 								</button>

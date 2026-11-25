@@ -26,7 +26,6 @@ quieter than the francs, so a column of amounts is read by its whole numbers.
 	{#if point < 0}{written}{:else}{written.slice(0, point)}<span
 			class="text-[0.72em] text-ink-secondary">{written.slice(point)}</span
 		>{/if}{#if currency}<span
-			class="ml-[0.3em] text-[max(0.6em,0.6875rem)] font-normal text-ink-muted"
-			>{currency}</span
+			class="ml-[0.3em] text-[max(0.6em,0.6875rem)] font-normal text-ink-muted">{currency}</span
 		>{/if}
 </span>

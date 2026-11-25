@@ -29,11 +29,7 @@ name finds them alone.
 		<svelte:element
 			this={payment.alone ? 'a' : 'div'}
 			href={payment.alone
-				? transactions({
-						merchant: payment.name,
-						account: payment.account,
-						owner: payment.owner
-					})
+				? transactions({ merchant: payment.name, account: payment.account, owner: payment.owner })
 				: undefined}
 			class={[
 				'grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-control px-1 py-2',
@@ -43,8 +39,7 @@ name finds them alone.
 			<span class="flex min-w-0 items-center gap-2 text-body text-ink">
 				<span class="truncate">{payment.name}</span>
 				{#if !stopped && isNew(payment, recurring.through)}
-					<span
-						class="shrink-0 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
+					<span class="shrink-0 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
 						>New</span
 					>
 				{/if}

@@ -41,9 +41,7 @@
 	// saves first.
 	const blocked = $derived.by(() => {
 		const given = new Set(pending.flatMap((choice) => choice.ids));
-		const left = staged.rows.filter(
-			(row) => row.category === null && !given.has(row.id)
-		).length;
+		const left = staged.rows.filter((row) => row.category === null && !given.has(row.id)).length;
 		const waiting =
 			left === 1
 				? '1 transaction still needs a category'
@@ -187,8 +185,7 @@
 
 {#if !staged.files.length}
 	<p class="mt-8 text-center text-body text-ink-secondary">
-		Nothing is staged for {staged.owner}. Statements show here once imported, to check and
-		commit.
+		Nothing is staged for {staged.owner}. Statements show here once imported, to check and commit.
 	</p>
 {:else}
 	<div
@@ -212,8 +209,8 @@
 					>
 				</summary>
 				<p class="mt-1 mb-2 text-small text-ink-secondary">
-					A category a rule gave can be changed here; a row chosen on its own keeps its
-					choice over its counterparty's.
+					A category a rule gave can be changed here; a row chosen on its own keeps its choice over
+					its counterparty's.
 				</p>
 				<StagedRows rows={staged.rows} leaves={staged.choices.leaves} bind:own />
 			</details>
@@ -235,9 +232,7 @@
 					disabled={saving !== null}
 					class="h-10 w-full rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
 				>
-					{saving === 'commit'
-						? 'Committing…'
-						: `Commit ${statements(staged.files.length)}`}
+					{saving === 'commit' ? 'Committing…' : `Commit ${statements(staged.files.length)}`}
 				</button>
 				{#if pending.length}
 					<button
@@ -250,8 +245,7 @@
 					</button>
 				{/if}
 				<p class="text-caption text-ink-muted">
-					The categories chosen are saved with the commit. A copy of the database is kept
-					first.
+					The categories chosen are saved with the commit. A copy of the database is kept first.
 				</p>
 			</div>
 
@@ -259,22 +253,12 @@
 				<ul class="space-y-1">
 					{#each staged.totals as line (`${line.side}:${line.category}:${line.currency}`)}
 						<li class="flex items-baseline justify-between gap-3 text-small">
-							<span
-								class="min-w-0 truncate {line.category
-									? 'text-ink'
-									: 'text-caution'}"
-							>
+							<span class="min-w-0 truncate {line.category ? 'text-ink' : 'text-caution'}">
 								{line.category ?? 'Waiting for a category'}
-								{#if line.side === 'transfer'}<span class="text-ink-muted"
-										>transfer</span
-									>{/if}
+								{#if line.side === 'transfer'}<span class="text-ink-muted">transfer</span>{/if}
 							</span>
 							<span class="shrink-0 text-ink-secondary">
-								<Amount
-									value={line.total}
-									currency={line.currency}
-									class="text-ink"
-								/>
+								<Amount value={line.total} currency={line.currency} class="text-ink" />
 								<span class="ml-1 text-caption text-ink-muted">{line.count}</span>
 							</span>
 						</li>

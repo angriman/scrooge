@@ -53,13 +53,7 @@ next to a net worth of hundreds of thousands; their figures are written over the
 				: [];
 		return [
 			{ name: from, from: null, to: start, label: short(before), tone: 'end' },
-			{
-				name: 'Income',
-				from: start,
-				to: afterIncome,
-				label: shortSigned(income),
-				tone: 'gain'
-			},
+			{ name: 'Income', from: start, to: afterIncome, label: shortSigned(income), tone: 'gain' },
 			{
 				name: 'Spending',
 				from: afterIncome,
@@ -81,9 +75,7 @@ next to a net worth of hundreds of thousands; their figures are written over the
 	});
 
 	const scale = $derived.by(() => {
-		const levels = steps.flatMap((step) =>
-			step.from === null ? [step.to] : [step.from, step.to]
-		);
+		const levels = steps.flatMap((step) => (step.from === null ? [step.to] : [step.from, step.to]));
 		const low = Math.min(...levels);
 		const high = Math.max(...levels);
 		const pad = (high - low) * 0.35 || Math.abs(high) * 0.02 || 1;
@@ -109,11 +101,9 @@ next to a net worth of hundreds of thousands; their figures are written over the
 		height={HEIGHT}
 		class="block overflow-visible"
 		role="img"
-		aria-label="From {short(before)} on {from}: income {shortSigned(
-			income
-		)}, spending {shortSigned(negate(spent))}, markets and other {shortSigned(
-			other
-		)}, to {short(after)} on {to}"
+		aria-label="From {short(before)} on {from}: income {shortSigned(income)}, spending {shortSigned(
+			negate(spent)
+		)}, markets and other {shortSigned(other)}, to {short(after)} on {to}"
 	>
 		<line x1="0" x2={width} y1={floor} y2={floor} class="stroke-chart-grid" />
 		{#each steps as step, index (step.name + index)}
@@ -146,11 +136,8 @@ next to a net worth of hundreds of thousands; their figures are written over the
 				class="fill-ink text-small tabular-nums"
 				style:fill={step.tone === 'end' ? undefined : fills[step.tone]}>{step.label}</text
 			>
-			<text
-				x={x + BAR / 2}
-				y={HEIGHT - 6}
-				text-anchor="middle"
-				class="fill-ink-muted text-caption">{step.name}</text
+			<text x={x + BAR / 2} y={HEIGHT - 6} text-anchor="middle" class="fill-ink-muted text-caption"
+				>{step.name}</text
 			>
 		{/each}
 	</svg>

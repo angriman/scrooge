@@ -22,15 +22,13 @@ checking a figure against the statements.
 			In each currency, as paid
 		</summary>
 		<p class="mt-1 text-small text-ink-muted">
-			What came in and went out in each currency, before anything is converted. Investing is
-			what went into securities, or came back out of them.
+			What came in and went out in each currency, before anything is converted. Investing is what
+			went into securities, or came back out of them.
 		</p>
 		<div class="mt-3 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
 			{#each currencies as currency (currency)}
 				<table class="w-full text-small">
-					<caption class="pb-1 text-left text-title font-medium text-ink"
-						>{currency}</caption
-					>
+					<caption class="pb-1 text-left text-title font-medium text-ink">{currency}</caption>
 					<thead class="text-caption text-ink-muted">
 						<tr>
 							<th class="py-1 text-left font-normal">Period</th>
@@ -43,15 +41,9 @@ checking a figure against the statements.
 						{#each report.as_paid.filter((line) => line.currency === currency) as line (line.period)}
 							<tr class="border-t border-line">
 								<td class="py-1 text-ink-secondary tabular-nums">{line.period}</td>
-								<td class="py-1 text-right"
-									><Amount value={line.income} places={0} /></td
-								>
-								<td class="py-1 text-right"
-									><Amount value={line.expenses} places={0} /></td
-								>
-								<td class="py-1 text-right"
-									><Amount value={line.investing} places={0} /></td
-								>
+								<td class="py-1 text-right"><Amount value={line.income} places={0} /></td>
+								<td class="py-1 text-right"><Amount value={line.expenses} places={0} /></td>
+								<td class="py-1 text-right"><Amount value={line.investing} places={0} /></td>
 							</tr>
 						{/each}
 					</tbody>
