@@ -51,5 +51,10 @@ services:
     <<: *scrooge
     command: ["sh", "-c", "while :; do scrooge prices; sleep 86400; done"]
     init: true # stops at once, not after Docker's ten seconds: sh passes no signal on
+    # After the pages are up: they bring the database to this version's schema first, and
+    # two processes doing it at once trip over each other.
+    depends_on:
+      scrooge:
+        condition: service_healthy
     healthcheck:
       disable: true # the image's checks the pages, which this one does not serve

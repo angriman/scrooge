@@ -72,7 +72,9 @@ for _ in $(seq 60); do
     sleep 2
 done
 [ "$health" = healthy ] || fail "the pages are $health, not healthy"
-[ "$(compose ps prices --format '{{.State}}')" = running ] || fail "prices is not running"
+# Not `compose ps --format`: Compose 2.20 (Synology's) takes no template there.
+running=$("${docker[@]}" inspect -f '{{.State.Status}}' "$(compose ps -q prices)")
+[ "$running" = running ] || fail "prices is $running, not running"
 
 step "the container"
 [ "$(compose exec -T scrooge id -u)" = "$(id -u)" ] || fail "not the user of .env"
