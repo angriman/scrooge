@@ -4,9 +4,10 @@ A pattern tried on the committed rows, as a rule with it would match them: how m
 newest of them. Nothing is saved.
 -->
 <script lang="ts">
+	import { errorMessage, getWithToken } from '#lib/api.js';
 	import { day } from '#lib/format/date.js';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import type { PatternTest } from '#lib/types.js';
+	import type { PatternTest, Rule } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { testQuery } from './rules.js';
 
@@ -16,7 +17,7 @@ newest of them. Nothing is saved.
 		/** The token of these pages, which a pattern tried needs. */
 		token: string;
 		match?: string;
-		direction?: string;
+		direction?: Rule['direction'];
 	}
 
 	let { owner, token, match = $bindable(''), direction = $bindable('') }: Props = $props();
@@ -33,17 +34,13 @@ newest of them. Nothing is saved.
 	export async function run() {
 		if (!match.trim()) return;
 		trying = true;
-		try {
-			const response = await fetch(
-				`/api/settings/rules/test?${testQuery(match, direction, owner)}`,
-				{
-					headers: { 'x-token': token }
-				}
-			);
-			found = await response.json();
-		} catch {
-			found = { count: 0, rows: [], errors: [t('api.unreachable')] };
-		}
+		const answer = await getWithToken<PatternTest>(
+			`/api/settings/rules/test?${testQuery(match, direction, owner)}`,
+			token
+		);
+		found = answer.ok
+			? answer.sent
+			: { count: 0, rows: [], errors: [errorMessage(answer) ?? t('api.changeRefused')] };
 		trying = false;
 	}
 

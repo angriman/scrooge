@@ -39,10 +39,6 @@ export const CHANGE_NOTE = 'Change leaves out what accounts held when they were 
 export const ARRIVED_NOTE =
 	'Change leaves out what came into view, what accounts held when they were first imported: to the cent, a month’s total change is the two added up.';
 
-/** What counts as frozen, said under the table and on the columns of the split. */
-export const FROZEN_NOTE =
-	'Frozen is Pillar 2, Pillar 3a and the accounts scrooge.yaml names frozen; the rest is liquid.';
-
 const COLUMN_LABEL_KEYS: Record<Column['key'], MessageKey> = {
 	total: 'monthEnds.colTotal',
 	change: 'monthEnds.colChange',

@@ -114,3 +114,8 @@ export function daysBetween(first: string, last: string): number {
 	const [a, b] = [parts(first), parts(last)];
 	return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000);
 }
+
+/** Today in the reader's time zone, as `YYYY-MM-DD`. */
+export function todayIso(now: Date = new Date()): string {
+	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}

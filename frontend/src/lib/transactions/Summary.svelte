@@ -38,7 +38,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 	const currency = $derived(picked && currencies.includes(picked) ? picked : currencies[0]);
 
 	const mine = $derived(
-		totals.filter((total) => total.currency === currency && (total.key ?? total.name) !== TRANSFERS)
+		totals.filter((total) => total.currency === currency && total.key !== TRANSFERS)
 	);
 	const sides = $derived(
 		[

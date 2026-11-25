@@ -28,26 +28,18 @@ export interface Answer<T> {
 	sent: T & { errors?: string[] };
 }
 
-/** POST `body` to `path` of the API, as JSON or as the form it is, with the token of these
- * pages (`Session.token`) that a change needs. Not signed in, the browser goes to the password
- * page and comes back. */
-export async function send<T>(path: string, body: unknown, token: string): Promise<Answer<T>> {
-	const form = body instanceof FormData;
+async function request<T>(path: string, init: RequestInit): Promise<Answer<T>> {
 	let response: Response;
 	try {
-		response = await fetch(path, {
-			method: 'POST',
-			headers: form
-				? { 'x-token': token }
-				: { 'content-type': 'application/json', 'x-token': token },
-			body: form ? body : JSON.stringify(body)
-		});
+		response = await fetch(path, init);
 	} catch {
 		const errors = [t('api.unreachable')];
 		return { ok: false, status: 0, sent: { errors } as T & { errors: string[] } };
 	}
 	if (response.status === 401) {
 		location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+		const errors = [t('api.signedOut')];
+		return { ok: false, status: 401, sent: { errors } as T & { errors: string[] } };
 	}
 	const sent = await response.json().catch(() => ({
 		errors: [
@@ -59,12 +51,38 @@ export async function send<T>(path: string, body: unknown, token: string): Promi
 	return { ok: response.ok, status: response.status, sent };
 }
 
+/** GET `path` of the API with the token of these pages (`Session.token`). */
+export function getWithToken<T>(path: string, token: string): Promise<Answer<T>> {
+	return request<T>(path, { headers: { 'x-token': token } });
+}
+
+/** POST `body` to `path` of the API, as JSON or as the form it is, with the token of these
+ * pages (`Session.token`) that a change needs. Not signed in, the browser goes to the password
+ * page and comes back. */
+export function send<T>(path: string, body: unknown, token: string): Promise<Answer<T>> {
+	const form = body instanceof FormData;
+	return request<T>(path, {
+		method: 'POST',
+		headers: form ? { 'x-token': token } : { 'content-type': 'application/json', 'x-token': token },
+		body: form ? body : JSON.stringify(body)
+	});
+}
+
+/** The error sentences of a refused `Answer`, or `fallback` when none were sent; null when
+ * `answer.ok`. */
+export function errorMessage(
+	answer: Answer<unknown>,
+	fallback: string = t('api.changeRefused')
+): string | null {
+	if (answer.ok) return null;
+	return (answer.sent.errors ?? []).join(' ') || fallback;
+}
+
 /** POST `body` as JSON to `path` of the API with the token of these pages; a change refused
  * is an error with the API's sentences. */
 export async function post<T>(path: string, body: unknown, token: string): Promise<T> {
 	const answer = await send<T>(path, body, token);
-	if (!answer.ok) {
-		throw new Error(answer.sent.errors?.join(' ') || t('api.changeRefused'));
-	}
+	const problem = errorMessage(answer);
+	if (problem !== null) throw new Error(problem);
 	return answer.sent;
 }

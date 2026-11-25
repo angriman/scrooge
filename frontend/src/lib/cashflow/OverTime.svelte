@@ -11,6 +11,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowPeriod } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
+	import { periodName } from './table.js';
 	import { GROUPS, incomeColor, PAID_BACK, spendingPartName } from './names.js';
 
 	interface Props {
@@ -154,7 +155,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 			class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary"
 			aria-live="polite"
 		>
-			<span class="font-medium text-ink">{label(detail.name)} {detail.name.slice(0, 4)}</span>
+			<span class="font-medium text-ink">{periodName(detail.name)}</span>
 			<span
 				>{t('cashflow.inShort')}
 				<Amount value={detail.income} {currency} places={0} class="text-gain" /></span

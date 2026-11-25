@@ -16,6 +16,7 @@
 	import { partColors, rangeName, rangePillLabel } from '#lib/cashflow/names.js';
 	import { anyRecurring } from '#lib/cashflow/recurring.js';
 	import { t } from '#lib/i18n/index.svelte.js';
+	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { here, oneOf, show } from '#lib/view.js';
@@ -32,8 +33,8 @@
 	const to = $derived(page.url.searchParams.get('to') ?? '');
 	const chosen = $derived(
 		!from && !to
-			? (flow.ranges[0]?.label ?? '')
-			: (flow.ranges.find((range) => range.from === from && range.to === to)?.label ?? '')
+			? (flow.ranges[0]?.key ?? '')
+			: (flow.ranges.find((range) => range.from === from && range.to === to)?.key ?? '')
 	);
 	const byOptions = $derived([
 		{ value: 'month' as const, label: t('cashflow.byMonth') },
@@ -84,12 +85,12 @@
 			<Segmented
 				label={t('overview.rangeAria')}
 				value={chosen}
-				options={flow.ranges.map((range) => ({ value: range.label, label: rangePillLabel(range) }))}
-				onchange={(label) => {
-					const range = flow.ranges.find((r) => r.label === label)!;
+				options={flow.ranges.map((range) => ({ value: range.key, label: rangePillLabel(range) }))}
+				onchange={(key) => {
+					const range = flow.ranges.find((r) => r.key === key)!;
 					show(
 						here(),
-						label === flow.ranges[0].label
+						key === flow.ranges[0].key
 							? { from: null, to: null }
 							: { from: range.from, to: range.to || null }
 					);
@@ -116,18 +117,12 @@
 {/each}
 
 {#if !report?.totals}
-	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h2 class="text-heading font-medium text-ink">{t('cashflow.emptyHeading')}</h2>
-		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			{t('cashflow.emptyBody')}
-		</p>
-		<a
-			href={resolve('/import')}
-			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
-		>
-			{t('overview.emptyCta')}
-		</a>
-	</section>
+	<EmptyState
+		level="h2"
+		heading={t('cashflow.emptyHeading')}
+		body={t('cashflow.emptyBody')}
+		importCta={!data.session.read_only}
+	/>
 {:else}
 	<Lead
 		totals={report.totals}
