@@ -9,8 +9,8 @@ export interface Section {
 }
 
 const SIDES: Record<ListedCategory['side'], string> = {
-	uscite: 'Expenses',
-	entrate: 'Income',
+	expenses: 'Expenses',
+	income: 'Income',
 	transfer: 'Between accounts'
 };
 
@@ -72,7 +72,7 @@ export function mergeInto(listed: readonly ListedCategory[], category: ListedCat
 export const renamable = (category: ListedCategory, unmatched: string | null = null): boolean =>
 	!category.built_in && category.name !== unmatched;
 export const movable = (category: ListedCategory): boolean =>
-	!category.built_in && category.side === 'uscite';
+	!category.built_in && category.side === 'expenses';
 export const removable = (category: ListedCategory, unmatched: string | null = null): boolean =>
 	renamable(category, unmatched) && category.rows === 0;
 /** Whether it can be merged away into another. */

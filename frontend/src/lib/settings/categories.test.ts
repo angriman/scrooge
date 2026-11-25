@@ -19,11 +19,11 @@ const category = (
 ): ListedCategory => ({ name, side, parent, built_in, rows });
 
 const LISTED = [
-	category('Groceries', 'uscite', 'Food', { rows: 3 }),
-	category('Trading', 'uscite', 'Investments'),
-	category('Prestiti', 'uscite', 'Prestiti', { built_in: false }),
-	category('Salary', 'entrate'),
-	category('Trading', 'entrate'),
+	category('Groceries', 'expenses', 'Food', { rows: 3 }),
+	category('Trading', 'expenses', 'Investments'),
+	category('Prestiti', 'expenses', 'Prestiti', { built_in: false }),
+	category('Salary', 'income'),
+	category('Trading', 'income'),
 	category('Own transfer', 'transfer'),
 	category('Revolut top-up', 'transfer')
 ];
@@ -74,6 +74,6 @@ describe('what can be done', () => {
 
 	it('names rows and keys a category by its side', () => {
 		expect([rowsName(0), rowsName(1), rowsName(4)]).toEqual(['no rows', '1 row', '4 rows']);
-		expect(categoryKey(LISTED[4])).toBe('entrate|Trading');
+		expect(categoryKey(LISTED[4])).toBe('income|Trading');
 	});
 });

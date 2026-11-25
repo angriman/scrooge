@@ -15,7 +15,7 @@ in a group of its own, or income. Every import from now on has it.
 	let { under, onadd, summary = 'A row fits no category? Add one' }: Props = $props();
 
 	let name = $state('');
-	let where = $state('uscite:');
+	let where = $state('expenses:');
 	let adding = $state(false);
 	let problem = $state<string | null>(null);
 
@@ -44,11 +44,11 @@ in a group of its own, or income. Every import from now on has it.
 		<label class="flex flex-col gap-1 text-caption text-ink-secondary">
 			Goes under
 			<select bind:value={where} class={field}>
-				<option value="uscite:">Expenses, a group of its own</option>
+				<option value="expenses:">Expenses, a group of its own</option>
 				{#each under as group (group)}
-					<option value="uscite:{group}">Expenses, {group}</option>
+					<option value="expenses:{group}">Expenses, {group}</option>
 				{/each}
-				<option value="entrate:">Income</option>
+				<option value="income:">Income</option>
 			</select>
 		</label>
 		<button

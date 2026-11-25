@@ -161,11 +161,6 @@
 		return null;
 	}
 
-	const sides: Record<string, string> = {
-		uscite: 'Expenses',
-		entrate: 'Income',
-		transfer: 'Transfers'
-	};
 	const statements = (count: number) => (count === 1 ? '1 statement' : `${count} statements`);
 	const transactions = $derived(
 		resolve('/transactions') +

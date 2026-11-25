@@ -247,8 +247,8 @@ def _writing(request: Request, act: Callable[[sqlite3.Connection], object]) -> o
 
 
 async def _add_category(request: Request) -> Response:
-    """One more category: `{"name", "side", "group"}`, an expense (`uscite`) under `group`
-    or a group of its own, or income (`entrate`)."""
+    """One more category: `{"name", "side", "group"}`, an expense (`expenses`) under `group`
+    or a group of its own, or income (`income`)."""
 
     def act(sent: dict[str, object]) -> object:
         def add(conn: sqlite3.Connection) -> object:
@@ -256,7 +256,7 @@ async def _add_category(request: Request) -> Response:
                 conn,
                 _places(request).categories_file,
                 name=_text(sent, "name"),
-                side=wire.side_sent(_text(sent, "side")),
+                side=_text(sent, "side"),
                 group=_text(sent, "group"),
             )
             return {"name": added.name}
