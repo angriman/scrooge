@@ -53,6 +53,7 @@ from scrooge.storage.store import committed_or_typed
 
 PERIODS = ("1m", "ytd", "1y", "all")  # `all`: since bought
 _CENT = Decimal("0.01")
+_NANO = Decimal("1e-9")  # what a lot's cost is kept to, as `storage.bills` keeps it
 _Moved = tuple[date, str, Decimal, bool]  # as `performance.instrument_ranges` reads it
 _Key = tuple[str, str, str, str, str]  # owner, account, symbol, currency, asset
 
@@ -262,7 +263,7 @@ def _realised(  # noqa: PLR0913  # the trades, the splits, and how to convert th
         )
         if event.quantity > 0:
             unpriced = unpriced or not trade.lot.priced
-            converted.append(Event(event.txn_id, event.quantity, to_nano(at)))
+            converted.append(Event(event.txn_id, event.quantity, to_nano(at.quantize(_NANO))))
         else:
             converted.append(event)
             if not trade.in_kind:

@@ -118,6 +118,9 @@ def test_a_sale_realises_at_its_own_rate_and_the_lots_at_theirs(
     returns = only(returned(conn, "CHF"))
     # 400 francs for shares that cost 450.
     assert returns.realised == D("-50.00")
+    # Through a rate that divides into no exact decimal: 400 / 0.7 - 450 / 0.7.
+    rate(conn, "EUR", day(1), "0.7")
+    assert only(returned(conn, "EUR")).realised == D("-71.43")
 
 
 def test_a_holding_in_two_accounts_is_measured_together_and_each_on_its_own(
