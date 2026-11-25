@@ -834,7 +834,8 @@ def known_merchants(shown: Merchants) -> JSON:
 
 def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
     """One rule of the settings page: what it gives, in which file, how many committed rows
-    it would match on its own (null when its pattern is none), what a change of it sends back
+    it would match on its own (null when its pattern is none, or `counted` is false: time ran
+    out before it was counted), what a change of it sends back
     (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
     return {
         "file": rule.file.key,
@@ -847,6 +848,7 @@ def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
         "matches": rule.matches,
         "version": rule.version,
         "fixed": rule.fixed or None,
+        "counted": rule.counted,
     }
 
 

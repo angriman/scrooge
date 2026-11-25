@@ -48,7 +48,8 @@ export function directionName(direction: string): string {
 
 /** How many committed rows it would match on its own, in words: a rule before it may take
  * some of them first. */
-export function matchesName(matches: number | null): string {
+export function matchesName(matches: number | null, counted = true): string {
+	if (!counted) return 'not counted: counting took too long';
 	if (matches === null) return 'not a pattern';
 	if (matches === 0) return 'would match no rows';
 	return `would match ${matches === 1 ? '1 row' : `${matches} rows`} on its own`;
@@ -74,6 +75,13 @@ export function changes(rule: Rule, draft: Draft): boolean {
 export function seen(rule: Rule) {
 	return { file: rule.file, position: rule.position, version: rule.version };
 }
+
+/** What `/api/settings/rules/move` takes: the rule, and the one it passes as shown. */
+export const moved = (rule: Rule, by: -1 | 1, beside: Rule | undefined) => ({
+	...seen(rule),
+	by,
+	beside: beside?.version ?? ''
+});
 
 /** What `/api/settings/rules/edit` takes. */
 export const edited = (rule: Rule, draft: Draft) => ({ ...seen(rule), ...draft });

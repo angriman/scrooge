@@ -8,13 +8,15 @@ put back as it was when it would not load.
 
 A category renamed, merged or moved changes the rows that carry it too, in one database
 transaction, after the copy of the database that a commit also makes. When anything fails, the
-database and every file are left as they were; when a file cannot be put back, the copy is
-kept and the error says where. Every change holds the lock of the writers of these files
-(`yamlfiles`) from its first read to its last write, and each file is written whole or not at
-all.
+database and every file that changed are put back as they were, byte for byte; when a file
+cannot be, the others still are, the copy is kept and the error says where. Every change holds
+the lock of the writers of these files (`yamlfiles`) from its first read to its last write,
+and each file is written whole or not at all.
 
-How many committed rows a rule matches is counted with its pattern, account and direction
-alone, whatever rule before it takes them first: what it would match on its own.
+Patterns are run on the committed rows in a process of their own (`patterns`), killed when its
+time is up: a pattern that would take for ever never holds the server. How many committed rows
+a rule matches is counted with its pattern, account and direction alone, whatever rule before
+it takes them first: what it would match on its own.
 
 A category is asked for by its key or its label (`categories.key`), and shown and written into
 the files by its label (`categories.Labels`).
@@ -24,24 +26,21 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from pathlib import Path
 
-from scrooge import categories, classification, query, rulesfile, staging, yamlfiles
-from scrooge.classification import Rule
+from scrooge import categories, classification, patterns, query, rulesfile, staging, yamlfiles
 from scrooge.errors import ConfigError
-from scrooge.models import Transaction
 from scrooge.storage import db, store, taxonomy
 
 SHOWN = 50  # rows a test of a pattern lists; how many match is counted all the same
 LONGEST = 200  # characters of a pattern tried or saved here
 BUDGET = 2.0  # seconds a pattern is tried for, newest rows first
+COUNTING = 5.0  # seconds the rules of the page are counted for, in their order
 DIRECTIONS = ("", "in", "out")
 
 
@@ -66,9 +65,12 @@ class ListedRule:
     category: str  # its key
     direction: str
     account: str
-    matches: int | None  # committed rows it would match on its own; None: no pattern
+    # Committed rows it would match on its own; None when its pattern is none, or when time
+    # ran out before it was counted (`counted`).
+    matches: int | None
     version: str  # what a change of it sends back (`rulesfile.Entry.version`)
     fixed: str  # why it cannot be changed here at all; "" when it can
+    counted: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,25 +98,9 @@ def rule_files(shared: Sequence[Path], people: Iterable[str], owner: str | None)
     return listed
 
 
-def _transaction(row: query.Row) -> Transaction:
-    """What a rule reads of a committed row: its text, its account, whether money came in."""
-    return Transaction(
-        date=row.date.min,
-        account=row.account,
-        amount=Decimal(1 if row.amount > 0 else -1),
-        currency="",
-        description=row.description,
-        kind=row.kind,
-        source_file="",
-        source_ref="",
-        counterparty=row.counterparty,
-    )
-
-
-def _texts(rows: Iterable[query.Row]) -> Counter[tuple[str, Transaction]]:
-    """Owner and what a rule reads of a row -> how many rows read the same: shops come back,
-    so each text is matched once."""
-    return Counter((row.owner, _transaction(row)) for row in rows)
+def _text(row: query.Row) -> patterns.Text:
+    """What a rule reads of a committed row."""
+    return (row.account, row.amount > 0, row.description, row.counterparty)
 
 
 def _compiled(match: str) -> re.Pattern[str]:
@@ -139,45 +125,54 @@ def _direction(direction: str) -> str:
 
 
 def rules(
-    conn: sqlite3.Connection, files: Sequence[RulesFile], owner: str | None = None
+    conn: sqlite3.Connection,
+    files: Sequence[RulesFile],
+    owner: str | None = None,
+    budget: float = COUNTING,
 ) -> tuple[list[ListedRule], list[str]]:
     """Every rule of `files`, in the order they are tried, with the committed rows of `owner`
     (of everyone without one) each one would match on its own; and what could not be read, a
-    sentence for each file."""
-    texts = _texts(query.run(conn, query.Filter(owner=owner)).rows)
-    listed: list[ListedRule] = []
+    sentence for each file. The rules are counted in their order, away from the server, for
+    `budget` seconds at most: those time did not reach are listed uncounted, and a sentence
+    says so."""
+    texts = Counter(
+        (row.owner, _text(row)) for row in query.run(conn, query.Filter(owner=owner)).rows
+    )
+    found: list[tuple[RulesFile, int, rulesfile.Entry]] = []
     problems: list[str] = []
     for file in files:
         try:
-            _, found = rulesfile.read(file.path)
+            _, entries = rulesfile.read(file.path)
         except ConfigError as exc:
             problems.append(str(exc))
             continue
-        for position, entry in enumerate(found, start=1):
-            try:
-                pattern = re.compile(entry.match, re.IGNORECASE)
-            except re.error:
-                matches = None
-            else:
-                rule = Rule(pattern, entry.category, None, entry.account, entry.direction)
-                matches = sum(
-                    count
-                    for (whose, txn), count in texts.items()
-                    if file.owner in (None, whose) and rule.matches(txn)
-                )
-            listed.append(
-                ListedRule(
-                    file,
-                    position,
-                    entry.match,
-                    entry.category,
-                    entry.direction,
-                    entry.account,
-                    matches,
-                    entry.version,
-                    entry.refusal(editing=False),
-                )
+        found.extend((file, position, entry) for position, entry in enumerate(entries, start=1))
+    specs = [(entry.match, entry.account, entry.direction, file.owner) for file, _, entry in found]
+    counts: dict[int, int | None] = {}
+    if specs:
+        rows = [(whose, text, count) for (whose, text), count in texts.items()]
+        got, complete = patterns.bounded(patterns.counting, (specs, rows), budget)
+        counts = dict(got)  # type: ignore[arg-type]  # (index, rows) pairs, as `counting` puts them
+        if not complete:
+            problems.append(
+                f"counting the rules took too long: {len(found) - len(counts)} of them, from "
+                "the first left out, say no number of rows"
             )
+    listed = [
+        ListedRule(
+            file,
+            position,
+            entry.match,
+            entry.category,
+            entry.direction,
+            entry.account,
+            counts.get(n),
+            entry.version,
+            entry.refusal(editing=False),
+            n in counts,
+        )
+        for n, (file, position, entry) in enumerate(found)
+    ]
     return listed, problems
 
 
@@ -191,62 +186,49 @@ class Tried:
     complete: bool  # False when time ran out before the oldest
 
 
-def try_pattern(  # noqa: PLR0913  # the pattern, whose rows, and how long it may take
+def try_pattern(
     conn: sqlite3.Connection,
     match: str,
     *,
     direction: str = "",
     owner: str | None = None,
     budget: float = BUDGET,
-    clock: Callable[[], float] = time.monotonic,
 ) -> Tried:
     """The committed rows of `owner` (of everyone without one) that the pattern `match`
-    matches in `direction`, newest first, within `budget` seconds. Nothing is saved."""
-    rule = Rule(_compiled(match), "", direction=_direction(direction))
-    rows = query.run(conn, query.Filter(owner=owner)).rows
-    started = clock()
-    seen: dict[Transaction, bool] = {}
-    found: list[query.Row] = []
-    tried = 0
-    for row in reversed(rows):
-        if clock() - started > budget:
-            return Tried(len(found), found[:SHOWN], tried, False)
-        read = _transaction(row)
-        if read not in seen:
-            seen[read] = rule.matches(read)
-        if seen[read]:
-            found.append(row)
-        tried += 1
-    return Tried(len(found), found[:SHOWN], tried, True)
+    matches in `direction`, newest first. Nothing is saved. The pattern runs away from the
+    server for `budget` seconds at most; when time is up the newest rows it decided are
+    those counted (`Tried.tried`)."""
+    _compiled(match)
+    _direction(direction)
+    rows = query.run(conn, query.Filter(owner=owner)).rows[::-1]
+    order: dict[patterns.Text, int] = {}  # each text once, in the order of its newest row
+    for row in rows:
+        order.setdefault(_text(row), len(order))
+    got, _ = patterns.bounded(patterns.matching, (match, direction, list(order)), budget)
+    batches: list[tuple[int, list[int]]] = got  # type: ignore[assignment]  # as `matching` puts them
+    decided = max((upto for upto, _ in batches), default=0)
+    matched = {n for _, found in batches for n in found}
+    reached = next((n for n, row in enumerate(rows) if order[_text(row)] >= decided), len(rows))
+    hits = [row for row in rows[:reached] if order[_text(row)] in matched]
+    return Tried(len(hits), hits[:SHOWN], reached, reached == len(rows))
 
 
 class _UnrestoredError(SettingsError):
     """A change failed, and a file it had written could not be put back."""
 
 
-def _put_back(before: dict[Path, str | None]) -> None:
-    for path, text in before.items():
-        if text is None:
-            path.unlink(missing_ok=True)
-        else:
-            yamlfiles.write(path, text)
-
-
 @contextmanager
 def _kept(paths: Iterable[Path]) -> Iterator[None]:
-    """Whatever raises inside, `paths` are put back as they were (gone, if they were). When
-    one cannot be, `_UnrestoredError` says which failure left what. The caller holds the lock."""
-    before = {path: path.read_text(encoding="utf-8") if path.exists() else None for path in paths}
+    """Whatever raises inside, those of `paths` that changed are put back as they were, byte
+    for byte (gone, if they were). When one cannot be, the others still are, and
+    `_UnrestoredError` says which, after what went wrong first. The caller holds the lock."""
+    before = {path: yamlfiles.snapshot(path) for path in paths}
     try:
         yield
     except BaseException as exc:
-        try:
-            _put_back(before)
-        except OSError as failed:
-            msg = (
-                f"{exc}; and the files could not all be put back as they were ({failed}): "
-                f"check {', '.join(path.name for path in before)}"
-            )
+        failed = yamlfiles.put_back(before)
+        if failed:
+            msg = f"{exc}; and {', '.join(failed)} could not be put back as it was"
             raise _UnrestoredError(msg) from exc
         raise
 
@@ -323,9 +305,10 @@ def remove_rule(seen: Seen, categories_file: Path | None) -> None:
     _change_rule(seen, categories_file, lambda text, _, entry: rulesfile.removed(text, entry))
 
 
-def move_rule(seen: Seen, by: int, categories_file: Path | None) -> None:
-    """Move the rule `seen` one place up (`by` -1) or down (1) in its file: of two rules that
-    both match a row, the one tried first gives the category. A rule stays in its file."""
+def move_rule(seen: Seen, by: int, beside: str, categories_file: Path | None) -> None:
+    """Move the rule `seen` one place up (`by` -1) or down (1) in its file, past the rule
+    there, which must still be as the page showed it too (`beside`, its digest): of two rules
+    that both match a row, the one tried first gives the category. A rule stays in its file."""
     if by not in {-1, 1}:
         msg = "a rule moves one place up or down"
         raise SettingsError(msg)
@@ -335,6 +318,11 @@ def move_rule(seen: Seen, by: int, categories_file: Path | None) -> None:
         if not 0 <= at < len(found):
             where = "first" if by < 0 else "last"
             msg = f"rule {seen.position} is the {where} of {seen.file.name}"
+            raise SettingsError(msg)
+        if found[at].version != beside:
+            msg = (
+                f"rule {at + 1} of {seen.file.name} changed since the page was shown: load it again"
+            )
             raise SettingsError(msg)
         if found[at].refusal(editing=False):
             msg = f"rule {at + 1} of {seen.file.name}, next to it, cannot be moved here"
