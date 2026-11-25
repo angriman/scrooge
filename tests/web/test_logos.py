@@ -160,3 +160,79 @@ def test_a_copy_of_the_database_has_no_form_and_changes_nothing(database: Path) 
     sent = client.post("/holdings/logo", data=data, files=files)
     assert sent.status_code == 403
     assert client.get("/logos/GADG").status_code == 404
+
+
+def _token(client: TestClient) -> dict[str, str]:
+    return {"X-Token": client.get("/api/session").json()["token"]}
+
+
+def test_a_logo_is_uploaded_through_the_api_and_every_logo_is_sent_back(database: Path) -> None:
+    client = _client(webapp.create_app(database, lambda: NOW))
+    sent = client.post(
+        "/api/logos",
+        data={"symbol": "GADG"},
+        files={"file": ("../gadg.svg", LOGO, "image/svg+xml")},
+        headers=_token(client),
+    )
+    assert sent.status_code == 200
+    assert sent.json()["errors"] == []
+    assert sorted(sent.json()["logos"]) == ["GADG", "WIDG"]
+    assert client.get("/logos/GADG").content == LOGO
+    conn = db.connect(database)
+    where = "SELECT source FROM logos WHERE symbol = 'GADG'"
+    assert conn.execute(where).fetchone()[0] == "gadg.svg"
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    ("symbol", "files", "why"),
+    [
+        ("GADG", {"file": ("x.svg", b"not an image", "image/svg+xml")}, "neither a PNG nor an SVG"),
+        ("GADG", {"other": ("x", b"x")}, "the file is empty"),
+        ("NOPE", {"file": ("x.svg", LOGO, "image/svg+xml")}, "no instrument has this symbol"),
+    ],
+)
+def test_an_image_the_api_cannot_keep_says_why(
+    database: Path, symbol: str, files: dict[str, tuple[str, bytes]], why: str
+) -> None:
+    client = _client(webapp.create_app(database, lambda: NOW))
+    sent = client.post("/api/logos", data={"symbol": symbol}, files=files, headers=_token(client))
+    assert sent.status_code == 409
+    (error,) = sent.json()["errors"]
+    assert error.startswith("No logo was kept: ")
+    assert why in error
+
+
+def test_a_form_the_api_cannot_read_keeps_no_logo(database: Path) -> None:
+    client = _client(webapp.create_app(database, lambda: NOW))
+    files = [("file", ("a.svg", LOGO, "image/svg+xml")), ("file", ("b.svg", LOGO, "image/svg+xml"))]
+    sent = client.post("/api/logos", data={"symbol": "GADG"}, files=files, headers=_token(client))
+    assert sent.status_code == 400
+    assert sent.json()["errors"][0].startswith("No logo was kept: ")
+    assert client.get("/logos/GADG").status_code == 404
+
+
+def test_a_logo_is_removed_through_the_api(database: Path) -> None:
+    client = _client(webapp.create_app(database, lambda: NOW))
+    token = _token(client)
+    gone = client.post("/api/logos/remove", json={"symbol": "WIDG"}, headers=token)
+    assert gone.json() == {"logos": {}, "errors": []}
+    assert client.get("/logos/WIDG").status_code == 404
+    again = client.post("/api/logos/remove", json={"symbol": "WIDG"}, headers=token)
+    assert again.status_code == 409
+    assert again.json()["errors"] == ["WIDG: no logo to remove."]
+    garbled = client.post("/api/logos/remove", content=b"[1]", headers=token)
+    assert garbled.status_code == 400
+
+
+def test_the_api_keeps_no_logo_without_the_token_or_over_a_copy(database: Path) -> None:
+    client = _client(webapp.create_app(database, lambda: NOW))
+    files = {"file": ("x.svg", LOGO, "image/svg+xml")}
+    assert client.post("/api/logos", data={"symbol": "GADG"}, files=files).status_code == 403
+    assert client.post("/api/logos/remove", json={"symbol": "WIDG"}).status_code == 403
+    copy = _client(webapp.create_app(database, lambda: NOW, read_only=True))
+    token = _token(copy)
+    sent = copy.post("/api/logos", data={"symbol": "GADG"}, files=files, headers=token)
+    assert sent.status_code == 403
+    assert copy.post("/api/logos/remove", json={"symbol": "WIDG"}, headers=token).status_code == 403
+    assert client.get("/logos/WIDG").status_code == 200

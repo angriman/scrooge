@@ -20,6 +20,7 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import HoldingReturns from './HoldingReturns.svelte';
+	import LogoControl from './LogoControl.svelte';
 	import { sortHoldings, sortOptions, yearOf, type Sort } from './returns.js';
 
 	interface Props {
@@ -32,9 +33,22 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 		people: boolean;
 		/** The holding opened, by its key; bindable, so the map can open one. */
 		open?: string | null;
+		/** The token a change of a logo needs; null where logos cannot be changed. */
+		token?: string | null;
+		/** Called once a logo is changed. */
+		onlogo?: () => void | Promise<void>;
 	}
 
-	let { holdings, logos, currency, lastDay, people, open = $bindable(null) }: Props = $props();
+	let {
+		holdings,
+		logos,
+		currency,
+		lastDay,
+		people,
+		open = $bindable(null),
+		token = null,
+		onlogo = () => {}
+	}: Props = $props();
 
 	let sort = $state<Sort>('value');
 
@@ -195,6 +209,14 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 							</tbody>
 						</table>
 						<HoldingReturns {holding} {currency} {people} />
+						{#if token && holding.asset !== 'Bills'}
+							<LogoControl
+								symbol={holding.symbol}
+								has={Boolean(logos[holding.symbol])}
+								{token}
+								onchange={onlogo}
+							/>
+						{/if}
 					</div>
 				{/if}
 			</li>
