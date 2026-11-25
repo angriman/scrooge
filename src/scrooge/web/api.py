@@ -31,6 +31,7 @@ from scrooge import (
     categories,
     classification,
     context,
+    holding_returns,
     holds,
     marketdata,
     merchants,
@@ -206,19 +207,22 @@ def _attention(request: Request) -> Response:
 
 
 def _holdings(request: Request) -> Response:
-    """What `owner`, or everyone, holds, in `currency`: `holdings` is null when nothing is
-    committed, or a rate is missing (`errors` says which)."""
+    """What `owner`, or everyone, holds, in `currency`, and what each holding returned (one
+    valuation serves both): `holdings` is null when nothing is committed, or a rate is missing
+    (`errors` says which)."""
     asked = forms.holdings_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
     today = request.app.state.clock().date()
     with db.reading(request.app.state.database) as conn:
         try:
-            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
+            valued = networth.value(conn, asked.owner)
+            held = portfolio.positions_of(conn, valued, asked.currency, today)
+            returned = holding_returns.run(conn, valued, held)
         except networth.MissingRateError as exc:
             return JSONResponse({"holdings": None, "logos": {}, "errors": [wire.sentence(exc)]})
         found = logos(request, conn)
-    shown = wire.holdings(held) if held.day else None
+    shown = wire.holdings(held, returned) if held.day else None
     return JSONResponse({"holdings": shown, "logos": found, "errors": []})
 
 
