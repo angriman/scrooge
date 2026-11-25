@@ -39,6 +39,7 @@ from decimal import Decimal
 
 from scrooge import networth, performance
 from scrooge.networth import PENSION, PILLAR2, MissingRateError, Series
+from scrooge.storage import store
 from scrooge.storage.store import committed_or_typed
 
 PILLARS = (PILLAR2, PENSION)  # in the order they are listed, as net worth lists them
@@ -108,7 +109,7 @@ def run(
     # the same days of return.
     flows = performance.external_flows(conn, set(by_account), days)
     floor = performance.floors(currency, rates, days)
-    names = dict(conn.execute("SELECT id, name FROM accounts").fetchall())
+    names = store.account_names(conn)
     figures = _figures(conn, set(by_account))
     on_last = {code: values[-1:] for code, values in rates.items()}
     found: list[Pension] = []

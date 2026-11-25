@@ -569,20 +569,20 @@ def daily_worth(  # noqa: PLR0913  # the accounts, what they are made of, and ho
             values = [a + b for a, b in zip(values, converted, strict=True)]
             if each.arrival is not None and each.arrival[0] >= days[0]:
                 at = (each.arrival[0] - days[0]).days
-                amount = _on(each.arrival[1], each.currency, currency, rates, at)
+                amount = on_day(each.arrival[1], each.currency, currency, rates, at)
                 put_in[at] += amount
                 if each.instrument_id is not None:
                     late[at] += amount
         for flow in flows.get(account, ()):
             at = (flow.day - days[0]).days
-            amount = _on(flow.amount, flow.currency, currency, rates, at)
+            amount = on_day(flow.amount, flow.currency, currency, rates, at)
             put_in[at] += amount
             if flow.at_close:
                 late[at] += amount
     return Days(values, put_in, late)
 
 
-def _on(
+def on_day(
     amount: Decimal, currency: str, into: str, rates: Mapping[str, Sequence[Decimal]], at: int
 ) -> Decimal:
     """`amount` of `currency` in `into` at the rate of the `at`th day."""

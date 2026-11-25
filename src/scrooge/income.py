@@ -90,11 +90,16 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     owner: str | None = None,
     grouping: Grouping = Grouping.MONTH,
     currency: str = DEFAULT_CURRENCY,
+    prepared: analysis.Prepared | None = None,
 ) -> Income:
     """Income from `first` to `last`, both included, of `owner` or of everyone, in
     `currency`. Without `first` the range starts with the first income, without `last` it
     ends with the last day committed."""
-    found = analysis.rows(conn, owner, currency, is_income)
+    found = (
+        analysis.rows(conn, owner, currency, is_income)
+        if prepared is None
+        else prepared.select(is_income)
+    )
     span = found.span(first, last)
     if span is None:
         return Income(currency, (), (), found.through)

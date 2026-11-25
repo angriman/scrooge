@@ -13,7 +13,7 @@ import calendar
 import sqlite3
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -89,6 +89,54 @@ class Rows:
         return Span(start, end, self.through, self.known) if start <= end else None
 
 
+def _from_converted(converted: Sequence[Converted], through_day: date | None) -> Rows:
+    firsts: dict[str, date] = {}
+    for each in converted:
+        firsts.setdefault(each.row.owner, each.day.replace(day=1))
+    return Rows(
+        tuple(converted),
+        tuple(each.day for each in converted),
+        through_day,
+        max(firsts.values(), default=None),
+    )
+
+
+def _convert_rows(
+    conn: sqlite3.Connection, selected: Iterable[Counted], currency: str
+) -> list[Converted]:
+    found: dict[str, list[Counted]] = defaultdict(list)
+    for row in selected:
+        found[row.currency].append(row)
+    converted: list[Converted] = []
+    for native, members in found.items():
+        rates = rates_on(conn, [row.day for row in members])
+        amounts = convert([from_nano(row.amount_nano) for row in members], native, currency, rates)
+        converted.extend(map(Converted, members, amounts))
+    converted.sort(key=lambda each: each.day)
+    return converted
+
+
+@dataclass(frozen=True, slots=True)
+class Prepared:
+    """Counted rows already converted once into a display currency, for `report.run`."""
+
+    converted: tuple[Converted, ...]
+    through: date | None
+
+    def select(self, wanted: Callable[[Counted], bool]) -> Rows:
+        return _from_converted([each for each in self.converted if wanted(each.row)], self.through)
+
+
+def prepare(
+    conn: sqlite3.Connection,
+    counted: Sequence[Counted],
+    currency: str,
+    through_day: date | None,
+) -> Prepared:
+    """Convert `counted` into `currency` once so several views can share it."""
+    return Prepared(tuple(_convert_rows(conn, counted, currency)), through_day)
+
+
 def rows(
     conn: sqlite3.Connection,
     owner: str | None,
@@ -97,25 +145,8 @@ def rows(
 ) -> Rows:
     """The counted rows of `owner` (of everyone) that are `wanted`, converted into
     `currency`."""
-    found: dict[str, list[Counted]] = defaultdict(list)
-    for row in cashflow.counted(conn, owner):
-        if wanted(row):
-            found[row.currency].append(row)
-    converted: list[Converted] = []
-    for native, members in found.items():
-        rates = rates_on(conn, [row.day for row in members])
-        amounts = convert([from_nano(row.amount_nano) for row in members], native, currency, rates)
-        converted.extend(map(Converted, members, amounts))
-    converted.sort(key=lambda each: each.day)
-    firsts: dict[str, date] = {}
-    for each in converted:
-        firsts.setdefault(each.row.owner, each.day.replace(day=1))
-    return Rows(
-        tuple(converted),
-        tuple(each.day for each in converted),
-        through(conn, owner),
-        max(firsts.values(), default=None),
-    )
+    selected = (row for row in cashflow.counted(conn, owner) if wanted(row))
+    return _from_converted(_convert_rows(conn, selected, currency), through(conn, owner))
 
 
 def usual(

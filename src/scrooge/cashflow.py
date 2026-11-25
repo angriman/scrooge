@@ -14,6 +14,7 @@ their own currency: nothing is converted here.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
@@ -155,17 +156,18 @@ def _counted(row: Counted) -> Counted:
     )
 
 
-def run(
+def run(  # noqa: PLR0913  # the range, whose, how grouped, and optional pre-read rows
     conn: sqlite3.Connection,
     *,
     first: date | None = None,
     last: date | None = None,
     owner: str | None = None,
     grouping: Grouping = Grouping.MONTH,
+    rows: Sequence[Counted] | None = None,
 ) -> CashFlow:
     """Income and expenses from `first` to `last`, both included, of `owner` or of everyone."""
     sums: dict[tuple[str, str, str, str], tuple[int, int]] = {}
-    for row in counted(conn, owner):
+    for row in counted(conn, owner) if rows is None else rows:
         if (first and row.day < first) or (last and row.day > last):
             continue
         # Investing is named by the leaf, which is the same whether money went in or came out.

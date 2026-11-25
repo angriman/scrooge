@@ -55,12 +55,13 @@ from decimal import ROUND_FLOOR, Decimal
 from math import prod
 
 from scrooge import networth
+from scrooge.storage import store
 from scrooge.storage.bills import Event, open_lots
 from scrooge.storage.money import from_nano
 
 _CENT = Decimal("0.01")
 _LADDER = ("bill", "bond")  # the types of instrument that are repaid on a day
-_Split = tuple[date, int, int]  # the day, and so many new shares for so many old ones
+Split = tuple[date, int, int]  # the day, and so many new shares for so many old ones
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,8 +314,19 @@ def shared_out(exact: Sequence[Decimal], step: Decimal = _CENT) -> list[Decimal]
     return parts
 
 
-def _lot_events(
-    trades: Sequence[networth.LotTrade], splits: Sequence[_Split], last: date
+def splits_through(conn: sqlite3.Connection, last: date) -> dict[int, list[Split]]:
+    """Each instrument's stock splits up to `last`."""
+    splits: dict[int, list[Split]] = defaultdict(list)
+    for instrument_id, day, new, old in conn.execute(
+        "SELECT instrument_id, date, numerator, denominator FROM splits WHERE date <= ?",
+        (last.isoformat(),),
+    ):
+        splits[int(instrument_id)].append((date.fromisoformat(day), int(new), int(old)))
+    return splits
+
+
+def lot_events(
+    trades: Sequence[networth.LotTrade], splits: Sequence[Split], last: date
 ) -> tuple[list[Event], int]:
     """The purchases and disposals up to `last` in one unit, and how many units make a share.
 
@@ -337,11 +349,11 @@ def _lot_events(
 
 
 def _lots(
-    trades: Sequence[networth.LotTrade], splits: Sequence[_Split], held: Decimal, last: date
+    trades: Sequence[networth.LotTrade], splits: Sequence[Split], held: Decimal, last: date
 ) -> list[tuple[date, Decimal]] | None:
     """The day each lot that makes up `held` at the end of `last` was bought and what it cost;
     None when that is not known."""
-    events, per_share = _lot_events(trades, splits, last)
+    events, per_share = lot_events(trades, splits, last)
     lots = open_lots(events)
     if sum((left for _, left, _ in lots), Decimal(0)) != held * per_share:
         return None
@@ -414,18 +426,13 @@ def positions_of(
         ]
         for n, value in zip(members, shared_out(exact), strict=True):
             values[n] = value
-    accounts = dict(conn.execute("SELECT id, name FROM accounts").fetchall())
+    accounts = store.account_names(conn)
     instruments = {
         row[0]: row[1:]
         for row in conn.execute("SELECT id, symbol, name, type, maturity FROM instruments")
     }
     trades = networth.lot_trades(conn)
-    splits: dict[int, list[_Split]] = defaultdict(list)
-    for split_of, day, new, old in conn.execute(
-        "SELECT instrument_id, date, numerator, denominator FROM splits WHERE date <= ?",
-        (last[0].isoformat(),),
-    ):
-        splits[split_of].append((date.fromisoformat(day), int(new), int(old)))
+    splits = splits_through(conn, last[0])
     held_ids = [series.instrument_id for series in held if series.instrument_id is not None]
     # What was held on the last day a person's statements cover is carried after it.
     traded = [

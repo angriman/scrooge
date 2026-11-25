@@ -52,17 +52,41 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     through = analysis.through(conn, owner)
     if first is None and last is None and through is not None:
         first = analysis.add_months(through, -11)
+    counted = cashflow.counted(conn, owner)
+    prepared = analysis.prepare(conn, counted, currency, through)
     return Report(
         savings.run(
-            conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency
+            conn,
+            first=first,
+            last=last,
+            owner=owner,
+            grouping=grouping,
+            currency=currency,
+            prepared=prepared,
         ),
         spending.run(
-            conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency
+            conn,
+            first=first,
+            last=last,
+            owner=owner,
+            grouping=grouping,
+            currency=currency,
+            prepared=prepared,
         ),
-        income.run(conn, first=first, last=last, owner=owner, grouping=grouping, currency=currency),
-        cashflow.run(conn, first=first, last=last, owner=owner, grouping=grouping),
+        income.run(
+            conn,
+            first=first,
+            last=last,
+            owner=owner,
+            grouping=grouping,
+            currency=currency,
+            prepared=prepared,
+        ),
+        cashflow.run(conn, first=first, last=last, owner=owner, grouping=grouping, rows=counted),
         _shortcuts(conn, owner, through),
-        None if owner else paidby.run(conn, first=first, last=last, currency=currency),
+        None
+        if owner
+        else paidby.run(conn, first=first, last=last, currency=currency, prepared=prepared),
     )
 
 
