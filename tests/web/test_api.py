@@ -3,6 +3,7 @@
 import base64
 import hashlib
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,13 @@ def test_the_overview_is_the_services_figures_as_text(client: TestClient, databa
     assert [part["name"] for part in figures["assets"]] == [part.name for part in shown.assets]
     assert figures["securities"]["value"] == format(shown.securities.value, "f")
     assert [part["name"] for part in figures["people"]] == sorted([OWNER, PARTNER])
+    # Shares to the tenth the app shows, rounded once from the values: each cut adds up to 100.
+    for cut in ("assets", "held", "people"):
+        shares = [Decimal(part["share"]) for part in figures[cut]]
+        assert all(share == share.quantize(Decimal("0.1")) for share in shares)
+        assert sum(shares) == 100
+    exact = shown.securities.value * 100 / shown.total
+    assert figures["securities"]["share"] == str(exact.quantize(Decimal("0.1")))
     assert isinstance(sent["checks"], list)
     # The holdings are the investments page's: the overview sends none of them.
     assert set(sent) == {"overview", "checks", "errors"}
@@ -351,11 +359,12 @@ def test_what_is_held_is_sent_with_each_instrument_its_positions_and_its_spread(
         0,
     ]
     assert held["accounts"] == 3
-    # Each instrument, largest first, with its positions account by account.
+    # Each instrument, largest first, with its positions account by account; its share to
+    # the tenth the app shows, shared out of the exact values so that they add up to 100.
     assert [(h["symbol"], h["share"], len(h["positions"])) for h in held["holdings"]] == [
-        ("912797ZZ1", "84.58", 1),
-        ("GADG", "7.71", 1),
-        ("WIDG", "7.71", 3),
+        ("912797ZZ1", "84.6", 1),
+        ("GADG", "7.7", 1),
+        ("WIDG", "7.7", 3),
     ]
     widget = held["holdings"][2]["positions"]
     assert [(p["owner"], p["account"], p["value"]) for p in widget] == [
@@ -364,7 +373,7 @@ def test_what_is_held_is_sent_with_each_instrument_its_positions_and_its_spread(
         (PARTNER, "Revolut USD", "50.00"),
     ]
     assert list(held["spread"]) == ["asset", "currency", "account", "owner"]
-    assert held["spread"]["currency"] == [{"name": "USD", "value": "11672.50", "share": "100.00"}]
+    assert held["spread"]["currency"] == [{"name": "USD", "value": "11672.50", "share": "100.0"}]
     [bill] = held["ladder"]
     assert (bill["maturity"], bill["face"], bill["interest"]) == ("2026-12-24", "10000", "150.00")
 

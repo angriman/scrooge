@@ -29,6 +29,8 @@ export interface Session {
 export interface Part {
 	name: string;
 	value: Amount;
+	/** In percent, to the tenth and shared out so that the parts of one list add up to 100:
+	 * of net worth (of what is held, for `held`); null when that is not above zero. */
 	share: Amount | null;
 	then: (Amount | null)[];
 }
@@ -203,7 +205,8 @@ export interface HeldInstrument {
 	asset: string;
 	currency: string;
 	value: Amount;
-	/** Of all securities, in percent. */
+	/** Of all securities, in percent to the tenth, shared out so that the holdings add up to
+	 * 100. */
 	share: Amount;
 	cost: Amount | null;
 	gain: Amount | null;
@@ -242,6 +245,7 @@ export interface HoldingReturns {
 export interface SpreadSlice {
 	name: string;
 	value: Amount;
+	/** Of all securities, in percent to the tenth: the slices of one cut add up to 100. */
 	share: Amount;
 }
 
