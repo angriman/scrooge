@@ -70,7 +70,7 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 						{change === null ? 'change not known' : `${signed(change, 0)} ${label}`}{measured.paid_in !==
 						null
 							? ` · paid in ${signed(measured.paid_in, 0)}`
-							: ''}{measured.twr !== null ? ` · ${signedPercent(measured.twr)}` : ''}
+							: ''}{measured.twr !== null ? ` · return ${signedPercent(measured.twr)}` : ''}
 					</span>
 				</span>
 				<span class="text-right"><Amount value={pension.value} {currency} places={0} class="sm:hidden" /><Amount
