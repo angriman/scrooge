@@ -13,7 +13,7 @@ parts add up to 101, so they are sent shared out at the precision the app shows 
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import TypeVar
@@ -440,9 +440,12 @@ def account_holds(held: holds.Holds | None) -> JSON | None:
 _CHANGEABLE = frozenset({"income", "expense", "transfer"})  # `store.CHANGEABLE`, for a row
 
 
-def transaction(row: query.Row, every: str | None, label: categories.Labels) -> JSON:
+def transaction(
+    row: query.Row, every: str | None, label: categories.Labels, original: str | None = None
+) -> JSON:
     """One committed row; `every` says how often it comes back ("monthly", "yearly"), when it
-    does; `changeable` whether its category can be changed."""
+    does; `changeable` whether its category can be changed; `original` the address its
+    statement's file is downloaded from, when that file is kept."""
     return {
         "id": row.id,
         "owner": row.owner,
@@ -457,6 +460,7 @@ def transaction(row: query.Row, every: str | None, label: categories.Labels) -> 
         "category": row.category and label(row.category),
         "category_parent": row.category_parent and label(row.category_parent),
         "file": row.file,
+        "original": original,
         "recurring": every,
         "changeable": row.category is not None and row.kind.value in _CHANGEABLE,
     }
@@ -478,7 +482,7 @@ def choices(found: query.Choices) -> JSON:
     }
 
 
-def _pending(row: months.Pending, label: categories.Labels) -> JSON:
+def _pending(row: months.Pending, label: categories.Labels, kept: Mapping[int, str]) -> JSON:
     return {
         "id": row.id,
         "date": day(row.date),
@@ -492,6 +496,7 @@ def _pending(row: months.Pending, label: categories.Labels) -> JSON:
         # Whether a category can be given here: it has none yet, or one a rule or a choice gave.
         "choosable": row.waiting or row.changeable,
         "statement": row.statement,
+        "original": None if row.statement is None else kept.get(row.statement),
     }
 
 
@@ -510,10 +515,11 @@ def suggestion(offered: suggestions.Suggestion, label: categories.Labels) -> JSO
     }
 
 
-def draft(staged: months.Draft, label: categories.Labels) -> JSON:
+def draft(staged: months.Draft, label: categories.Labels, kept: Mapping[int, str]) -> JSON:
     """What is staged for one person: its statements, every row with the category it has,
     the waiting rows by counterparty (`groups`), what they add up to, and what stands in the
-    way of committing them (`gaps`, `waiting`)."""
+    way of committing them (`gaps`, `waiting`). `kept` is statement id -> the address its file
+    is downloaded from, for the files kept."""
     return {
         "files": [
             {
@@ -524,10 +530,11 @@ def draft(staged: months.Draft, label: categories.Labels) -> JSON:
                 "last": day(file.last),
                 "checked": file.checked,
                 "transactions": file.transactions,
+                "original": kept.get(file.id),
             }
             for file in staged.files
         ],
-        "rows": [_pending(row, label) for row in staged.rows],
+        "rows": [_pending(row, label, kept) for row in staged.rows],
         "groups": [
             {"name": group.name, "incoming": group.incoming, "ids": [r.id for r in group.rows]}
             for group in staged.groups

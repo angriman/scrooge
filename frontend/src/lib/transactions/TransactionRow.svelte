@@ -5,6 +5,7 @@ much. A category that is wrong can be changed where it stands, and remembered as
 that the next import gives it again.
 -->
 <script lang="ts">
+	import FileText from '@lucide/svelte/icons/file-text';
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { kindName } from './filter.js';
@@ -119,8 +120,19 @@ that the next import gives it again.
 			<p class={cn('text-body', tone)}>
 				<Amount value={row.amount} currency={row.currency} />
 			</p>
-			<p class="text-caption whitespace-nowrap text-ink-muted">
+			<p class="flex items-center justify-end gap-1 text-caption whitespace-nowrap text-ink-muted">
 				{row.account}{#if people}, {row.owner}{/if}
+				{#if row.original}
+					<a
+						href={row.original}
+						data-sveltekit-reload
+						class="inline-flex text-ink-muted hover:text-brand"
+						title={t('transactions.statementFileTitle')}
+						aria-label={t('transactions.statementFileAria', { account: row.account })}
+					>
+						<FileText class="size-3.5" aria-hidden="true" />
+					</a>
+				{/if}
 			</p>
 		</div>
 	</div>

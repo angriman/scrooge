@@ -555,6 +555,8 @@ export const en = {
 	'bills.colWorthToday': 'Worth today',
 	'bills.noMaturity': 'no maturity',
 
+	'transactions.statementFileTitle': 'The statement this row came from',
+	'transactions.statementFileAria': 'Download the {account} statement this row came from',
 	'transactions.kindExpense': 'Expenses',
 	'transactions.kindIncome': 'Income',
 	'transactions.kindTransfer': 'Transfers',

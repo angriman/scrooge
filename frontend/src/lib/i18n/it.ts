@@ -564,6 +564,8 @@ export const it: Messages = {
 	'bills.colWorthToday': 'Valore attuale',
 	'bills.noMaturity': 'senza scadenza',
 
+	'transactions.statementFileTitle': 'L’estratto da cui proviene questo movimento',
+	'transactions.statementFileAria': 'Scarica l’estratto {account} da cui proviene questo movimento',
 	'transactions.kindExpense': 'Uscite',
 	'transactions.kindIncome': 'Entrate',
 	'transactions.kindTransfer': 'Trasferimenti',

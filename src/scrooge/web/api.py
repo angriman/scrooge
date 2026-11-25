@@ -15,7 +15,7 @@ from __future__ import annotations
 import contextlib
 import secrets
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date
 from urllib.parse import urlsplit
 
@@ -304,6 +304,20 @@ def _count(params: dict[str, str], name: str, default: int, most: int) -> int:
     return min(int(text), most) if text.isdecimal() and len(text) <= 6 else default
 
 
+def _originals(
+    request: Request, conn: sqlite3.Connection, numbers: Iterable[int | None]
+) -> dict[int, str]:
+    """Statement id -> the address its file is downloaded from, for those of `numbers` whose
+    file is kept beside the database."""
+    folder = originals.folder_of(request.app.state.database)
+    kept: dict[int, str] = {}
+    for number in {number for number in numbers if number is not None}:
+        statement = months.statement(conn, number)
+        if statement and originals.find(folder, statement.sha256, statement.filename):
+            kept[number] = str(request.url_for("original", number=number))
+    return kept
+
+
 def _transactions(request: Request) -> Response:
     """The committed rows that match the filter of the transactions page, newest first,
     `limit` of them from `offset`; what all that match add up to, in all and by category; how
@@ -321,9 +335,10 @@ def _transactions(request: Request) -> Response:
         every = query.recurring(query.run(conn, query.Filter(owner=wanted.owner)).rows)
         found = query.choices(conn, wanted.owner, language=language_of(request))
         ranks = store.category_ranks(conn)
-    offset = _count(params, "offset", 0, len(result.rows))
-    limit = _count(params, "limit", _PAGE, _MOST)
-    newest = result.rows[::-1][offset : offset + limit]
+        offset = _count(params, "offset", 0, len(result.rows))
+        limit = _count(params, "limit", _PAGE, _MOST)
+        newest = result.rows[::-1][offset : offset + limit]
+        kept = _originals(request, conn, (row.file for row in newest))
     return JSONResponse(
         {
             "count": len(result.rows),
@@ -342,7 +357,15 @@ def _transactions(request: Request) -> Response:
                 }
                 for c in query.by_category(result.rows, ranks)
             ],
-            "rows": [wire.transaction(row, every.get(row.id), found.label) for row in newest],
+            "rows": [
+                wire.transaction(
+                    row,
+                    every.get(row.id),
+                    found.label,
+                    None if row.file is None else kept.get(row.file),
+                )
+                for row in newest
+            ],
             "choices": wire.choices(found),
             "kinds": [kind.value for kind in Kind],
             "errors": [],
@@ -450,11 +473,12 @@ def _staged(request: Request) -> Response:
     with db.reading(state.database) as conn:
         staged = months.draft(conn, owner)
         found = query.choices(conn, owner, language=language_of(request))
+        kept = _originals(request, conn, (file.id for file in staged.files))
     return JSONResponse(
         {
             "owners": owners,
             "owner": owner,
-            **wire.draft(staged, found.label),
+            **wire.draft(staged, found.label, kept),
             "choices": wire.choices(found),
             # What a new expense category can go under.
             "under": [found.label(group) for group in found.groups],
