@@ -27,6 +27,8 @@ export interface Session {
 	signing: boolean;
 	/** Whether a category chosen can be remembered as a rule for the next import. */
 	rules: boolean;
+	/** Whose figures can be typed (`/api/accounts/typed`); empty over a copy. */
+	typing: string[];
 	token: string;
 }
 

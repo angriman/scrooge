@@ -150,7 +150,7 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 from typing import TextIO
 
@@ -178,12 +178,13 @@ from scrooge import (
     review,
     router,
     staging,
+    typed,
 )
 from scrooge.classification import UnknownInstrumentError
 from scrooge.errors import ConfigError, ExtractionError, not_yaml
 from scrooge.models import Kind, TypedHolding
 from scrooge.staging import People, StagingError
-from scrooge.storage import db, logos, money, originals, store
+from scrooge.storage import db, logos, originals, store
 from scrooge.storage.db import MigrationError
 from scrooge.storage.money import PrecisionError
 from scrooge.validation import ReconciliationError
@@ -222,7 +223,6 @@ RULES = ["rules.yaml"]
 INSTRUMENTS = "instruments.yaml"
 USER = "SCROOGE_USER"  # the setup in users/ to use, when --user does not say
 _ONLY_INIT = "Only 'scrooge init' makes a database ('scrooge init --db <path>' an empty one alone)"
-_CODE = 3  # letters in a currency code
 _AMOUNT = 3  # the column `query` prints flush right
 _ERRORS = (
     ExtractionError,
@@ -517,30 +517,16 @@ def _last_day(text: str) -> date:
 
 def _amount(text: str) -> Decimal:
     try:
-        amount = Decimal(text)
-    except InvalidOperation:
-        amount = Decimal("NaN")
-    if not (amount.is_finite() and money.fits(amount)):
-        msg = f"{text!r} is not an amount like 1234.56"
-        raise argparse.ArgumentTypeError(msg)
-    return amount
-
-
-def _currency_code(text: str) -> str:
-    """A currency as the database keeps it: three capital letters."""
-    code = text.upper()
-    if not (len(code) == _CODE and code.isascii() and code.isalpha()):
-        msg = f"{text!r} is not a currency code like CHF or USD"
-        raise StagingError(msg)
-    return code
+        return typed.amount(text)
+    except StagingError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def _quantity(text: str) -> Decimal:
-    quantity = _amount(text)
-    if quantity < 0:
-        msg = f"{text!r} is no number of shares held: 0 or more"
-        raise argparse.ArgumentTypeError(msg)
-    return quantity
+    try:
+        return typed.quantity(text)
+    except StagingError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def _find_config(args: argparse.Namespace) -> Path:
@@ -1055,43 +1041,32 @@ def _typed(session: _Session, args: argparse.Namespace, config: dict[str, object
     A day that is not over yet is refused: what was held at its end is not known.
     """
     conn, owner, out = session.conn, session.owner, session.console.out
-    figure = args.quantity if args.command == "position" else args.amount
+    position = args.command == "position"
+    figure = args.quantity if position else args.amount
+    where = typed.Where(owner, args.account, args.day)
     if args.remove:
         if figure is not None:
             msg = f"`{args.command} --remove` takes no figure: it removes the one typed"
             raise StagingError(msg)
-        symbol = (
-            _known_as(args.symbol.upper(), _instruments(args, config))
-            if args.command == "position"
-            else ""
-        )
-        staging.remove_typed(conn, owner=owner, account=args.account, day=args.day, symbol=symbol)
+        symbol = ""
+        if position:
+            symbol = typed.remove_position(conn, where, args.symbol, _instruments(args, config))
+        else:
+            typed.remove_balance(conn, where)
         what = f"{symbol} of " if symbol else ""
         out.write(f"Removed what was typed of {what}{args.account} of {owner} for {args.day}.\n")
         return OK
     if figure is None or args.currency is None:
-        needed = "quantity" if args.command == "position" else "amount"
+        needed = "quantity" if position else "amount"
         msg = f"`{args.command}` needs the {needed} and the currency"
         raise StagingError(msg)
-    currency = _currency_code(args.currency)
     today = session.now.date()
-    if args.day > today:
-        msg = f"{args.day} is after today ({today}): type what was held on a day that has begun"
-        raise StagingError(msg)
-    if args.command == "position":
-        symbol = _known_as(args.symbol.upper(), _instruments(args, config))
-        typed = TypedHolding(symbol, args.quantity, currency, args.tab)
-        staging.type_holding(conn, owner=owner, account=args.account, day=args.day, holding=typed)
-        out.write(f"{args.account} of {owner}: {args.quantity} {symbol} on {args.day}.\n")
+    if position:
+        holding = TypedHolding(args.symbol, args.quantity, args.currency, args.tab)
+        kept = typed.position(conn, where, holding, today, _instruments(args, config))
+        out.write(f"{args.account} of {owner}: {args.quantity} {kept.symbol} on {args.day}.\n")
         return OK
-    staging.type_balance(
-        conn,
-        owner=owner,
-        account=args.account,
-        day=args.day,
-        amount=args.amount,
-        currency=currency,
-    )
+    currency = typed.balance(conn, where, args.amount, args.currency, today)
     out.write(f"{args.account} of {owner}: {args.amount} {currency} on {args.day}.\n")
     return OK
 
@@ -1455,18 +1430,6 @@ def _print_certificates(
                 "  note: nothing on this certificate adds up to that figure: compare it with "
                 "the paper\n"
             )
-
-
-def _known_as(symbol: str, instruments_file: Path) -> str:
-    """The symbol `instruments.yaml` knows an instrument by, for a symbol typed: the one whose
-    `price_symbol` it is (NESN for NESN.SW), or the new name of a ticker renamed. So a
-    position typed is the same instrument a statement books, not a second one."""
-    instruments = classification.load_instruments(instruments_file)
-    for name, entry in instruments.items():
-        if entry.price_symbol.upper() == symbol:
-            return name
-    renamed = instruments.get(symbol)
-    return renamed.ticker if renamed is not None and renamed.ticker else symbol
 
 
 def _files(paths: Sequence[Path], database: Path) -> list[Path]:

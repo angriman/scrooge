@@ -846,7 +846,25 @@ export const en = {
 	'settings.committedRowMany': '{count} committed rows',
 	'settings.matchesCountPrefix': 'Matches {rows}{tail}',
 	'settings.matchesNewestTail': '; the newest {shown}:',
-	'settings.noCategoryTag': 'no category'
+	'settings.noCategoryTag': 'no category',
+
+	'typed.title': 'Type a balance or position',
+	'typed.note':
+		'For an account without statements, a pension fund between its certificates, or an export that states neither (Schwab).',
+	'typed.whatLabel': 'Figure',
+	'typed.balance': 'Balance',
+	'typed.position': 'Position',
+	'typed.ownerLabel': 'Person',
+	'typed.dayLabel': 'End of day',
+	'typed.symbolLabel': 'Symbol',
+	'typed.amountLabel': 'Balance',
+	'typed.currencyLabel': 'Currency',
+	'typed.tabLabel': 'Kind',
+	'typed.tabKnown': 'As known (or Stocks)',
+	'typed.keep': 'Save figure',
+	'typed.remove': 'Remove typed',
+	'typed.kept': 'Saved for {account} on {day}.',
+	'typed.removed': 'Removed what was typed for {account} on {day}.'
 } as const;
 
 export type MessageKey = keyof typeof en;
