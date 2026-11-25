@@ -41,7 +41,7 @@ def test_a_rule_written_again_keeps_the_rest_and_its_comment(tmp_path: Path) -> 
     text = rulesfile.rewritten(TEXT, found[0], {"match": "KONSUM", "direction": "out"})
     assert text == TEXT.replace(
         "{match: 'KONSUM|FRISCHMARKT', category: Groceries}  # food",
-        '{match: "KONSUM", category: Groceries, direction: out}  # food',
+        "{match: 'KONSUM', category: Groceries, direction: out}  # food",
     )
     path = tmp_path / "rules.yaml"
     path.write_text(text, encoding="utf-8")
@@ -50,10 +50,55 @@ def test_a_rule_written_again_keeps_the_rest_and_its_comment(tmp_path: Path) -> 
 
 def test_a_rule_on_lines_of_its_own_comes_back_between_braces(tmp_path: Path) -> None:
     text = rulesfile.rewritten(TEXT, _entries()[1], {"direction": "", "kind": "income"})
-    assert '  - {match: "ACME, INC", category: "Salary", kind: income}\n\n' in text
+    # Its plain match has a comma, which braces would read as the end of it: it is quoted.
+    assert "  - {match: 'ACME, INC', category: Salary, kind: income}\n\n" in text
     path = tmp_path / "rules.yaml"
     path.write_text(text, encoding="utf-8")
     assert [rule.pattern.pattern for rule in load_rules([path])][1] == "ACME, INC"
+
+
+@pytest.mark.parametrize(
+    ("before", "changes", "after"),
+    [
+        # A value given again as it was keeps its text, escapes and all.
+        (
+            '{match: "\\\\d+ SHOP", category: Groceries}',
+            {"match": "\\d+ SHOP", "category": "Groceries", "direction": "in"},
+            '{match: "\\\\d+ SHOP", category: Groceries, direction: in}',
+        ),
+        # Each value changed keeps its quotes, or their absence.
+        (
+            "{match: SHOP, category: 'Groceries', direction: \"out\"}",
+            {"match": "STORE", "category": "Gifts", "direction": "in"},
+            "{match: STORE, category: 'Gifts', direction: \"in\"}",
+        ),
+        ("{match: 'A', category: Gifts}", {"match": "it's"}, "{match: 'it''s', category: Gifts}"),
+        # A plain value YAML would read as something else is quoted, once.
+        ("{match: A, category: Gifts}", {"match": "yes"}, "{match: 'yes', category: Gifts}"),
+        ("{match: A, category: Gifts}", {"match": "A #1"}, "{match: 'A #1', category: Gifts}"),
+        ("{match: A, category: Gifts}", {"match": "[A]"}, "{match: '[A]', category: Gifts}"),
+        ("{match: A, category: Gifts}", {"match": "A: B"}, "{match: 'A: B', category: Gifts}"),
+        ("{match: A, category: Gifts}", {"match": " A"}, "{match: ' A', category: Gifts}"),
+        ("{match: A, category: Gifts}", {"match": "A\tB"}, '{match: "A\\tB", category: Gifts}'),
+        ("{match: A, category: Gifts}", {"match": "A|B.*"}, "{match: A|B.*, category: Gifts}"),
+    ],
+)
+def test_a_value_changed_keeps_the_style_of_the_file(
+    tmp_path: Path, before: str, changes: dict[str, str], after: str
+) -> None:
+    text = f"rules:\n  - {before}\n"
+    written = rulesfile.rewritten(text, _entries(text)[0], changes)
+    assert written == f"rules:\n  - {after}\n"
+    path = tmp_path / "rules.yaml"
+    path.write_text(written, encoding="utf-8")
+    (rule,) = load_rules([path])
+    assert rule.pattern.pattern == changes.get("match", _entries(text)[0].match)
+
+
+def test_a_rule_on_lines_of_its_own_keeps_its_quotes() -> None:
+    text = "rules:\n  - match: 'A'\n    category: \"Gifts\"\n    direction: out\n"
+    written = rulesfile.rewritten(text, _entries(text)[0], {"direction": "in"})
+    assert written == "rules:\n  - {match: 'A', category: \"Gifts\", direction: in}\n"
 
 
 def test_a_rule_removed_takes_its_lines_and_nothing_else() -> None:
@@ -75,7 +120,12 @@ def test_two_rules_swapped_leave_what_is_between_them() -> None:
 def test_recategorized_changes_the_category_alone() -> None:
     text, count = rulesfile.recategorized(TEXT, _entries(), categories.GROCERIES, "Cibo")
     assert count == 1
-    assert "  - {match: 'KONSUM|FRISCHMARKT', category: \"Cibo\"}  # food\n" in text
+    assert "  - {match: 'KONSUM|FRISCHMARKT', category: Cibo}  # food\n" in text
+    quoted = (
+        "rules:\n  - {match: A, category: 'Groceries'}\n  - match: B\n    category: Groceries\n"
+    )
+    text, count = rulesfile.recategorized(quoted, _entries(quoted), categories.GROCERIES, "Bio")
+    assert (text, count) == (quoted.replace("Groceries", "Bio"), 2)
 
 
 def test_find_refuses_a_rule_that_changed(tmp_path: Path) -> None:
@@ -138,7 +188,7 @@ def test_a_key_the_rules_do_not_read_is_kept_as_it_is() -> None:
     text = "rules:\n  - match: KONSUM\n    category: Groceries\n    seen: [2025]\n"
     (entry,) = _entries(text)
     assert rulesfile.rewritten(text, entry, {"category": "Cibo"}) == (
-        'rules:\n  - {match: "KONSUM", category: "Cibo", seen: [2025]}\n'
+        "rules:\n  - {match: KONSUM, category: Cibo, seen: [2025]}\n"
     )
 
 

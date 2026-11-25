@@ -157,9 +157,8 @@ def test_a_rule_is_edited_moved_and_removed(site: Site) -> None:
     shared = site.folder / "rules.yaml"
     edit = _rule(site, 3, match="KONSUM", category=categories.GROCERIES, direction="out")
     assert _post(site, "rules/edit", edit).json() == {"errors": []}
-    assert '  - {match: "KONSUM", category: "Groceries", direction: out}\n' in shared.read_text(
-        encoding="utf-8"
-    )
+    written = shared.read_text(encoding="utf-8")
+    assert "  - {match: 'KONSUM', category: Groceries, direction: out}\n" in written
     assert _post(site, "rules/move", _rule(site, 3, by=-1)).json() == {"errors": []}
     assert [r["match"] for r in site.client.get("/api/settings/rules").json()["rules"][1:4]] == [
         "Hans Muster",

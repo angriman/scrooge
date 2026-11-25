@@ -1,10 +1,15 @@
 """Change a rules file where it is, one rule at a time, for the settings page of the app.
 
 The file stays the user's: its comments, the blank lines between groups of rules and their
-order are kept. Only the text of the one rule changed is written again, as `append_rule`
-writes one (`{match: ..., category: ...}`); a rule is found by where YAML says its text
-begins and ends, never by reading the file and writing all of it out again. Moving a rule
-swaps its lines with those of its neighbour, and the comments around them stay where they are.
+order are kept. Only the text of the one rule changed is written again, between braces
+(`{match: ..., category: ...}`); a rule is found by where YAML says its text begins and ends,
+never by reading the file and writing all of it out again. Moving a rule swaps its lines with
+those of its neighbour, and the comments around them stay where they are.
+
+A rule written again keeps the style of the file: a value given as it was keeps its text, and
+one changed keeps the quotes it had, single or double. A value that had none, or a key added,
+is written plain where YAML reads it back as it is, and between single quotes where it would
+not (`yes`, `A, B`, `A #1`); double quotes are left for what single ones cannot hold.
 
 A rule is named by its place in the file, counted from 1 as `load_rules` counts them in its
 messages, and by a digest of its lines as the page showed them (`Entry.version`): a rule
@@ -47,8 +52,11 @@ class Entry:
     lines: tuple[int, int]  # the whole lines it is on, the last newline included
     named: tuple[int, int]  # the category it gives
     # Each key, and `key: value` as it goes back between braces: as it is in a rule written
-    # between them already, quoted again from one whose keys are on lines of their own.
+    # between them already, written again in its style from one whose keys are on lines of
+    # their own.
     pairs: tuple[tuple[str, str], ...]
+    # Each key whose value is text, that text and how it is quoted ("", "'" or '"').
+    scalars: tuple[tuple[str, str, str], ...]
     version: str  # a digest of its lines: what the page sends back to say which rule it saw
     lone: bool = False  # its dash is on a line of its own: its lines are not all its own
     comments: bool = False  # comments stand among its keys, which writing it again would lose
@@ -101,14 +109,18 @@ def _entry(text: str, path: Path, n: int, item: Node) -> Entry:
         raise ConfigError(msg)
     values: dict[str, str] = {}
     pairs: list[tuple[str, str]] = []
+    scalars: list[tuple[str, str, str]] = []
     named = (0, 0)
     for key, value in item.value:
         name = str(key.value)
         raw = text[key.start_mark.index : value.end_mark.index]
         if isinstance(value, ScalarNode):
             values[name] = str(value.value)
+            style = _style(value)
+            scalars.append((name, values[name], style))
             if not item.flow_style:
-                raw = f"{name}: {_written(name, values[name])}"
+                was = text[value.start_mark.index : value.end_mark.index]
+                raw = f"{name}: {_kept(was, values[name], style)}"
         if name == "category":
             named = (value.start_mark.index, value.end_mark.index)
         pairs.append((name, raw))
@@ -135,6 +147,7 @@ def _entry(text: str, path: Path, n: int, item: Node) -> Entry:
         lines=lines,
         named=named,
         pairs=tuple(pairs),
+        scalars=tuple(scalars),
         version=hashlib.sha256(text[lines[0] : lines[1]].encode()).hexdigest()[:16],
         lone=text[first:start].strip() != "-",
         comments=any("#" in gap for gap in gaps),
@@ -165,23 +178,55 @@ def find(path: Path, position: int, version: str) -> tuple[str, tuple[Entry, ...
 
 def rewritten(text: str, entry: Entry, changes: Mapping[str, str]) -> str:
     """`text` with `entry` written again with `changes` made to its keys: a key changed to ""
-    is left out, one it did not have is added, every other key keeps its text."""
+    is left out, one it did not have is added, every other key, and one given as it was, keeps
+    its text."""
+    was = {name: (value, style) for name, value, style in entry.scalars}
     parts: list[str] = []
     for name, kept in entry.pairs:
-        if name not in changes:
+        if name not in changes or (name in was and changes[name] == was[name][0]):
             parts.append(kept)
         elif changes[name]:
-            parts.append(f"{name}: {_written(name, changes[name])}")
+            parts.append(f"{name}: {_written(changes[name], was.get(name, ('', ''))[1])}")
     had = {name for name, _ in entry.pairs}
     added = sorted(set(changes) - had, key=lambda name: (*_ORDER, name).index(name))
-    parts.extend(f"{name}: {_written(name, changes[name])}" for name in added if changes[name])
+    parts.extend(f"{name}: {_written(changes[name], '')}" for name in added if changes[name])
     start, end = entry.span
     return f"{text[:start]}{{{', '.join(parts)}}}{text[end:]}"
 
 
-def _written(name: str, value: str) -> str:
-    # The direction and the kind are words of their own, as `append_rule` writes them.
-    return value if name in {"direction", "kind"} else quoted(value)
+def _style(node: ScalarNode) -> str:
+    """How `node` is quoted: "" plain, "'" or '"'; a block of lines (`|`, `>`) as '"'."""
+    return "" if node.style is None else node.style if node.style in {"'", '"'} else '"'
+
+
+def _kept(was: str, value: str, style: str) -> str:
+    """A value of a rule on lines of its own, `was` in the file, as it goes between braces:
+    as it is, unless it spans lines or, plain, would not be read between braces as it is."""
+    if "\n" in was or (not style and not _plain(value)):
+        return _written(value, style)
+    return was
+
+
+def _written(value: str, style: str) -> str:
+    """`value` in `style` ("" plain, "'" or '"'), as far as it can be written so."""
+    if style == '"':
+        return quoted(value)
+    if not style and _plain(value):
+        return value
+    if value.isprintable():
+        return "'" + value.replace("'", "''") + "'"
+    return quoted(value)
+
+
+def _plain(value: str) -> bool:
+    """Whether YAML reads `value` unquoted as this very text, between braces and after a key."""
+    if not value or value != value.strip() or not value.isprintable():
+        return False
+    try:
+        loaded = (yaml.safe_load(f"{{x: {value}}}"), yaml.safe_load(f"x: {value}\n"))
+    except yaml.YAMLError:
+        return False
+    return loaded == ({"x": value}, {"x": value})
 
 
 def removed(text: str, entry: Entry) -> str:
@@ -202,5 +247,6 @@ def recategorized(text: str, found: tuple[Entry, ...], old: str, new: str) -> tu
     changed = [entry for entry in found if entry.category == old]
     for entry in reversed(changed):  # from the end, so that the places before stay right
         start, end = entry.named
-        text = text[:start] + quoted(new) + text[end:]
+        style = next(style for name, _, style in entry.scalars if name == "category")
+        text = text[:start] + _written(new, style) + text[end:]
     return text, len(changed)
