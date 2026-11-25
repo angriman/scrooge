@@ -14,6 +14,7 @@ Folders, hidden files and what a Mac adds (`__MACOSX/`) are left out.
 from __future__ import annotations
 
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 
@@ -52,6 +53,22 @@ def hidden(name: str) -> bool:
     return parts[-1] in {"", ".", ".."} or any(
         part == _MAC or (part.startswith(".") and part not in {".", ".."}) for part in parts
     )
+
+
+def unpack_all(named: Mapping[Path, str], folder: Path) -> tuple[dict[Path, str], list[Entry]]:
+    """`named` (path -> name) with each zip replaced by its files, written under `folder`,
+    and the zips and files of zips refused. What `scrooge import` and `scrooge keep` read."""
+    files = {path: name for path, name in named.items() if not is_zip(path)}
+    taken = set(named.values())
+    refused: list[Entry] = []
+    zips = sorted((name, path) for path, name in named.items() if is_zip(path))
+    for number, (name, path) in enumerate(zips, start=1):
+        for entry in unpack(path, name, folder / str(number), taken):
+            if entry.problem:
+                refused.append(entry)
+            else:
+                files[entry.path] = entry.name
+    return files, refused
 
 
 def unpack(path: Path, name: str, folder: Path, taken: set[str]) -> list[Entry]:

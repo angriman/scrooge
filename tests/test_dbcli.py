@@ -1910,6 +1910,33 @@ def test_keep_takes_in_the_files_of_statements_imported_earlier(run: Run) -> Non
     assert len(kept(run)) == len(FILES)
 
 
+def test_keep_opens_a_zip_named_or_found_in_a_folder_and_keeps_its_files(run: Run) -> None:
+    drop = run.aside / "drop"
+    drop.mkdir()
+    jan, feb, *_ = monthly_migros(run.aside, MONTHS, Decimal(500))
+    archive = _zip(drop / "winter.zip", [jan, feb])
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(archive), *paths) == dbcli.OK
+    digests = sorted(hashlib.sha256(path.read_bytes()).hexdigest() + ".csv" for path in (jan, feb))
+    assert kept(run) == digests
+    shutil.rmtree(run.database.parent / "originals")  # as after an import of before
+
+    assert run("keep", str(archive)) == dbcli.OK
+    assert run.output == f"2 of 2 files kept in {run.database.parent / 'originals'}.\n"
+    assert kept(run) == digests  # the files inside, never the zip
+
+    shutil.rmtree(run.database.parent / "originals")
+    (drop / "broken.zip").write_bytes(b"not a zip")
+    _zip(drop / "nested.zip", [archive])
+    assert run("keep", str(drop)) == dbcli.FAILED
+    assert run.output.splitlines() == [
+        "2 of 4 files kept in " + str(run.database.parent / "originals") + ".",
+        "  refused broken.zip: not a zip that can be opened (File is not a zip file)",
+        "  refused nested.zip/winter.zip: a zip inside a zip is not opened: unzip it",
+    ]
+    assert kept(run) == digests
+
+
 def test_logo_keeps_an_image_for_an_instrument_and_drops_it(run: Run) -> None:
     assert run.load() == dbcli.OK
     image = run.folder / "widg.svg"
