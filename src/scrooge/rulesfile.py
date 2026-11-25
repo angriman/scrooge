@@ -76,30 +76,46 @@ class StaleRuleError(ConfigError):
 
 def entries(text: str, path: Path) -> tuple[Entry, ...]:
     """The rules of `text` (the file `path`), in the order they are tried."""
+    root = _compose(text, path)
+    pair = _pair(root, "rules")
+    listed = _listed(pair[1] if pair else None, path)
+    if listed is None:
+        return ()
+    return tuple(_entry(text, path, n, item) for n, item in enumerate(listed.value, start=1))
+
+
+def _compose(text: str, path: Path) -> Node | None:
     try:
-        root = yaml.compose(text, Loader=yaml.SafeLoader)
+        root: Node | None = yaml.compose(text, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
         msg = f"{path}: {exc}"
         raise ConfigError(msg) from None
-    listed = _value(root, "rules")
+    return root
+
+
+def _pair(root: Node | None, key: str) -> tuple[ScalarNode, Node] | None:
+    if not isinstance(root, MappingNode):
+        return None
+    return next(
+        (
+            (name, value)
+            for name, value in root.value
+            if isinstance(name, ScalarNode) and name.value == key
+        ),
+        None,
+    )
+
+
+def _listed(listed: Node | None, path: Path) -> SequenceNode | None:
     if listed is None or (isinstance(listed, ScalarNode) and listed.value in {"", "null", "~"}):
-        return ()
+        return None
     if not isinstance(listed, SequenceNode):
         msg = f"{path}: expected a top-level 'rules' list"
         raise ConfigError(msg)
     if listed.flow_style and listed.value:
         msg = f"{path}: write the rules one per line, as '  - {{match: ...}}', to change them here"
         raise ConfigError(msg)
-    return tuple(_entry(text, path, n, item) for n, item in enumerate(listed.value, start=1))
-
-
-def _value(root: Node | None, key: str) -> Node | None:
-    if not isinstance(root, MappingNode):
-        return None
-    return next(
-        (value for name, value in root.value if isinstance(name, ScalarNode) and name.value == key),
-        None,
-    )
+    return listed
 
 
 def _entry(text: str, path: Path, n: int, item: Node) -> Entry:
@@ -240,6 +256,65 @@ def swapped(text: str, upper: Entry, lower: Entry) -> str:
     between them (comments, blank lines) stays where it is."""
     (a, b), (c, d) = upper.lines, lower.lines
     return text[:a] + text[c:d] + text[b:c] + text[a:b] + text[d:]
+
+
+def inserted(text: str, path: Path, block: str, *, first: bool = False) -> str:
+    """`text` (the file `path`) with the raw YAML lines `block` of a rule added to its `rules`
+    list: right after `rules:` when `first`, or right after the last existing rule otherwise.
+    Re-indents `block` to match the destination list (two spaces when none are there yet)."""
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if not block.endswith("\n"):
+        block += "\n"
+    root = _compose(text, path)
+    if root is None:
+        return text + "rules:\n" + _reindented(block, "  ")
+    if not isinstance(root, MappingNode):
+        msg = f"{path}: expected a mapping with a top-level 'rules' entry"
+        raise ConfigError(msg)
+    pair = _pair(root, "rules")
+    if pair is None:
+        return text + "rules:\n" + _reindented(block, "  ")
+    key, value = pair
+    listed = _listed(value, path)
+    if listed is not None and listed.value:
+        found = tuple(_entry(text, path, n, item) for n, item in enumerate(listed.value, start=1))
+        indent = _indent(text[found[0].lines[0] : found[0].lines[1]])
+        at = text.find("\n", key.end_mark.index) + 1 if first else found[-1].lines[1]
+        return text[:at] + _reindented(block, indent) + text[at:]
+    text, at = _cleared_empty(text, key, value)
+    return text[:at] + _reindented(block, "  ") + text[at:]
+
+
+def _cleared_empty(text: str, key: ScalarNode, value: Node) -> tuple[str, int]:
+    """Remove an empty `rules` value (`null`, `~`, `[]`) so a block item can follow `rules:`,
+    returning the cleaned text and the offset right after the `rules:` line."""
+    colon = text.find(":", key.end_mark.index)
+    line_end = text.find("\n", colon)
+    start, end = value.start_mark.index, value.end_mark.index
+    if start < end:
+        if start <= line_end:
+            after = text[end:]
+            sep = " " if after.startswith("#") else ""
+            text = text[: colon + 1] + sep + after
+        else:
+            text = text[:start] + text[end:]
+    return text, text.find("\n", colon) + 1
+
+
+def _indent(block: str) -> str:
+    line = block.splitlines()[0]
+    return line[: len(line) - len(line.lstrip(" "))]
+
+
+def _reindented(block: str, indent: str) -> str:
+    source = _indent(block)
+    if source == indent:
+        return block
+    return "".join(
+        f"{indent}{line.removeprefix(source)}" if line.strip() else line
+        for line in block.splitlines(keepends=True)
+    )
 
 
 def recategorized(text: str, found: tuple[Entry, ...], old: str, new: str) -> tuple[str, int]:

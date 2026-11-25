@@ -784,8 +784,6 @@ export const en = {
 		"Those tried on {owner}'s rows, in the order they are tried: the first that matches gives the category.",
 	'settings.rulesNoteAll':
 		'In the order they are tried: the first that matches gives the category.',
-	'settings.stayNote':
-		"A rule moves up or down within its file only: to make a person's rule a shared one, or the other way round, change the files themselves.",
 	'settings.noRulesFiles': 'This app has no rules files to show.',
 	'settings.noRulesYet':
 		'No rules yet: choosing a category on Import or Transactions with “remember” adds them.',
@@ -812,8 +810,8 @@ export const en = {
 	'settings.unmatchedHint': 'for rows no rule matches',
 	'settings.ownRulesTitle': "{owner}'s own rules",
 	'settings.sharedRulesTitle': 'Shared rules',
-	'settings.ownRulesNote': "{file}: for rows of {owner}'s accounts, tried before the shared rules.",
-	'settings.sharedRulesNote': "{file}: for everybody's rows.",
+	'settings.ownRulesNote': "For rows of {owner}'s accounts, tried before the shared rules.",
+	'settings.sharedRulesNote': "For everybody's rows.",
 	'settings.dirIn': 'money in',
 	'settings.dirOut': 'money out',
 	'settings.dirBoth': 'in and out',
@@ -835,6 +833,11 @@ export const en = {
 	'settings.tryPatternTitle': 'Try its pattern',
 	'settings.editRuleAria': 'Edit the rule {match}',
 	'settings.edit': 'Edit',
+	'settings.moveRuleAria': 'Move {match} to another rules list',
+	'settings.moveRuleTitle': 'Move between personal and shared rules',
+	'settings.moveRuleTo': 'Move {match} to',
+	'settings.moveRuleToAria': 'Where to move {match}',
+	'settings.chooseRulePlace': 'Choose where',
 	'settings.moveUpAria': 'Move {match} up',
 	'settings.moveDownAria': 'Move {match} down',
 	'settings.triedEarlierTitle': 'Tried earlier',
