@@ -20,7 +20,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 
-from scrooge import categories, classification, pipeline, router, staging
+from scrooge import archives, categories, classification, pipeline, router, staging
 from scrooge.classification import Instrument
 from scrooge.errors import ConfigError, ExtractionError
 from scrooge.staging import Batch, People, Staged
@@ -101,17 +101,25 @@ class Read:
         return tuple(f for f in self.files if f.problem)
 
 
-def read(owner: str, files: Sequence[Path], setup: Setup) -> Read:
+def read(owner: str, files: Sequence[Path], setup: Setup, unpack_into: Path | None = None) -> Read:
     """Extract and reconcile each of `files` as a statement of `owner`.
 
     A file that cannot be read or does not reconcile is refused on its own; a card invoice
     whose payments the bank statements of the same import contradict too.
+
+    Each file of a zip is read as if it had been given on its own (`archives`), once
+    `unpack_into` names a folder for them that lasts until they are staged. Without one, a
+    zip is not a statement.
     """
     instruments = classification.load_instruments(setup.instruments)
     outcomes: list[File] = []
     statements: list[pipeline.Statement] = []
     certificates: list[pipeline.Certificate] = []
-    for path, name in sorted(pipeline.names(files).items(), key=lambda item: item[1]):
+    named = pipeline.names(files)
+    if unpack_into is not None:
+        named, refused = _unpacked(named, unpack_into)
+        outcomes += refused
+    for path, name in sorted(named.items(), key=lambda item: item[1]):
         try:
             found = _read_one(path, name, setup.labels, instruments)
         except _REFUSED as exc:
@@ -133,7 +141,23 @@ def read(owner: str, files: Sequence[Path], setup: Setup) -> Read:
         outcomes = [replace(f, problem=str(exc)) if f.name in cards else f for f in outcomes]
         statements = [s for s in statements if s.filename not in cards]
         month = _classified(owner, statements, setup)
+    outcomes.sort(key=lambda f: f.name)
     return Read(owner, tuple(outcomes), tuple(statements), tuple(certificates), month)
+
+
+def _unpacked(named: Mapping[Path, str], folder: Path) -> tuple[dict[Path, str], list[File]]:
+    """`named` with each zip replaced by its files, and the zips and files of zips refused."""
+    files = {path: name for path, name in named.items() if not archives.is_zip(path)}
+    taken = set(named.values())
+    refused: list[File] = []
+    zips = sorted((name, path) for path, name in named.items() if archives.is_zip(path))
+    for number, (name, path) in enumerate(zips, start=1):
+        for entry in archives.unpack(path, name, folder / str(number), taken):
+            if entry.problem:
+                refused.append(File(entry.path, entry.name, problem=entry.problem))
+            else:
+                files[entry.path] = entry.name
+    return files, refused
 
 
 def _read_one(

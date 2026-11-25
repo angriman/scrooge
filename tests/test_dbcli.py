@@ -3,6 +3,7 @@ import hashlib
 import io
 import re
 import shutil
+import zipfile
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -399,6 +400,49 @@ def test_a_folder_is_searched_with_its_subfolders_and_hidden_files_are_left_out(
     assert "refused" not in run.output
     assert "scrooge.db" not in run.output
     assert "scrooge-" not in run.output  # a copy
+
+
+def _zip(path: Path, files: list[Path]) -> Path:
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file in files:
+            archive.write(file, f"statements/{file.name}")
+    return path
+
+
+def test_a_zip_is_imported_like_its_files_and_only_they_are_kept(run: Run) -> None:
+    jan, feb, *_ = monthly_migros(run.aside, MONTHS, Decimal(500))
+    archive = _zip(run.aside / "migros.zip", [jan, feb])
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(archive), *paths) == dbcli.OK
+    assert run.output.splitlines()[:2] == [
+        "  staged migros.zip/Feb.csv (Migros Bank account statement)",
+        "  staged migros.zip/Jan.csv (Migros Bank account statement)",
+    ]
+    assert kept(run) == sorted(
+        hashlib.sha256(path.read_bytes()).hexdigest() + ".csv" for path in (jan, feb)
+    )
+    assert run("commit") == dbcli.OK
+    assert "2 statements committed" in run.output
+
+
+def test_a_zip_in_a_folder_is_opened_and_a_broken_one_stops_no_other(run: Run) -> None:
+    drop = run.aside / "drop"
+    drop.mkdir()
+    jan, feb, *_ = monthly_migros(drop, MONTHS, Decimal(500))
+    _zip(drop / "winter.zip", [jan, feb])
+    for month in (jan, feb):
+        month.unlink()
+    (drop / "broken.zip").write_bytes(b"not a zip")
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(drop), *paths) == dbcli.FAILED
+    assert run.output.splitlines()[:5] == [
+        "  staged Apr.csv (Migros Bank account statement)",
+        "  staged Mar.csv (Migros Bank account statement)",
+        "  refused broken.zip (not read): not a zip that can be opened (File is not a zip file)",
+        "  staged winter.zip/Feb.csv (Migros Bank account statement)",
+        "  staged winter.zip/Jan.csv (Migros Bank account statement)",
+    ]
+    assert "8 transactions staged for Lukas.\n" in run.output
 
 
 def test_a_second_broker_account_is_named_by_its_number(run: Run) -> None:

@@ -34,6 +34,9 @@ and the others are staged; `import` then exits 1, whatever else was staged or ne
 category (it exits 2 only when nothing was refused). What a statement books on the day of the
 import waits for the next one, since that day is not over.
 
+`import` opens a zip and reads each file in it as if it had been named on its own; the
+zip itself is never kept. A zip that is broken or too big is refused as a whole.
+
 `import` also takes the scan of a second-pillar pension certificate: it gives the pension
 fund's account the balance it states for its day, committed like any other statement. What
 was read is printed, to be compared with the paper.
@@ -109,6 +112,7 @@ import ipaddress
 import os
 import re
 import sqlite3
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -231,7 +235,8 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         nargs="+",
         metavar="path",
-        help="statement files, or folders holding them (subfolders too; hidden files are skipped)",
+        help="statement files, zips of them, or folders holding them (subfolders too; hidden "
+        "files are skipped)",
     )
     _rules_flags(load)
     load.add_argument(
@@ -1048,14 +1053,17 @@ def _import(session: _Session, args: argparse.Namespace, config: dict[str, objec
         session.labels,
         _unmatched(config, args.config),
     )
-    found = importing.read(session.owner, _files(args.paths, session.path), setup)
-    if args.review and found.month.uncategorized:
-        everyone = [pattern for patterns in session.people.values() for pattern in patterns]
-        personal = (setup.own(session.owner), everyone)
-        ask = session.console.ask
-        review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
-        found = importing.again(found, setup)
-    found = importing.stage(session.conn, session.path, found, setup, session.now)
+    files = _files(args.paths, session.path)
+    # The files of the zips among them last until they are staged and kept.
+    with tempfile.TemporaryDirectory() as unpacked:
+        found = importing.read(session.owner, files, setup, Path(unpacked))
+        if args.review and found.month.uncategorized:
+            everyone = [pattern for patterns in session.people.values() for pattern in patterns]
+            personal = (setup.own(session.owner), everyone)
+            ask = session.console.ask
+            review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
+            found = importing.again(found, setup)
+        found = importing.stage(session.conn, session.path, found, setup, session.now)
     staged = found.staged or staging.Staged((), 0, 0)
     for file in found.files:
         out.write(f"{_outcome(file)}\n")
