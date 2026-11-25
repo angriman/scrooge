@@ -21,6 +21,7 @@ import hashlib
 import io
 import re
 import secrets
+import sqlite3
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from pathlib import Path
 from typing import TypeVar
 from urllib.parse import parse_qs, quote, urlsplit
 
+import yaml
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.convertors import Convertor, register_url_convertor
@@ -66,6 +68,7 @@ from scrooge import (
     report,
     spending,
     staging,
+    suggestions,
     together,
 )
 from scrooge.classification import UnknownMaturityError
@@ -356,6 +359,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Route("/import/maturities", writing(_look_up), methods=["POST"], name="look_up"),
             Route("/import/save", writing(_save), methods=["POST"], name="save"),
             Route("/import/commit", writing(_commit), methods=["POST"], name="commit_draft"),
+            Route("/import/rule", writing(_add_rule), methods=["POST"], name="add_rule"),
             Route(
                 "/import/category", writing(_new_category), methods=["POST"], name="add_category"
             ),
@@ -610,12 +614,19 @@ def _import_form(  # noqa: PLR0913  # what the page shows after each of the form
     *,
     undated: _Undated | None = None,
     notice: str = "",
+    suggest: str | None = None,
 ) -> Response:
-    """The page of the import: what was just uploaded, and everything staged for one person."""
+    """The page of the import: what was just uploaded, and everything staged for one person.
+
+    `suggest` names the rows whose category was just changed by hand (`?suggest=`, comma
+    separated when not given): a rule is offered for each (plan decision 56)."""
     state = request.app.state
     if state.read_only:  # a copy is shown, not worked on
         raise HTTPException(404)
     committed = request.query_params.get("committed", "")
+    if request.query_params.get("rule") == "1" and not notice:
+        notice = "Rule added: the next import gives that merchant's rows the category chosen."
+    asked = request.query_params.get("suggest", "") if suggest is None else suggest
     with db.reading(state.database) as conn:
         people = query.people(conn)
         owners = list(state.imports.people) if state.imports else [p.name for p in people]
@@ -623,11 +634,12 @@ def _import_form(  # noqa: PLR0913  # what the page shows after each of the form
         if owner not in owners:
             raise HTTPException(404)
         choices = query.choices(conn, owner)
+        offered, unread = _offers(conn, state, owner, asked)
         context = {
             "people": people,
             "owner": owner,
             "owners": list(state.imports.people) if state.imports else [],
-            "error": error,
+            "error": error or unread,
             "undated": undated,
             "notice": notice,
             "done": done,
@@ -636,8 +648,38 @@ def _import_form(  # noqa: PLR0913  # what the page shows after each of the form
             "label": choices.label,
             "can_remember": state.rules is not None,
             "committed": _whole(committed),
+            "offered": offered,
+            "suggest": ",".join(rule.row for rule in offered),
         }
     return _templates.TemplateResponse(request, "import.html", context, status_code=status)
+
+
+_SUGGESTED = 50  # rows one page offers rules for, at most: a page's address stays short
+_ROW = re.compile(r"[0-9a-f]{24}")  # a transaction's id (`storage.ids`)
+
+
+def _places(state: State) -> suggestions.Places | None:
+    """Where the import reads its rules, and so where a rule offered goes; None when the app
+    has nowhere to write one."""
+    if state.rules is None:
+        return None
+    shared = list(state.imports.rules) if state.imports else [state.rules.shared]
+    unmatched = state.imports.unmatched if state.imports else ""
+    return suggestions.Places(shared, state.rules.people, unmatched)
+
+
+def _offers(
+    conn: sqlite3.Connection, state: State, owner: str, asked: str
+) -> tuple[list[suggestions.Suggestion], str]:
+    """The rules to offer for the rows named in `asked`, and why none could be, if so."""
+    ids = list(dict.fromkeys(part for part in asked.split(",") if _ROW.fullmatch(part)))
+    places = _places(state)
+    if places is None or not ids:
+        return [], ""
+    try:
+        return suggestions.suggest(conn, places, owner, ids[:_SUGGESTED]), ""
+    except (ConfigError, yaml.YAMLError) as exc:
+        return [], f"No rule can be offered: {exc}"
 
 
 _DIGITS = 18  # an id or a count has no more: SQLite's integers hold 19, Python reads far more
@@ -944,14 +986,15 @@ class _Unsaved(Exception):
     """A category chosen on the draft could not be given."""
 
 
-def _to_import(request: Request, owner: str, **flags: int) -> Response:
+def _to_import(request: Request, owner: str, **flags: int | str) -> Response:
     return RedirectResponse(
         request.url_for("import").include_query_params(owner=owner, **flags), 303
     )
 
 
-def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> str:
-    """Give every category chosen on the draft, together; "" when all went in, else why not.
+def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> tuple[str, list[str]]:
+    """Give every category chosen on the draft, together; "" when all went in, else why not,
+    and the rows that had a category and were given another on their own.
 
     A counterparty's choice (`group:N`) goes to its rows (`ids:N`), as a rule when
     `remember:N` says so, except to a row chosen on its own (`category:<id>`), which keeps its
@@ -960,14 +1003,15 @@ def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> str:
     """
     own, groups = _filled(fields, "category:"), _filled(fields, "group:")
     if not own and not groups:
-        return ""
+        return "", []
     conn = db.connect(state.database)
     try:
         rows = {row.id: row for row in months.draft(conn, owner).rows}
         members = {number: fields.get(f"ids:{number}", []) for number in groups}
         wanted = [*own, *(row_id for ids in members.values() for row_id in ids)]
         if not wanted or any(row_id not in rows for row_id in wanted):
-            return "No category was set: those rows are not staged any more: load the page again."
+            gone = "No category was set: those rows are not staged any more: load the page again."
+            return gone, []
         together: dict[tuple[str, bool], list[str]] = {}
         for row_id, category in own.items():
             if store.category_key(conn, category) != rows[row_id].category:
@@ -989,10 +1033,10 @@ def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> str:
             remember=None if state.rules is None else state.rules.of(owner),
         )
     except (staging.StagingError, store.UnknownCategoryError) as exc:
-        return f"No category was set: {exc}."
+        return f"No category was set: {exc}.", []
     finally:
         conn.close()
-    return ""
+    return "", [row_id for (_, change), ids in together.items() if change for row_id in ids]
 
 
 def _filled(fields: dict[str, list[str]], prefix: str) -> dict[str, str]:
@@ -1008,10 +1052,15 @@ async def _save(request: Request) -> Response:
     """Apply the categories chosen on the draft, and stay on the page."""
     fields = await _sent(request)
     owner = fields.get("owner", [""])[-1]
-    error = await run_in_threadpool(_apply, request.app.state, owner, fields)
+    error, changed = await run_in_threadpool(_apply, request.app.state, owner, fields)
     if error:
         return await run_in_threadpool(_import_form, request, owner, error, None, 409)
-    return _to_import(request, owner)
+    return _to_import(request, owner, **_suggesting(changed))
+
+
+def _suggesting(changed: Sequence[str]) -> dict[str, int | str]:
+    """The query that offers rules for the rows changed by hand, if any."""
+    return {"suggest": ",".join(changed[:_SUGGESTED])} if changed else {}
 
 
 async def _commit(request: Request) -> Response:
@@ -1020,8 +1069,8 @@ async def _commit(request: Request) -> Response:
     owner = fields.get("owner", [""])[-1]
     state = request.app.state
 
-    def commit() -> int:
-        error = _apply(state, owner, fields)
+    def commit() -> tuple[int, list[str]]:
+        error, changed = _apply(state, owner, fields)
         if error:
             raise _Unsaved(error)
         conn = db.connect(state.database)
@@ -1031,17 +1080,43 @@ async def _commit(request: Request) -> Response:
             )
         finally:
             conn.close()
-        return len(files)
+        return len(files), changed
 
     try:
-        count = await run_in_threadpool(commit)
+        count, changed = await run_in_threadpool(commit)
     except _Unsaved as exc:
         return await run_in_threadpool(_import_form, request, owner, str(exc), None, 409)
     except (staging.UncategorizedRowsError, ReconciliationError) as exc:
         # Nothing was committed, and nothing here can override it: the page says why.
         error = f"Not committed: {exc}."
         return await run_in_threadpool(_import_form, request, owner, error, None, 409)
-    return _to_import(request, owner, committed=count)
+    return _to_import(request, owner, committed=count, **_suggesting(changed))
+
+
+async def _add_rule(request: Request) -> Response:
+    """Add the rule the import page offers for one row, first in its file (plan decision 56)."""
+    fields = await _sent(request)
+    owner = fields.get("owner", [""])[-1]
+    state = request.app.state
+    places = _places(state)
+    if places is None:  # nowhere to write it down for the next import
+        raise HTTPException(404)
+    asked = fields.get("suggest", [""])[-1]
+
+    def add() -> str:
+        with db.reading(state.database) as conn:
+            try:
+                suggestions.add(conn, places, owner, fields.get("id", [""])[-1])
+            except (suggestions.SuggestionError, ConfigError, yaml.YAMLError) as exc:
+                return f"No rule was added: {exc}"
+        return ""
+
+    error = await run_in_threadpool(add)
+    if error:
+        return await run_in_threadpool(
+            _import_form, request, owner, error, None, 409, suggest=asked
+        )
+    return _to_import(request, owner, suggest=asked, rule=1)
 
 
 def _choose(state: State, owner: str, fields: dict[str, list[str]]) -> str:
