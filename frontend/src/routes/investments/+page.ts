@@ -5,22 +5,23 @@ import type {
 	Holdings,
 	InvestmentCosts,
 	InvestmentIncome,
+	InvestmentPensions,
 	InvestmentPerformance
 } from '#lib/types.js';
 import { pick } from '#lib/view.js';
 import type { PageLoad } from './$types';
 
-// What the investments returned; with `view=holdings` what is held, with `view=income` what
-// they paid: only what is shown is asked.
+// What the investments returned; with `view=holdings` what is held and the pensions, with
+// `view=income` what they paid: only what is shown is asked.
 export const load: PageLoad = async ({ fetch, url }) => {
 	const view = url.searchParams.get('view');
 	if (view === 'holdings') {
-		return {
-			held: await get<Holdings>(fetch, '/api/holdings', pick(url, ['owner', 'currency'])),
-			income: null,
-			costs: null,
-			performance: null
-		};
+		const asked = pick(url, ['owner', 'currency']);
+		const [held, pensions] = await Promise.all([
+			get<Holdings>(fetch, '/api/holdings', asked),
+			get<InvestmentPensions>(fetch, '/api/pensions', asked)
+		]);
+		return { held, pensions, income: null, costs: null, performance: null };
 	}
 	if (view === 'income') {
 		// What investing cost each year is under what was paid, whatever the range. Costs that
@@ -35,10 +36,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 				}
 			)
 		]);
-		return { held: null, income, costs, performance: null };
+		return { held: null, pensions: null, income, costs, performance: null };
 	}
 	return {
 		held: null,
+		pensions: null,
 		income: null,
 		costs: null,
 		performance: await get<InvestmentPerformance>(
