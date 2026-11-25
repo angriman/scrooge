@@ -570,6 +570,7 @@ def _overview(request: Request) -> Response:
         checks = wire.unless_rate_missing(
             errors, lambda: networth.checks(conn, owner=asked.owner), ()
         )
+        lines = together.lines(conn, asked.owner)
     context = {
         "people": people,
         "owner": asked.owner,
@@ -589,6 +590,8 @@ def _overview(request: Request) -> Response:
         "split": _split(shown.people, _person_slots(people)) if shown else [],
         "logos": logos,
         "checks": checks,
+        # The accounts a statement of which is probably missing, as /months marks them.
+        "behind": [line for line, late in zip(lines, months.behind(lines), strict=True) if late],
     }
     return _templates.TemplateResponse(request, "overview.html", context)
 
