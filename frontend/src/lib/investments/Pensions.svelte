@@ -67,17 +67,20 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 					<span class="block truncate font-medium text-ink">{pension.account}</span>
 					<span class="block truncate text-small text-ink-muted">{described(pension, people)}</span>
 					<span class="block text-small text-ink-muted sm:hidden">
-						{change === null ? 'change not known' : `${signed(change, 0)} ${label}`}{measured.paid_in !==
-						null
+						{change === null
+							? 'change not known'
+							: `${signed(change, 0)} ${label}`}{measured.paid_in !== null
 							? ` · paid in ${signed(measured.paid_in, 0)}`
 							: ''}{measured.twr !== null ? ` · return ${signedPercent(measured.twr)}` : ''}
 					</span>
 				</span>
-				<span class="text-right"><Amount value={pension.value} {currency} places={0} class="sm:hidden" /><Amount
+				<span class="text-right"
+					><Amount value={pension.value} {currency} places={0} class="sm:hidden" /><Amount
 						value={pension.value}
 						places={0}
 						class="hidden sm:inline"
-					/></span>
+					/></span
+				>
 				<span class={cn('hidden text-right tabular-nums sm:block', tone(change))}>
 					{change === null ? '–' : signed(change, 0)}
 				</span>
@@ -99,8 +102,9 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 				<span class="min-w-0">
 					<span class="block font-medium text-ink">All pensions</span>
 					<span class="block text-small text-ink-muted sm:hidden">
-						{all.change === null ? 'change not known' : `${signed(all.change, 0)} ${label}`}{all.paidIn !==
-						null
+						{all.change === null
+							? 'change not known'
+							: `${signed(all.change, 0)} ${label}`}{all.paidIn !== null
 							? ` · paid in ${signed(all.paidIn, 0)}`
 							: ''}
 					</span>
