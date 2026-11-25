@@ -41,6 +41,9 @@ step() { echo "== $*"; }
 
 cp "$repo/deploy/compose.yaml" "$work/"
 mkdir "$work/data"
+# Plain permissions, as deploy/README.md asks: on a Synology share a new folder takes the
+# share's access lists, which let write only groups the container is not in.
+chmod 755 "$work/data"
 cat >"$work/.env" <<EOF
 SCROOGE_IMAGE=$image
 SCROOGE_UID=$(id -u)

@@ -150,6 +150,11 @@ The pages hold a household's finances behind one password: keep them off the ope
   (File Station, or a terminal on the NAS).
 - `SCROOGE_UID`/`SCROOGE_GID`: `id <user>` in a terminal on the NAS, for the DSM user that
   owns `data/`; `sudo chown -R <uid>:<gid> /volume1/docker/scrooge/data` if needed.
+- `chmod 755 /volume1/docker/scrooge/data`, as the user that owns it, before the first start.
+  A folder made on a share takes the share's access lists, which let write the
+  administrators group: the container runs as `SCROOGE_UID:SCROOGE_GID` alone, in no other
+  group, and could only read. `chmod` gives the folder plain permissions instead, and the
+  folders made in it follow.
 - Container Manager > Project > Create: name `scrooge`, path `/volume1/docker/scrooge`, use
   the `compose.yaml` found there. Or in a terminal: `sudo docker compose up -d` there.
 - Commands need `sudo`, and in a scheduled task or over ssh DSM's docker is
