@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { InvestedDay, MeasuredAccount } from '#lib/types.js';
-import { described, direction, mwrPer, nearest, over, plot, rangeOf } from './performance.js';
+import {
+	compared,
+	described,
+	direction,
+	instead,
+	mwrPer,
+	nearest,
+	over,
+	plot,
+	rangeOf
+} from './performance.js';
 
 describe('the range', () => {
 	it('is the one asked for, or the year to date', () => {
@@ -42,9 +52,9 @@ describe('the chart', () => {
 		left: 10
 	};
 	const series: InvestedDay[] = [
-		{ day: '2026-09-01', value: '0.00', invested: '0.00' },
-		{ day: '2026-09-02', value: '1000.00', invested: '1000.00' },
-		{ day: '2026-09-11', value: '1100.00', invested: '1000.00' }
+		{ day: '2026-09-01', value: '0.00', invested: '0.00', benchmarks: [] },
+		{ day: '2026-09-02', value: '1000.00', invested: '1000.00', benchmarks: [] },
+		{ day: '2026-09-11', value: '1100.00', invested: '1000.00', benchmarks: [] }
 	];
 
 	it('runs across by day and up by amount, both lines on one scale', () => {
@@ -57,6 +67,17 @@ describe('the chart', () => {
 		expect(drawn.value).toBe('M10,110L20,25.8L110,17.4');
 		expect(drawn.invested).toBe('M10,110L20,25.8L110,25.8');
 		expect(drawn.area).toBe('M10,110L20,25.8L110,17.4L110,110L10,110Z');
+	});
+
+	it('draws each benchmark on the same scale, higher than the rest if it went higher', () => {
+		const beside = series.map((point, index) => ({
+			...point,
+			benchmarks: [['0.00', '1000.00', '1250.00'][index]]
+		}));
+		const drawn = plot(beside, frame)!;
+		expect([drawn.low, drawn.high]).toEqual([0, 1350]);
+		expect(drawn.benchmarks).toEqual(['M10,110L20,35.9L110,17.4']);
+		expect(plot(series, frame)!.benchmarks).toEqual([]);
 	});
 
 	it('draws nothing without two days', () => {
@@ -102,5 +123,29 @@ describe('the money-weighted return', () => {
 	it('is a rate a year from a year up, and over the period below', () => {
 		expect(mwrPer({ mwr_a_year: true })).toBe('a year');
 		expect(mwrPer({ mwr_a_year: false })).toBe('over the period');
+	});
+});
+
+describe('the benchmarks', () => {
+	const vt = { symbol: 'VT', return: '12.34' };
+	const voo = { symbol: 'VOO', return: '-3.05' };
+
+	it('are set beside the time-weighted return over the same days', () => {
+		expect(compared('10.00', [vt, voo])).toBe('VT +12.3%, VOO −3.1% over the same period');
+		expect(compared('10.00', [vt])).toBe('VT +12.3% over the same period');
+	});
+
+	it('are not set beside a return there is not, nor said when there are none', () => {
+		expect(compared(null, [vt])).toBeNull();
+		expect(compared('10.00', [])).toBeNull();
+	});
+
+	it('are named in the caption of the chart', () => {
+		const worth = 'what that money would be worth had it gone into';
+		expect(instead([])).toBe('');
+		expect(instead([vt])).toBe(` In VT is ${worth} VT instead, on the same days.`);
+		expect(instead([vt, voo, { symbol: 'ACWI', return: '1' }])).toBe(
+			` In VT, in VOO and in ACWI are ${worth} each instead, on the same days.`
+		);
 	});
 });

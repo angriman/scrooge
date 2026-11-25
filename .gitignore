@@ -12,6 +12,8 @@ originals/
 backups/
 /data/
 .env
+# Where `make deploy-update` reaches the app: a machine of one's own.
+Makefile.local
 # Generated: the NAS image folder, caches of runs
 output/
 # Personal: rules naming shops and people, what is held, own categories, account names.

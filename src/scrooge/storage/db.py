@@ -125,22 +125,43 @@ def migrate(conn: sqlite3.Connection, now: datetime) -> list[int]:
     if current > known:
         msg = f"the database is at schema version {current}, this code knows up to {known}"
         raise MigrationError(msg)
+    applied: list[int] = []
     for number, step in pending:
-        if isinstance(step, Rebuild):
-            _rebuild(conn, number, step, now)
-            continue
         try:
-            if isinstance(step, str):
-                conn.executescript(f"BEGIN IMMEDIATE;\n{step}")
+            if isinstance(step, Rebuild):
+                _rebuild(conn, number, step, now)
             else:
-                conn.execute("BEGIN IMMEDIATE")
-                step(conn)
-            conn.execute("INSERT INTO schema_version VALUES (?, ?)", (number, timestamp(now)))
-        except BaseException:
-            conn.execute("ROLLBACK")
-            raise
-        conn.execute("COMMIT")
-    return [number for number, _ in pending]
+                _apply(conn, number, step, now)
+        except Exception:
+            # Another process opening the same database (the pages and the prices of one
+            # deployment, started together) may have applied it while this one waited for
+            # the lock: done then, by the other. The step failed on what was already there,
+            # or on its row in `schema_version`, and left nothing.
+            if version(conn) < number:
+                raise
+        else:
+            applied.append(number)
+    return applied
+
+
+def _apply(
+    conn: sqlite3.Connection,
+    number: int,
+    step: str | Callable[[sqlite3.Connection], None],
+    now: datetime,
+) -> None:
+    """Run `step` and record it, in one transaction."""
+    try:
+        if isinstance(step, str):
+            conn.executescript(f"BEGIN IMMEDIATE;\n{step}")
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+            step(conn)
+        conn.execute("INSERT INTO schema_version VALUES (?, ?)", (number, timestamp(now)))
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
 
 
 def _rebuild(conn: sqlite3.Connection, number: int, step: Rebuild, now: datetime) -> None:

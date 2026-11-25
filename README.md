@@ -59,6 +59,7 @@ currencies: [CHF, USD, EUR]          # the month-end table's columns; these with
 unmatched: Uncategorized             # the category of rows no rule matches
 account_labels: {U7654321: "IBKR 2"} # a second account at a broker, by its number
 frozen: [Deposito, {Anna: Risparmio}]  # frozen like the pensions; {owner: account} for one alone
+benchmarks: [VT, VOO]               # what investments are compared with, as Yahoo names them
 ```
 
 `unmatched` lets every statement be committed without choosing categories (net worth needs
@@ -119,8 +120,8 @@ refused. Don't also type those shares in another account: they would count twice
 ## Prices and net worth
 
 `scrooge prices` is the one command that goes online: it fetches from Yahoo the daily closes,
-splits and exchange rates not stored yet, and stores them for good. Run it once a day, after
-the markets close.
+splits and exchange rates not stored yet, and stores them for good, the closes of the
+`benchmarks` included. Run it once a day, after the markets close.
 
 Net worth is worked out for every day at that day's closes and rates, up to the newest close
 stored; after a person's last statement, what they held then is carried at the later closes.
@@ -142,21 +143,25 @@ serve:
 A machine that only shows the data has `serve: {read_only: true}` and a copy of the database,
 sent there by `scrooge publish <folder>`.
 
-## On the NAS
+## With Docker
 
-The app runs as a container on a Synology NAS, over the one database: statements are imported
-on its import page, prices fetched by a daily task. First setup: `deploy/README.md`. GitHub
-builds the image on every tag `v*` once `make check` passes; the NAS pulls it.
+The app runs as a container on any machine with Docker (a server, a NAS, a Raspberry Pi, a
+Mac), over the one database: statements are imported on its import page, prices fetched
+every day by a second container. The image is public, for x86-64 and 64-bit ARM:
 
 ```sh
-make release VERSION=v0.2     # tag main, push the tag, wait for the image
-make nas-update               # on the NAS (`ssh nas`, or NAS=<host>): pull, restart
+mkdir -p ~/scrooge/data && cd ~/scrooge
+curl -fsSLO https://raw.githubusercontent.com/angriman/scrooge/main/deploy/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deploy/.env.example
+# in .env: SCROOGE_UID and SCROOGE_GID, as `id -u` and `id -g` print them
+docker compose run --rm scrooge scrooge init --container   # who you are, a password
+docker compose up -d                                       # http://localhost:8765
 ```
 
-`make release` refuses uncommitted changes or a `main` that differs from GitHub's, and needs
-`gh` signed in. A new schema is migrated as the app starts, after a backup in `data/backups/`.
-To go back, pin `image: ghcr.io/<owner>/scrooge:<older tag>` in the NAS's `compose.yaml` and
-run `make nas-update`.
+Everything else, from updates to reaching it from other devices and a Synology NAS:
+[deploy/README.md](deploy/README.md). GitHub builds the image on every tag `v*` once
+`make check` passes; `make release VERSION=v1.2.3` tags `main` and waits for it, and
+`make deploy-update` pulls it where the app runs (`Makefile.local` says where).
 
 ## Everything in this folder
 

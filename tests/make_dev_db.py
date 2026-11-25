@@ -34,7 +34,7 @@ from typing import TextIO
 
 import yaml
 
-from scrooge import importing, marketdata, networth, overview, prices, staging
+from scrooge import benchmark, importing, marketdata, networth, overview, prices, staging
 from scrooge.extractors import ocr
 from scrooge.staging import People
 from scrooge.storage import db
@@ -89,7 +89,7 @@ SHOPS = """  - {match: 'ALPENBAHN', category: Trains}
 """
 FALLBACK = "\n  # make dev-db: whatever is left\n  - {match: '.', category: Gifts}\n"
 # Invented closes, in the instrument's currency, from the first day prices are asked for.
-CLOSES = {"ACME": "113.1", "GOOG": "204.3", "WIDG": "54.25"}
+CLOSES = {"ACME": "113.1", "GOOG": "204.3", "WIDG": "54.25", "VT": "130", "VOO": "560"}
 FUNDS = {"CH0000000011": ("ALPHACH.SW", "1510"), "CH0000000029": ("ALPHAWLD.SW", "1310")}
 RATES = {"USD": "0.80", "EUR": "0.94", "GBP": "1.07", "JPY": "0.0054"}
 FIRST = date(2024, 12, 1)
@@ -302,7 +302,14 @@ def _prices(conn: sqlite3.Connection, now: datetime) -> marketdata.Refreshed:
         currencies={symbol: "CHF" for symbol, _ in FUNDS.values()},
         isins={isin: symbol for isin, (symbol, _) in FUNDS.items()},
     )
-    return marketdata.refresh(conn, source, through=last, now=now, currencies=networth.CURRENCIES)
+    return marketdata.refresh(
+        conn,
+        source,
+        through=last,
+        now=now,
+        currencies=networth.CURRENCIES,
+        benchmarks=benchmark.DEFAULT,
+    )
 
 
 def _series(days: Sequence[date], last: date, base: str) -> list[tuple[date, str]]:

@@ -36,6 +36,7 @@ owner: Lukas
 owners:
   Lukas: {{match: ['LUKAS MEIER']}}
   Anna: {{match: ['ANNA MEIER']}}
+benchmarks: []
 """
 
 
@@ -1676,7 +1677,7 @@ def test_prices_fetches_what_is_held_and_says_what_it_stored(closed: Run) -> Non
     assert closed("prices", "--through", "2026-09-30") == dbcli.OK
     assert closed.output == "4 closes, 4 exchange rates and 0 splits stored.\n"
     # Nothing is fetched twice, and no owner is needed: prices are everyone's.
-    closed.config.write_text(f"database: {closed.database}\n", encoding="utf-8")
+    closed.config.write_text(f"database: {closed.database}\nbenchmarks: []\n", encoding="utf-8")
     paths = ["--instruments", str(closed.instruments)]
     assert closed("prices", "--through", "2026-09-30", *paths) == dbcli.OK
     assert closed.output == "0 closes, 0 exchange rates and 0 splits stored.\n"
@@ -1695,6 +1696,20 @@ def test_prices_lists_what_it_could_not_fetch_and_fetches_up_to_yesterday(closed
     closed.source.asked.clear()
     closed("prices", "--through", "2026-10-20", "--instruments", str(closed.instruments))
     assert max(asked[2] for asked in closed.source.asked) == yesterday  # nor a day to come
+
+
+def test_prices_fetches_the_benchmarks_vt_and_voo_unless_the_config_names_others(
+    closed: Run,
+) -> None:
+    closed.config.write_text(
+        closed.config.read_text(encoding="utf-8").replace("benchmarks: []\n", ""),
+        encoding="utf-8",
+    )
+    closed.source = FakeSource({"VT": [(date(2026, 9, 30), "120")]})
+    closed("prices", "--through", "2026-09-30", "--instruments", str(closed.instruments))
+    asked = [symbol for symbol, _, _ in closed.source.asked]
+    assert asked.index("VT") < asked.index("VOO")
+    assert "  missing: VOO: no prices (VOO: No data found)" in closed.output.splitlines()
 
 
 def test_prices_uses_the_real_source_unless_given_another(
@@ -2001,6 +2016,31 @@ def test_frozen_accounts_not_listed_by_name_are_refused(run: Run, named: str) ->
     assert run.output.endswith(
         f"error: {run.config}: 'frozen' must list accounts as the pages name them, or as "
         "{owner: account}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("named", "benchmarks"),
+    [("", ("VT", "VOO")), ("benchmarks: [' vwrl.l', ^GSPC, VWRL.L]\n", ("VWRL.L", "^GSPC"))],
+)
+def test_the_investments_are_compared_with_the_benchmarks_of_the_config(
+    run: Run, monkeypatch: pytest.MonkeyPatch, named: str, benchmarks: tuple[str, ...]
+) -> None:
+    config = run.config.read_text(encoding="utf-8").replace("benchmarks: []\n", named)
+    run.config.write_text(config, encoding="utf-8")
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert run("serve") == dbcli.OK
+    assert served[-1].state.benchmarks == benchmarks
+
+
+@pytest.mark.parametrize("named", ["VT", "[1]", "['']", "{a: b}"])
+def test_benchmarks_that_are_no_symbols_are_refused(run: Run, named: str) -> None:
+    config = run.config.read_text(encoding="utf-8").replace("[]", named)
+    run.config.write_text(config, encoding="utf-8")
+    assert run("serve") == dbcli.FAILED
+    assert run.output.endswith(
+        f"error: {run.config}: 'benchmarks' must list symbols as Yahoo knows them, like [VT, VOO]\n"
     )
 
 

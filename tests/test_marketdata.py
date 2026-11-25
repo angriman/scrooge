@@ -12,7 +12,7 @@ from scrooge import marketdata, staging
 from scrooge.marketdata import Refreshed
 from scrooge.models import CashBalance, Holding, SecurityTrade
 from scrooge.prices import Split
-from scrooge.storage import db
+from scrooge.storage import db, store
 from tests.fakes import FakeMaturities, FakeSource
 from tests.storage.helpers import AUGUST, SEPTEMBER, batch, rows, statement, trade
 
@@ -292,6 +292,64 @@ def test_days_before_the_first_stored_are_fetched_when_older_history_is_imported
     idle = FakeSource()
     marketdata.refresh(conn, idle, through=END, now=LATER)
     assert idle.asked == []  # the days before are not asked for twice
+
+
+def test_benchmarks_are_fetched_from_the_first_day_and_kept_as_instruments(
+    conn: sqlite3.Connection,
+) -> None:
+    hold(conn, bought("WIDG", "10", day(15)))
+    first = store.first_day(conn)
+    assert first is not None
+    source = FakeSource({"WIDG": WEEK, "VT": WEEK, "USDCHF=X": USD})
+    done = marketdata.refresh(conn, source, through=day(20), now=NOW, benchmarks=["VT", "VT"])
+    assert done == Refreshed(closes=6, rates=1, splits=0, problems=())
+    assert shares(source) == ["WIDG", "VT"]  # once, however often it is named
+    assert ("VT", first - timedelta(days=10), day(20)) in source.asked
+    assert rows(conn, "SELECT symbol, type, currency, price_symbol FROM instruments") == [
+        ("WIDG", "etf", "USD", "WIDG"),
+        ("VT", "etf", "USD", "VT"),
+    ]
+    # Next time it is an instrument like any other: only the days since are asked for.
+    again = FakeSource({"VT": WEEK, "WIDG": WEEK, "USDCHF=X": USD})
+    marketdata.refresh(conn, again, through=END, now=LATER, benchmarks=["VT"])
+    assert ("VT", day(17), END) in again.asked  # after the last close stored
+    assert [row[1] for row in closes(conn) if row[0] == "VT"][-1] == "2026-09-30"
+
+
+def test_a_benchmark_held_is_fetched_once_over_the_days_of_both(
+    conn: sqlite3.Connection,
+) -> None:
+    hold(conn, bought("WIDG", "10", day(15)))
+    first = store.first_day(conn)
+    assert first is not None
+    source = FakeSource({"WIDG": WEEK, "USDCHF=X": USD})
+    marketdata.refresh(conn, source, through=END, now=NOW, benchmarks=["WIDG"])
+    assert shares(source) == ["WIDG"]
+    assert source.asked[0] == ("WIDG", first - timedelta(days=10), END)
+    assert rows(conn, "SELECT count(*) FROM instruments") == [(1,)]
+
+
+def test_a_benchmark_the_source_has_nothing_for_is_reported_and_not_kept(
+    conn: sqlite3.Connection,
+) -> None:
+    hold(conn, bought("WIDG", "10", day(15)))
+    source = FakeSource({"WIDG": WEEK, "EMPTY": [], "USDCHF=X": USD})
+    done = marketdata.refresh(conn, source, through=END, now=NOW, benchmarks=["NOPE", "EMPTY"])
+    first = store.first_day(conn)
+    assert first is not None
+    assert done.problems == (
+        "NOPE: no prices (NOPE: No data found)",
+        f"EMPTY: EMPTY has no close since {first - timedelta(days=10)}",
+    )
+    assert rows(conn, "SELECT symbol FROM instruments") == [("WIDG",)]
+
+
+def test_benchmarks_are_not_fetched_before_anything_is_known(conn: sqlite3.Connection) -> None:
+    source = FakeSource({"VT": WEEK})
+    assert marketdata.refresh(conn, source, through=END, now=NOW, benchmarks=["VT"]).closes == 0
+    hold(conn, bought("WIDG", "10", day(15)))
+    marketdata.refresh(conn, source, through=date(2026, 8, 1), now=NOW, benchmarks=["VT"])
+    assert source.asked == []
 
 
 def test_maturities_are_looked_up_and_the_unknown_bills_named() -> None:

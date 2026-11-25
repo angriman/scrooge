@@ -20,6 +20,7 @@ from typing import TypeVar
 from scrooge import (
     attention,
     categories,
+    costs,
     holding_returns,
     holds,
     importing,
@@ -28,6 +29,7 @@ from scrooge import (
     overview,
     paidby,
     payouts,
+    pensions,
     performance,
     portfolio,
     query,
@@ -293,7 +295,8 @@ def _returns(returned: holding_returns.Returns | None) -> JSON | None:
 def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None = None) -> JSON:
     """What is held on `day`: the totals, each instrument with its positions account by
     account and what each returned (`holding_returns`), how it is spread
-    (`portfolio.SPREADS`), and the bills by maturity."""
+    (`portfolio.SPREADS`), and the bills by maturity. The API asks it without the 3a fund units,
+    which the pensions (`pensions_report`) count instead."""
     returned = returned or holding_returns.Found()
     positions: dict[tuple[str, str, str], list[portfolio.Position]] = {}
     for position in held.positions:
@@ -355,7 +358,6 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
             }
             for rung in held.ladder
         ],
-        "pension_cash": number(held.pension_cash),
         "notes": list(held.notes),
     }
 
@@ -862,7 +864,8 @@ def known_merchants(shown: Merchants) -> JSON:
 
 def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
     """One rule of the settings page: what it gives, in which file, how many committed rows
-    it would match on its own (null when its pattern is none), what a change of it sends back
+    it would match on its own (null when its pattern is none, or `counted` is false: time ran
+    out before it was counted), what a change of it sends back
     (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
     return {
         "file": rule.file.key,
@@ -875,6 +878,7 @@ def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
         "matches": rule.matches,
         "version": rule.version,
         "fixed": rule.fixed or None,
+        "counted": rule.counted,
     }
 
 
@@ -906,7 +910,10 @@ def performance_report(shown: performance.Performance) -> JSON:
     """What the investment accounts returned over a range, in one currency: in all and account
     by account, and day by day (week by week over a long range) what they were worth against
     the money put in. `twr` is in percent over the range, from `twr_since` when that is later
-    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise."""
+    than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise.
+    `benchmarks` are what holding each returned in percent over the days `twr` counts; each
+    day's `benchmarks` are their lines, in the same order: what the money put in would be
+    worth in each (`scrooge.benchmark`)."""
     return {
         "currency": shown.currency,
         "range": shown.range,
@@ -918,6 +925,7 @@ def performance_report(shown: performance.Performance) -> JSON:
                 "day": point.day.isoformat(),
                 "value": number(point.value),
                 "invested": number(point.invested),
+                "benchmarks": [number(value) for value in point.benchmarks],
             }
             for point in shown.points
         ],
@@ -929,5 +937,88 @@ def performance_report(shown: performance.Performance) -> JSON:
                 **_measured(holder.measured),
             }
             for holder in shown.holders
+        ],
+        "benchmarks": [
+            {"symbol": each.symbol, "return": number(each.returned)} for each in shown.benchmarks
+        ],
+    }
+
+
+def _cost(cost: costs.Cost) -> JSON:
+    return {
+        "commissions": number(cost.commissions),
+        "tax": number(cost.tax),
+        "total": number(cost.total),
+    }
+
+
+def costs_report(shown: costs.Costs) -> JSON:
+    """What investing cost, year by year, every year together and account by account, in one
+    currency: commissions and tax withheld above zero. `tax_share` is the tax in percent of
+    what investments paid (`paid`); a year is `whole` unless it is counted so far."""
+    return {
+        "currency": shown.currency,
+        "through": day(shown.through),
+        "years": [
+            {
+                "year": year.year,
+                **_cost(year.cost),
+                "paid": number(year.paid),
+                "tax_share": _percent(year.tax_share),
+                "last": day(year.last),
+                "whole": year.whole,
+            }
+            for year in shown.years
+        ],
+        "totals": {
+            **_cost(shown.totals),
+            "paid": number(shown.paid),
+            "tax_share": _percent(shown.tax_share),
+        },
+        "accounts": [
+            {
+                "owner": each.owner,
+                "account": each.account,
+                "name": each.name,
+                "broker": each.broker,
+                **_cost(each.cost),
+            }
+            for each in shown.accounts
+        ],
+    }
+
+
+def pensions_report(shown: pensions.Pensions) -> JSON:
+    """The pension accounts, each with what it is worth on `day` and its change over the last
+    twelve months (`1y`) and the year to date (`ytd`). Pillar 3a has its cash and its money paid
+    in, and its returns as the performance view gives them; Pillar 2 the day of the figure it is
+    carried at, and nothing paid in or returned (`null`): a certificate does not tell them
+    apart. `start` is null when nothing was known of the account on `since`."""
+    return {
+        "currency": shown.currency,
+        "day": day(shown.day),
+        "pensions": [
+            {
+                "owner": pension.owner,
+                "account": pension.account,
+                "pillar": pension.pillar,
+                "value": number(pension.value),
+                "cash": number(pension.cash),
+                "stated": day(pension.stated),
+                "typed": pension.typed,
+                "changes": {
+                    change.range: {
+                        "since": change.since.isoformat(),
+                        "start": number(change.start),
+                        "paid_in": number(change.paid_in),
+                        "twr": number(change.twr),
+                        "mwr": number(change.mwr),
+                        "mwr_a_year": change.mwr_a_year,
+                        "twr_since": day(change.twr_since),
+                    }
+                    for change in pension.changes
+                },
+            }
+            for pension in shown.pensions
         ],
     }

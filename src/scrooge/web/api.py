@@ -31,6 +31,7 @@ from scrooge import (
     categories,
     classification,
     context,
+    costs,
     holding_returns,
     holds,
     marketdata,
@@ -39,6 +40,7 @@ from scrooge import (
     networth,
     overview,
     payouts,
+    pensions,
     performance,
     portfolio,
     query,
@@ -217,7 +219,8 @@ def _holdings(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         try:
             valued = networth.value(conn, asked.owner)
-            held = portfolio.positions_of(conn, valued, asked.currency, today)
+            # The 3a accounts are in the pensions (`/api/pensions`), one figure each.
+            held = portfolio.positions_of(conn, valued, asked.currency, today, pensions=False)
             returned = holding_returns.run(conn, valued, held)
         except networth.MissingRateError as exc:
             return JSONResponse({"holdings": None, "logos": {}, "errors": [wire.sentence(exc)]})
@@ -739,22 +742,44 @@ def _income(request: Request) -> Response:
 
 def _performance(request: Request) -> Response:
     """What the investment accounts of `owner`, or of everyone, returned over `range` (the year
-    to date when left out), in `currency`. Accounts with a currency without a rate are left
-    out, each such currency said in `errors`."""
+    to date when left out), in `currency`, beside the benchmarks of the config. Accounts with
+    a currency without a rate are left out, each such currency said in `errors`, and so is a
+    benchmark without the closes or the rate it needs."""
     asked = forms.performance_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
     with db.reading(request.app.state.database) as conn:
         try:
             shown = performance.run(
-                conn, owner=asked.owner, currency=asked.currency, range_=asked.range
+                conn,
+                owner=asked.owner,
+                currency=asked.currency,
+                range_=asked.range,
+                benchmarks=request.app.state.benchmarks,
             )
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
     errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
     if shown.left_out:
         errors.append(f"Left out for want of a rate: {', '.join(shown.left_out)}.")
+    errors += [wire.sentence(Exception(why)) for why in shown.unbenchmarked]
     return JSONResponse({"performance": wire.performance_report(shown), "errors": errors})
+
+
+def _costs(request: Request) -> Response:
+    """What investing cost `owner`, or everyone, each year in `currency`: commissions and tax
+    withheld. Rows in a currency without a rate are left out, each such currency said in
+    `errors`."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = costs.run(conn, owner=asked.owner, currency=asked.currency)
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+    errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
+    return JSONResponse({"costs": wire.costs_report(shown), "errors": errors})
 
 
 def _recurring(request: Request) -> Response:
@@ -862,6 +887,24 @@ def _networth_months(request: Request) -> Response:
     )
 
 
+def _pensions(request: Request) -> Response:
+    """The pension accounts of `owner`, or of everyone, in `currency`: what each is worth and
+    how it changed. Accounts with a currency without a rate are left out, each such currency
+    said in `errors`."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = pensions.run(conn, owner=asked.owner, currency=asked.currency)
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+    errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
+    if shown.left_out:
+        errors.append(f"Left out for want of a rate: {', '.join(shown.left_out)}.")
+    return JSONResponse({"pensions": wire.pensions_report(shown), "errors": errors})
+
+
 routes = [
     Route("/session", _session, name="api_session"),
     Route("/overview", _overview, name="api_overview"),
@@ -878,6 +921,7 @@ routes = [
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
     Route("/performance", _performance, name="api_performance"),
+    Route("/costs", _costs, name="api_costs"),
     Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),
@@ -886,4 +930,5 @@ routes = [
     Route("/import/category", _add_category, methods=["POST"], name="api_add_category"),
     Route("/statements/{number:int}/discard", _discard, methods=["POST"], name="api_discard"),
     Route("/statements/{number:int}/uncommit", _uncommit, methods=["POST"], name="api_uncommit"),
+    Route("/pensions", _pensions, name="api_pensions"),
 ]

@@ -1,15 +1,16 @@
-# The app on the NAS: `scrooge serve` over the one database, which the pages and
-# `docker exec scrooge scrooge <command>` both change. How it is built, started and updated:
-# deploy/README.md.
+# The app in a container: `scrooge serve` over the one database, which the pages and
+# `docker compose exec scrooge scrooge <command>` both change. How it is started and updated,
+# on any machine with Docker: deploy/README.md. Built for x86-64 and 64-bit ARM.
 #
 # Everything personal is in /data, the volume, read and written there (see deploy/README.md):
-# scrooge.yaml, the database and its backups, originals/, rules.yaml, rules.<owner>.yaml,
-# instruments.yaml and categories.yaml. The image holds only the code.
-# No network once it is built, except `scrooge prices` (D10).
+# the config, the database and its backups, originals/, the rules, instruments and categories,
+# as `scrooge init --container` makes them in /data/users/<name>/, or in /data itself.
+# The image holds only the code. No network once it is built, except `scrooge prices` (D10).
 
 # The frontend at /app (frontend/, `make web`): built here, so that the image needs no Node.
 # Node 22 is the oldest SvelteKit takes; its lock first, it changes less than the code.
-FROM node:22-slim AS web
+# Built on the builder's own processor, whatever the image is for: the result is the same files.
+FROM --platform=$BUILDPLATFORM node:22-slim AS web
 
 WORKDIR /web/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
@@ -58,12 +59,13 @@ ENV PATH=/opt/scrooge/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Not root. deploy/compose.yaml names the user of the NAS that owns the data folder instead;
+# Not root. deploy/compose.yaml names the user that owns the data folder instead (.env);
 # nothing in the image belongs to this one, so any other works as well.
 USER 10001:10001
 
-# The folder `scrooge` runs in, `docker exec` included: scrooge.yaml is found here, and so is
-# anything it names by a relative path.
+# The folder `scrooge` runs in, `docker compose exec` included: the config is found here
+# (/data/scrooge.yaml, else the one setup in /data/users/), and so is anything it names by a
+# relative path.
 WORKDIR /data
 EXPOSE 8765
 
@@ -72,8 +74,9 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/login', timeout=3)"]
 
-# Everything else comes from /data/scrooge.yaml: the database, the rules, the instruments,
-# who may see the pages. Before listening, a database at an older schema is copied to
-# /data/backups and brought up to date; when that fails, nothing listens and the container
-# stops with the reason in its log.
-CMD ["scrooge", "serve", "--config", "/data/scrooge.yaml", "--port", "8765"]
+# Everything else comes from the config: the database, the rules, the instruments, who may
+# see the pages. Without one the container stops, and its log says to run `scrooge init`.
+# Before listening, a database at an older schema is copied to backups/ next to it and
+# brought up to date; when that fails, nothing listens and the container stops with the
+# reason in its log.
+CMD ["scrooge", "serve", "--port", "8765"]

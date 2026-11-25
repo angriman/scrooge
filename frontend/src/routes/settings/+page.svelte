@@ -13,6 +13,7 @@
 		edited,
 		fileNote,
 		fileTitle,
+		moved,
 		ruleKey,
 		seen,
 		STAY,
@@ -53,7 +54,8 @@
 	}
 
 	const save = (rule: Rule, draft: Draft) => change('rules/edit', edited(rule, draft));
-	const move = (rule: Rule, by: -1 | 1) => change('rules/move', { ...seen(rule), by });
+	const move = (rule: Rule, by: -1 | 1, beside: Rule | undefined) =>
+		change('rules/move', moved(rule, by, beside));
 	const removeRule = (rule: Rule) => change('rules/remove', seen(rule));
 	const add = (name: string, side: string, group: string) =>
 		change('categories/add', { name, side, group });
@@ -136,7 +138,7 @@
 											first={index === 0}
 											last={index === group.rules.length - 1}
 											onsave={(draft) => save(rule, draft)}
-											onmove={(by) => move(rule, by)}
+											onmove={(by) => move(rule, by, group.rules[index + by])}
 											onremove={() => removeRule(rule)}
 											ontry={tryPattern}
 										/>

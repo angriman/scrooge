@@ -194,12 +194,14 @@ async def _remove_rule(request: Request) -> Response:
 
 
 async def _move_rule(request: Request) -> Response:
-    """Move a rule one place up (`"by": -1`) or down (1) in its file."""
+    """Move a rule one place up (`"by": -1`) or down (1) in its file, past the rule there as
+    the page showed it (`"beside"`, its `version`)."""
 
     def act(sent: dict[str, object]) -> None:
         by = sent.get("by")
         steps = by if isinstance(by, int) and not isinstance(by, bool) else 0
-        settings.move_rule(_seen(request, sent), steps, _categories_file(request))
+        beside = _text(sent, "beside")
+        settings.move_rule(_seen(request, sent), steps, beside, _categories_file(request))
 
     return await _change(request, act)
 

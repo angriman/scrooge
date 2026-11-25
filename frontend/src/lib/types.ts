@@ -276,8 +276,6 @@ export interface Portfolio {
 	spread: Record<'asset' | 'currency' | 'account' | 'owner', SpreadSlice[]>;
 	ladder_day: Day | null;
 	ladder: Rung[];
-	/** The cash of the pension accounts: in Pillar 3a on the overview, not listed here. */
-	pension_cash: Amount | null;
 	notes: string[];
 }
 
@@ -677,6 +675,17 @@ export interface InvestedDay {
 	day: Day;
 	value: Amount;
 	invested: Amount;
+	/** The line of each of `PerformanceReport.benchmarks`, in its order: what the money put in
+	 * would be worth in it. */
+	benchmarks: Amount[];
+}
+
+/** What holding a benchmark returned in percent, over the days the time-weighted return
+ * counts, in the currency asked for; its price alone, what it paid out left out
+ * (src/scrooge/benchmark.py). */
+export interface BenchmarkReturn {
+	symbol: string;
+	return: Amount;
 }
 
 export interface PerformanceReport {
@@ -688,6 +697,8 @@ export interface PerformanceReport {
 	totals: Measured | null;
 	series: InvestedDay[];
 	accounts: MeasuredAccount[];
+	/** The benchmarks of the config that have the closes and rates they need. */
+	benchmarks: BenchmarkReturn[];
 }
 
 /** `/api/performance`. `errors` names each currency whose accounts were left out for want of a
@@ -842,6 +853,8 @@ export interface Rule {
 	version: string;
 	/** Why it cannot be changed here; null when it can. */
 	fixed: string | null;
+	/** False when time ran out before it was counted: `matches` is null then. */
+	counted: boolean;
 }
 
 export interface SettingsRules {
@@ -880,5 +893,90 @@ export interface SettingsCategories {
 	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
 	unmatched: string | null;
 	editable: boolean;
+	errors: string[];
+}
+
+/** What investing cost, above zero: a refund lowers it (src/scrooge/costs.py `Cost`). */
+export interface Cost {
+	commissions: Amount;
+	/** Withheld from what investments paid. */
+	tax: Amount;
+	total: Amount;
+}
+
+/** What investing cost each calendar year, every year together and account by account
+ * (src/scrooge/costs.py `Costs`). `tax_share` is the tax in percent of `paid`, the dividends
+ * and interest before tax; null when nothing was paid. */
+export interface CostsReport {
+	currency: string;
+	through: Day | null;
+	/** Oldest first; `whole` is false for the year counted so far, up to `last`. */
+	years: CostYear[];
+	totals: Cost & { paid: Amount; tax_share: Amount | null };
+	/** What cost the most first; `name` has the owner after it when two people have one of it.
+	 * `broker`: a broker's account, whose commissions count; of any other only the tax does. */
+	accounts: (Cost & { owner: string; account: string; name: string; broker: boolean })[];
+}
+
+export type CostYear = Cost & {
+	year: number;
+	paid: Amount;
+	tax_share: Amount | null;
+	last: Day;
+	whole: boolean;
+};
+
+export interface InvestmentCosts {
+	costs: CostsReport;
+	errors: string[];
+}
+
+/** What one pension did from the end of `since` to the last day (src/scrooge/pensions.py
+ * `Change`). */
+export interface PensionChange {
+	since: Day;
+	/** Worth at the end of `since`; null when nothing was known of it then (a pension fund
+	 * before its first certificate). */
+	start: Amount | null;
+	/** Money paid in, less what was taken out; null for Pillar 2, whose certificates do not
+	 * tell it apart from the interest credited. */
+	paid_in: Amount | null;
+	/** Time-weighted, in percent over the range; null for Pillar 2, or nothing invested. */
+	twr: Amount | null;
+	/** Money-weighted, in percent: a year when `mwr_a_year`, else over the range. */
+	mwr: Amount | null;
+	mwr_a_year: boolean;
+	/** The first day `twr` counts, when after the range's first; else null. */
+	twr_since: Day | null;
+}
+
+/** One pension account of one person: a pension fund (`Pillar 2`) or a 3a portfolio. */
+export interface Pension {
+	owner: string;
+	account: string;
+	pillar: 'Pillar 2' | 'Pillar 3a';
+	/** Of a 3a portfolio, its fund units and its cash together. */
+	value: Amount;
+	/** Pillar 3a: what of `value` is not invested in fund units; null for Pillar 2. */
+	cash: Amount | null;
+	/** Pillar 2: the day of the figure it is carried at, and whether that was typed rather than
+	 * read from a certificate; null and false for Pillar 3a. */
+	stated: Day | null;
+	typed: boolean;
+	/** Over the twelve months up to `PensionsReport.day`, and the year to date. */
+	changes: Record<'1y' | 'ytd', PensionChange>;
+}
+
+export interface PensionsReport {
+	currency: string;
+	/** The last day net worth is known for; null when nothing is committed. */
+	day: Day | null;
+	pensions: Pension[];
+}
+
+/** `/api/pensions`. `errors` names each currency whose pensions were left out for want of a
+ * rate. */
+export interface InvestmentPensions {
+	pensions: PensionsReport;
 	errors: string[];
 }
