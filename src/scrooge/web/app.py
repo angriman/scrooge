@@ -658,22 +658,12 @@ _SUGGESTED = 50  # rows one page offers rules for, at most: a page's address sta
 _ROW = re.compile(r"[0-9a-f]{24}")  # a transaction's id (`storage.ids`)
 
 
-def _places(state: State) -> suggestions.Places | None:
-    """Where the import reads its rules, and so where a rule offered goes; None when the app
-    has nowhere to write one."""
-    if state.rules is None:
-        return None
-    shared = list(state.imports.rules) if state.imports else [state.rules.shared]
-    unmatched = state.imports.unmatched if state.imports else ""
-    return suggestions.Places(shared, state.rules.people, unmatched)
-
-
 def _offers(
     conn: sqlite3.Connection, state: State, owner: str, asked: str
 ) -> tuple[list[suggestions.Suggestion], str]:
     """The rules to offer for the rows named in `asked`, and why none could be, if so."""
     ids = list(dict.fromkeys(part for part in asked.split(",") if _ROW.fullmatch(part)))
-    places = _places(state)
+    places = api.rule_places(state)
     if places is None or not ids:
         return [], ""
     try:
@@ -1098,7 +1088,7 @@ async def _add_rule(request: Request) -> Response:
     fields = await _sent(request)
     owner = fields.get("owner", [""])[-1]
     state = request.app.state
-    places = _places(state)
+    places = api.rule_places(state)
     if places is None:  # nowhere to write it down for the next import
         raise HTTPException(404)
     asked = fields.get("suggest", [""])[-1]
