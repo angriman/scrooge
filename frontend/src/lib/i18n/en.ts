@@ -53,8 +53,7 @@ export const en = {
 	'bridge.newAccounts': 'New accounts',
 	'bridge.marketsShort': 'Markets',
 	'bridge.marketsAndOther': 'Markets and other',
-	'bridge.ariaLabel':
-		'From {before} on {from}: income {income}, spending {spending}, markets and other {other}, to {after} on {to}',
+	'bridge.ariaLabel': 'From {before} on {from}: {steps}, to {after} on {to}',
 
 	'range.1m': '1M',
 	'range.3m': '3M',

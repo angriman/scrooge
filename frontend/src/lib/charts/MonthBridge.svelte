@@ -7,79 +7,22 @@ stand on a baseline below the lowest step, not on zero, so that steps of a few t
 next to a net worth of hundreds of thousands; their figures are written over them.
 -->
 <script lang="ts">
-	import { approximate, negate, short, shortSigned } from '#lib/format/number.js';
-	import { t } from '#lib/i18n/index.svelte.js';
-	import type { Amount } from '#lib/types.js';
+	import { bridgeAriaLabel, bridgeSteps, type BridgeInput } from './monthBridge.js';
 
-	interface Props {
-		before: Amount;
-		income: Amount;
-		spent: Amount;
-		/** What accounts held when they first counted: a step of its own unless it is zero. */
-		arrived: Amount;
-		other: Amount;
-		after: Amount;
-		/** What the two ends are called: `30 Sep`, `31 Oct`. */
-		from: string;
-		to: string;
-	}
-
-	let { before, income, spent, arrived, other, after, from, to }: Props = $props();
+	let { before, income, spent, arrived, other, after, from, to }: BridgeInput = $props();
 
 	// Drawn at the size it is shown, so that its words are the size of the page's.
 	let width = $state(320);
 	const HEIGHT = 180;
 	const TOP = 22; // room for the figure over the highest bar
 	const BOTTOM = 26; // room for the names under the bars
-	const COUNT = $derived(approximate(arrived) === 0 ? 5 : 6);
-	const BAR = $derived(Math.min(72, (width / COUNT) * 0.62));
 
-	const steps = $derived.by(() => {
-		const start = approximate(before);
-		const afterIncome = start + approximate(income);
-		const afterSpending = afterIncome - approximate(spent);
-		const afterArrivals = afterSpending + approximate(arrived);
-		const end = approximate(after);
-		const arrivals =
-			COUNT === 6
-				? [
-						{
-							name: width < 480 ? t('bridge.newShort') : t('bridge.newAccounts'),
-							from: afterSpending,
-							to: afterArrivals,
-							label: shortSigned(arrived),
-							tone: 'arrived'
-						} as const
-					]
-				: [];
-		return [
-			{ name: from, from: null, to: start, label: short(before), tone: 'end' },
-			{
-				name: t('bridge.income'),
-				from: start,
-				to: afterIncome,
-				label: shortSigned(income),
-				tone: 'gain'
-			},
-			{
-				name: t('bridge.spending'),
-				from: afterIncome,
-				to: afterSpending,
-				label: shortSigned(negate(spent)),
-				tone: 'loss'
-			},
-			...arrivals,
-			{
-				// Its full name where there is room; the panel's note says what else it holds.
-				name: width < 420 ? t('bridge.marketsShort') : t('bridge.marketsAndOther'),
-				from: afterArrivals,
-				to: end,
-				label: shortSigned(other),
-				tone: 'other'
-			},
-			{ name: to, from: null, to: end, label: short(after), tone: 'end' }
-		] as const;
-	});
+	const steps = $derived(
+		bridgeSteps({ before, income, spent, arrived, other, after, from, to }, width)
+	);
+	const COUNT = $derived(steps.length);
+	const BAR = $derived(Math.min(72, (width / COUNT) * 0.62));
+	const ariaLabel = $derived(bridgeAriaLabel(steps));
 
 	const scale = $derived.by(() => {
 		const levels = steps.flatMap((step) => (step.from === null ? [step.to] : [step.from, step.to]));
@@ -103,21 +46,7 @@ next to a net worth of hundreds of thousands; their figures are written over the
 </script>
 
 <div bind:clientWidth={width}>
-	<svg
-		{width}
-		height={HEIGHT}
-		class="block overflow-visible"
-		role="img"
-		aria-label={t('bridge.ariaLabel', {
-			before: short(before),
-			from,
-			income: shortSigned(income),
-			spending: shortSigned(negate(spent)),
-			other: shortSigned(other),
-			after: short(after),
-			to
-		})}
-	>
+	<svg {width} height={HEIGHT} class="block overflow-visible" role="img" aria-label={ariaLabel}>
 		<line x1="0" x2={width} y1={floor} y2={floor} class="stroke-chart-grid" />
 		{#each steps as step, index (step.name + index)}
 			{@const x = index * (BAR + gap)}
