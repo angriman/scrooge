@@ -49,6 +49,8 @@ class Run:
         self.aside = folder.parent / f"{folder.name} aside"
         self.aside.mkdir()
         self.database = folder / "data" / "scrooge.db"
+        # Made as `scrooge init` makes it: no other command makes one.
+        assert dbcli.main(["init", "--db", str(self.database)], io.StringIO()) == dbcli.OK
         self.config = folder / "scrooge.yaml"
         self.config.write_text(CONFIG.format(database=self.database), encoding="utf-8")
         self.rules = write_rules(folder)
@@ -99,6 +101,10 @@ class Run:
         finally:
             conn.close()
 
+    def without_database(self) -> None:
+        """As before `scrooge init`, or where a copy is not published yet: no folder either."""
+        shutil.rmtree(self.database.parent)
+
     def count(self, table: str) -> int:
         conn = db.connect(self.database)
         try:
@@ -108,7 +114,9 @@ class Run:
 
 
 @pytest.fixture
-def run(folder: Path) -> Run:
+def run(folder: Path, monkeypatch: pytest.MonkeyPatch) -> Run:
+    """In the folder of the setup, as its commands run: `rules.yaml` there is the default."""
+    monkeypatch.chdir(folder)
     return Run(folder)
 
 
@@ -708,11 +716,51 @@ def test_a_refusal_ends_the_import_with_failure_even_when_others_need_categories
 def test_owner_and_database_can_come_from_the_command_line(run: Run, tmp_path: Path) -> None:
     run.config.unlink()
     other = tmp_path / "other.db"
+    assert run.load("--owner", "Anna", "--db", str(other)) == dbcli.FAILED  # none there yet
+    assert run.output == (
+        f"error: no database at {other} (--db). Only 'scrooge init' makes a database "
+        "('scrooge init --db <path>' an empty one alone)\n"
+    )
+    assert not other.exists()
+    assert dbcli.main(["init", "--db", str(other)], io.StringIO()) == dbcli.OK
     assert run.load("--owner", "Anna", "--db", str(other)) == dbcli.OK
     assert "  staged Migros.csv (Migros Bank account statement)\n" in run.output
     assert "109 transactions staged for Anna.\n" in run.output
-    assert other.exists()
-    assert not run.database.exists()
+    assert run.count("statement_files") == 0  # not the database of the config
+
+
+def test_a_missing_database_is_refused_by_every_command_and_none_is_made(run: Run) -> None:
+    """Run from another folder, a relative path names no database: nothing is made there."""
+    run.without_database()
+    run.config.write_text(CONFIG.format(database="data/scrooge.db"), encoding="utf-8")
+    before = everything_under(run.folder)
+    for command in [*WRITERS, ("query",), ("statements",)]:
+        assert run(*command) == dbcli.FAILED, command
+        assert run.output == (
+            f"error: no database at {run.database}: 'database' in {run.config} is relative to "
+            f"the folder this runs in, {run.folder}: run scrooge from the folder 'scrooge init' "
+            "was run in. Only 'scrooge init' makes a database ('scrooge init --db <path>' an "
+            "empty one alone)\n"
+        ), command
+    assert everything_under(run.folder) == before
+    assert not run.database.parent.exists()
+
+
+def test_a_missing_rules_file_is_refused_not_read_as_no_rules(run: Run) -> None:
+    run.rules.unlink()
+    assert run("import", str(run.folder)) == dbcli.FAILED
+    assert run.output == (
+        f"error: no rules file at {run.rules}: rules.yaml, as {run.config} names none, is "
+        f"relative to the folder this runs in, {run.folder}: run scrooge from the folder "
+        "'scrooge init' was run in. A rules file with no rules yet holds the line 'rules: []'\n"
+    )
+    gone = run.folder / "gone.yaml"
+    assert run("import", str(run.folder), "--rules", str(gone)) == dbcli.FAILED
+    assert run.output == (
+        f"error: no rules file at {gone} (--rules). A rules file with no rules yet holds the "
+        "line 'rules: []'\n"
+    )
+    assert run.count("statement_files") == 0
 
 
 @pytest.mark.parametrize(
@@ -1173,6 +1221,7 @@ def test_the_config_says_where_the_rules_and_the_instruments_are(
     shutil.move(run.rules, generic)
     shutil.move(run.instruments, instruments)
     keys = f"rules: [{data / 'rules.local.yaml'}, {generic}]\ninstruments: {instruments}\n"
+    (data / "rules.local.yaml").write_text("rules: []\n", encoding="utf-8")
     run.config.write_text(CONFIG.format(database=run.database) + keys, encoding="utf-8")
     august = run.aside / "august"
     august.mkdir(parents=True)
@@ -1188,6 +1237,7 @@ def test_the_config_says_where_the_rules_and_the_instruments_are(
     assert served[-1].state.imports.instruments == instruments
     assert served[-1].state.rules.shared == data / "rules.local.yaml"
     # A flag still wins, and names every file read: none is looked for next to it.
+    (run.folder / "mine.yaml").write_text("rules: []\n", encoding="utf-8")
     assert run("serve", "--rules", "mine.yaml", "--instruments", "other.yaml") == dbcli.OK
     assert served[-1].state.imports.rules == [Path("mine.yaml")]
     assert served[-1].state.imports.instruments == Path("other.yaml")
@@ -1294,6 +1344,7 @@ def test_serve_refuses_a_config_that_would_show_the_pages_unguarded_or_makes_no_
 def test_serve_shows_a_copy_as_it_is_without_writing_anywhere(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    run.without_database()
     run.database.parent.mkdir()
     conn = db.connect(run.database)
     db.migrate(conn, NOW)
@@ -1335,6 +1386,7 @@ def test_serve_shows_a_copy_as_it_is_without_writing_anywhere(
 def test_a_database_newer_than_this_code_is_refused_by_every_command(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    run.without_database()
     run.database.parent.mkdir()
     conn = db.connect(run.database)
     db.migrate(conn, NOW)
@@ -1352,11 +1404,12 @@ def test_a_database_newer_than_this_code_is_refused_by_every_command(
 def older(run: Run, monkeypatch: pytest.MonkeyPatch) -> int:
     """The database as code one migration older left it, with an owner in it; its version."""
     every = db.migrations()
+    run.without_database()
     run.database.parent.mkdir()
     conn = db.connect(run.database)
-    monkeypatch.setattr(db, "migrations", lambda: every[:-1])
-    db.migrate(conn, NOW)
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as patch:  # undone alone: the folder it runs in stays
+        patch.setattr(db, "migrations", lambda: every[:-1])
+        db.migrate(conn, NOW)
     conn.execute("INSERT INTO owners (name) VALUES ('Lukas')")
     conn.close()
     return every[-2][0]
@@ -1413,6 +1466,7 @@ def test_serve_does_not_start_on_a_database_a_migration_fails_on(
 def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    run.without_database()
     assert serve_with(run, monkeypatch, "{read_only: true}") == []
     assert run.output == (
         f"error: {run.database}: no copy of the database to show: run 'scrooge publish' "
@@ -1476,6 +1530,7 @@ def test_a_machine_that_only_shows_a_copy_refuses_every_command_that_would_write
 def test_a_missing_copy_is_not_made_by_a_command_that_would_write(
     run: Run, command: tuple[str, ...]
 ) -> None:
+    run.without_database()
     read_only(run)
     assert run(*command) == dbcli.FAILED
     assert "this machine only shows a copy" in run.output
@@ -1505,6 +1560,7 @@ def test_a_machine_that_only_shows_a_copy_can_still_list_and_query_it(closed: Ru
 def test_a_copy_that_is_missing_or_at_another_schema_is_refused_by_what_only_reads(
     run: Run,
 ) -> None:
+    run.without_database()
     read_only(run)
     for command in ("query", "statements"):
         assert run(command) == dbcli.FAILED
@@ -1637,8 +1693,12 @@ def test_publish_refuses_a_folder_that_is_missing_or_holds_the_database(
 
 
 def test_publish_does_not_make_a_database_where_there_is_none(run: Run, share: Path) -> None:
+    run.without_database()
     assert run("publish", str(share)) == dbcli.FAILED
-    assert run.output == f"error: {run.database}: no database to publish\n"
+    assert run.output == (
+        f"error: no database at {run.database} ('database' in {run.config}). Only 'scrooge "
+        "init' makes a database ('scrooge init --db <path>' an empty one alone)\n"
+    )
     assert not run.database.parent.exists()
     assert list(share.iterdir()) == []
 
@@ -1828,6 +1888,7 @@ def _setup(root: Path, name: str) -> Path:
     (home / "statements").mkdir(parents=True)
     database = f"users/{name}/scrooge.db"
     (home / "scrooge.yaml").write_text(CONFIG.format(database=database), encoding="utf-8")
+    db.create(root / database, NOW)
     return home
 
 
@@ -1852,8 +1913,7 @@ def test_the_only_setup_in_users_is_found(tmp_path: Path, monkeypatch: pytest.Mo
     code, output = _main("import", "users/lukas/statements")  # no --config
     assert code == dbcli.OK, output
     assert "  staged Migros.csv (Migros Bank account statement)\n" in output
-    assert (home / "scrooge.db").is_file()
-    assert (home / "originals").is_dir()
+    assert (home / "originals").is_dir()  # next to its database
 
 
 def test_every_command_finds_the_files_of_the_config_from_the_folder_it_runs_in(
@@ -1895,10 +1955,9 @@ def test_with_several_setups_one_is_chosen_by_name(
     # A folder's own name, whatever its case, and what `scrooge init` makes of a name.
     for named in ("Lukas", "lukas", "LUKAS"):
         assert _main("statements", "--user", named) == (dbcli.OK, "No statements for Lukas.\n")
-    assert (tmp_path / "users" / "Lukas" / "scrooge.db").is_file()
+    (tmp_path / "users" / "anna" / "scrooge.db").unlink()
     monkeypatch.setenv(dbcli.USER, "anna")
-    assert _main("statements")[0] == dbcli.OK
-    assert (tmp_path / "users" / "anna" / "scrooge.db").is_file()
+    assert f"no database at {tmp_path / 'users' / 'anna' / 'scrooge.db'}" in _main("statements")[1]
     assert _main("statements", "--user", "zoe") == (
         dbcli.FAILED,
         "error: no setup 'zoe' in users/ (there are Lukas, anna): make one with 'scrooge init'\n",
@@ -1911,20 +1970,22 @@ def test_the_config_here_comes_before_a_setup_in_users(
     (tmp_path / "scrooge.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
     _setup(tmp_path, "anna")
     monkeypatch.chdir(tmp_path)
+    # The database the config here names, not the setup's: it is not made yet.
+    code, output = _main("statements")
+    assert (code, output.partition(":")[0]) == (dbcli.FAILED, "error")
+    assert f"no database at {tmp_path / 'data' / 'f.db'}: 'database' in scrooge.yaml" in output
+    db.create(tmp_path / "data" / "f.db", NOW)
     assert _main("statements") == (dbcli.OK, "No statements for Lukas.\n")
-    assert (tmp_path / "data" / "f.db").is_file()
-    assert not (tmp_path / "users" / "anna" / "scrooge.db").exists()
     assert _main("statements", "--user", "anna")[0] == dbcli.OK  # unless --user says otherwise
-    assert (tmp_path / "users" / "anna" / "scrooge.db").is_file()
 
 
 def test_without_users_the_config_here_is_read_as_before(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "scrooge.yaml").write_text(CONFIG.format(database="data/f.db"), encoding="utf-8")
+    db.create(tmp_path / "data" / "f.db", NOW)
     monkeypatch.chdir(tmp_path)
     assert _main("statements") == (dbcli.OK, "No statements for Lukas.\n")
-    assert (tmp_path / "data" / "f.db").is_file()
     monkeypatch.setenv(dbcli.USER, "lukas")  # names a setup that is not there
     assert _main("statements")[1].startswith("error: no setup 'lukas' in users/ (there is none")
 

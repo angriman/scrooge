@@ -3,9 +3,10 @@
 A setup is one folder holding everything personal: the config, the rules, the categories
 added, the instruments, the statements to import, and the database with its backups and
 originals. The four files are written from the starter files of `src/scrooge/starter/`, the
-config with the answers filled in; a file that is already there is kept as it is. The paths
-in the config start with `users/<name>/`: like every config's, they are relative to the
-folder the commands run in.
+config with the answers filled in, and the database is made empty: no other command makes
+one. A file that is already there is kept as it is. The paths in the config start with
+`users/<name>/`: like every config's, they are relative to the folder the commands run in,
+and from another folder they name nothing, which the commands refuse.
 
 `scrooge` finds the setup by itself while it is the only one in `users/` and no
 `scrooge.yaml` is in the folder (see `dbcli._find_config`), and by `--user <name>` otherwise.
@@ -22,18 +23,21 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 from string import Template
 from typing import TextIO
 
 from scrooge import networth
+from scrooge.storage import db
 from scrooge.web import auth
 
 USERS = "users"  # the folder of the setups, in the folder the commands run in
 CONFIG = "scrooge.yaml"
 STARTERS = ("rules.yaml", "categories.yaml", "instruments.yaml")  # copied as they are
 STATEMENTS = "statements"
+DATABASE = "scrooge.db"  # as the starter config names it
 OK, FAILED = 0, 1
 _DEFAULT_CURRENCY = "CHF"
 # Where the pages are seen from, written down for later: on this machine only until then.
@@ -65,9 +69,17 @@ def find_setup(named: str, found: Sequence[str]) -> str | None:
     return folded.get(named.casefold()) or folded.get(folder_name(named).casefold())
 
 
-def run(users: Path, out: TextIO, ask: Callable[[str], str], *, container: bool = False) -> int:
-    """Ask, then write the setup; nothing is written when the name is taken. In a `container`
-    the pages are served beyond it: under the names given, with a password."""
+def run(
+    users: Path,
+    out: TextIO,
+    ask: Callable[[str], str],
+    now: datetime | None = None,
+    *,
+    container: bool = False,
+) -> int:
+    """Ask, then write the setup and make its database; nothing is written when the name is
+    taken. In a `container` the pages are served beyond it: under the names given, with a
+    password."""
     earlier = users.parent / CONFIG
     if earlier.is_file():
         out.write(
@@ -96,6 +108,7 @@ def run(users: Path, out: TextIO, ask: Callable[[str], str], *, container: bool 
     written += [
         _write(home / name, starters.joinpath(name).read_text("utf-8")) for name in STARTERS
     ]
+    written.append(_database(home / DATABASE, now or datetime.now(UTC)))
     out.write(f"\nYour setup is in {home}/:\n")
     out.writelines(f"  {line}\n" for line in written)
     out.write(_next_steps(users, home, container=container))
@@ -192,6 +205,14 @@ def _write(path: Path, text: str) -> str:
         return f"{path.name}: kept, it was there already"
     path.write_text(text, encoding="utf-8")
     return f"{path.name}: written"
+
+
+def _database(path: Path, now: datetime) -> str:
+    try:
+        db.create(path, now)
+    except FileExistsError:
+        return f"{path.name}: kept, it was there already"
+    return f"{path.name}: made, empty"
 
 
 def _next_steps(users: Path, home: Path, *, container: bool) -> str:

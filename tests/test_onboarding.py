@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from scrooge import categories, dbcli, onboarding
+from scrooge.storage import db
 from scrooge.web import auth
 from tests.conftest import FILES, FIXTURES
 
@@ -45,11 +46,15 @@ def test_one_person_gets_a_setup_that_imports_and_commits_without_review(here: P
         "categories.yaml",
         "instruments.yaml",
         "rules.yaml",
+        "scrooge.db",
         "scrooge.yaml",
         "statements",
     ]
     assert len(asked) == 4
     assert f"Your setup is in {Path('users/lukas')}/:\n  scrooge.yaml: written\n" in output
+    assert "  scrooge.db: made, empty\n" in output
+    with db.reading(home / "scrooge.db") as conn:
+        assert db.version(conn) == db.latest()
     assert "  1. Put your statement exports in users/lukas/statements/\n" in output
     # No --user: it is the only one.
     assert "  2. scrooge import users/lukas/statements\n" in output
@@ -76,8 +81,44 @@ def test_one_person_gets_a_setup_that_imports_and_commits_without_review(here: P
     assert "need a category" not in out.getvalue()
     out = io.StringIO()
     assert dbcli.main(["commit"], out, now=lambda: NOW) == dbcli.OK, out.getvalue()
-    assert (home / "scrooge.db").is_file()
     assert (home / "originals").is_dir()
+
+
+def test_a_command_run_from_another_folder_is_refused_and_makes_nothing(
+    here: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The config's paths are relative to the folder the commands run in: from the setup's own
+    folder they name files that are not there, and no database is made there instead."""
+    assert init("Lukas", "LUKAS MEIER", "", "")[0] == dbcli.OK
+    home = here / "users" / "lukas"
+    shutil.copy(FIXTURES / FILES["Migros.csv"], home / "statements" / "Migros.csv")
+    before = sorted(home.rglob("*"))
+    monkeypatch.chdir(home)  # its scrooge.yaml is the config here
+    for argv in (["import", "statements"], ["commit"], ["prices"], ["serve"]):
+        out = io.StringIO()
+        assert dbcli.main(argv, out, now=lambda: NOW) == dbcli.FAILED, argv
+        missing = home / "users" / "lukas" / "scrooge.db"
+        assert out.getvalue() == (
+            f"error: no database at {missing}: 'database' in scrooge.yaml is relative to the "
+            f"folder this runs in, {home}: run scrooge from the folder 'scrooge init' was run "
+            "in. Only 'scrooge init' makes a database ('scrooge init --db <path>' an empty one "
+            "alone)\n"
+        )
+    assert sorted(home.rglob("*")) == before
+
+
+def test_a_setup_whose_rules_file_is_gone_is_refused(here: Path) -> None:
+    assert init("Lukas", "LUKAS MEIER", "", "")[0] == dbcli.OK
+    rules = here / "users" / "lukas" / "rules.yaml"
+    rules.unlink()
+    out = io.StringIO()
+    assert dbcli.main(["import", "users/lukas/statements"], out, now=lambda: NOW) == dbcli.FAILED
+    assert out.getvalue() == (
+        f"error: no rules file at {rules}: 'rules' in {Path('users/lukas/scrooge.yaml')} is "
+        f"relative to the folder this runs in, {here}: run scrooge from the folder 'scrooge "
+        "init' was run in. A rules file with no rules yet holds the line 'rules: []'\n"
+    )
+    assert not rules.exists()
 
 
 @pytest.mark.parametrize(
@@ -129,6 +170,31 @@ def test_a_name_whose_setup_exists_is_refused_and_nothing_changes(here: Path) ->
         "or give another name\n"
     )
     assert config.read_text(encoding="utf-8") == before
+
+
+def test_a_database_already_there_is_kept(here: Path) -> None:
+    database = here / "users" / "lukas" / "scrooge.db"
+    database.parent.mkdir(parents=True)
+    database.write_bytes(b"")
+    code, output, _ = init("Lukas", "LUKAS MEIER", "", "")
+    assert code == dbcli.OK
+    assert "  scrooge.db: kept, it was there already\n" in output
+
+
+def test_init_db_makes_an_empty_database_alone_and_never_touches_one_there(here: Path) -> None:
+    out = io.StringIO()
+    argv = ["init", "--db", "data/scrooge.db"]
+    assert dbcli.main(argv, out, ask=pytest.fail, now=lambda: NOW) == dbcli.OK
+    database = here / "data" / "scrooge.db"
+    assert out.getvalue() == (
+        f"{database}: a new, empty database, at schema version {db.latest()}.\n"
+    )
+    with db.reading(database) as conn:
+        assert db.version(conn) == db.latest()
+    assert [path.name for path in here.iterdir()] == ["data"]  # no setup in users/
+    out = io.StringIO()
+    assert dbcli.main(argv, out, ask=pytest.fail, now=lambda: NOW) == dbcli.FAILED
+    assert out.getvalue() == f"error: {database}: there is a database there already\n"
 
 
 def test_files_already_there_are_kept(here: Path) -> None:
