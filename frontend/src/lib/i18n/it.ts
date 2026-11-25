@@ -13,6 +13,7 @@ export const it: Messages = {
 	'nav.language': 'Lingua',
 	'nav.settingsLabel': 'Impostazioni: categorie e regole',
 	'nav.settingsTitle': 'Categorie e regole',
+	'nav.signOut': 'Esci',
 	'nav.importLabel': 'Importa estratti',
 	'nav.import': 'Importa',
 	'nav.completeUpTo': 'Completo fino al {date}',

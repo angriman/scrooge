@@ -4,6 +4,7 @@
 	import ChartPie from '@lucide/svelte/icons/chart-pie';
 	import Files from '@lucide/svelte/icons/files';
 	import House from '@lucide/svelte/icons/house';
+	import LogOut from '@lucide/svelte/icons/log-out';
 	import ReceiptText from '@lucide/svelte/icons/receipt-text';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Upload from '@lucide/svelte/icons/upload';
@@ -173,6 +174,19 @@
 						<Upload class="size-4" aria-hidden="true" />
 						<span class="hidden sm:inline">{t('nav.import')}</span>
 					</a>
+				{/if}
+				{#if data.session.signing}
+					<form method="post" action="/logout" class="inline-flex">
+						<input type="hidden" name="token" value={data.session.token} />
+						<button
+							type="submit"
+							aria-label={t('nav.signOut')}
+							title={t('nav.signOut')}
+							class="inline-flex size-8 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink"
+						>
+							<LogOut class="size-4" aria-hidden="true" />
+						</button>
+					</form>
 				{/if}
 			</div>
 		</div>
