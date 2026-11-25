@@ -834,6 +834,9 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
         if not name:
             msg = "a row without any text cannot become a rule: choose 'just these rows'"
             raise StagingError(msg)
+        if len(classification.exact_match(name)) > classification.LONGEST:
+            msg = "that text is too long to become a rule: choose 'just these rows'"
+            raise StagingError(msg)
         text = f"{row.description}\n{row.counterparty}"
         if transfer and any(pattern.search(text) for pattern in remember.others):
             msg = (

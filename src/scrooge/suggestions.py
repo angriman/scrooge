@@ -136,6 +136,8 @@ def _offer(row: store.Categorized, rules: _Rules, places: Places, owner: str) ->
     )
     flow = classification.direction(txn)
     match = classification.merchant_match(words)
+    if len(match) > classification.LONGEST:
+        return None
     if not Rule(re.compile(match, re.IGNORECASE), row.category, direction=flow).matches(txn):
         return None  # a text the pattern cannot find again (a line break inside a name)
     if row.side == "transfer" and classification.names(txn, rules.others):

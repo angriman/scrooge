@@ -179,6 +179,19 @@ def test_a_row_without_letters_or_found_on_no_line_is_offered_nothing(
     assert suggestions.suggest(conn, places, OWNER, [ids["4"], ids["5"]]) == []
 
 
+def test_a_pattern_longer_than_the_settings_page_allows_is_not_offered(
+    conn: sqlite3.Connection, places: Places
+) -> None:
+    many = " ".join(f"WORD{chr(65 + n)}" for n in range(12))
+    assert len(classification.merchant_match(many.split())) > classification.LONGEST
+    found = [txn("-8", source_ref="long", counterparty=many, category=categories.GROCERIES)]
+    balance = CashBalance("Migros", "CHF", Decimal(100), Decimal(92))
+    staging.stage(conn, batch(statement("migros", found, [balance]), owner=OWNER), NOW)
+    (txn_id,) = [r[0] for r in rows(conn, "SELECT id FROM transactions WHERE source_ref = 'long'")]
+    change(conn, [txn_id], categories.GIFTS)
+    assert suggestions.suggest(conn, places, OWNER, [txn_id]) == []
+
+
 def test_only_the_owners_rows_whose_category_can_change_are_offered_anything(
     conn: sqlite3.Connection, places: Places
 ) -> None:

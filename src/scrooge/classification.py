@@ -96,6 +96,14 @@ def quoted(text: str) -> str:
     )
 
 
+LONGEST = 200  # characters of a pattern the app writes or tries
+
+
+def exact_match(counterparty: str) -> str:
+    """The pattern that matches `counterparty` as a whole line."""
+    return f"(?m)^{re.escape(counterparty)}$"
+
+
 def append_rule(
     path: Path, counterparty: str, flow: str, category: str, *, first: bool = False
 ) -> None:
@@ -107,7 +115,7 @@ def append_rule(
     choice that corrects one of them belongs. The file is read and written under the lock
     of every writer of rules (`yamlfiles`).
     """
-    append_match(path, f"(?m)^{re.escape(counterparty)}$", flow, category, first=first)
+    append_match(path, exact_match(counterparty), flow, category, first=first)
 
 
 # Between two words of a merchant: what is not a letter (digits, signs, spaces), short of a

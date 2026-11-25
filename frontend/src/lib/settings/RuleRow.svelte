@@ -76,7 +76,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				<input
 					bind:value={draft.match}
 					required
-					maxlength="200"
+					maxlength={Math.max(200, rule.match.length)}
 					spellcheck="false"
 					class="{field} w-full font-mono"
 				/>
