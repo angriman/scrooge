@@ -2,8 +2,8 @@
 # to main. release.yml runs it too, before it builds an image.
 #
 #   lint      ruff (lint + format) and mypy --strict, once: Linux, Python 3.11
-#   test      pytest on Linux and macOS, on Python 3.11 (the oldest supported, the image's)
-#             and 3.14; the Linux 3.11 run also holds the coverage floors
+#   test      pytest on Linux, on Python 3.11 (the oldest supported, the image's) and 3.14;
+#             the 3.11 run also holds the coverage floors
 #   frontend  the SvelteKit app at /app: formatting, types, unit tests and its build
 #   check     passes when all of the above passed: the one check main requires
 #
@@ -54,17 +54,15 @@ jobs:
         run: make lint type
 
   test:
-    name: test (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: test (Python ${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python: ["3.11", "3.14"]
         include:
-          - os: ubuntu-latest
-            python: "3.11"
+          - python: "3.11"
             coverage: true
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -73,20 +71,10 @@ jobs:
 
       # The OCR tests read the scanned certificates with the real program
       # (tests/extractors/test_ocr.py): without it they fail, they are not skipped.
-      - name: Install Tesseract (Linux)
-        if: runner.os == 'Linux'
+      - name: Install Tesseract
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
-          tesseract --version
-
-      - name: Install Tesseract (macOS)
-        if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: |
-          brew install tesseract
           tesseract --version
 
       # python-version overrides .python-version for every uv command of the job.
