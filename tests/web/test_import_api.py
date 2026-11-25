@@ -3,10 +3,12 @@ committed."""
 
 from typing import Any
 
+import pytest
 from starlette.testclient import TestClient
 
 from scrooge import categories
 from scrooge.web import app as webapp
+from scrooge.web import uploads as uploads_
 from tests.fakes import FakeMaturities
 from tests.storage.helpers import PEOPLE
 from tests.web.builders import Site
@@ -192,3 +194,28 @@ def test_a_bill_that_cannot_be_looked_up_says_why_and_keeps_the_files(site: Site
     assert stopped["undated"] == {"bills": [BILL], "held": None}
     nowhere = site.client.post("/api/import/maturities", json={}, headers=_headers(site))
     assert nowhere.status_code == 404
+
+
+def test_a_folder_of_hundreds_of_files_is_taken_in_one_import(site: Site) -> None:
+    folder = [("file", (f"{number}.txt", b"not a statement")) for number in range(300)]
+    files = [*site.uploads("Migros.csv"), *folder]
+    response = site.client.post(
+        "/api/import", data={"owner": "Lukas"}, files=files, headers=_headers(site)
+    )
+    assert response.status_code == 200
+    assert len(response.json()["imported"]["files"]) == 301
+
+
+def test_more_files_than_one_import_takes_are_refused_and_say_so(
+    site: Site, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(uploads_, "UPLOADS", 2)
+    files = site.uploads("Migros.csv", "Revolut Savings.tsv", "notes.txt")
+    response = site.client.post(
+        "/api/import", data={"owner": "Lukas"}, files=files, headers=_headers(site)
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"] == [
+        "Nothing was imported: Too many files. Maximum number of files is 2."
+    ]
+    assert site.count("statement_files") == 0
