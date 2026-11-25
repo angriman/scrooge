@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import holding_returns, networth, portfolio
+from scrooge import categories, holding_returns, networth, portfolio
 from scrooge.holding_returns import Period, Returns
 from scrooge.models import Holding, Kind
 from scrooge.performance import instrument_ranges
@@ -62,10 +62,31 @@ def test_a_partial_sale_and_a_dividend_are_taken_out_of_the_holding(
     rows = (
         bought("WIDG", "10", "-1000", day(10)),
         bought("WIDG", "-4", "480", day(20)),
-        spent("12", day(25), kind=Kind.DIVIDEND, category="Dividendi", counterparty="WIDG", **USD),
-        spent("-2", day(25), kind=Kind.TAX, category="Ritenute", counterparty="WIDG", **USD),
+        spent(
+            "12",
+            day(25),
+            kind=Kind.DIVIDEND,
+            category=categories.DIVIDENDS,
+            counterparty="WIDG",
+            **USD,
+        ),
+        spent(
+            "-2",
+            day(25),
+            kind=Kind.TAX,
+            category=categories.WITHHOLDING_TAX,
+            counterparty="WIDG",
+            **USD,
+        ),
         # Another holding's dividend is not this one's.
-        spent("7", day(26), kind=Kind.DIVIDEND, category="Dividendi", counterparty="ACME", **USD),
+        spent(
+            "7",
+            day(26),
+            kind=Kind.DIVIDEND,
+            category=categories.DIVIDENDS,
+            counterparty="ACME",
+            **USD,
+        ),
     )
     close(conn, ibkr(*rows))
     for on, close_ in (
@@ -160,7 +181,7 @@ def test_shares_held_when_the_history_starts_count_from_then_and_realise_nothing
 def test_shares_moved_in_kind_come_in_at_the_close_of_their_day(
     conn: sqlite3.Connection,
 ) -> None:
-    moved = bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Giroconto")
+    moved = bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category=categories.OWN_TRANSFER)
     close(conn, ibkr(moved))
     price(conn, "WIDG", day(15), "52")
     price(conn, "WIDG", day(20), "57.2")

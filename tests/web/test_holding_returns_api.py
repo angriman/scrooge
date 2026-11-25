@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
@@ -24,7 +25,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
         account="IBKR USD",
         currency="USD",
         kind=Kind.DIVIDEND,
-        category="Dividendi",
+        category=categories.DIVIDENDS,
         counterparty="WIDG",
     )
     close(conn, ibkr(bought("WIDG", "10", "-500", day(15)), dividend))

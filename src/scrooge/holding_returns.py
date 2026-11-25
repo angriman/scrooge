@@ -43,8 +43,9 @@ from datetime import date
 from decimal import Decimal
 
 from scrooge import networth
+from scrooge.categories import DIVIDENDS, WITHHOLDING_TAX
 from scrooge.networth import LotTrade, Series, rates_on
-from scrooge.payouts import DIVIDENDS, TAX, _holding
+from scrooge.payouts import _holding
 from scrooge.performance import _on, instrument_ranges
 from scrooge.portfolio import Portfolio, Position, _lot_events, _Split
 from scrooge.storage.bills import Event, fifo_costs
@@ -302,7 +303,7 @@ def _paid(
     rows = conn.execute(
         "SELECT owner, account, booking_date, currency, amount_nano, counterparty, category "
         "FROM committed_transactions WHERE category IN (?, ?) AND booking_date BETWEEN ? AND ?",
-        (DIVIDENDS, TAX, days[0].isoformat(), days[-1].isoformat()),
+        (DIVIDENDS, WITHHOLDING_TAX, days[0].isoformat(), days[-1].isoformat()),
     )
     for owner, account, day, row_currency, nano, counterparty, category in rows:
         names = _holding(str(counterparty or ""), named)
@@ -313,7 +314,7 @@ def _paid(
         on = date.fromisoformat(day)
         amount = from_nano(nano)
         at = _on(amount, str(row_currency), currency, rates, (on - days[0]).days)
-        if category == TAX:
+        if category == WITHHOLDING_TAX:
             of.tax += at
         else:
             of.dividends += at
