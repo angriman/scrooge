@@ -60,12 +60,19 @@ def test_the_year_to_date_is_sent_unless_a_range_is_asked(client: TestClient) ->
         "twr_since": None,
     }
     assert shown["totals"]["mwr"] is not None
-    assert shown["series"][0] == {"day": "2026-08-30", "value": "0.00", "invested": "0.00"}
+    assert shown["series"][0] == {
+        "day": "2026-08-30",
+        "value": "0.00",
+        "invested": "0.00",
+        "benchmarks": [],
+    }
     assert shown["series"][-1] == {
         "day": "2026-09-30",
         "value": "17550.00",
         "invested": "17500.00",
+        "benchmarks": [],
     }
+    assert shown["benchmarks"] == []
     assert [(row["owner"], row["name"], row["accounts"]) for row in shown["accounts"]] == [
         (OWNER, "IBKR", ["IBKR USD"]),
         (OWNER, "Tastytrade", ["Tastytrade"]),
@@ -107,3 +114,28 @@ def test_a_field_that_cannot_be_read_is_refused(client: TestClient) -> None:
     assert client.get("/api/performance", params={"range": "5y"}).status_code == 400
     assert client.get("/api/performance", params={"owner": "Zoe"}).status_code == 400
     assert client.get("/api/performance", params={"currency": "XYZ"}).status_code == 400
+
+
+def test_the_benchmarks_of_the_config_are_set_beside_and_one_without_closes_said(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    close(conn, account("ibkr", "IBKR USD", "USD", "1000"))
+    conn.execute(
+        "INSERT INTO instruments (symbol, type, currency, price_symbol) "
+        "VALUES ('VT', 'etf', 'USD', 'VT')"
+    )
+    price(conn, "VT", day(30, 8), "100")
+    price(conn, "VT", day(30), "110")
+    conn.commit()
+    conn.close()
+    app = webapp.create_app(path, benchmarks=("VT", "VOO"))
+    sent = TestClient(app, base_url=SITE).get("/api/performance", params={"currency": "USD"})
+    shown = sent.json()
+    assert shown["performance"]["benchmarks"] == [{"symbol": "VT", "return": "10.00"}]
+    assert shown["performance"]["series"][-1]["benchmarks"] == ["1100.00"]
+    assert shown["errors"] == [
+        "VOO is left out: no close of it is stored; `scrooge prices` fetches it."
+    ]

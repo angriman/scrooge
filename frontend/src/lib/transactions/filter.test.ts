@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { FIELDS, dimension, filtered, kindName, periodName, periods } from './filter.js';
+import {
+	FIELDS,
+	accountsName,
+	dimension,
+	filtered,
+	kindName,
+	periodName,
+	periods
+} from './filter.js';
 
 const at = (search: string) => {
 	const url = new URL(`http://x/transactions${search}`);
@@ -50,5 +58,11 @@ describe('the filter of the transactions page', () => {
 		expect(kindName('internal')).toBe('Between own accounts');
 		expect(kindName('something_new')).toBe('Something new');
 		expect(kindName('dividend,interest,tax')).toBe('Dividends, Interest, Taxes');
+	});
+
+	it('names a kind of account as its chip says it, and filters by it', () => {
+		expect(accountsName('broker')).toBe('Broker accounts');
+		expect(accountsName('something')).toBe('something');
+		expect(filtered(at('?accounts=broker'))).toBe(true);
 	});
 });

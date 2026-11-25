@@ -645,6 +645,17 @@ export interface InvestedDay {
 	day: Day;
 	value: Amount;
 	invested: Amount;
+	/** The line of each of `PerformanceReport.benchmarks`, in its order: what the money put in
+	 * would be worth in it. */
+	benchmarks: Amount[];
+}
+
+/** What holding a benchmark returned in percent, over the days the time-weighted return
+ * counts, in the currency asked for; its price alone, what it paid out left out
+ * (src/scrooge/benchmark.py). */
+export interface BenchmarkReturn {
+	symbol: string;
+	return: Amount;
 }
 
 export interface PerformanceReport {
@@ -656,6 +667,8 @@ export interface PerformanceReport {
 	totals: Measured | null;
 	series: InvestedDay[];
 	accounts: MeasuredAccount[];
+	/** The benchmarks of the config that have the closes and rates they need. */
+	benchmarks: BenchmarkReturn[];
 }
 
 /** `/api/performance`. `errors` names each currency whose accounts were left out for want of a
@@ -810,6 +823,8 @@ export interface Rule {
 	version: string;
 	/** Why it cannot be changed here; null when it can. */
 	fixed: string | null;
+	/** False when time ran out before it was counted: `matches` is null then. */
+	counted: boolean;
 }
 
 export interface SettingsRules {
@@ -848,6 +863,41 @@ export interface SettingsCategories {
 	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
 	unmatched: string | null;
 	editable: boolean;
+	errors: string[];
+}
+
+/** What investing cost, above zero: a refund lowers it (src/scrooge/costs.py `Cost`). */
+export interface Cost {
+	commissions: Amount;
+	/** Withheld from what investments paid. */
+	tax: Amount;
+	total: Amount;
+}
+
+/** What investing cost each calendar year, every year together and account by account
+ * (src/scrooge/costs.py `Costs`). `tax_share` is the tax in percent of `paid`, the dividends
+ * and interest before tax; null when nothing was paid. */
+export interface CostsReport {
+	currency: string;
+	through: Day | null;
+	/** Oldest first; `whole` is false for the year counted so far, up to `last`. */
+	years: CostYear[];
+	totals: Cost & { paid: Amount; tax_share: Amount | null };
+	/** What cost the most first; `name` has the owner after it when two people have one of it.
+	 * `broker`: a broker's account, whose commissions count; of any other only the tax does. */
+	accounts: (Cost & { owner: string; account: string; name: string; broker: boolean })[];
+}
+
+export type CostYear = Cost & {
+	year: number;
+	paid: Amount;
+	tax_share: Amount | null;
+	last: Day;
+	whole: boolean;
+};
+
+export interface InvestmentCosts {
+	costs: CostsReport;
 	errors: string[];
 }
 

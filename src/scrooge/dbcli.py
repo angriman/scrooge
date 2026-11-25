@@ -2,6 +2,8 @@
 prices | query | serve | password | publish | migrate-files`: the database from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/
+                              (--container: for the app in a container, its pages reached
+                              from outside it with a password)
     scrooge import <path>...  reconcile and classify the statements, then stage them
     scrooge commit            make what is staged visible to the dashboards
     scrooge statements        list the statements stored, staged ones first, with their ids
@@ -124,6 +126,7 @@ import uvicorn
 import yaml
 
 from scrooge import (
+    benchmark,
     categories,
     classification,
     importing,
@@ -212,7 +215,7 @@ def main(
         if args.command == "password":  # about no database and no config
             return _password(out)
         if args.command == "init":
-            return onboarding.run(Path(onboarding.USERS), out, ask)
+            return onboarding.run(Path(onboarding.USERS), out, ask, container=args.container)
         args.config = _find_config(args)
         if args.command == "migrate-files":  # about the files alone, not the database
             return _migrate_files(args, out)
@@ -320,7 +323,13 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765, help="default: 8765")
     _rules_flags(serve)
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
-    commands.add_parser("init", help="first run: make a setup of your own in users/<name>/")
+    first = commands.add_parser("init", help="first run: make a setup of your own in users/<name>/")
+    first.add_argument(
+        "--container",
+        action="store_true",
+        help="for the app in a container: its pages listen on every address of it, under the "
+        "names and with the password asked for",
+    )
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
         "folder",
@@ -565,6 +574,18 @@ def _currencies(config: dict[str, object], path: Path) -> tuple[str, ...]:
     return tuple(dict.fromkeys(codes))  # each once, in the order named
 
 
+def _benchmarks(config: dict[str, object], path: Path) -> tuple[str, ...]:
+    """`benchmarks`: the symbols, as Yahoo knows them, of what the investments are compared
+    with; VT and VOO without it, none when it is empty."""
+    named = config.get("benchmarks", list(benchmark.DEFAULT))
+    if not isinstance(named, list) or not all(
+        isinstance(symbol, str) and symbol.strip() for symbol in named
+    ):
+        msg = f"{path}: 'benchmarks' must list symbols as Yahoo knows them, like [VT, VOO]"
+        raise ConfigError(msg)
+    return tuple(dict.fromkeys(symbol.strip().upper() for symbol in named))
+
+
 def _frozen(config: dict[str, object], path: Path) -> tuple[networth.FrozenAccount, ...]:
     """`frozen: [<account>, {<owner>: <account>}, ...]`: the accounts, as the pages name them,
     whose money cannot be reached (a rent deposit); a bare name is every account so called,
@@ -607,6 +628,12 @@ def _migrate_files(args: argparse.Namespace, out: TextIO) -> int:
 
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
     value = getattr(args, flag) or config.get(key)
+    if not value and not Path(args.config).exists():
+        msg = (
+            f"no {key}: there is no {args.config}: make a setup with 'scrooge init', "
+            f"or pass --{flag}"
+        )
+        raise ConfigError(msg)
     if not value:
         msg = f"no {key}: pass --{flag} or set '{key}' in {args.config}"
         raise ConfigError(msg)
@@ -665,6 +692,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _currency(config, args.config),
             _currencies(config, args.config),
             _frozen(config, args.config),
+            _benchmarks(config, args.config),
         )
         return _serve(path, args.port, pages, reach, out)
     if args.command == "publish" and not path.is_file():
@@ -887,6 +915,7 @@ class _Pages:
     currency: str  # what the figures are shown in until another is chosen
     currencies: tuple[str, ...]  # the columns of the month-end table
     frozen: tuple[networth.FrozenAccount, ...]  # the accounts whose money cannot be reached
+    benchmarks: tuple[str, ...]  # the symbols of what the investments are compared with
 
 
 def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO) -> int:
@@ -909,6 +938,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         currency=pages.currency,
         currencies=pages.currencies,
         frozen=pages.frozen,
+        benchmarks=pages.benchmarks,
         spa=webapp.SPA,
     )
     uvicorn.run(app, host=reach.host, port=port, log_level="warning")
@@ -973,6 +1003,7 @@ def _prices(
         now=now,
         symbols={symbol: entry.price_symbol for symbol, entry in typed.items()},
         currencies=networth.CURRENCIES,
+        benchmarks=_benchmarks(config, args.config),
     )
     out = console.out
     out.write(

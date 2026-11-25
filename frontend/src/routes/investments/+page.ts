@@ -1,6 +1,9 @@
+import { isRedirect } from '@sveltejs/kit';
 import { get } from '#lib/api.js';
+import { whyNot } from '#lib/investments/costs.js';
 import type {
 	Holdings,
+	InvestmentCosts,
 	InvestmentIncome,
 	InvestmentPensions,
 	InvestmentPerformance
@@ -18,24 +21,28 @@ export const load: PageLoad = async ({ fetch, url }) => {
 			get<Holdings>(fetch, '/api/holdings', asked),
 			get<InvestmentPensions>(fetch, '/api/pensions', asked)
 		]);
-		return { held, pensions, income: null, performance: null };
+		return { held, pensions, income: null, costs: null, performance: null };
 	}
 	if (view === 'income') {
-		return {
-			held: null,
-			pensions: null,
-			income: await get<InvestmentIncome>(
-				fetch,
-				'/api/income',
-				pick(url, ['owner', 'currency', 'from', 'to'])
-			),
-			performance: null
-		};
+		// What investing cost each year is under what was paid, whatever the range. Costs that
+		// cannot be loaded leave what was paid shown, and their panel says why.
+		const [income, costs] = await Promise.all([
+			get<InvestmentIncome>(fetch, '/api/income', pick(url, ['owner', 'currency', 'from', 'to'])),
+			get<InvestmentCosts>(fetch, '/api/costs', pick(url, ['owner', 'currency'])).then(
+				(sent) => ({ sent, unavailable: '' }),
+				(failed: unknown) => {
+					if (isRedirect(failed)) throw failed;
+					return { sent: null, unavailable: whyNot(failed) };
+				}
+			)
+		]);
+		return { held: null, pensions: null, income, costs, performance: null };
 	}
 	return {
 		held: null,
 		pensions: null,
 		income: null,
+		costs: null,
 		performance: await get<InvestmentPerformance>(
 			fetch,
 			'/api/performance',

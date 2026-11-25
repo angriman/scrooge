@@ -9,6 +9,7 @@
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
 	import { rangeName } from '#lib/cashflow/names.js';
+	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
 	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
 	import * as returns from '#lib/investments/performance.js';
@@ -26,9 +27,16 @@
 
 	const held = $derived(data.held?.holdings);
 	const errors = $derived(
-		data.held
-			? [...data.held.errors, ...(data.pensions?.errors ?? [])]
-			: (data.income?.errors ?? data.performance?.errors ?? [])
+		[
+			...new Set(
+				data.held
+					? [...data.held.errors, ...(data.pensions?.errors ?? [])]
+					: [
+							...(data.income?.errors ?? data.performance?.errors ?? []),
+							...(data.costs?.sent?.errors ?? [])
+						]
+			)
+		]
 	);
 	const pensions = $derived(data.pensions?.pensions);
 	// The period the pensions' change is over: only the address changes, the figures of both
@@ -166,6 +174,9 @@
 			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
 			{owner}
 		/>
+		{#if data.costs}
+			<Costs costs={data.costs.sent?.costs ?? null} unavailable={data.costs.unavailable} {owner} />
+		{/if}
 	{/if}
 {:else if !held || !held.day}
 	{#if !errors.length}
