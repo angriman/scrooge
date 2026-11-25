@@ -305,3 +305,15 @@ def test_inserted_reindents_block_to_match_destination(
 def test_inserted_refuses_unwritable_targets(text: str, problem: str) -> None:
     with pytest.raises(ConfigError, match=problem):
         rulesfile.inserted(text, PATH, "  - {match: A, category: Groceries}\n")
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_inserted_into_file_whose_first_rule_has_lone_dash(tmp_path: Path, first: bool) -> None:
+    dest = "rules:\n  -\n    match: A\n    category: Groceries\n"
+    block = "    - {match: B, category: Gifts}\n"
+    written = rulesfile.inserted(dest, PATH, block, first=first)
+    path = tmp_path / "rules.yaml"
+    path.write_text(written, encoding="utf-8")
+    expected = ["B", "A"] if first else ["A", "B"]
+    assert [rule.pattern.pattern for rule in load_rules([path])] == expected
+    assert "  - {match: B, category: Gifts}\n" in written

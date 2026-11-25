@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 from scrooge import categories, classification, patterns, query, rulesfile, staging, yamlfiles
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store, taxonomy
@@ -363,7 +365,7 @@ def move_rule_to(
             yamlfiles.write(seen.file, updated_src)
             try:
                 classification.load_rules([seen.file, target], known)
-            except ConfigError as exc:
+            except (ConfigError, yaml.YAMLError) as exc:
                 msg = f"the rules files were left as they were: {exc}"
                 raise SettingsError(msg) from None
 

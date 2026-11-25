@@ -420,6 +420,36 @@ def test_move_rule_to_rolls_back_both_files_and_unlinks_new_target_on_load_error
     assert not anna.exists()
 
 
+def test_move_rule_to_rolls_back_on_yaml_error_from_dangling_alias(
+    places: settings.Places,
+) -> None:
+    shared, anna = _shared(places), places.rule_files[1]
+    anchored = (
+        "rules:\n"
+        "  - {match: 'KONSUM', category: &food Groceries}\n"
+        "  - {match: 'COOP', category: *food}\n"
+    )
+    shared.write_text(anchored, encoding="utf-8")
+    assert not anna.exists()
+    with pytest.raises(settings.SettingsError, match="left as they were"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None, first=False)
+    assert shared.read_text(encoding="utf-8") == anchored
+    assert not anna.exists()
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_move_rule_to_into_file_starting_with_lone_dash_rule(
+    places: settings.Places, first: bool
+) -> None:
+    shared, lukas = _shared(places), _own(places)
+    shared.write_text("rules:\n  - {match: 'KONSUM', category: Groceries}\n", encoding="utf-8")
+    lukas.write_text("rules:\n  -\n    match: 'POSTA'\n    category: Gifts\n", encoding="utf-8")
+    settings.move_rule_to(_seen(places, 1, shared), lukas, None, first=first)
+    assert shared.read_text(encoding="utf-8") == "rules:\n"
+    matches = [entry.match for entry in rulesfile.read(lukas)[1]]
+    assert matches == (["KONSUM", "POSTA"] if first else ["POSTA", "KONSUM"])
+
+
 def test_move_rule_to_refuses_invalid_moves_without_touching_files(
     places: settings.Places, tmp_path: Path
 ) -> None:

@@ -230,6 +230,18 @@ def test_move_rule_file_refuses_bad_requests_and_read_only(site: Site) -> None:
     assert _post(site, "rules/file", payload, site.app()).status_code == 404
     assert "ANNA MEIER" in (site.folder / "rules.lukas.yaml").read_text(encoding="utf-8")
 
+    # Moving a rule that defines a YAML anchor used by another rule rolls back with 409 (not 500).
+    anchored = (
+        "rules:\n"
+        "  - {match: 'KONSUM', category: &food Groceries}\n"
+        "  - {match: 'COOP', category: *food}\n"
+    )
+    (site.folder / "rules.lukas.yaml").write_text(anchored, encoding="utf-8")
+    refused = _post(site, "rules/file", _rule(site, 0, to="rules.yaml"))
+    assert refused.status_code == 409
+    assert refused.json()["errors"][0].startswith("The rules files were left as they were:")
+    assert (site.folder / "rules.lukas.yaml").read_text(encoding="utf-8") == anchored
+
 
 @pytest.mark.parametrize(
     ("sent", "status", "problem"),

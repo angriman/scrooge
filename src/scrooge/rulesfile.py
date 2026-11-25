@@ -279,7 +279,7 @@ def inserted(text: str, path: Path, block: str, *, first: bool = False) -> str:
     listed = _listed(value, path)
     if listed is not None and listed.value:
         found = tuple(_entry(text, path, n, item) for n, item in enumerate(listed.value, start=1))
-        indent = _indent(text[found[0].lines[0] : found[0].lines[1]])
+        indent = " " * listed.start_mark.column
         at = text.find("\n", key.end_mark.index) + 1 if first else found[-1].lines[1]
         return text[:at] + _reindented(block, indent) + text[at:]
     text, at = _cleared_empty(text, key, value)
