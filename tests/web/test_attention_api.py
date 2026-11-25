@@ -24,7 +24,7 @@ def _client(path: Path, *, unmatched: str = categories.UNSORTED, rate: bool = Tr
 
 def test_rows_to_categorise_and_payments_that_changed_are_listed(tmp_path: Path) -> None:
     sent = _client(tmp_path).get("/api/attention", params={"owner": OWNER, **ASKED}).json()
-    assert (sent["currency"], sent["unmatched"]) == ("CHF", categories.UNSORTED)
+    assert (sent["currency"], sent["unmatched"]) == ("CHF", categories.label(categories.UNSORTED))
     assert sent["uncategorised"] == [{"owner": OWNER, "count": 2}]
     ids = [payment.pop("id") for payment in sent["recurring"]]
     assert len(set(ids)) == 2

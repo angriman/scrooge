@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import networth, portfolio
+from scrooge import categories, networth, portfolio
 from scrooge.models import Holding, Kind, SecurityTrade
 from scrooge.networth import BILLS, ETFS, PENSION, STOCKS, LotTrade
 from scrooge.portfolio import Portfolio, Position
@@ -34,7 +34,9 @@ def conn() -> Iterator[sqlite3.Connection]:
 
 def moved(ticker: str, quantity: str, worth: str, on: date, **fields: object) -> SecurityTrade:
     """Shares moved in kind, as the broker's extractor books them: no cash, worth `worth`."""
-    row = bought(ticker, quantity, "0", on, kind=Kind.TRANSFER, category="Giroconto", **fields)
+    row = bought(
+        ticker, quantity, "0", on, kind=Kind.TRANSFER, category=categories.OWN_TRANSFER, **fields
+    )
     return replace(row, cost=D(worth), price=abs(D(worth) / D(quantity)))
 
 

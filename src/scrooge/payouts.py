@@ -1,9 +1,12 @@
 """What investments paid: dividends and interest, and the tax withheld from them, month by
 month and holding by holding. The income view of the investments page.
 
-The rows are those of the categories `Dividendi`, `Interessi` and `Ritenute` that the cash-flow
-page counts, each converted at the rate of its own day into one currency, as the analysis views
-do. The range runs, unless asked otherwise, over the twelve months up to the last day committed:
+The rows are those of the categories `Dividends`, `Interest` and `Withholding tax` that the
+cash-flow page counts, each converted at the rate of its own day into one currency, as the
+analysis views do. Interest below nothing is interest charged (on a debit balance, a margin
+loan): a cost, not a payout, and left out rather than taken off the interest received.
+
+The range runs, unless asked otherwise, over the twelve months up to the last day committed:
 the month of that day and the eleven before it. Those twelve months are added up whatever the
 range, so the page can say what a year pays now. Rows in a currency no rate is stored for are
 left out, and said to be, rather than leaving the whole page empty.
@@ -35,10 +38,10 @@ from decimal import Decimal
 from scrooge import analysis, query
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
+from scrooge.categories import DIVIDENDS, INTEREST, WITHHOLDING_TAX
 from scrooge.networth import DEFAULT_CURRENCY, MissingRateError, convert, rates_on
 
-DIVIDENDS, INTEREST, TAX = "Dividendi", "Interessi", "Ritenute"
-CATEGORIES = (DIVIDENDS, INTEREST, TAX)
+CATEGORIES = (DIVIDENDS, INTEREST, WITHHOLDING_TAX)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +117,7 @@ class _Sums:
         self.amounts[each.row.leaf] += each.amount
         self.count += 1
         self.any_last = each.day
-        if each.row.leaf != TAX:
+        if each.row.leaf != WITHHOLDING_TAX:
             self.paid_last = each.day
 
     def paid(self) -> Paid:
@@ -122,7 +125,9 @@ class _Sums:
 
 
 def is_payout(row: Counted) -> bool:
-    return row.leaf in CATEGORIES
+    """Whether `row` is a payout or tax withheld from one: interest charged (on a debit
+    balance, a margin loan) is what the account cost, and is not."""
+    return row.leaf in CATEGORIES and not (row.leaf == INTEREST and row.amount_nano < 0)
 
 
 def run(

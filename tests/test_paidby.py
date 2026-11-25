@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import paidby, report, spending, staging
+from scrooge import categories, paidby, report, spending, staging
 from scrooge.models import Kind, Transaction
 from scrooge.paidby import Move, Payer, Split
 from scrooge.storage import db, store
@@ -31,13 +31,19 @@ def monthly(amount: str, day: int, ref: str, **fields: object) -> list[Transacti
 
 
 LUKAS = [
-    *monthly("-1500", 1, "rent", category="Affitto", counterparty="Hans Muster"),
+    *monthly("-1500", 1, "rent", category=categories.RENT, counterparty="Hans Muster"),
     *monthly("-100", 5, "food", counterparty=SHOP),
     txn("20", date=date(2026, 5, 20), source_ref="1", kind=Kind.INCOME, counterparty=SHOP),
     # Paid to the other person: it stays in the household. Her half of the rent comes in.
-    *monthly("750", 2, "half", kind=Kind.INCOME, category="Rimborsi", counterparty="ANNA MEIER"),
+    *monthly(
+        "750", 2, "half", kind=Kind.INCOME, category=categories.REFUNDS, counterparty="ANNA MEIER"
+    ),
     txn(
-        "-300", date=date(2026, 2, 10), source_ref="2", category="Regali", counterparty="Anna Meier"
+        "-300",
+        date=date(2026, 2, 10),
+        source_ref="2",
+        category=categories.GIFTS,
+        counterparty="Anna Meier",
     ),
     # Securities are not spending.
     txn(
@@ -45,24 +51,26 @@ LUKAS = [
         date=date(2026, 3, 3),
         source_ref="3",
         kind=Kind.SECURITY_TRADE,
-        category="Investimenti",
+        category=categories.INVESTMENTS,
     ),
 ]
 ANNA = [
     *monthly("-300", 6, "food", counterparty=SHOP),
-    txn("-90", date=date(2026, 3, 14), source_ref="1", category="Ristoranti e bar"),
+    txn("-90", date=date(2026, 3, 14), source_ref="1", category=categories.EATING_OUT),
     # Her half of the rent, sent to him every month.
-    *monthly("-750", 2, "rent", category="Affitto", counterparty="LUKAS MEIER"),
+    *monthly("-750", 2, "rent", category=categories.RENT, counterparty="LUKAS MEIER"),
     txn(
         "300",
         date=date(2026, 2, 10),
         source_ref="2",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category=categories.REFUNDS,
         counterparty="LUKAS MEIER",
     ),
 ]
-ANNA_EUR = [txn("-100", date=date(2026, 4, 18), source_ref="1", category="Ristoranti e bar", **EUR)]
+ANNA_EUR = [
+    txn("-100", date=date(2026, 4, 18), source_ref="1", category=categories.EATING_OUT, **EUR)
+]
 
 
 @pytest.fixture(scope="module")
@@ -87,15 +95,15 @@ def test_each_person_paid_a_share_of_what_the_household_spent(conn: sqlite3.Conn
     # By name. Hers: food, a restaurant and 100 EUR at 0.95; his: rent and food, less a refund.
     # After settling up: she sent him 4500 of rent, he sent her 300.
     assert shown.people == (
-        Payer(PARTNER, D(1985), D("0.172"), D(6185), D("0.535")),
-        Payer(OWNER, D(9580), D("0.828"), D(5380), D("0.465")),
+        Payer(PARTNER, D(1985), D(1985) / 11565, D(6185), D(6185) / 11565),
+        Payer(OWNER, D(9580), D(9580) / 11565, D(5380), D(5380) / 11565),
     )
     # Seen in both their statements, each payment counts once.
     assert shown.moves == (Move(PARTNER, OWNER, D(4200)),)
     assert shown.categories == (
-        Split("Casa", D(9000), {PARTNER: D(0), OWNER: D(9000)}),
-        Split("Alimentari", D(2380), {PARTNER: D(1800), OWNER: D(580)}),
-        Split("Ristoranti e bar", D(185), {PARTNER: D(185), OWNER: D(0)}),
+        Split(categories.GROUP_HOME, D(9000), {PARTNER: D(0), OWNER: D(9000)}),
+        Split(categories.GROUP_FOOD, D(2380), {PARTNER: D(1800), OWNER: D(580)}),
+        Split(categories.GROUP_EATING_OUT, D(185), {PARTNER: D(185), OWNER: D(0)}),
     )
 
 

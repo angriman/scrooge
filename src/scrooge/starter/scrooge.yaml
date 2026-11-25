@@ -25,7 +25,7 @@ $owners
 # committed without choosing categories: net worth needs none. Rows that are no expense or
 # income (a deposit at a broker) still go to review. To track expenses, delete this line and
 # answer `scrooge import --review`, which asks once per unknown merchant and saves rules.
-unmatched: Non classificato
+unmatched: Uncategorized
 
 # What the pages show figures in until another is chosen there: EUR, CHF, USD, GBP or JPY.
 currency: $currency

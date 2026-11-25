@@ -5,7 +5,7 @@ from decimal import Decimal
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import analysis
+from scrooge import analysis, categories
 from scrooge.analysis import Converted, Rows, Span
 from scrooge.cashflow import Counted, Grouping
 from scrooge.models import Kind
@@ -145,7 +145,18 @@ def test_the_window_of_a_whole_month_starts_on_the_first_of_a_month(day: date) -
 
 def converted(day: date, amount: str = "10") -> Converted:
     row = Counted(
-        day, "Lukas", "Migros", Kind.EXPENSE, "CHF", "expenses", "Spesa", "Spesa", 0, "", None, "1"
+        day,
+        "Lukas",
+        "Migros",
+        Kind.EXPENSE,
+        "CHF",
+        "expenses",
+        categories.GROCERIES,
+        categories.GROCERIES,
+        0,
+        "",
+        None,
+        "1",
     )
     return Converted(row, Decimal(amount))
 
@@ -186,10 +197,11 @@ def test_nothing_committed_means_no_span() -> None:
     assert Rows((), (), None, None).span(None, None) is None
 
 
-def test_a_share_is_a_part_of_the_total_to_the_thousandth() -> None:
-    assert analysis.share(Decimal(1), Decimal(3)) == Decimal("0.333")
-    assert analysis.share(Decimal(2), Decimal(3)) == Decimal("0.667")
-    assert analysis.share(Decimal(30), Decimal(120)) == Decimal("0.250")
+def test_a_share_is_a_part_of_the_total_not_rounded() -> None:
+    # Rounded where it is shown, once: 48.49% is 48%, never 48.5% and then 49%.
+    assert analysis.share(Decimal("48.49"), Decimal(100)) == Decimal("0.4849")
+    assert analysis.share(Decimal(1), Decimal(3)) == Decimal(1) / Decimal(3)
+    assert analysis.share(Decimal(30), Decimal(120)) == Decimal("0.25")
 
 
 def test_a_share_of_nothing_is_unknown() -> None:
@@ -201,11 +213,11 @@ def test_a_share_of_a_negative_total_is_unknown() -> None:
 
 
 def test_nothing_out_of_a_total_is_a_share_of_zero() -> None:
-    assert analysis.share(Decimal(0), Decimal(10)) == Decimal("0.000")
+    assert analysis.share(Decimal(0), Decimal(10)) == 0
 
 
 def test_a_negative_part_is_a_negative_share() -> None:
-    assert analysis.share(Decimal(-5), Decimal(10)) == Decimal("-0.500")
+    assert analysis.share(Decimal(-5), Decimal(10)) == Decimal("-0.5")
 
 
 def test_the_range_a_year_before_has_both_ends_a_year_earlier() -> None:

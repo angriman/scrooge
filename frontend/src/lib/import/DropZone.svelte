@@ -1,12 +1,13 @@
 <!--
 @component
 Where statements go in: dropped on it, or chosen from the device. Any number of files of any
-source at once; each is recognised on its own.
+source at once, or whole folders; each file is recognised on its own.
 -->
 <script lang="ts">
 	import FileUp from '@lucide/svelte/icons/file-up';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import { cn } from '#lib/ui/cn.js';
+	import { droppedFiles, shown } from './dropped.js';
 
 	interface Props {
 		/** Whose statements they are, said on it when there are several people. */
@@ -21,12 +22,20 @@ source at once; each is recognised on its own.
 
 	let over = $state(false);
 	let input: HTMLInputElement;
+	let folders: HTMLInputElement;
 
-	function dropped(event: DragEvent) {
+	async function dropped(event: DragEvent) {
 		event.preventDefault();
 		over = false;
-		const files = [...(event.dataTransfer?.files ?? [])];
-		if (files.length && !busy) onfiles(files);
+		if (busy || !event.dataTransfer) return;
+		const files = await droppedFiles(event.dataTransfer);
+		if (files.length) onfiles(files);
+	}
+
+	function chosen(event: Event & { currentTarget: HTMLInputElement }) {
+		const files = [...(event.currentTarget.files ?? [])].filter(shown);
+		event.currentTarget.value = '';
+		if (files.length) onfiles(files);
 	}
 </script>
 
@@ -54,18 +63,29 @@ source at once; each is recognised on its own.
 			Drop statements here{#if owner}{' '}<span class="text-ink-secondary">for {owner}</span>{/if}
 		</p>
 		<p class={compact ? 'sr-only' : 'max-w-prose text-small text-ink-secondary'}>
-			Any number, of any bank or broker. Each is recognised and reconciled on its own, and one
-			that fails stops no other. Days already committed are left as they are.
+			Any number, of any bank or broker, or whole folders. Each is recognised and reconciled on
+			its own, and one that fails stops no other. Days already committed are left as they are.
 		</p>
-		<button
-			type="button"
-			onclick={() => input.click()}
-			class={compact
-				? 'h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong'
-				: 'mt-1 h-9 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover'}
-		>
-			Choose files
-		</button>
+		<div class={cn('flex flex-wrap justify-center gap-2', !compact && 'mt-1')}>
+			<button
+				type="button"
+				onclick={() => input.click()}
+				class={compact
+					? 'h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong'
+					: 'h-9 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover'}
+			>
+				Choose files
+			</button>
+			<button
+				type="button"
+				onclick={() => folders.click()}
+				class={compact
+					? 'h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong'
+					: 'h-9 rounded-control border border-line px-4 text-body text-ink hover:border-line-strong'}
+			>
+				Choose folder
+			</button>
+		</div>
 	{/if}
 	<input
 		bind:this={input}
@@ -74,10 +94,15 @@ source at once; each is recognised on its own.
 		class="sr-only"
 		tabindex="-1"
 		aria-hidden="true"
-		onchange={(event) => {
-			const files = [...(event.currentTarget.files ?? [])];
-			event.currentTarget.value = '';
-			if (files.length) onfiles(files);
-		}}
+		onchange={chosen}
+	/>
+	<input
+		bind:this={folders}
+		type="file"
+		webkitdirectory
+		class="sr-only"
+		tabindex="-1"
+		aria-hidden="true"
+		onchange={chosen}
 	/>
 </div>

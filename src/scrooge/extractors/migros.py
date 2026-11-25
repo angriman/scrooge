@@ -24,6 +24,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
+from scrooge.categories import IBKR_TOP_UP, REVOLUT_TOP_UP, WITHDRAWALS
 from scrooge.errors import ExtractionError
 from scrooge.extractors.common import (
     month_start,
@@ -43,12 +44,12 @@ _TWINT = re.compile(r"((?:Addebito|Accredito) TWINT) (.*?)(?: \d{16})?$")
 _CARD_PURCHASE = re.compile(r"Acquisto (.+?) \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Carta:")
 # Transfers the sheet tracks as their own categories (D2), by what the booking text starts with.
 _TRANSFERS = (
-    ("Acquisto Revolut", Kind.TRANSFER, "Topup Revolut"),
-    ("REVOLUT LTD", Kind.TRANSFER, "Topup Revolut"),
-    ("Interactive Brokers", Kind.TRANSFER, "Topup IBKR"),
-    ("Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
-    ("Storno, Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
-    ("Storno: Prelevamento al Bancomat", Kind.TRANSFER, "Prelievi"),
+    ("Acquisto Revolut", Kind.TRANSFER, REVOLUT_TOP_UP),
+    ("REVOLUT LTD", Kind.TRANSFER, REVOLUT_TOP_UP),
+    ("Interactive Brokers", Kind.TRANSFER, IBKR_TOP_UP),
+    ("Prelevamento al Bancomat", Kind.TRANSFER, WITHDRAWALS),
+    ("Storno, Prelevamento al Bancomat", Kind.TRANSFER, WITHDRAWALS),
+    ("Storno: Prelevamento al Bancomat", Kind.TRANSFER, WITHDRAWALS),
     # D3: the card bill is replaced by the individual Swisscard purchases.
     ("Swisscard AECS", Kind.INTERNAL, ""),
 )

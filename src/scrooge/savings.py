@@ -80,7 +80,7 @@ def _totals(rows: Sequence[Converted]) -> Totals:
     for each in rows:
         if income.is_income(each.row):
             earned += each.amount
-            if income.group(each.row) == income.LAVORO:
+            if income.group(each.row) == income.WORK:
                 work += each.amount
         else:
             spent -= each.amount

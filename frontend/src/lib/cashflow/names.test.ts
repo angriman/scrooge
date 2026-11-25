@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { groupName, OTHERS, PAID_BACK, partColors, rangeName } from './names.js';
+import { OTHERS, PAID_BACK, partColors, rangeName } from './names.js';
 
 describe('the names of the cash flow', () => {
-	it('says the income groups and the range in words', () => {
-		expect(groupName('Lavoro')).toBe('Work');
-		expect(groupName('Elsewhere')).toBe('Elsewhere');
+	it('says the range in words', () => {
 		expect(rangeName('Year to date', '2026-01-01', null)).toBe('this year so far');
 		expect(rangeName('2025', '2025-01-01', '2025-12-31')).toBe('in 2025');
 		expect(rangeName(null, '2026-08-01', null)).toBe('since 1 Aug 2026');
@@ -12,10 +10,10 @@ describe('the names of the cash flow', () => {
 	});
 
 	it('gives the largest categories a colour each and the rest one together', () => {
-		const colors = partColors(['Casa', 'Spesa', OTHERS, PAID_BACK]);
+		const colors = partColors(['Home', 'Groceries', OTHERS, PAID_BACK]);
 		expect([...colors]).toEqual([
-			['Casa', 'var(--data-1)'],
-			['Spesa', 'var(--data-2)'],
+			['Home', 'var(--data-1)'],
+			['Groceries', 'var(--data-2)'],
 			[OTHERS, 'var(--data-other)']
 		]);
 	});

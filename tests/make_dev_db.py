@@ -79,15 +79,15 @@ INSTRUMENTS = INSTRUMENTS_YAML + MATURED
 # The rules naming the invented people and shops of the fixtures come first, then those of
 # the starter rules.yaml. What no rule matches is a present, so that
 # everything can be committed.
-SHOPS = """  - {match: 'ALPENBAHN', category: Treni}
-  - {match: 'VELOSHARE', category: Trasporti locali}
-  - {match: 'AEROSUR', category: Voli}
-  - {match: 'MOBILHAUS', category: Arredamento e casa}
-  - {match: 'TECHNIKUM', category: Elettronica}
-  - {match: 'FOOD RUN', category: "Ristoranti e bar"}
-  - {match: 'KASSA BILLING', category: Acquisti vari}
+SHOPS = """  - {match: 'ALPENBAHN', category: Trains}
+  - {match: 'VELOSHARE', category: Local transport}
+  - {match: 'AEROSUR', category: Flights}
+  - {match: 'MOBILHAUS', category: Household}
+  - {match: 'TECHNIKUM', category: Electronics}
+  - {match: 'FOOD RUN', category: "Eating out"}
+  - {match: 'KASSA BILLING', category: Other shopping}
 """
-FALLBACK = "\n  # make dev-db: whatever is left\n  - {match: '.', category: Regali}\n"
+FALLBACK = "\n  # make dev-db: whatever is left\n  - {match: '.', category: Gifts}\n"
 # Invented closes, in the instrument's currency, from the first day prices are asked for.
 CLOSES = {"ACME": "113.1", "GOOG": "204.3", "WIDG": "54.25"}
 FUNDS = {"CH0000000011": ("ALPHACH.SW", "1510"), "CH0000000029": ("ALPHAWLD.SW", "1310")}
@@ -184,16 +184,17 @@ def can_read_scans() -> bool:
     return shutil.which(ocr.PROGRAM) is not None
 
 
-def _check(folder: Path, real: Iterable[Path]) -> None:
+def _check(folder: Path, real: Iterable[Path], mark: str = MARK) -> None:
     """Refuse the real data's folders, and any folder with something in it this script did
-    not make: what is there is never removed."""
+    not make (no `mark` in it): what is there is never removed."""
     for path in real:
         place = path.expanduser().resolve()
         if folder == place or folder in place.parents or place in folder.parents:
             msg = f"{folder}: the real data is kept at {place}: the dev database goes elsewhere"
             raise RefusedError(msg)
-    if folder.exists() and (not folder.is_dir() or _foreign(folder)):
-        msg = f"{folder}: not made by make dev-db (no {MARK} in it): nothing is removed"
+    if folder.exists() and (not folder.is_dir() or _foreign(folder, mark)):
+        maker = mark.removeprefix(".made-by-").replace("-", " ", 1)
+        msg = f"{folder}: not made by {maker} (no {mark} in it): nothing is removed"
         raise RefusedError(msg)
 
 
@@ -207,8 +208,8 @@ def _configured(config: Path) -> list[Path]:
     return [(ROOT / Path(str(database)).expanduser()).parent] if database else []
 
 
-def _foreign(folder: Path) -> bool:
-    return any(folder.iterdir()) and not (folder / MARK).is_file()
+def _foreign(folder: Path, mark: str) -> bool:
+    return any(folder.iterdir()) and not (folder / mark).is_file()
 
 
 def _files(folder: Path) -> Built:
@@ -227,7 +228,7 @@ def _files(folder: Path) -> Built:
     # Never the repository's own rules.yaml or categories.yaml: those are the user's, real.
     starter = ROOT / "src" / "scrooge" / "starter"
     generic = (starter / "rules.yaml").read_text(encoding="utf-8").partition("rules:\n")[2]
-    own = RULES.replace("  - {match: '.', category: Regali}\n", SHOPS).rstrip("\n") + "\n"
+    own = RULES.replace("  - {match: '.', category: Gifts}\n", SHOPS).rstrip("\n") + "\n"
     rules = folder / "rules.yaml"
     rules.write_text(own + generic.rstrip("\n") + FALLBACK, encoding="utf-8")
     shutil.copy(starter / "categories.yaml", folder / "categories.yaml")

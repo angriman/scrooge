@@ -144,6 +144,7 @@ _CSV = (
     "counterparty_owner",
     "id",
 )
+_CSV_CATEGORY = ("category", "category_parent")  # keys, written by their labels
 _CSV_TEXT = ("counterparty", "description")  # words of the statement, not the app's own
 _FORMULA = ("=", "+", "-", "@", "\t", "\r")
 
@@ -615,6 +616,7 @@ def _import_form(  # noqa: PLR0913  # what the page shows after each of the form
         owner = owner or _owner(request) or next(iter(owners), "")
         if owner not in owners:
             raise HTTPException(404)
+        choices = query.choices(conn, owner)
         context = {
             "people": people,
             "owner": owner,
@@ -624,7 +626,8 @@ def _import_form(  # noqa: PLR0913  # what the page shows after each of the form
             "notice": notice,
             "done": done,
             "draft": months.draft(conn, owner),
-            "choices": query.choices(conn, owner),
+            "choices": choices,
+            "label": choices.label,
             "can_remember": state.rules is not None,
             "committed": _whole(committed),
         }
@@ -873,12 +876,14 @@ def _month_page(
     request: Request, owner: str, month: date, error: str = "", status: int = 200
 ) -> Response:
     with db.reading(request.app.state.database) as conn:
+        choices = query.choices(conn, owner)
         context = {
             "people": query.people(conn),
             "owner": owner,
             "month": months.checklist(conn, owner, month),
             "error": error,
-            "choices": query.choices(conn, owner),
+            "choices": choices,
+            "label": choices.label,
             "can_remember": request.app.state.rules is not None,
         }
     return _templates.TemplateResponse(request, "month.html", context, status_code=status)
@@ -948,7 +953,7 @@ def _apply(state: State, owner: str, fields: dict[str, list[str]]) -> str:
             return "No category was set: those rows are not staged any more: load the page again."
         together: dict[tuple[str, bool], list[str]] = {}
         for row_id, category in own.items():
-            if category != rows[row_id].category:
+            if store.category_key(conn, category) != rows[row_id].category:
                 together.setdefault((category, bool(rows[row_id].category)), []).append(row_id)
         choices = [
             staging.Choice(ids, category, change=change)
@@ -1337,7 +1342,10 @@ def _slices(values: Sequence[tuple[str, Decimal]]) -> tuple[list[_Slice], list[_
     below zero, which a ring cannot show."""
     above = [(name, value) for name, value in values if value > 0]
     whole = sum((value for _, value in above), Decimal(0))
-    slices = [_Slice(name, value, (value * 100 / whole).quantize(_TENTH)) for name, value in above]
+    shares = portfolio.shared_out([value * 100 / whole for _, value in above], _TENTH)
+    slices = [
+        _Slice(name, value, share) for (name, value), share in zip(above, shares, strict=True)
+    ]
     return slices, [_Slice(name, value, None) for name, value in values if value < 0]
 
 
@@ -1378,10 +1386,12 @@ def _analysis(request: Request) -> Response:
             ),
             None,
         )
+        label = store.category_labels(conn)
     context: dict[str, object] = {
         "people": people,
         "owner": asked.owner,
         "asked": asked,
+        "label": label,
         "errors": errors,
         "given": request.query_params,
         "groupings": list(cashflow.Grouping),
@@ -1535,6 +1545,7 @@ def _transactions(request: Request) -> Response:
             result = query.Result((), (), (), ())
         people = query.people(conn)
         choices = query.choices(conn, wanted.owner)
+        category = wanted.category and store.category_key(conn, wanted.category)
     newest_first = result.rows[::-1]
     pages = max(1, -(-len(newest_first) // _PAGE))
     asked = request.query_params.get("page", "")
@@ -1547,6 +1558,8 @@ def _transactions(request: Request) -> Response:
         "given": request.query_params,
         "errors": errors,
         "choices": choices,
+        "label": choices.label,
+        "category": category,
         "kinds": list(Kind),
         "result": result,
         "rows": newest_first[(page - 1) * _PAGE : page * _PAGE],
@@ -1564,6 +1577,12 @@ def _csv_cell(column: str, value: object) -> object:
     return value
 
 
+def _csv_value(row: query.Row, column: str, label: categories.Labels) -> object:
+    """A row's value in `column`, a category by its label, as people read it."""
+    value = getattr(row, column)
+    return label(value) if column in _CSV_CATEGORY and value else value
+
+
 def _transactions_csv(request: Request) -> Response:
     """Every row the same address shows as a page, with its exact amount."""
     parsed = forms.transactions_filter(request.query_params)
@@ -1571,10 +1590,13 @@ def _transactions_csv(request: Request) -> Response:
         return PlainTextResponse("\n".join(parsed.errors) + "\n", status_code=400)
     with db.reading(request.app.state.database) as conn:
         rows = query.run(conn, parsed.wanted).rows
+        label = store.category_labels(conn)
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(_CSV)
-    writer.writerows([_csv_cell(column, getattr(row, column)) for column in _CSV] for row in rows)
+    writer.writerows(
+        [_csv_cell(column, _csv_value(row, column, label)) for column in _CSV] for row in rows
+    )
     headers = {"content-disposition": 'attachment; filename="transactions.csv"'}
     return Response(out.getvalue(), media_type="text/csv; charset=utf-8", headers=headers)
 

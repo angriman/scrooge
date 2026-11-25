@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -16,20 +17,24 @@ from tests.storage.helpers import OWNER, PARTNER, txn
 from tests.web.builders import BUILT, close
 from tests.web.test_app import text
 
-SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
-SHARES = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
+SALARY = {"kind": Kind.INCOME, "category": categories.SALARY}
+SHARES = {"kind": Kind.SECURITY_TRADE, "category": categories.INVESTMENTS}
 GIFT = "Anna Meier"  # the other person: recognised whatever the case
 SITE = "http://127.0.0.1:8765"
 EUR = {"account": "Revolut EUR", "currency": "EUR", "source_file": "revolut.tsv"}
 LUKAS = [
     txn("-45.20", date=date(2026, 7, 3), source_ref="1"),
-    txn("-1850", date=date(2026, 7, 20), source_ref="2", category="Affitto"),
+    txn("-1850", date=date(2026, 7, 20), source_ref="2", category=categories.RENT),
     txn("6000", date=date(2026, 7, 25), source_ref="3", **SALARY),
     txn("-500", date=date(2026, 8, 10), source_ref="4", **SHARES),
     txn("6100", date=date(2026, 8, 25), source_ref="5", **SALARY),
-    txn("-200", date=date(2026, 8, 26), source_ref="6", category="Regali", counterparty=GIFT),
+    txn(
+        "-200", date=date(2026, 8, 26), source_ref="6", category=categories.GIFTS, counterparty=GIFT
+    ),
 ]
-LUKAS_EUR = [txn("-30", date=date(2026, 8, 5), source_ref="1", category="Ristoranti e bar", **EUR)]
+LUKAS_EUR = [
+    txn("-30", date=date(2026, 8, 5), source_ref="1", category=categories.EATING_OUT, **EUR)
+]
 ANNA = [
     txn("-60", date=date(2026, 8, 12), source_ref="1"),
     txn(
@@ -37,7 +42,7 @@ ANNA = [
         date=date(2026, 8, 26),
         source_ref="2",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category=categories.REFUNDS,
         counterparty="LUKAS MEIER",
     ),
 ]
@@ -55,6 +60,11 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     store.set_rate(conn, date(2026, 7, 1), "EUR", Decimal("0.95"), source="fetched:yahoo")
     conn.close()
     return TestClient(webapp.create_app(path), base_url="http://127.0.0.1:8765")
+
+
+def hundredths(percent: str) -> Decimal:
+    """A percent as sent, unrounded, to the hundredth."""
+    return Decimal(percent).quantize(Decimal("0.01"))
 
 
 def tables(html: str) -> list[list[list[str]]]:
@@ -88,12 +98,12 @@ def test_each_currency_has_its_periods_newest_first_and_their_sum(client: TestCl
         ["2026-07", "6,000.00", "-1,895.20", "", "4,104.80", "0.00"],
     ]
     assert chf_sum == [["All 2", "12,100.00", "-1,955.20", "", "10,144.80", "-500.00"]]
-    assert income == [["Stipendio", "12,100.00", "2"]]
-    assert expenses == [["Casa", "-1,850.00", "1"], ["Alimentari", "-105.20", "2"]]
-    assert investing == [["Investimenti", "-500.00", "1"]]
+    assert income == [["Salary", "12,100.00", "2"]]
+    assert expenses == [["Home", "-1,850.00", "1"], ["Food", "-105.20", "2"]]
+    assert investing == [["Investments", "-500.00", "1"]]
     assert eur == [["2026-08", "0.00", "-30.00", "", "-30.00", "0.00"]]
     assert eur_sum == [["All 1", "0.00", "-30.00", "", "-30.00", "0.00"]]
-    assert eur_expenses == [["Ristoranti e bar", "-30.00", "1"]]
+    assert eur_expenses == [["Eating out", "-30.00", "1"]]
     assert "what the two of you paid each other" in text(page)
 
 
@@ -115,7 +125,7 @@ def test_the_bars_are_drawn_to_the_largest_amount_of_the_currency(client: TestCl
 def test_one_person_sees_what_they_paid_the_other(client: TestClient) -> None:
     his, _, _, expenses, *_ = tables(flow(get(client, owner="Lukas")))
     assert his[0] == ["2026-08", "6,100.00", "-200.00", "", "5,900.00", "-500.00"]
-    assert ["Regali", "-200.00", "1"] in expenses
+    assert ["Gifts", "-200.00", "1"] in expenses
     hers = flow(get(client, owner="Anna"))
     assert tables(hers)[0] == [["2026-08", "200.00", "-60.00", "", "140.00", "0.00"]]
     assert "what the two of you paid each other" not in text(hers)
@@ -126,8 +136,8 @@ def test_periods_and_categories_link_to_their_transactions(client: TestClient) -
     page = page.replace(f"{SITE}/transactions?from=", "?").replace("&amp;", "&")
     assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas">2026-08</a>' in page
     # A category is listed over the range shown, which the page spells out.
-    assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas&category=Regali">Regali</a>' in page
-    followed = client.get("/transactions?from=2026-08-01&to=2026-08-31&owner=Lukas&category=Regali")
+    assert '<a href="?2026-08-01&to=2026-08-31&owner=Lukas&category=Gifts">Gifts</a>' in page
+    followed = client.get("/transactions?from=2026-08-01&to=2026-08-31&owner=Lukas&category=Gifts")
     assert "1 transaction · -200.00 CHF" in text(followed.text)
 
 
@@ -167,12 +177,11 @@ def test_what_was_saved_is_sent_as_a_part_of_income_and_of_salary(client: TestCl
 
     his = report(owner=OWNER, currency="CHF", **{"from": "2026-07"})
     # All he earned was salary: both rates are the same.
-    assert (his["totals"]["work"], his["totals"]["rate"], his["totals"]["rate_salary"]) == (
-        "12100.00",
-        "82.400",
-        "82.400",
-    )
-    assert his["periods"][-1]["rate_salary"] == "96.300"
+    assert his["totals"]["work"] == "12100.00"
+    assert his["totals"]["rate"] == his["totals"]["rate_salary"]
+    # Sent as it is: the app rounds it once.
+    assert hundredths(his["totals"]["rate"]) == Decimal("82.45")
+    assert hundredths(his["periods"][-1]["rate_salary"]) == Decimal("96.25")
     # Two months of history: no twelve months to measure either rate over.
     assert (his["periods"][-1]["rate_12"], his["periods"][-1]["rate_salary_12"]) == (None, None)
     # She was paid no salary: there is nothing to measure what she kept against.
@@ -197,13 +206,16 @@ def test_the_twelve_months_are_measured_against_income_and_salary(years: TestCli
     sent = years.get("/api/cashflow", params={**params, "from": "2026-07", "to": "2026-07"})
     july = sent.json()["report"]["periods"][0]
     # August 2025 to July 2026: 39400 kept of the 60300 that came in, and of 60000 of salary.
-    assert (july["name"], july["rate_12"], july["rate_salary_12"]) == (
-        "2026-07",
-        "65.300",
-        "65.700",
+    assert july["name"] == "2026-07"
+    assert (hundredths(july["rate_12"]), hundredths(july["rate_salary_12"])) == (
+        Decimal("65.34"),
+        Decimal("65.67"),
     )
     month = years.get("/api/month", params={**params, "month": "2026-07"}).json()["month"]
-    assert (month["rate_year"], month["rate_salary_year"]) == ("65.300", "65.700")
+    assert (month["rate_year"], month["rate_salary_year"]) == (
+        july["rate_12"],
+        july["rate_salary_12"],
+    )
 
 
 def test_the_household_is_sent_who_paid(client: TestClient) -> None:
@@ -216,22 +228,22 @@ def test_the_household_is_sent_who_paid(client: TestClient) -> None:
         {
             "name": "Anna",
             "spent": "60.00",
-            "share": "3.000",
+            "share": "3",
             "settled": "-140.00",
-            "settled_share": "-7.100",
+            "settled_share": "-7",
         },
         {
             "name": "Lukas",
             "spent": "1923.70",
-            "share": "97.000",
+            "share": "97",
             "settled": "2123.70",
-            "settled_share": "107.100",
+            "settled_share": "107",
         },
     ]
     # His gift to her, as his statements have it.
     assert paid["moves"] == [{"sender": "Lukas", "receiver": "Anna", "amount": "200.00"}]
     assert paid["categories"][0] == {
-        "name": "Casa",
+        "name": "Home",
         "spent": "1850.00",
         "by": {"Anna": "0.00", "Lukas": "1850.00"},
     }

@@ -14,7 +14,7 @@ from outside them, on the day it was booked, as net worth books it:
 
 - a row of kind `transfer`: a deposit, a withdrawal, a move between a person's own accounts,
   the proceeds a stock plan pays out;
-- a row of kind `income` or `expense` outside the investing categories (`Investimenti`,
+- a row of kind `income` or `expense` outside the investing categories (`Investments`,
   `Trading`): shares a plan vests as salary, a referral bonus, a bill paid from the account.
   A bill's principal repaid is investing, and stays inside;
 - shares moved in or out in kind (from another broker, a plan's shares withdrawn to IBKR):
@@ -71,7 +71,7 @@ from scrooge import networth
 from scrooge.cashflow import _INVESTING
 from scrooge.networth import CARD, PENSION, PILLAR2, MissingRateError, Series, convert, rates_on
 from scrooge.storage.money import from_nano
-from scrooge.storage.store import committed_or_typed
+from scrooge.storage.store import committed_or_typed, marks
 
 RANGES = ("1m", "3m", "ytd", "1y", "3y", "all")  # as the overview names them
 DEFAULT_RANGE = "ytd"
@@ -367,7 +367,7 @@ def _flows(conn: sqlite3.Connection, ids: set[int], days: Sequence[date]) -> dic
         "LEFT JOIN categories p ON p.id = c.parent_id "
         f"WHERE {accounts} AND {committed_or_typed('t.statement_file_id')} "
         "AND t.amount_nano <> 0 AND (t.kind = 'transfer' OR (t.kind IN ('income', 'expense') "
-        "AND coalesce(p.name, c.name, '') NOT IN (?, ?)))",
+        f"AND coalesce(p.key, c.key, '') NOT IN ({marks(len(_INVESTING))})))",
         (*within, *sorted(_INVESTING)),
     )
     for account, day, currency, nano in rows:

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pdfplumber
 
+from scrooge.categories import CASHBACK, REVOLUT_TOP_UP
 from scrooge.errors import ExtractionError
 from scrooge.extractors.common import month_start, parse_decimal, parse_swiss_date
 from scrooge.extractors.source import Source
@@ -237,9 +238,9 @@ def _check(actual: Decimal, line: str, what: str) -> None:
 
 def _classify(merchant: str, billed: Decimal, section: str) -> tuple[Kind, str]:
     if section == _MISCELLANEOUS and merchant == "CASHBACK":
-        return Kind.INCOME, "Cashback"
+        return Kind.INCOME, CASHBACK
     if merchant.startswith("REVOLUT**"):  # card top-up of the Revolut account
-        return Kind.TRANSFER, "Topup Revolut"
+        return Kind.TRANSFER, REVOLUT_TOP_UP
     return (Kind.EXPENSE if billed > 0 else Kind.INCOME), ""  # category from rules.yaml
 
 

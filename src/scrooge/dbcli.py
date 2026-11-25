@@ -1,5 +1,5 @@
 """`scrooge init | import | commit | statements | uncommit | discard | balance | keep | logo |
-prices | query | serve | password | publish`: the database from the terminal.
+prices | query | serve | password | publish | migrate-files`: the database from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/
                               (--container: for the app in a container, its pages reached
@@ -25,6 +25,8 @@ prices | query | serve | password | publish`: the database from the terminal.
                               statements as `import` does, for the person chosen there
     scrooge password          ask for a password and print its digest for `serve`
     scrooge publish [folder]  copy the database to the folder another machine shows it from
+    scrooge migrate-files     write the rules, categories.yaml and the config again with
+                              today's category names (--write; without it, only say what)
 
 There are no months to close (decided 2026-10-16): statements of any period are imported
 whenever they are at hand, and `commit` commits what is staged. Of an account, what is
@@ -33,6 +35,9 @@ not recognised, does not reconcile or is of another person's account is refused 
 and the others are staged; `import` then exits 1, whatever else was staged or needs a
 category (it exits 2 only when nothing was refused). What a statement books on the day of the
 import waits for the next one, since that day is not over.
+
+`import` opens a zip and reads each file in it as if it had been named on its own; the
+zip itself is never kept. A zip that is broken or too big is refused as a whole.
 
 `import` also takes the scan of a second-pillar pension certificate: it gives the pension
 fund's account the balance it states for its day, committed like any other statement. What
@@ -52,7 +57,7 @@ The database path, the person and the names that recognise each person as a coun
 come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`. `currency`
 there is what the pages show figures in until another is chosen on them.
 `unmatched` there is the category of the expenses and income no rule matches: they then need
-no review, for who tracks net worth alone. `scrooge init` writes `unmatched: Non classificato`.
+no review, for who tracks net worth alone. `scrooge init` writes `unmatched: Uncategorized`.
 `account_labels` there names a further account at a broker by its account number.
 `rules` there lists the rules files, first wins, and `instruments` names the instruments
 file, for `import`, `serve` and `prices`, or `--rules` and `--instruments`; without either,
@@ -64,6 +69,12 @@ people.
 `logo` keeps the image in the database (decided 2026-11-07), under the symbol `instruments`
 has for it: a ticker, an ISIN or a CUSIP. The holdings page lists the holdings that still have
 none. Nothing fetches a logo.
+`migrate-files` writes again, once, the names the app still reads but no longer writes: the
+Italian names of the categories (until 2026-11-24) and `uscite`/`entrate` in categories.yaml.
+It reads the files `import` and `serve` read, as they find them, and each person's own rules
+file; it says what it would change and changes nothing unless given `--write`, which keeps
+each file it changes as it was, next to it (`<name>.before-migrate-files`). It needs no
+database.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
@@ -103,6 +114,7 @@ import ipaddress
 import os
 import re
 import sqlite3
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -114,9 +126,11 @@ import uvicorn
 import yaml
 
 from scrooge import (
+    categories,
     classification,
     importing,
     marketdata,
+    migratefiles,
     networth,
     onboarding,
     pipeline,
@@ -154,6 +168,7 @@ COMMANDS = (
     "password",
     "publish",
     "init",
+    "migrate-files",
 )
 # Commands that are not about one person's statements.
 _READ_BOTH = ("keep", "logo", "prices", "query", "serve", "publish")
@@ -201,6 +216,8 @@ def main(
         if args.command == "init":
             return onboarding.run(Path(onboarding.USERS), out, ask, container=args.container)
         args.config = _find_config(args)
+        if args.command == "migrate-files":  # about the files alone, not the database
+            return _migrate_files(args, out)
         return _run(args, _Console(out, ask, source), now())
     except _ERRORS as exc:
         out.write(f"error: {exc}\n")
@@ -209,17 +226,7 @@ def main(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="scrooge", description=__doc__)
-    files = argparse.ArgumentParser(add_help=False)
-    files.add_argument(
-        "--config",
-        type=Path,
-        help="the config (default: scrooge.yaml here, else the setup in users/ --user names, "
-        "or the only one there)",
-    )
-    files.add_argument(
-        "--user", help=f"the setup users/<name>/ to use (default: ${USER}, or the only one)"
-    )
-    files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
+    setup, files = _setup_flags()
     shared = argparse.ArgumentParser(add_help=False, parents=[files])
     shared.add_argument("--owner", help="whose statements (default: 'owner' in the config)")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -230,7 +237,8 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         nargs="+",
         metavar="path",
-        help="statement files, or folders holding them (subfolders are not searched)",
+        help="statement files, zips of them, or folders holding them (subfolders too; hidden "
+        "files are skipped)",
     )
     _rules_flags(load)
     load.add_argument(
@@ -290,7 +298,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         nargs="+",
         metavar="path",
-        help="statement files, or folders holding them (subfolders are not searched)",
+        help="statement files, or folders holding them (subfolders too; hidden files are skipped)",
     )
     mark = commands.add_parser("logo", parents=[files], help="keep an instrument's logo")
     mark.add_argument("symbol", help="the instrument's symbol: a ticker, an ISIN or a CUSIP")
@@ -328,11 +336,52 @@ def _parser() -> argparse.ArgumentParser:
         nargs="?",
         help="the mounted folder the copy goes to (default: 'publish' in the config)",
     )
+    migrate = commands.add_parser(
+        "migrate-files", parents=[setup], help="write the files again with today's names"
+    )
+    _migrate_flags(migrate)
     return parser
+
+
+def _setup_flags() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
+    """`--config` and `--user`, of every command that reads the config; and those with `--db`,
+    of the commands that open the database."""
+    setup = argparse.ArgumentParser(add_help=False)
+    setup.add_argument(
+        "--config",
+        type=Path,
+        help="the config (default: scrooge.yaml here, else the setup in users/ --user names, "
+        "or the only one there)",
+    )
+    setup.add_argument(
+        "--user", help=f"the setup users/<name>/ to use (default: ${USER}, or the only one)"
+    )
+    files = argparse.ArgumentParser(add_help=False, parents=[setup])
+    files.add_argument("--db", type=Path, help="database file (default: 'database' in the config)")
+    return setup, files
+
+
+def _migrate_flags(migrate: argparse.ArgumentParser) -> None:
+    _rules_flag(migrate)
+    migrate.add_argument(
+        "--write",
+        action="store_true",
+        help="write the changes, keeping each file as it was next to it (default: only say them)",
+    )
 
 
 def _rules_flags(command: argparse.ArgumentParser) -> None:
     """`--rules` and `--instruments`, of the commands that classify statements."""
+    _rules_flag(command)
+    command.add_argument(
+        "--instruments",
+        type=Path,
+        help="what is known about instruments (default: 'instruments' in the config, or "
+        "instruments.yaml)",
+    )
+
+
+def _rules_flag(command: argparse.ArgumentParser) -> None:
     command.add_argument(
         "--rules",
         type=Path,
@@ -340,12 +389,6 @@ def _rules_flags(command: argparse.ArgumentParser) -> None:
         help="rules file(s), first wins (default: 'rules' in the config, or rules.yaml); "
         "the owner's own rules.<owner>.yaml, next to the first, is read "
         "before them; a remembered category is saved in the first, or the owner's",
-    )
-    command.add_argument(
-        "--instruments",
-        type=Path,
-        help="what is known about instruments (default: 'instruments' in the config, or "
-        "instruments.yaml)",
     )
 
 
@@ -558,7 +601,16 @@ def _unmatched(config: dict[str, object], path: Path) -> str:
     if not isinstance(named, str):
         msg = f"{path}: 'unmatched' must be the name of a category"
         raise ConfigError(msg)
-    return named.strip()
+    return categories.key(named)
+
+
+def _migrate_files(args: argparse.Namespace, out: TextIO) -> int:
+    """Write the rules files, categories.yaml and the config again with today's names."""
+    config = _config(args.config)
+    owner = config.get("owner")
+    people = [*_people(config, args.config), *([str(owner)] if owner else [])]
+    found = migratefiles.files(_rules(args, config), dict.fromkeys(people), args.config)
+    return migratefiles.run(found, out, apply=args.write)
 
 
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
@@ -638,7 +690,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
         about_data: dict[str, Callable[[], int]] = {
             "query": lambda: _query(conn, args, out),
-            "keep": lambda: _keep(conn, path, _files(args.paths), out),
+            "keep": lambda: _keep(conn, path, _files(args.paths, path), out),
             "logo": lambda: _logo(conn, args, now, out),
         }
         if args.command in about_data:
@@ -960,7 +1012,7 @@ def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> i
     )
     result = query.run(conn, wanted)
     if not args.summary:
-        _print_rows(result.rows, out, booking=args.booking)
+        _print_rows(result.rows, out, store.category_labels(conn), booking=args.booking)
     out.write(f"{len(result.rows)} transaction{'' if len(result.rows) == 1 else 's'}\n")
     _print_sums("Total", result.totals, out)
     for title, sums in (("By year", result.by_year), ("By month", result.by_month)):
@@ -969,8 +1021,11 @@ def _query(conn: sqlite3.Connection, args: argparse.Namespace, out: TextIO) -> i
     return OK
 
 
-def _print_rows(rows: Sequence[query.Row], out: TextIO, *, booking: bool) -> None:
-    """One line per transaction, in columns as wide as their longest value."""
+def _print_rows(
+    rows: Sequence[query.Row], out: TextIO, label: categories.Labels, *, booking: bool
+) -> None:
+    """One line per transaction, in columns as wide as their longest value, each category by
+    its label."""
     lines = [
         (
             (row.booking_date if booking else row.date).isoformat(),
@@ -978,7 +1033,7 @@ def _print_rows(rows: Sequence[query.Row], out: TextIO, *, booking: bool) -> Non
             row.account,
             f"{row.amount:,.2f}",
             row.currency,
-            row.category or "",
+            label(row.category),
             row.counterparty or row.description,
         )
         for row in rows
@@ -1012,14 +1067,17 @@ def _import(session: _Session, args: argparse.Namespace, config: dict[str, objec
         session.labels,
         _unmatched(config, args.config),
     )
-    found = importing.read(session.owner, _files(args.paths), setup)
-    if args.review and found.month.uncategorized:
-        everyone = [pattern for patterns in session.people.values() for pattern in patterns]
-        personal = (setup.own(session.owner), everyone)
-        ask = session.console.ask
-        review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
-        found = importing.again(found, setup)
-    found = importing.stage(session.conn, session.path, found, setup, session.now)
+    files = _files(args.paths, session.path)
+    # The files of the zips among them last until they are staged and kept.
+    with tempfile.TemporaryDirectory() as unpacked:
+        found = importing.read(session.owner, files, setup, Path(unpacked))
+        if args.review and found.month.uncategorized:
+            everyone = [pattern for patterns in session.people.values() for pattern in patterns]
+            personal = (setup.own(session.owner), everyone)
+            ask = session.console.ask
+            review.ask_categories(found.month.uncategorized, shared[0], out, ask, personal)
+            found = importing.again(found, setup)
+        found = importing.stage(session.conn, session.path, found, setup, session.now)
     staged = found.staged or staging.Staged((), 0, 0)
     for file in found.files:
         out.write(f"{_outcome(file)}\n")
@@ -1149,18 +1207,41 @@ def _known_as(symbol: str, instruments_file: Path) -> str:
     return renamed.ticker if renamed is not None and renamed.ticker else symbol
 
 
-def _files(paths: Sequence[Path]) -> list[Path]:
-    """The files named, and the files directly inside the folders named."""
+def _files(paths: Sequence[Path], database: Path) -> list[Path]:
+    """The files named, and every file inside the folders named and their subfolders, each
+    once. Hidden files and folders are left out (`.DS_Store`, `.git`), so is what a Mac adds
+    to a zip, and so are the database, its originals and its copies."""
     files: list[Path] = []
+    own = [
+        database.resolve(),
+        originals.folder_of(database).resolve(),
+        (database.parent / staging.BACKUPS).resolve(),
+    ]
     for path in paths:
         if path.is_dir():
-            files += [p for p in path.iterdir() if p.is_file() and not p.name.startswith(".")]
+            files += sorted(
+                p
+                for p in path.rglob("*")
+                if p.is_file()
+                and not _hidden(p.relative_to(path))
+                and not any(p.resolve().is_relative_to(kept) for kept in own)
+            )
         elif path.is_file():
             files.append(path)
         else:
             msg = f"{path}: no such file or folder"
             raise ConfigError(msg)
-    return files
+    unique: dict[Path, Path] = {}
+    for file in files:
+        unique.setdefault(file.resolve(), file)
+    return list(unique.values())
+
+
+def _hidden(path: Path) -> bool:
+    return any(part.startswith(".") or part == _MAC_ZIP for part in path.parts)
+
+
+_MAC_ZIP = "__MACOSX"  # the folder of resource forks a zip made on a Mac holds
 
 
 def _commit(session: _Session) -> int:

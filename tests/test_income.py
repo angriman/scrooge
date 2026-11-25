@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import income, query
+from scrooge import categories, income, query
 from scrooge.cashflow import Grouping
 from scrooge.income import Source
 from scrooge.models import Kind, Transaction
@@ -16,9 +16,9 @@ from scrooge.storage import db, store
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 
 START, END = date(2025, 1, 1), date(2026, 8, 31)
-SALARY = {"kind": Kind.INCOME, "category": "Stipendio"}
-BILL = {"kind": Kind.SECURITY_TRADE, "category": "Investimenti"}
-TRADE = {"kind": Kind.TRADING, "category": "Trading"}
+SALARY = {"kind": Kind.INCOME, "category": categories.SALARY}
+BILL = {"kind": Kind.SECURITY_TRADE, "category": categories.INVESTMENTS}
+TRADE = {"kind": Kind.TRADING, "category": categories.TRADING}
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 
 
@@ -36,26 +36,40 @@ def salaries(amount: str, first: date, months: int) -> list[Transaction]:
 
 LUKAS = [
     *salaries("5000", START, 20),
-    txn("10", date=date(2026, 6, 30), source_ref="1", kind=Kind.INTEREST, category="Interessi"),
-    txn("-4", date=date(2026, 7, 31), source_ref="2", kind=Kind.INTEREST, category="Interessi"),
+    txn(
+        "10",
+        date=date(2026, 6, 30),
+        source_ref="1",
+        kind=Kind.INTEREST,
+        category=categories.INTEREST,
+    ),
+    txn(
+        "-4",
+        date=date(2026, 7, 31),
+        source_ref="2",
+        kind=Kind.INTEREST,
+        category=categories.INTEREST,
+    ),
     # Options closed at a gain, then at a loss: income is what is left of the two.
     txn("300", date=date(2026, 7, 10), source_ref="3", **TRADE),
     txn("-120", date=date(2026, 7, 20), source_ref="4", **TRADE),
     # A bill bought and repaid: the money only came back.
     txn("-9920", date=date(2026, 7, 3), source_ref="5", **BILL),
     txn("9920", date=date(2026, 7, 24), source_ref="6", **BILL),
-    txn("15", date=date(2026, 7, 5), source_ref="7", kind=Kind.INCOME, category="Cashback"),
+    txn(
+        "15", date=date(2026, 7, 5), source_ref="7", kind=Kind.INCOME, category=categories.CASHBACK
+    ),
     # Paid back by the other person, and a refund that lowers an expense: neither is income.
     txn(
         "50",
         date=date(2026, 7, 6),
         source_ref="8",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category=categories.REFUNDS,
         counterparty="ANNA MEIER",
     ),
     txn("20", date=date(2026, 7, 7), source_ref="9", kind=Kind.INCOME),
-    txn("-1850", date=date(2026, 7, 2), source_ref="10", category="Affitto"),
+    txn("-1850", date=date(2026, 7, 2), source_ref="10", category=categories.RENT),
 ]
 LUKAS_USD = [
     txn(
@@ -63,7 +77,7 @@ LUKAS_USD = [
         date=date(2025, 3, 15),
         source_ref="1",
         kind=Kind.DIVIDEND,
-        category="Dividendi",
+        category=categories.DIVIDENDS,
         **USD,
     ),
     txn(
@@ -71,7 +85,7 @@ LUKAS_USD = [
         date=date(2026, 3, 16),
         source_ref="2",
         kind=Kind.DIVIDEND,
-        category="Dividendi",
+        category=categories.DIVIDENDS,
         **USD,
     ),
 ]
@@ -82,7 +96,7 @@ ANNA = [
         date=date(2026, 7, 10),
         source_ref="1",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category=categories.REFUNDS,
         counterparty="LUKAS MEIER",
     ),
 ]
@@ -142,11 +156,11 @@ def test_income_is_grouped_by_where_it_comes_from(conn: sqlite3.Connection) -> N
 
 def test_the_sources_add_up_the_range_leaf_by_leaf(conn: sqlite3.Connection) -> None:
     assert his(conn).sources == (
-        Source("Lavoro", "Stipendio", 8, Decimal(40000)),
-        Source("Investimenti", "Trading", 2, Decimal(180)),
-        Source("Investimenti", "Dividendi", 1, Decimal(90)),
-        Source("Investimenti", "Interessi", 2, Decimal(6)),
-        Source("Altro", "Cashback", 1, Decimal(15)),
+        Source(income.WORK, categories.SALARY, 8, Decimal(40000)),
+        Source(income.INVESTMENTS, categories.TRADING, 2, Decimal(180)),
+        Source(income.INVESTMENTS, categories.DIVIDENDS, 1, Decimal(90)),
+        Source(income.INVESTMENTS, categories.INTEREST, 2, Decimal(6)),
+        Source(income.OTHER, categories.CASHBACK, 1, Decimal(15)),
     )
 
 
@@ -166,9 +180,8 @@ def test_the_employers_share_is_of_the_twelve_months_ending_with_each_period(
     # Before twelve months of income are known, there is no share.
     assert share["2025-01"] is None
     assert share["2025-11"] is None
-    assert share["2025-12"] == Decimal("0.999")  # 60000 of 60080: the 2025 dividend
-    assert share["2026-07"] == Decimal("0.995")  # 60000 of 60291
-    assert share["2026-08"] == Decimal("0.995")
+    assert share["2025-12"] == Decimal(60000) / 60080  # the 2025 dividend
+    assert share["2026-07"] == share["2026-08"] == Decimal(60000) / 60291
 
 
 def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
@@ -177,9 +190,9 @@ def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
     quarters = his(conn, grouping=Grouping.QUARTER, last=date(2026, 12, 31))
     share = {p.name: p.employer for p in quarters.periods}
     assert share == {
-        "2026-Q1": Decimal("0.999"),  # 60000 of 60090: the 2026 dividend replaced 2025's
-        "2026-Q2": Decimal("0.998"),
-        "2026-Q3": Decimal("0.995"),  # up to 31 August, the last day committed
+        "2026-Q1": Decimal(60000) / 60090,  # the 2026 dividend replaced 2025's
+        "2026-Q2": Decimal(60000) / 60100,
+        "2026-Q3": Decimal(60000) / 60291,  # up to 31 August, the last day committed
         "2026-Q4": None,  # no day of it is committed
     }
     assert quarters.through == END

@@ -9,7 +9,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	import { approximate, percent, short } from '#lib/format/number.js';
 	import type { CashFlowPeriod } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
-	import { GROUPS, groupName, incomeColor, PAID_BACK } from './names.js';
+	import { GROUPS, incomeColor, PAID_BACK } from './names.js';
 
 	interface Props {
 		periods: CashFlowPeriod[];
@@ -131,7 +131,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-secondary">
 		{#each GROUPS as group (group)}
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={incomeColor(group)}></span>{groupName(group)}
+				<span class="size-2 rounded-[2px]" style:background={incomeColor(group)}></span>{group}
 			</li>
 		{/each}
 		{#each parts as name (name)}

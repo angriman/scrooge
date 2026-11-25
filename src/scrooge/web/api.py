@@ -157,7 +157,9 @@ def _month(request: Request) -> Response:
             shown = recap.run(conn, owner=asked.owner, currency=asked.currency, month=asked.month)
         except networth.MissingRateError as exc:
             return JSONResponse({"month": None, "errors": [wire.sentence(exc)]})
-    return JSONResponse({"month": None if shown is None else wire.month(shown), "errors": []})
+        label = store.category_labels(conn)
+    month = None if shown is None else wire.month(shown, label)
+    return JSONResponse({"month": month, "errors": []})
 
 
 def _attention(request: Request) -> Response:
@@ -181,6 +183,7 @@ def _attention(request: Request) -> Response:
             checks = ()
         unmatched: str = request.app.state.unmatched
         unsorted = attention.uncategorised(conn, owner, unmatched)
+        label = store.category_labels(conn)
         changed = (
             attention.changes(conn, owner=owner, currency=asked.currency)
             if request.query_params.get("recurring") == "1"
@@ -189,7 +192,7 @@ def _attention(request: Request) -> Response:
     errors += [] if changed is None else [wire.sentence(exc) for exc in changed.errors]
     return JSONResponse(
         {
-            **wire.needs_a_look(asked.currency, unmatched, unsorted, changed),
+            **wire.needs_a_look(asked.currency, unmatched, unsorted, changed, label),
             "staged": [{"owner": p.name, "count": p.staged} for p in people if p.staged],
             "behind": [
                 wire.account(line)
@@ -296,6 +299,7 @@ def _transactions(request: Request) -> Response:
             return _refused((wire.sentence(exc),))
         every = query.recurring(query.run(conn, query.Filter(owner=wanted.owner)).rows)
         found = query.choices(conn, wanted.owner)
+        ranks = store.category_ranks(conn)
     offset = _count(params, "offset", 0, len(result.rows))
     limit = _count(params, "limit", _PAGE, _MOST)
     newest = result.rows[::-1][offset : offset + limit]
@@ -309,14 +313,14 @@ def _transactions(request: Request) -> Response:
             ],
             "by_category": [
                 {
-                    "name": c.name,
+                    "name": found.label(c.name),
                     "currency": c.currency,
                     "count": c.count,
                     "total": wire.number(c.total),
                 }
-                for c in query.by_category(result.rows)
+                for c in query.by_category(result.rows, ranks)
             ],
-            "rows": [wire.transaction(row, every.get(row.id)) for row in newest],
+            "rows": [wire.transaction(row, every.get(row.id), found.label) for row in newest],
             "choices": wire.choices(found),
             "kinds": [kind.value for kind in Kind],
             "errors": [],
@@ -406,10 +410,10 @@ def _staged(request: Request) -> Response:
         {
             "owners": owners,
             "owner": owner,
-            **wire.draft(staged),
+            **wire.draft(staged, found.label),
             "choices": wire.choices(found),
             # What a new expense category can go under.
-            "under": list(found.groups),
+            "under": [found.label(group) for group in found.groups],
             "rules": state.rules is not None,
             "lookup": state.maturities is not None,
             "errors": [],
@@ -453,12 +457,16 @@ async def _upload(request: Request) -> Response:
     a file that fails stores nothing of itself and stops no other."""
     _writable(request, request.headers.get("x-token", ""))
     owners = _importable(request)
-    async with request.form(max_files=uploads_.UPLOADS) as form:
-        owner = str(form.get("owner", ""))
-        sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
-        uploads = [
-            (uploads_.name(part.filename), await part.read()) for part in sent if part.filename
-        ]
+    try:
+        async with request.form(max_files=uploads_.UPLOADS) as form:
+            owner = str(form.get("owner", ""))
+            sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
+            uploads = [
+                (uploads_.name(part.filename), await part.read()) for part in sent if part.filename
+            ]
+    except HTTPException as exc:
+        # A form the parser refuses, most often more files than one import takes.
+        return _refused((f"Nothing was imported: {exc.detail}",))
     if owner not in owners:
         return _refused((f"{owner or 'Nobody'} is nobody the config names.",))
     if not uploads:
@@ -508,9 +516,12 @@ class _Refused(Exception):
     """What was sent cannot be done; its message says why."""
 
 
-def _choices(sent: dict[str, object], staged: months.Draft) -> list[staging.Choice]:
-    """The categories chosen for staged rows, `[{"ids", "category", "rule"}]`, as choices that
-    give them: rows without one are given it, those with one have it changed."""
+def _choices(
+    sent: dict[str, object], staged: months.Draft, conn: sqlite3.Connection
+) -> list[staging.Choice]:
+    """The categories chosen for staged rows, `[{"ids", "category", "rule"}]` (by label or key),
+    as choices that give them: rows without one are given it, those with one have it
+    changed."""
     rows = {row.id: row for row in staged.rows}
     chosen = sent.get("choices", [])
     if not isinstance(chosen, list) or not all(isinstance(c, dict) for c in chosen):
@@ -523,7 +534,8 @@ def _choices(sent: dict[str, object], staged: months.Draft) -> list[staging.Choi
             raise _Refused("Those rows are not staged any more: load the page again.")
         category, rule = str(choice.get("category", "")), choice.get("rule") is True
         waiting = [row for row in ids if rows[row].waiting]
-        having = [row for row in ids if not rows[row].waiting and rows[row].category != category]
+        key = store.category_key(conn, category)
+        having = [row for row in ids if not rows[row].waiting and rows[row].category != key]
         if waiting:
             made.append(staging.Choice(waiting, category, rule=rule))
         if having:
@@ -545,7 +557,7 @@ async def _categorize_staged(request: Request) -> Response:
     def apply() -> tuple[int, int | None]:
         conn = db.connect(state.database)
         try:
-            made = _choices(sent, months.draft(conn, owner))
+            made = _choices(sent, months.draft(conn, owner), conn)
             remember = None if state.rules is None else state.rules.of(owner)
             changed = (
                 staging.categorize_all(
@@ -593,7 +605,7 @@ async def _add_category(request: Request) -> Response:
                 conn,
                 state.rules.shared.with_name(categories.FILE),
                 name=str(sent.get("name", "")),
-                side=str(sent.get("side", "")),
+                side=wire.side_sent(str(sent.get("side", ""))),
                 group=str(sent.get("group", "")),
             )
         finally:
@@ -680,9 +692,10 @@ def _cashflow(request: Request) -> Response:
             ),
             None,
         )
+        label = store.category_labels(conn)
     return JSONResponse(
         {
-            "report": None if shown is None else wire.cashflow_report(shown),
+            "report": None if shown is None else wire.cashflow_report(shown, label),
             "first": wire.day(first),
             "last": wire.day(last),
             "by": asked.grouping.value,
@@ -784,7 +797,8 @@ def _transactions_context(request: Request) -> Response:
                 ),
                 None,
             )
-    return JSONResponse({**wire.transactions_context(shown, held), "errors": errors})
+        label = store.category_labels(conn)
+    return JSONResponse({**wire.transactions_context(shown, held, label), "errors": errors})
 
 
 def _transactions_merchants(request: Request) -> Response:

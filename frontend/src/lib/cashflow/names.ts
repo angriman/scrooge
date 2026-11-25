@@ -4,24 +4,13 @@ import { inOrder } from '#lib/design/data.js';
 import { day } from '#lib/format/date.js';
 
 /** The income groups of `income.GROUPS`, in the order they are stacked. */
-export const GROUPS = ['Lavoro', 'Investimenti', 'Altro'] as const;
-
-const GROUP_NAMES: Readonly<Record<string, string>> = {
-	Lavoro: 'Work',
-	Investimenti: 'Investments',
-	Altro: 'Other'
-};
+export const GROUPS = ['Work', 'Investments', 'Other'] as const;
 
 /** The colour of an income group: shades of the colour of a gain, so that what came in never
  * wears the colour of a category of spending. */
 export function incomeColor(group: string): string {
-	const strength = { Lavoro: 100, Investimenti: 65, Altro: 35 }[group] ?? 35;
+	const strength = { Work: 100, Investments: 65, Other: 35 }[group] ?? 35;
 	return `color-mix(in srgb, var(--gain) ${strength}%, var(--surface-panel))`;
-}
-
-/** What an income group is called on the page. */
-export function groupName(group: string): string {
-	return GROUP_NAMES[group] ?? group;
 }
 
 /** `spending.OTHERS` and `spending.PAID_BACK`: the rest of the categories, and what the other

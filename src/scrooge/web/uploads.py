@@ -24,7 +24,8 @@ from scrooge.storage import db, store
 from scrooge.storage.money import PrecisionError
 from scrooge.validation import ReconciliationError
 
-UPLOADS = 200  # files taken by one import: a year of monthly statements of every source
+# Files taken by one import: a folder of a few years of monthly statements of every source.
+UPLOADS = 500
 HELD = timedelta(hours=1)  # how long the files of an import stopped on bills are kept
 # What stops an import: nothing is stored, and the page says why.
 REFUSED = (
@@ -72,9 +73,9 @@ def saved(folder: Path, uploads: Sequence[tuple[str, bytes]]) -> list[Path]:
 def stage(state: State, owner: str, uploads: Sequence[tuple[str, bytes]]) -> importing.Read:
     """Read `uploads` as statements of `owner` and stage them; it blocks, so it is run in a
     thread. Raises what `REFUSED` lists, or `UnknownMaturityError`, when nothing is stored."""
-    with tempfile.TemporaryDirectory() as folder:
+    with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as unpacked:
         files = saved(Path(folder), uploads)
-        found = importing.read(owner, files, state.imports)
+        found = importing.read(owner, files, state.imports, Path(unpacked))
         conn = db.connect(state.database)
         try:
             return importing.stage(conn, state.database, found, state.imports, state.clock())

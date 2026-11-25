@@ -15,6 +15,7 @@ import re
 from decimal import Decimal
 from pathlib import PurePath
 
+from scrooge.categories import DIVIDENDS, FEES, INTEREST, INVESTMENTS
 from scrooge.errors import ExtractionError, UnsupportedStatementError
 from scrooge.extractors.common import (
     month_start,
@@ -50,12 +51,12 @@ _TRADES = {"Buy": 1, "Sell": -1}  # the sign `Number of Shares` must have
 _CASH = {
     # Money in from the bank. A transfer, so it is not counted as invested twice: what counts
     # is the purchase of fund units that follows.
-    "Deposit": (Kind.TRANSFER, "Investimenti"),
+    "Deposit": (Kind.TRANSFER, INVESTMENTS),
     # Money moved in from another pillar 3a provider: a transfer like a deposit.
-    "Transfer": (Kind.TRANSFER, "Investimenti"),
-    "Dividend": (Kind.DIVIDEND, "Dividendi"),
-    "Interests": (Kind.INTEREST, "Interessi"),
-    "Flat-rate administrative fee": (Kind.COMMISSION, "Commissioni"),
+    "Transfer": (Kind.TRANSFER, INVESTMENTS),
+    "Dividend": (Kind.DIVIDEND, DIVIDENDS),
+    "Interests": (Kind.INTEREST, INTEREST),
+    "Flat-rate administrative fee": (Kind.COMMISSION, FEES),
 }
 
 
@@ -96,7 +97,7 @@ def extract(content: str, source_file: str) -> Extraction:
             # Fund units moved, or money moved out, would leave holdings or net worth silently.
             msg = f"finpension row {n}: only a transfer of cash in is supported"
             raise UnsupportedStatementError(msg)
-        kind, category = _CASH.get(what, (Kind.SECURITY_TRADE, "Investimenti"))
+        kind, category = _CASH.get(what, (Kind.SECURITY_TRADE, INVESTMENTS))
         cash = Transaction(
             date=day,
             account=account,

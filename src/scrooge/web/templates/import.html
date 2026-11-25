@@ -134,8 +134,8 @@
     </thead>
     <tbody>
       {%- for line in draft.totals %}
-      <tr data-side="{{ line.side }}" data-category="{{ line.category }}" data-currency="{{ line.currency }}">
-        <td class="lead">{% if line.category %}{{ line.category }}{% if line.side == "transfer" %}<small>transfer</small>{% endif %}{% else %}Waiting for a category{% endif %}</td>
+      <tr data-side="{{ line.side }}" data-category="{{ label(line.category) }}" data-currency="{{ line.currency }}">
+        <td class="lead">{% if line.category %}{{ label(line.category) }}{% if line.side == "transfer" %}<small>transfer</small>{% endif %}{% else %}Waiting for a category{% endif %}</td>
         <td class="number total sum" data-unit="{{ line.currency }}">{{ line.total|money }} {{ line.currency }}</td>
         <td class="number count" data-label="Rows">{{ line.count }}</td>
       </tr>
@@ -201,15 +201,15 @@
       </thead>
       <tbody>
         {%- for row in draft.rows %}
-        <tr data-id="{{ row.id }}" data-amount="{{ row.amount|plain }}" data-currency="{{ row.currency }}" data-side="{{ row.side }}" data-category="{{ row.category }}"{% if row.id in group_of %} data-group="{{ group_of[row.id] }}"{% endif %}>
+        <tr data-id="{{ row.id }}" data-amount="{{ row.amount|plain }}" data-currency="{{ row.currency }}" data-side="{{ row.side }}" data-category="{{ label(row.category) }}"{% if row.id in group_of %} data-group="{{ group_of[row.id] }}"{% endif %}>
           <td class="date">{{ row.date }}</td>
           <td class="account">{{ row.account }}</td>
           <td class="what">{{ row.counterparty or row.description }}{% if row.counterparty and row.description != row.counterparty %}<small>{{ row.description }}</small>{% endif %}{% if row.statement %}<small><a href="{{ url_for('statement', number=row.statement) }}">statement</a></small>{% endif %}</td>
           <td class="number amount">{{ row.amount|money }} {{ row.currency }}</td>
           <td class="category">
             {%- if (row.waiting or row.changeable) and not copy %}
-            <input name="category:{{ row.id }}" list="categories" placeholder="{{ row.category or 'Choose' }}" autocomplete="off" aria-label="Category of {{ row.counterparty or row.description }}">
-            {%- else %}{{ row.category or "Waiting for a category" }}
+            <input name="category:{{ row.id }}" list="categories" placeholder="{{ label(row.category) or 'Choose' }}" autocomplete="off" aria-label="Category of {{ row.counterparty or row.description }}">
+            {%- else %}{{ label(row.category) or "Waiting for a category" }}
             {%- endif %}</td>
         </tr>
         {%- endfor %}

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scrooge import payouts
+from scrooge import categories, payouts
 from scrooge.models import Kind, Transaction
 from scrooge.payouts import Holding, Paid
 from scrooge.storage import db, store
@@ -15,9 +15,9 @@ from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 START, END = date(2025, 1, 1), date(2026, 8, 31)
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 FUND = {"account": "Finpension", "source_file": "finpension.csv"}
-DIVIDEND = {"kind": Kind.DIVIDEND, "category": "Dividendi"}
-INTEREST = {"kind": Kind.INTEREST, "category": "Interessi"}
-TAX = {"kind": Kind.TAX, "category": "Ritenute"}
+DIVIDEND = {"kind": Kind.DIVIDEND, "category": categories.DIVIDENDS}
+INTEREST = {"kind": Kind.INTEREST, "category": categories.INTEREST}
+TAX = {"kind": Kind.TAX, "category": categories.WITHHOLDING_TAX}
 CUSIP, ISIN = "912797ZZ1", "CH0000000001"
 
 
@@ -40,7 +40,7 @@ LUKAS_USD = [
 LUKAS_FUND = [paid("50", date(2026, 4, 10), "1", ISIN, **DIVIDEND, **FUND)]
 LUKAS = [
     paid("5", date(2026, 5, 31), "1", **INTEREST),
-    paid("5000", date(2026, 5, 25), "2", kind=Kind.INCOME, category="Stipendio"),
+    paid("5000", date(2026, 5, 25), "2", kind=Kind.INCOME, category=categories.SALARY),
     paid("-40", date(2026, 5, 26), "3"),
 ]
 ANNA = [paid("1", date(2026, 2, 28), "1", **INTEREST)]
@@ -319,3 +319,21 @@ def test_for_everyone_a_holding_both_have_is_one_and_their_accounts_of_a_name_tw
         ("Migros", None),
         ("Revolut", None),
     ]
+
+
+def test_interest_charged_is_no_payout() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    span = (date(2026, 1, 1), date(2026, 6, 30))
+    broker = {"account": "IBKR", "source_file": "ibkr.csv"}
+    rows = [
+        paid("20", date(2026, 3, 1), "1", **INTEREST, **broker),
+        # Interest on a debit balance: what the account cost, not what it paid.
+        paid("-7", date(2026, 3, 2), "2", **INTEREST, **broker),
+    ]
+    close(connection, OWNER, span, span[1], ("ibkr", rows))
+    shown = his(connection, currency="CHF")
+    connection.close()
+    assert shown.totals == amounts("0", "20")
+    [holding] = shown.holdings
+    assert (holding.paid, holding.count) == (amounts("0", "20"), 1)

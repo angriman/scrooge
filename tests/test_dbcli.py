@@ -1,7 +1,9 @@
 import getpass
 import hashlib
 import io
+import re
 import shutil
+import zipfile
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -21,6 +23,8 @@ from tests.conftest import (
     FIXTURES,
     INSTRUMENTS_YAML,
     MATURED,
+    MONTHS,
+    monthly_migros,
     write_rules,
 )
 from tests.fakes import FakeSource
@@ -40,6 +44,9 @@ class Run:
 
     def __init__(self, folder: Path) -> None:
         self.folder = folder
+        # Statements of other imports: outside the folder, which is searched with its subfolders.
+        self.aside = folder.parent / f"{folder.name} aside"
+        self.aside.mkdir()
         self.database = folder / "data" / "scrooge.db"
         self.config = folder / "scrooge.yaml"
         self.config.write_text(CONFIG.format(database=self.database), encoding="utf-8")
@@ -69,7 +76,7 @@ class Run:
 
     def load_august(self) -> int:
         """The month before the fixtures: just the purchase of the bill that matures in them."""
-        august = self.folder / "old" / "august"
+        august = self.aside / "august"
         august.mkdir(parents=True, exist_ok=True)
         (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
         return self.load(folder=august)
@@ -79,6 +86,15 @@ class Run:
         try:
             query = "SELECT count(*) FROM transactions WHERE category_id IS NULL AND kind <> ?"
             return int(conn.execute(query, ("internal",)).fetchone()[0])
+        finally:
+            conn.close()
+
+    def id_of(self, filename: str) -> str:
+        """The number `scrooge statements` lists the statement by."""
+        conn = db.connect(self.database)
+        try:
+            query = "SELECT id FROM statement_files WHERE filename = ?"
+            return str(conn.execute(query, (filename,)).fetchone()[0])
         finally:
             conn.close()
 
@@ -140,7 +156,7 @@ def test_commit_saves_a_copy_first_and_uncommit_undoes_it(run: Run) -> None:
     assert "differs" not in run.output
     assert "Next:" not in run.output
     assert run.count("committed_transactions") == staged + 1
-    assert run("uncommit", "3") == dbcli.OK
+    assert run("uncommit", run.id_of("Migros.csv")) == dbcli.OK
     assert run.output == "Migros.csv is staged again for Lukas.\n"
     assert run.count("committed_transactions") < staged + 1
     assert run.load() == dbcli.OK  # the statement it took back is found in the folder again
@@ -155,16 +171,22 @@ def test_statements_are_listed_staged_first_with_the_numbers_to_act_on(run: Run)
     run.load()
     assert run("statements") == dbcli.OK
     lines = run.output.splitlines()
+    card = run.id_of("swisscard.pdf")
     assert (
-        lines[0] == "    6  staged     2026-08-05 to 2026-09-04  Swisscard invoice: swisscard.pdf"
+        lines[0]
+        == f"{card:>5}  staged     2026-08-05 to 2026-09-04  Swisscard invoice: swisscard.pdf"
     )
     assert len(lines) == 7
     assert {line.split()[1] for line in lines} == {"staged"}
     run("commit")
-    run("uncommit", "2")
+    ibkr = run.id_of("IBKR.csv")
+    run("uncommit", ibkr)
     assert run("statements") == dbcli.OK
     first, *rest = run.output.splitlines()
-    assert first == "    2  staged     2026-09-01 to 2026-09-30  IBKR activity statement: IBKR.csv"
+    assert (
+        first
+        == f"{ibkr:>5}  staged     2026-09-01 to 2026-09-30  IBKR activity statement: IBKR.csv"
+    )
     assert {line.split()[1] for line in rest} == {"committed"}
 
 
@@ -184,7 +206,7 @@ def test_discard_removes_a_staged_statement_and_not_a_committed_one(run: Run) ->
 
 
 def test_what_is_booked_today_or_later_waits_for_the_next_import(run: Run) -> None:
-    only = run.folder / "old" / "only"
+    only = run.aside / "only"
     only.mkdir()
     shutil.copy(run.folder / "Migros.csv", only / "Migros.csv")
     run.now = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)  # 9 September is the last day over
@@ -246,14 +268,14 @@ def test_a_bill_without_its_purchase_is_shown_on_import_and_blocks_the_commit(ru
 
 
 def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> None:
-    run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
+    run.rules.write_text("rules:\n  - {match: Muster, category: Rent}\n", encoding="utf-8")
     assert run.load() == dbcli.NEEDS_REVIEW
     before = run.pending()
-    run.answers = ["Spesa", "q"]
+    run.answers = ["Groceries", "q"]
     assert run.load("--review") == dbcli.NEEDS_REVIEW
     assert len(run.questions) == 2
     assert f"saved to {run.rules}" in run.output
-    assert 'category: "Spesa"' in run.rules.read_text(encoding="utf-8")
+    assert 'category: "Groceries"' in run.rules.read_text(encoding="utf-8")
     assert 0 < run.pending() < before
 
     run.questions.clear()
@@ -263,7 +285,7 @@ def test_review_asks_saves_rules_and_stages_the_categorized_month(run: Run) -> N
 
 def test_the_rules_of_the_other_person_are_not_applied(run: Run) -> None:
     run.rules.write_text("rules: []\n", encoding="utf-8")
-    rule = "rules:\n  - {match: Muster, category: Affitto}\n"
+    rule = "rules:\n  - {match: Muster, category: Rent}\n"
     run.rules.with_name("rules.anna.yaml").write_text(rule, encoding="utf-8")
     run.load()
     without = run.pending()
@@ -273,7 +295,7 @@ def test_the_rules_of_the_other_person_are_not_applied(run: Run) -> None:
 
 
 def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
-    run.rules.write_text("rules:\n  - {match: Muster, category: Affitto}\n", encoding="utf-8")
+    run.rules.write_text("rules:\n  - {match: Muster, category: Rent}\n", encoding="utf-8")
     run.answers = ["+Prestiti", "q"]
     assert run.load("--review") == dbcli.NEEDS_REVIEW
     added = run.rules.with_name("categories.yaml")
@@ -282,11 +304,22 @@ def test_review_can_add_a_category_which_reaches_the_database(run: Run) -> None:
     conn = db.connect(run.database)
     query = (
         "SELECT count(*) FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE c.name = 'Prestiti'"
+        "WHERE c.key = 'prestiti'"
     )
     assert conn.execute(query).fetchone()[0] > 0
     conn.close()
     assert run.load() == dbcli.NEEDS_REVIEW  # the saved rule and category are read again
+
+
+def test_an_unmatched_category_of_before_is_read_by_its_english_name(run: Run) -> None:
+    run.rules.write_text("rules: []\n", encoding="utf-8")
+    config = run.config.read_text(encoding="utf-8")
+    run.config.write_text(config + "unmatched: Unicorni\n", encoding="utf-8")
+    assert run.load() == dbcli.FAILED
+    assert "unmatched: 'unicorni' is no category" in run.output  # by its key
+    run.config.write_text(config + "unmatched: Non classificato\n", encoding="utf-8")
+    assert run.load() == dbcli.NEEDS_REVIEW  # the transfers: no expense or income is left
+    assert "\n4 transactions need a category" in run.output
 
 
 def test_review_asks_nothing_when_every_row_has_a_category(run: Run) -> None:
@@ -298,7 +331,7 @@ PENSION = Path(__file__).parent / "fixtures" / "finpension" / "transactions.tsv"
 
 
 def load_pension(run: Run) -> int:
-    folder = run.folder / "old" / "pension"
+    folder = run.aside / "pension"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "pillar 3a.tsv").write_bytes(PENSION.read_bytes())
     return run.load(folder=folder)
@@ -321,7 +354,7 @@ def test_a_statement_of_several_months_is_one_statement(run: Run) -> None:
 
 def test_files_and_folders_can_be_given_together(run: Run) -> None:
     run.load_august()
-    pension = run.folder / "old" / "pension"
+    pension = run.aside / "pension"
     pension.mkdir(parents=True)
     report = pension / "pillar 3a.tsv"
     report.write_bytes(PENSION.read_bytes())
@@ -330,6 +363,86 @@ def test_files_and_folders_can_be_given_together(run: Run) -> None:
     assert "  staged pillar 3a.tsv (finpension pillar 3a transactions)\n" in run.output
     assert "  staged tastytrade.csv (Tastytrade transactions)\n" in run.output
     assert run("commit") == dbcli.OK
+
+
+def test_a_folder_is_searched_with_its_subfolders_and_hidden_files_are_left_out(
+    run: Run,
+) -> None:
+    drop = run.aside / "drop"
+    drop.mkdir()
+    jan, feb, mar, apr = monthly_migros(drop, MONTHS, Decimal(500))
+    (drop / "spring").mkdir()
+    for month in (mar, apr):
+        month.rename(drop / "spring" / month.name)
+    (drop / "notes").mkdir()
+    (drop / "notes" / "readme.txt").write_text("not a statement", encoding="utf-8")
+    # Copies that would be refused as twins, were they read.
+    for copy in (drop / ".git" / "Jan.csv", drop / "__MACOSX" / "._Feb.csv", drop / ".Feb.csv"):
+        copy.parent.mkdir(exist_ok=True)
+        copy.write_bytes((feb if "Feb" in copy.name else jan).read_bytes())
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(drop), *paths) == dbcli.OK
+    assert run.output.splitlines()[:5] == [  # by name, wherever they are
+        "  staged Apr.csv (Migros Bank account statement)",
+        "  staged Feb.csv (Migros Bank account statement)",
+        "  staged Jan.csv (Migros Bank account statement)",
+        "  staged Mar.csv (Migros Bank account statement)",
+        "  skipped readme.txt (not a statement)",
+    ]
+    assert "8 transactions staged for Lukas.\n" in run.output
+    assert run("commit") == dbcli.OK
+    assert "4 statements committed" in run.output
+
+    # The database's folder below the folder named: its originals and copies are not read.
+    assert (run.database.parent / "originals").is_dir()
+    assert (run.database.parent / "backups").is_dir()
+    assert run("import", str(run.database.parent.parent), *paths) == dbcli.OK
+    assert "refused" not in run.output
+    assert "scrooge.db" not in run.output
+    assert "scrooge-" not in run.output  # a copy
+
+
+def _zip(path: Path, files: list[Path]) -> Path:
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file in files:
+            archive.write(file, f"statements/{file.name}")
+    return path
+
+
+def test_a_zip_is_imported_like_its_files_and_only_they_are_kept(run: Run) -> None:
+    jan, feb, *_ = monthly_migros(run.aside, MONTHS, Decimal(500))
+    archive = _zip(run.aside / "migros.zip", [jan, feb])
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(archive), *paths) == dbcli.OK
+    assert run.output.splitlines()[:2] == [
+        "  staged migros.zip/Feb.csv (Migros Bank account statement)",
+        "  staged migros.zip/Jan.csv (Migros Bank account statement)",
+    ]
+    assert kept(run) == sorted(
+        hashlib.sha256(path.read_bytes()).hexdigest() + ".csv" for path in (jan, feb)
+    )
+    assert run("commit") == dbcli.OK
+    assert "2 statements committed" in run.output
+
+
+def test_a_zip_in_a_folder_is_opened_and_a_broken_one_stops_no_other(run: Run) -> None:
+    drop = run.aside / "drop"
+    drop.mkdir()
+    jan, feb, *_ = monthly_migros(drop, MONTHS, Decimal(500))
+    _zip(drop / "winter.zip", [jan, feb])
+    for month in (jan, feb):
+        month.unlink()
+    (drop / "broken.zip").write_bytes(b"not a zip")
+    paths = ["--rules", str(run.rules), "--instruments", str(run.instruments)]
+    assert run("import", str(drop), *paths) == dbcli.FAILED
+    assert run.output.splitlines()[:5] == [
+        "  staged Apr.csv (Migros Bank account statement)",
+        "  staged Mar.csv (Migros Bank account statement)",
+        "  refused broken.zip (not read): not a zip that can be opened (File is not a zip file)",
+        "  staged winter.zip/Feb.csv (Migros Bank account statement)",
+        "  staged winter.zip/Jan.csv (Migros Bank account statement)",
+    ]
+    assert "8 transactions staged for Lukas.\n" in run.output
 
 
 def test_a_second_broker_account_is_named_by_its_number(run: Run) -> None:
@@ -510,8 +623,14 @@ def test_certificates_come_in_with_the_statements_of_other_months(
 
     # A certificate dated inside the days the statements cover is a statement like the others.
     text = (FIXTURES / "axa" / "certificate.txt").read_text(encoding="utf-8")
-    monkeypatch.setattr(ocr, "read_text", lambda path: text.replace("01.03.2026", "15.09.2026"))
+    servisa = (FIXTURES / "servisa" / "certificate.txt").read_text(encoding="utf-8")
     scan = pillar2 / "Scan 0001.pdf"
+    monkeypatch.setattr(
+        ocr,
+        "read_text",
+        lambda path: text.replace("01.03.2026", "15.09.2026") if path == scan else servisa,
+    )
+    # The scans are in a subfolder too: each file is read once.
     assert run("import", str(run.folder), str(scan), *paths) == dbcli.OK
     assert "Pillar 2 AXA of Lukas: 35,802.00 CHF on 2026-09-15, " in run.output
     assert run.output.count("Next: ") == 1
@@ -910,16 +1029,24 @@ def test_shares_typed_before_the_export_is_imported_are_removed_first(run: Run) 
     assert run.load(folder=export) == dbcli.OK
 
 
+def cells(line: str) -> list[str]:
+    """A row of a table printed in columns: its cells, without an empty one."""
+    return re.split(r" {2,}", line.strip())
+
+
 def test_query_lists_the_matching_rows_and_their_total(closed: Run) -> None:
-    assert closed("query", "--category", "Spesa") == dbcli.OK
-    assert closed.output == (
-        "2026-08-07  Lukas  Swisscard    -41.85  CHF  Spesa  FRISCHMARKT ZENTRUM\n"
-        "2026-08-30  Lukas  Migros       -25.40  CHF  Spesa  KONSUM-1234 ZUERICH\n"
-        "2026-08-31  Lukas  Revolut CHF  -20.00  CHF  Spesa  Konsum\n"
-        "3 transactions\n"
-        "Total:\n"
-        "  -87.25 CHF  (3)\n"
-    )
+    assert closed("query", "--category", "Groceries") == dbcli.OK
+    lines = closed.output.splitlines()
+    table, rest = lines[:3], lines[3:]
+    assert [cells(line) for line in table] == [
+        ["2026-08-07", "Lukas", "Swisscard", "-41.85", "CHF", "Groceries", "FRISCHMARKT ZENTRUM"],
+        ["2026-08-30", "Lukas", "Migros", "-25.40", "CHF", "Groceries", "KONSUM-1234 ZUERICH"],
+        ["2026-08-31", "Lukas", "Revolut CHF", "-20.00", "CHF", "Groceries", "Konsum"],
+    ]
+    assert rest == ["3 transactions", "Total:", "  -87.25 CHF  (3)"]
+    # in columns: each cell starts where the one above it does, whatever the names are
+    starts = {tuple(m.start() for m in re.finditer(r"\S+(?: \S+)*", line)) for line in table}
+    assert len(starts) == 1
 
 
 def test_query_can_print_the_totals_alone_with_a_line_per_period(closed: Run) -> None:
@@ -938,7 +1065,7 @@ def test_query_can_print_the_totals_alone_with_a_line_per_period(closed: Run) ->
 
 def test_query_takes_a_day_a_month_or_a_year_as_either_end(closed: Run) -> None:
     def count(*args: str) -> str:
-        assert closed("query", "--summary", "--category", "Spesa", *args) == dbcli.OK
+        assert closed("query", "--summary", "--category", "Groceries", *args) == dbcli.OK
         return closed.output.partition("\n")[0]
 
     assert count("--from", "2026-08-30") == "2 transactions"
@@ -951,22 +1078,42 @@ def test_query_takes_a_day_a_month_or_a_year_as_either_end(closed: Run) -> None:
 
 def test_query_by_booking_date_shows_that_date(closed: Run) -> None:
     assert closed("query", "--text", "frischmarkt", "--booking", "--from", "2026-09") == dbcli.OK
-    assert closed.output == (
-        "2026-09-04  Lukas  Swisscard  -41.85  CHF  Spesa  FRISCHMARKT ZENTRUM\n"
-        "1 transaction\n"
-        "Total:\n"
-        "  -41.85 CHF  (1)\n"
-    )
+    row, *rest = closed.output.splitlines()
+    assert cells(row) == [
+        "2026-09-04",
+        "Lukas",
+        "Swisscard",
+        "-41.85",
+        "CHF",
+        "Groceries",
+        "FRISCHMARKT ZENTRUM",
+    ]
+    assert rest == ["1 transaction", "Total:", "  -41.85 CHF  (1)"]
 
 
 def test_query_combines_account_amount_and_owner(closed: Run) -> None:
     migros = ("query", "--account", "Migros", "--min", "1000", "--max", "2000")
     assert closed(*migros, "--owner", "Lukas") == dbcli.OK
-    assert closed.output.startswith(
-        "2026-09-01  Lukas  Migros  -1,850.00  CHF  Affitto  Hans Muster\n"
-        "2026-09-08  Lukas  Migros  -1,288.18  CHF           Swisscard AECS GmbH\n"
-        "2 transactions\n"
-    )
+    rent, card, count, *_ = closed.output.splitlines()
+    assert cells(rent) == [
+        "2026-09-01",
+        "Lukas",
+        "Migros",
+        "-1,850.00",
+        "CHF",
+        "Rent",
+        "Hans Muster",
+    ]
+    assert cells(card) == [
+        "2026-09-08",
+        "Lukas",
+        "Migros",
+        "-1,288.18",
+        "CHF",
+        "Swisscard AECS GmbH",
+    ]
+    assert card.index("Swisscard") == rent.index("Hans")  # no category: its column is left blank
+    assert count == "2 transactions"
     assert closed("query", "--owner", "Anna") == dbcli.OK
     assert closed.output == "0 transactions\n"
 
@@ -1026,7 +1173,7 @@ def test_the_config_says_where_the_rules_and_the_instruments_are(
     shutil.move(run.instruments, instruments)
     keys = f"rules: [{data / 'rules.local.yaml'}, {generic}]\ninstruments: {instruments}\n"
     run.config.write_text(CONFIG.format(database=run.database) + keys, encoding="utf-8")
-    august = run.folder / "old" / "august"
+    august = run.aside / "august"
     august.mkdir(parents=True)
     (august / "tastytrade.csv").write_text(AUGUST_PURCHASE, encoding="utf-8")
     assert run("import", str(august)) == dbcli.OK  # the bill's maturity is in `instruments`
@@ -1582,7 +1729,7 @@ def test_import_keeps_the_file_of_every_statement_under_its_digest(run: Run) -> 
 
 
 def test_an_import_that_stores_nothing_keeps_nothing(run: Run) -> None:
-    only = run.folder / "old" / "only"
+    only = run.aside / "only"
     only.mkdir()
     migros = only / "Migros.csv"
     text = (run.folder / "Migros.csv").read_text(encoding="utf-8")
@@ -1635,7 +1782,7 @@ def test_logo_refuses_what_it_cannot_keep(run: Run) -> None:
 
 
 def test_an_export_that_disagrees_with_a_committed_month_says_where(run: Run) -> None:
-    savings = run.folder / "old" / "savings" / "Revolut Savings.tsv"
+    savings = run.aside / "savings" / "Revolut Savings.tsv"
     savings.parent.mkdir(parents=True)
     lines = (run.folder / "Revolut Savings.tsv").read_text(encoding="utf-8").splitlines(True)
     savings.write_text("".join(lines), encoding="utf-8")
@@ -1692,6 +1839,32 @@ def test_the_only_setup_in_users_is_found(tmp_path: Path, monkeypatch: pytest.Mo
     assert "  staged Migros.csv (Migros Bank account statement)\n" in output
     assert (home / "scrooge.db").is_file()
     assert (home / "originals").is_dir()
+
+
+def test_every_command_finds_the_files_of_the_config_from_the_folder_it_runs_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The settings page changes the rules file `import` reads, wherever the config is."""
+    home = _setup(tmp_path, "lukas")
+    write_rules(home)
+    (home / "instruments.yaml").write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
+    shutil.copy(FIXTURES / FILES["Migros.csv"], home / "statements" / "Migros.csv")
+    config = home / "scrooge.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "rules: [users/lukas/rules.yaml]\ninstruments: users/lukas/instruments.yaml\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    code, output = _main("import", "users/lukas/statements", "--config", str(config))
+    assert code == dbcli.OK, output
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert _main("serve", "--config", str(config))[0] == dbcli.OK
+    state = served[-1].state
+    assert state.rules.shared == state.imports.rules[0] == Path("users/lukas/rules.yaml")
+    assert state.imports.categories_file.resolve() == home / "categories.yaml"
+    assert state.database.resolve() == home / "scrooge.db"
 
 
 def test_with_several_setups_one_is_chosen_by_name(

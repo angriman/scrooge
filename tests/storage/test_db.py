@@ -6,17 +6,30 @@ from pathlib import Path
 
 import pytest
 
-from scrooge import staging
+from scrooge import categories, staging
 from scrooge.models import CashBalance, Transaction
-from scrooge.storage import db, pairs
+from scrooge.storage import db, pairs, store
 from scrooge.storage.ids import transaction_ids
 from tests.storage.conftest import NOW
 from tests.storage.helpers import CLOSED_AT, OWNER, batch, dump, migros, statement, txn
+
+_EVERY = db.migrations  # every migration, whatever a test puts in its place
 
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     return {row["name"] for row in rows}
+
+
+def _migrate_up_to(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, last: int
+) -> list[int]:
+    """Migrate as the code whose newest migration is `last` did: no later one ever runs.
+
+    A migration's test stays as it was written when migrations are added after it.
+    """
+    monkeypatch.setattr(db, "migrations", lambda: [m for m in _EVERY() if m[0] <= last])
+    return db.migrate(conn, NOW)
 
 
 def test_a_new_database_gets_the_whole_schema(conn: sqlite3.Connection) -> None:
@@ -117,6 +130,53 @@ def test_a_python_migration_runs_in_its_own_transaction(monkeypatch: pytest.Monk
     assert db.version(conn) == 2
 
 
+_PARENT_AND_CHILD = """
+CREATE TABLE parent (id INTEGER PRIMARY KEY, side TEXT NOT NULL CHECK (side IN ('a'))) STRICT;
+CREATE TABLE child (parent_id INTEGER REFERENCES parent (id)) STRICT;
+INSERT INTO parent VALUES (1, 'a');
+INSERT INTO child VALUES (1);
+"""
+
+
+def _rebuild_parent(conn: sqlite3.Connection, *, keep: bool = True) -> None:
+    """Build `parent` again with another CHECK, as a table others refer to is changed."""
+    conn.execute("CREATE TABLE new (id INTEGER PRIMARY KEY, side TEXT NOT NULL) STRICT")
+    if keep:
+        conn.execute("INSERT INTO new SELECT id, 'b' FROM parent")
+    conn.execute("DROP TABLE parent")
+    conn.execute("ALTER TABLE new RENAME TO parent")
+
+
+def test_a_rebuild_runs_with_foreign_keys_off_and_turns_them_back_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    steps: list[tuple[int, db.Migration]] = [
+        (1, _PARENT_AND_CHILD),
+        (2, db.Rebuild(_rebuild_parent)),
+    ]
+    monkeypatch.setattr(db, "migrations", lambda: steps)
+    conn = db.connect(":memory:")
+    assert db.migrate(conn, NOW) == [1, 2]
+    assert conn.execute("SELECT side FROM parent").fetchone()[0] == "b"
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        conn.execute("INSERT INTO child VALUES (9)")
+
+
+def test_a_rebuild_that_breaks_a_reference_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    def losing(conn: sqlite3.Connection) -> None:
+        _rebuild_parent(conn, keep=False)
+
+    steps: list[tuple[int, db.Migration]] = [(1, _PARENT_AND_CHILD), (2, db.Rebuild(losing))]
+    monkeypatch.setattr(db, "migrations", lambda: steps)
+    conn = sqlite3.connect(":memory:", isolation_level=None)  # foreign keys left off
+    with pytest.raises(db.MigrationError, match="rows of child without their parent"):
+        db.migrate(conn, NOW)
+    assert conn.execute("SELECT side FROM parent").fetchone()[0] == "a"
+    assert db.version(conn) == 1
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 0  # as it was
+
+
 def test_a_transaction_is_all_or_nothing(conn: sqlite3.Connection) -> None:
     def failing() -> None:
         with db.transaction(conn):
@@ -192,10 +252,7 @@ def test_migration_0003_commits_the_statements_of_committed_months(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:2])
-    assert db.migrate(conn, NOW) == [1, 2]
-    monkeypatch.setattr(db, "migrations", lambda: every[:3])
+    assert _migrate_up_to(conn, monkeypatch, 2) == [1, 2]
 
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
     conn.execute("INSERT INTO currencies VALUES ('CHF', 2)")
@@ -223,7 +280,7 @@ def test_migration_0003_commits_the_statements_of_committed_months(
         """
     )
 
-    assert db.migrate(conn, NOW) == [3]
+    assert _migrate_up_to(conn, monkeypatch, 3) == [3]
     stored = conn.execute("SELECT filename, committed_at FROM statement_files ORDER BY id")
     assert [tuple(row) for row in stored] == [
         ("august", "2026-09-02T08:00:00+00:00"),
@@ -243,10 +300,7 @@ def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:3])
-    assert db.migrate(conn, NOW) == [1, 2, 3]
-    monkeypatch.setattr(db, "migrations", lambda: every[:4])
+    assert _migrate_up_to(conn, monkeypatch, 3) == [1, 2, 3]
 
     conn.executescript(
         """
@@ -259,7 +313,7 @@ def test_migration_0004_gives_the_restaurants_category_the_name_of_its_group(
         """
     )
 
-    assert db.migrate(conn, NOW) == [4]
+    assert _migrate_up_to(conn, monkeypatch, 4) == [4]
     names = conn.execute("SELECT id, name FROM categories ORDER BY id")
     assert [tuple(row) for row in names] == [
         (1, "Ristoranti e bar"),
@@ -285,17 +339,25 @@ def _revolut_rows() -> list[Transaction]:
 
 def _staged_before_0005(monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:4])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4]
+    assert _migrate_up_to(conn, monkeypatch, 4) == [1, 2, 3, 4]
     monkeypatch.undo()
     # pairing is of the schema of today (migration 0007) and nothing here is paired
     monkeypatch.setattr(pairs, "mark", lambda conn: 0)
+    # the categories are found by their key since 0011: it is there while today's code stages
+    conn.execute("ALTER TABLE categories ADD COLUMN key TEXT NOT NULL DEFAULT ''")
+    # and it names the sides in English (0012): the CHECK of then waits while it stages
+    conn.execute("PRAGMA ignore_check_constraints = ON")
     rows = _revolut_rows()
     revolut = statement(
         "revolut", rows, [CashBalance("Revolut EUR", "EUR", Decimal(20), Decimal(8))]
     )
     staging.stage(conn, batch(revolut, migros("100", "-1", description=TWICE)), CLOSED_AT)
+    conn.execute(
+        "UPDATE categories SET side = CASE side WHEN 'expenses' THEN 'uscite' "
+        "WHEN 'income' THEN 'entrate' ELSE side END"
+    )
+    conn.execute("PRAGMA ignore_check_constraints = OFF")
+    conn.execute("ALTER TABLE categories DROP COLUMN key")
     monkeypatch.undo()
     return conn
 
@@ -307,7 +369,7 @@ def test_migration_0005_reads_revolut_accents_as_the_extractor_now_does(
     before = transaction_ids(OWNER, [("revolut", row) for row in _revolut_rows()])
     conn.execute("INSERT INTO overrides VALUES (?, NULL, 'expense', '', 'x')", (before[1],))
 
-    assert db.migrate(conn, NOW)[0] == 5
+    assert _migrate_up_to(conn, monkeypatch, 5) == [5]
     meant = [
         replace(row, description="Caffè Ölberg", counterparty="Caffè Ölberg")
         if row.description == TWICE
@@ -340,7 +402,7 @@ def test_migration_0005_stops_at_a_row_whose_id_does_not_follow_from_it(
     conn.execute("UPDATE transactions SET id = 'typed' WHERE id = ?", (first,))
     was = dump(conn)
     with pytest.raises(db.MigrationError, match="transaction typed: its id does not follow"):
-        db.migrate(conn, NOW)
+        _migrate_up_to(conn, monkeypatch, 5)
     assert dump(conn) == was
     assert db.version(conn) == 4
     conn.close()
@@ -348,9 +410,7 @@ def test_migration_0005_stops_at_a_row_whose_id_does_not_follow_from_it(
 
 def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:6])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6]
+    assert _migrate_up_to(conn, monkeypatch, 6) == [1, 2, 3, 4, 5, 6]
     conn.executescript(
         """
         INSERT INTO owners (id, name) VALUES (1, 'Lukas'), (2, 'Anna');
@@ -362,8 +422,7 @@ def test_migration_0007_marks_nothing_as_made_by_pairing(monkeypatch: pytest.Mon
             VALUES ('t1', 1, '2026-09-07', '2026-09-07', -1000000000, 'EUR', 'x', 'expense', 2);
         """
     )
-    monkeypatch.setattr(db, "migrations", lambda: every[:7])
-    assert db.migrate(conn, NOW) == [7]
+    assert _migrate_up_to(conn, monkeypatch, 7) == [7]
     row = conn.execute("SELECT counterparty_owner_id, counterparty_paired FROM transactions")
     assert tuple(row.fetchone()) == (2, 0)  # a mark made before is kept as the statement's own
     with pytest.raises(sqlite3.IntegrityError):
@@ -375,9 +434,7 @@ def test_migration_0008_takes_stored_closes_as_asked_for_as_the_old_rule_did(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:7])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7]
+    assert _migrate_up_to(conn, monkeypatch, 7) == [1, 2, 3, 4, 5, 6, 7]
     monkeypatch.undo()
     conn.executescript(
         """
@@ -391,8 +448,7 @@ def test_migration_0008_takes_stored_closes_as_asked_for_as_the_old_rule_did(
         INSERT INTO fx_rates VALUES ('2026-09-05', 'USD', '0.8', 'manual', NULL);
         """
     )
-    monkeypatch.setattr(db, "migrations", lambda: every[:8])
-    assert db.migrate(conn, NOW) == [8]
+    assert _migrate_up_to(conn, monkeypatch, 8) == [8]
     stored = conn.execute("SELECT series, source, first_day FROM asked_from ORDER BY 1")
     assert [tuple(row) for row in stored] == [
         ("close:1", "fetched:fake", "2026-09-08"),  # 20 days before the first close
@@ -405,10 +461,7 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = db.connect(":memory:")
-    every = db.migrations()
-    monkeypatch.setattr(db, "migrations", lambda: every[:8])
-    assert db.migrate(conn, NOW) == [1, 2, 3, 4, 5, 6, 7, 8]
-    monkeypatch.undo()
+    assert _migrate_up_to(conn, monkeypatch, 8) == [1, 2, 3, 4, 5, 6, 7, 8]
     conn.execute("INSERT INTO owners (id, name) VALUES (1, 'A')")
     conn.execute("INSERT OR IGNORE INTO currencies (code, decimals) VALUES ('USD', 2)")
     for source, name, end in (("ibkr", "i", "2026-09-30"), ("migros", "m", "2026-09-30")):
@@ -427,7 +480,7 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     for source in ("statement", "manual"):
         conn.execute("INSERT INTO prices VALUES (1, '2026-09-30', '50', ?, NULL)", (source,))
 
-    assert db.migrate(conn, NOW) == [9]
+    assert _migrate_up_to(conn, monkeypatch, 9) == [9]
     kept = conn.execute(
         "SELECT f.source, r.currency, r.date, r.rate_to_chf FROM statement_rates r "
         "JOIN statement_files f ON f.id = r.statement_file_id"
@@ -438,4 +491,275 @@ def test_migration_0009_moves_printed_rates_to_their_statement_and_drops_the_res
     assert [row[0] for row in conn.execute("SELECT source FROM prices")] == ["manual"]
     conn.execute("DELETE FROM statement_files WHERE source = 'ibkr'")
     assert conn.execute("SELECT count(*) FROM statement_rates").fetchone()[0] == 0
+    conn.close()
+
+
+def test_migration_0010_gives_the_taxonomy_its_english_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    assert _migrate_up_to(conn, monkeypatch, 9) == list(range(1, 10))
+    monkeypatch.undo()
+    italian, english = categories.LABELS_IT, categories.LABELS_EN
+    insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
+    expected: list[tuple[str, str, str | None]] = []
+
+    def add(key: str, side: str, parent: int | None = None, group: str | None = None) -> int:
+        expected.append((side, english[key], group and english[group]))
+        row = conn.execute(insert, (italian[key], parent, side)).lastrowid
+        assert row is not None
+        return row
+
+    groups = {group: add(group, "uscite") for group in categories.EXPENSE_GROUPS}
+    for group, leaves in categories.EXPENSE_GROUPS.items():
+        for leaf in leaves:
+            add(leaf, "uscite", groups[group], group)
+    for side, names in (("entrate", categories.INCOME_LEAVES), ("transfer", categories.TRANSFERS)):
+        for name in names:
+            add(name, side)
+    # added by hand: under a group of the taxonomy, and a name of the taxonomy under one's own
+    conn.execute(insert, ("Spedizioni", groups[categories.GROUP_TRANSPORT], "uscite"))
+    own = conn.execute(insert, ("Prestiti", None, "uscite")).lastrowid
+    conn.execute(insert, ("Affitto", own, "uscite"))
+    expected += [
+        ("uscite", "Spedizioni", english[categories.GROUP_TRANSPORT]),
+        ("uscite", "Prestiti", None),
+        ("uscite", "Affitto", "Prestiti"),  # not the taxonomy's Affitto: left alone
+    ]
+
+    assert _migrate_up_to(conn, monkeypatch, 10) == [10]
+    tree = conn.execute(
+        "SELECT c.side, c.name, p.name FROM categories c "
+        "LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.id"
+    )
+    assert [tuple(row) for row in tree] == expected
+    conn.close()
+
+
+def _italian_taxonomy(conn: sqlite3.Connection) -> dict[str, int]:
+    """The taxonomy as a database had it before 0010, by the Italian names: id of each key,
+    a top-level category of the expenses under `group:` and its key."""
+    insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
+    ids: dict[str, int] = {}
+    for group, leaves in categories.EXPENSE_GROUPS.items():
+        top = conn.execute(insert, (categories.LABELS_IT[group], None, "uscite")).lastrowid
+        assert top is not None
+        ids[f"group:{group}"] = top
+        for leaf in leaves:
+            row = conn.execute(insert, (categories.LABELS_IT[leaf], top, "uscite")).lastrowid
+            assert row is not None
+            ids[f"uscite:{leaf}"] = row
+    for side, names in (("entrate", categories.INCOME_LEAVES), ("transfer", categories.TRANSFERS)):
+        for name in names:
+            row = conn.execute(insert, (categories.LABELS_IT[name], None, side)).lastrowid
+            assert row is not None
+            ids[f"{side}:{name}"] = row
+    return ids
+
+
+def test_migration_0011_gives_each_category_a_key_and_the_rows_their_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    # as the database of the NAS: at schema 6, then every migration since in one go
+    assert _migrate_up_to(conn, monkeypatch, 6) == list(range(1, 7))
+    ids = _italian_taxonomy(conn)
+    insert = "INSERT INTO categories (name, parent_id, side) VALUES (?, ?, ?)"
+
+    def added(name: str, side: str = "uscite", parent: int | None = None) -> int:
+        row = conn.execute(insert, (name, parent, side)).lastrowid
+        assert row is not None
+        return row
+
+    transport = ids[f"group:{categories.GROUP_TRANSPORT}"]
+    own = added("Prestiti")
+    mine = {
+        "Spedizioni": added("Spedizioni", parent=transport),  # added in categories.yaml
+        "Corriere espresso": added("Corriere espresso", parent=transport),  # renamed on a page
+        "Prestiti": added("Prestiti", parent=own),  # a leaf of its group's name
+        "Spesa": added("Spesa", parent=own),  # a name of the taxonomy under a group of one's own
+        "Groceries": added("Groceries", parent=own),  # in English, the same
+        "Car-wash": added("Car-wash", parent=transport),
+        "Car wash": added("Car wash", parent=transport),  # another name, the same key
+        "Attività extra": added("Attività extra", parent=own),
+        "?!": added("?!", parent=own),  # no letter at all
+        "Affitti": added("Affitti", "entrate"),
+    }
+    conn.executescript(
+        """
+        INSERT INTO owners (id, name) VALUES (1, 'Lukas');
+        INSERT INTO currencies (code, decimals) VALUES ('CHF', 2);
+        INSERT INTO accounts (id, owner_id, name, kind, currency, source)
+            VALUES (1, 1, 'Migros', 'bank', 'CHF', 'migros');
+        """
+    )
+    carried = (ids[f"uscite:{categories.GROCERIES}"], mine["Spedizioni"])
+    for n, category in enumerate(carried):
+        conn.execute(
+            "INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency, "
+            "description, kind, category_id, category_source) VALUES (?, 1, '2026-09-01', "
+            "'2026-09-01', -1, 'CHF', 'x', 'expense', ?, 'rule')",
+            (f"t{n}", category),
+        )
+
+    assert _migrate_up_to(conn, monkeypatch, 11) == list(range(7, 12))
+    keys = {row["id"]: row["key"] for row in conn.execute("SELECT id, key FROM categories")}
+    for name, number in ids.items():
+        assert keys[number] == name.partition(":")[2]  # every built-in one found where it is
+    assert {name: keys[number] for name, number in mine.items()} == {
+        "Spedizioni": "spedizioni",
+        "Corriere espresso": "corriere_espresso",
+        "Prestiti": "prestiti",
+        "Spesa": "spesa",
+        "Groceries": "groceries_2",  # never mistaken for the taxonomy's
+        "Car-wash": "car_wash",
+        "Car wash": "car_wash_2",
+        "Attività extra": "attivita_extra",
+        "?!": f"category_{mine['?!']}",
+        "Affitti": "affitti",
+    }
+    assert keys[own] == "prestiti"
+    names = conn.execute("SELECT name FROM categories WHERE id = ?", (mine["Car wash"],))
+    assert names.fetchone()[0] == "Car wash"  # an added category keeps its name: its label
+    shown = conn.execute("SELECT id, category, category_parent FROM committed_transactions")
+    assert [tuple(row) for row in shown] == [
+        ("t0", categories.GROCERIES, categories.GROUP_FOOD),
+        ("t1", "spedizioni", categories.GROUP_TRANSPORT),
+    ]
+    with pytest.raises(sqlite3.IntegrityError):  # a key is unique where the name was
+        conn.execute(
+            "INSERT INTO categories (key, name, parent_id, side) VALUES ('spedizioni', 'Ship', ?, "
+            "'uscite')",
+            (transport,),
+        )
+    monkeypatch.undo()
+    db.migrate(conn, NOW)
+    count = "SELECT count(*) FROM categories"
+    before = conn.execute(count).fetchone()[0]
+    store.seed_categories(conn)  # the taxonomy of today finds every key it has
+    assert conn.execute(count).fetchone()[0] == before
+    conn.close()
+
+
+def test_a_python_migration_says_when_it_rebuilds_a_table() -> None:
+    steps = dict(db.migrations())
+    assert isinstance(steps[12], db.Rebuild)
+    assert not isinstance(steps[11], db.Rebuild)
+
+
+def _household_at_6(conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """Schema 6, as the NAS is: the taxonomy, categories of the user's own, committed rows of
+    each side and an override. Returns the ids of the categories, the user's by name."""
+    assert _migrate_up_to(conn, monkeypatch, 6) == list(range(1, 7))
+    ids = _italian_taxonomy(conn)
+    insert = "INSERT INTO categories (name, parent_id, side, sort_order) VALUES (?, ?, ?, ?)"
+
+    def added(name: str, side: str, parent: int | None, order: int) -> int:
+        row = conn.execute(insert, (name, parent, side, order)).lastrowid
+        assert row is not None
+        return row
+
+    own = added("Prestiti", "uscite", None, 90)
+    loan = added("Prestiti", "uscite", own, 91)  # its own group's leaf, of the same name
+    rent = added("Affitti", "entrate", None, 92)
+    conn.executescript(
+        """
+        INSERT INTO owners (id, name) VALUES (1, 'Lukas');
+        INSERT INTO currencies (code, decimals) VALUES ('CHF', 2);
+        INSERT INTO accounts (id, owner_id, name, kind, currency, source)
+            VALUES (1, 1, 'Migros', 'bank', 'CHF', 'migros');
+        INSERT INTO statement_files (id, owner_id, source, filename, sha256, period_start,
+            period_end, reconciled, imported_at, committed_at)
+            VALUES (1, 1, 'migros', 'm.csv', 'x', '2026-09-01', '2026-09-30', 'yes', 'x', 'x');
+        """
+    )
+    carried = {
+        "t0": ids[f"uscite:{categories.GROCERIES}"],
+        "t1": loan,
+        "t2": rent,
+        "t3": ids[f"entrate:{categories.SALARY}"],
+        "t4": ids[f"transfer:{categories.OWN_TRANSFER}"],
+    }
+    for number, category in carried.items():
+        conn.execute(
+            "INSERT INTO transactions (id, account_id, date, booking_date, amount_nano, currency, "
+            "description, kind, category_id, category_source, statement_file_id) VALUES (?, 1, "
+            "'2026-09-01', '2026-09-01', -1, 'CHF', 'x', 'expense', ?, 'manual', 1)",
+            (number, category),
+        )
+    conn.execute(
+        "INSERT INTO overrides (transaction_id, category_id, created_at) VALUES ('t1', ?, 'x')",
+        (loan,),
+    )
+    return {**ids, "own": own, "loan": loan, "rent": rent}
+
+
+_TREE = "SELECT id, name, parent_id, side, sort_order, key FROM categories ORDER BY id"
+_ENGLISH = {"uscite": "expenses", "entrate": "income", "transfer": "transfer"}
+
+
+def test_migration_0012_names_the_sides_in_english_and_keeps_everything_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    _household_at_6(conn, monkeypatch)
+    assert _migrate_up_to(conn, monkeypatch, 11) == list(range(7, 12))
+    before = [tuple(row) for row in conn.execute(_TREE)]
+    indexes = "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'categories'"
+    index = [tuple(row) for row in conn.execute(indexes)]
+
+    assert _migrate_up_to(conn, monkeypatch, 12) == [12]
+    after = [tuple(row) for row in conn.execute(_TREE)]
+    assert after == [
+        (n, name, up, _ENGLISH[side], at, key) for n, name, up, side, at, key in before
+    ]
+    assert [tuple(row) for row in conn.execute(indexes)] == index
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    conn.close()
+
+
+def test_migration_0012_keeps_every_reference_of_a_database_at_schema_6(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.connect(":memory:")
+    ids = _household_at_6(conn, monkeypatch)
+    sides = "SELECT id, side FROM categories ORDER BY id"
+    before = [tuple(row) for row in conn.execute(sides)]
+
+    assert _migrate_up_to(conn, monkeypatch, 12) == list(range(7, 13))  # as the NAS will
+    assert [tuple(row) for row in conn.execute(sides)] == [(n, _ENGLISH[s]) for n, s in before]
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    keys = {row["id"]: row["key"] for row in conn.execute("SELECT id, key FROM categories")}
+    assert (keys[ids["own"]], keys[ids["loan"]], keys[ids["rent"]]) == (
+        "prestiti",
+        "prestiti",
+        "affitti",
+    )
+    shown = conn.execute(
+        "SELECT id, category, category_parent, category_side FROM committed_transactions "
+        "ORDER BY id"
+    )
+    assert [tuple(row) for row in shown] == [
+        ("t0", categories.GROCERIES, categories.GROUP_FOOD, "expenses"),
+        ("t1", "prestiti", "prestiti", "expenses"),
+        ("t2", "affitti", None, "income"),
+        ("t3", categories.SALARY, None, "income"),
+        ("t4", categories.OWN_TRANSFER, None, "transfer"),
+    ]
+    overridden = conn.execute("SELECT category_id FROM overrides WHERE transaction_id = 't1'")
+    assert overridden.fetchone()[0] == ids["loan"]
+    add = "INSERT INTO categories (key, name, parent_id, side) VALUES (?, ?, ?, ?)"
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK"):  # the old names are gone
+        conn.execute(add, ("x", "X", None, "uscite"))
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):  # a key is still unique
+        conn.execute(add, ("prestiti", "P", ids["own"], "expenses"))
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):  # and a parent real
+        conn.execute(add, ("y", "Y", 999, "expenses"))
+    monkeypatch.undo()
+    assert db.migrate(conn, NOW) == []
+    count = "SELECT count(*) FROM categories"
+    before_seed = conn.execute(count).fetchone()[0]
+    store.seed_categories(conn)  # the taxonomy of today finds every category on its side
+    assert conn.execute(count).fetchone()[0] == before_seed
     conn.close()

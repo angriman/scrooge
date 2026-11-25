@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import merchants
+from scrooge import categories, merchants
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -23,7 +23,7 @@ def month(n: int, day: int) -> date:
 
 LUKAS = [
     *(txn("-100", date=month(n, 5), source_ref=f"f{n}", counterparty=SHOP) for n in range(14)),
-    txn("6000", date=month(13, 25), source_ref="p", kind=Kind.INCOME, category="Stipendio"),
+    txn("6000", date=month(13, 25), source_ref="p", kind=Kind.INCOME, category=categories.SALARY),
     txn("-30", date=date(2026, 8, 9), source_ref="1", counterparty="Coop-3 Bern"),
     txn("-45", date=date(2025, 7, 9), source_ref="2", counterparty="Jelmoli"),
 ]
@@ -33,7 +33,7 @@ LUKAS_USD = [
         date=date(2026, 3, 2),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Commissioni",
+        category=categories.FEES,
         account="IBKR USD",
         currency="USD",
         source_file="ibkr.csv",

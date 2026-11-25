@@ -479,7 +479,7 @@ export interface CashFlowPeriod extends Saved {
 	rate_salary_12: Amount | null;
 	/** Spent in each of `CashFlowReport.parts`. */
 	spent_by: Record<string, Amount>;
-	/** Earned in each income group (Lavoro, Investimenti, Altro). */
+	/** Earned in each income group (Work, Investments, Other). */
 	earned_by: Record<string, Amount>;
 }
 
@@ -539,8 +539,9 @@ export interface CashFlowReport {
 /** Who paid what the household spent over a range (src/scrooge/paidby.py `PaidBy`). */
 export interface PaidBy {
 	spent: Amount;
-	/** Everyone with statements committed, by name; `share` in percent of `spent`. `settled`:
-	 * what they spent, and sent the others, less what the others sent them. */
+	/** Everyone with statements committed, by name; `share` in percent of `spent`, whole and
+	 * shared out so that the people add up to 100. `settled`: what they spent, and sent the
+	 * others, less what the others sent them. */
 	people: {
 		name: string;
 		spent: Amount;
@@ -743,8 +744,8 @@ export interface TransactionsContext {
 	currency: string;
 	/** The amounts are money earned (a category of income), not money spent. */
 	earned: boolean;
-	/** The amounts are an account's net flow: money in less money out, every row of it
-	 * counted, transfers too; above nothing, money put aside. */
+	/** The amounts are an account's net flow: money moved in less money moved out, not what
+	 * the money earned or cost (dividends, interest, fees); above nothing, money put aside. */
 	net: boolean;
 	/** Two years of months up to the one of `through`, oldest first; none when nothing is
 	 * committed or a rate is missing. */

@@ -19,23 +19,23 @@ const category = (
 ): ListedCategory => ({ name, side, parent, built_in, rows });
 
 const LISTED = [
-	category('Spesa', 'uscite', 'Alimentari', { rows: 3 }),
-	category('Trading', 'uscite', 'Investimenti'),
+	category('Groceries', 'uscite', 'Food', { rows: 3 }),
+	category('Trading', 'uscite', 'Investments'),
 	category('Prestiti', 'uscite', 'Prestiti', { built_in: false }),
-	category('Stipendio', 'entrate'),
+	category('Salary', 'entrate'),
 	category('Trading', 'entrate'),
-	category('Giroconto', 'transfer'),
-	category('Topup Revolut', 'transfer')
+	category('Own transfer', 'transfer'),
+	category('Revolut top-up', 'transfer')
 ];
 
 describe('sections', () => {
 	it('puts each category under its heading, in the order they come', () => {
 		expect(sections(LISTED).map((s) => [s.heading, s.categories.map((c) => c.name)])).toEqual([
-			['Alimentari', ['Spesa']],
-			['Investimenti', ['Trading']],
+			['Food', ['Groceries']],
+			['Investments', ['Trading']],
 			['Prestiti', ['Prestiti']],
-			['Income', ['Stipendio', 'Trading']],
-			['Between accounts', ['Giroconto', 'Topup Revolut']]
+			['Income', ['Salary', 'Trading']],
+			['Between accounts', ['Own transfer', 'Revolut top-up']]
 		]);
 	});
 });
@@ -43,13 +43,13 @@ describe('sections', () => {
 describe('mergeInto', () => {
 	it('offers the others on every side it is on, each name once', () => {
 		expect(mergeInto(LISTED, LISTED[2])).toEqual([
-			{ heading: 'Alimentari', names: ['Spesa'] },
-			{ heading: 'Investimenti', names: ['Trading'] }
+			{ heading: 'Food', names: ['Groceries'] },
+			{ heading: 'Investments', names: ['Trading'] }
 		]);
 		expect(mergeInto(LISTED, LISTED[3])).toEqual([{ heading: 'Income', names: ['Trading'] }]);
 		expect(mergeInto(LISTED, LISTED[1])).toEqual([]); // Trading is on both sides
 		expect(mergeInto(LISTED, LISTED[5])).toEqual([
-			{ heading: 'Between accounts', names: ['Topup Revolut'] }
+			{ heading: 'Between accounts', names: ['Revolut top-up'] }
 		]);
 	});
 });

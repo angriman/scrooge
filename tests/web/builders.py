@@ -12,7 +12,7 @@ from pathlib import Path
 from httpx2 import Response
 from starlette.testclient import TestClient
 
-from scrooge import importing, staging
+from scrooge import categories, importing, staging
 from scrooge.models import Kind, Transaction
 from scrooge.storage import db
 from scrooge.web import app as webapp
@@ -60,13 +60,15 @@ AUGUST_DAYS = (date(2026, 8, 1), date(2026, 8, 31))
 SEPTEMBER_DAYS = (date(2026, 9, 1), date(2026, 9, 30))
 LUKAS_AUGUST = [
     txn("-45.20", date=date(2026, 8, 3), source_ref="1"),
-    txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Stipendio"),
+    txn(
+        "6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category=categories.SALARY
+    ),
     txn(
         "-1000",
         date=date(2026, 8, 28),
         source_ref="3",
         kind=Kind.TRANSFER,
-        category="Giroconto",
+        category=categories.OWN_TRANSFER,
         description="SAVINGS TOPUP AUG",
     ),
 ]
@@ -78,7 +80,7 @@ LUKAS_SEPTEMBER = [
         date=date(2026, 9, 20),
         source_ref="6",
         kind=Kind.TRANSFER,
-        category="Giroconto",
+        category=categories.OWN_TRANSFER,
         description="SAVINGS TOPUP",
     ),
 ]
@@ -132,7 +134,7 @@ def category_of(database: Path, row: str) -> tuple[str | None, str | None]:
     """The category of a row and where it came from."""
     conn = sqlite3.connect(database)
     (found,) = conn.execute(
-        "SELECT c.name, t.category_source FROM transactions t "
+        "SELECT c.key, t.category_source FROM transactions t "
         "LEFT JOIN categories c ON c.id = t.category_id WHERE t.id = ?",
         (row,),
     ).fetchall()

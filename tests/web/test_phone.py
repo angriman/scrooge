@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
@@ -16,8 +17,16 @@ from tests.web.builders import BUILT, close, household
 
 WEB = Path(webapp.__file__).parent
 ROWS = [
-    txn("6000", date=date(2026, 8, 25), source_ref="1", kind=Kind.INCOME, category="Stipendio"),
-    txn("-45.20", date=date(2026, 8, 3), source_ref="2", category="Spesa", counterparty="Bakery"),
+    txn(
+        "6000", date=date(2026, 8, 25), source_ref="1", kind=Kind.INCOME, category=categories.SALARY
+    ),
+    txn(
+        "-45.20",
+        date=date(2026, 8, 3),
+        source_ref="2",
+        category=categories.GROCERIES,
+        counterparty="Bakery",
+    ),
 ]
 PAGES = ["/", "/holdings", "/analysis", "/transactions", "/months"]
 VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'

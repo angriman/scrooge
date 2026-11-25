@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import savings
+from scrooge import categories, savings
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
 from scrooge.savings import Totals
@@ -20,17 +20,23 @@ START, END = date(2025, 1, 1), date(2026, 8, 31)
 JULY = date(2026, 7, 10)
 LUKAS = [
     *salaries("5000", START, 20),
-    *monthly("-1800", 1, "rent", category="Affitto"),
-    txn("300", date=JULY, source_ref="1", kind=Kind.TRADING, category="Trading"),
-    txn("-9920", date=JULY, source_ref="2", kind=Kind.SECURITY_TRADE, category="Investimenti"),
+    *monthly("-1800", 1, "rent", category=categories.RENT),
+    txn("300", date=JULY, source_ref="1", kind=Kind.TRADING, category=categories.TRADING),
+    txn(
+        "-9920",
+        date=JULY,
+        source_ref="2",
+        kind=Kind.SECURITY_TRADE,
+        category=categories.INVESTMENTS,
+    ),
     # A present for her, and her share of the rent from her: each leg also on her side.
-    txn("-200", date=JULY, source_ref="3", category="Regali", counterparty="ANNA MEIER"),
+    txn("-200", date=JULY, source_ref="3", category=categories.GIFTS, counterparty="ANNA MEIER"),
     txn(
         "900",
         date=JULY,
         source_ref="4",
         kind=Kind.INCOME,
-        category="Rimborsi",
+        category=categories.REFUNDS,
         counterparty="ANNA MEIER",
     ),
 ]
@@ -42,10 +48,10 @@ ANNA = [
         date=JULY,
         source_ref="2",
         kind=Kind.INCOME,
-        category="Regali ricevuti",
+        category=categories.GIFTS_RECEIVED,
         counterparty="LUKAS MEIER",
     ),
-    txn("-900", date=JULY, source_ref="3", category="Affitto", counterparty="LUKAS MEIER"),
+    txn("-900", date=JULY, source_ref="3", category=categories.RENT, counterparty="LUKAS MEIER"),
 ]
 
 
@@ -80,7 +86,7 @@ def test_the_range_against_the_same_range_a_year_before(conn: sqlite3.Connection
     # Her share of the rent lowers what he spent; the present for her is spent.
     assert result.totals == Totals(D(40300), D(13700), D(40000))
     assert result.totals.saved == D(26600)
-    assert (result.totals.rate, result.totals.from_work) == (D("0.660"), D("0.993"))
+    assert (result.totals.rate, result.totals.from_work) == (D(26600) / 40300, D(40000) / 40300)
     # 26600 saved of 40000 of salary.
     assert result.totals.rate_salary == D("0.665")
     assert result.year_before == Totals(D(40000), D(14400), D(40000))
@@ -91,9 +97,9 @@ def test_each_period_with_the_rate_of_its_twelve_months(conn: sqlite3.Connection
     july = by_name["2026-07"]
     assert july.totals == Totals(D(5300), D(1100), D(5000))
     # August 2025 to July 2026: 39400 of 60300 saved.
-    assert july.rate == D("0.653")
+    assert july.rate == D(39400) / 60300
     # Of the 60000 the salary brought in over those months.
-    assert july.rate_salary == D("0.657")
+    assert july.rate_salary == D(39400) / 60000
     november = saved(conn, first=date(2025, 11, 1), last=date(2025, 11, 30)).periods[0]
     assert (november.rate, november.rate_salary) == (None, None)
 

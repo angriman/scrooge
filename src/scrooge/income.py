@@ -19,21 +19,22 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from scrooge import analysis, cashflow
+from scrooge import analysis, cashflow, categories
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY
+from scrooge.storage import store
 
-LAVORO, INVESTIMENTI, ALTRO = "Lavoro", "Investimenti", "Altro"
-GROUPS = (LAVORO, INVESTIMENTI, ALTRO)  # as they are stacked and listed
-# The group of each income leaf; every other leaf is ALTRO.
+# Where income comes from, as the page shows it: not categories.
+WORK, INVESTMENTS, OTHER = "Work", "Investments", "Other"
+GROUPS = (WORK, INVESTMENTS, OTHER)  # as they are stacked and listed
+# The group of each income leaf; every other leaf is OTHER.
 _GROUP_OF = {
-    "Stipendio": LAVORO,
-    "Dividendi": INVESTIMENTI,
-    "Interessi": INVESTIMENTI,
-    "Trading": INVESTIMENTI,
+    categories.SALARY: WORK,
+    categories.DIVIDENDS: INVESTMENTS,
+    categories.INTEREST: INVESTMENTS,
+    categories.TRADING: INVESTMENTS,  # a leaf on both sides: what was won and what was lost
 }
-_TRADING = "Trading"  # a leaf on both sides: what was won and what was lost
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +43,7 @@ class Period:
     first: date
     last: date
     groups: dict[str, Decimal]  # every one of GROUPS, in that order
-    employer: Decimal | None  # LAVORO's share of income in the twelve months ending with it
+    employer: Decimal | None  # WORK's share of income in the twelve months ending with it
 
     @property
     def total(self) -> Decimal:
@@ -72,13 +73,13 @@ def is_income(row: Counted) -> bool:
     if row.counterparty_owner is not None:
         return False
     if row.investing:
-        return row.leaf == _TRADING
+        return row.leaf == categories.TRADING
     return row.side == cashflow.INCOME
 
 
 def group(row: Counted) -> str:
     """The group of an income row."""
-    return INVESTIMENTI if row.investing else _GROUP_OF.get(row.leaf, ALTRO)
+    return INVESTMENTS if row.investing else _GROUP_OF.get(row.leaf, OTHER)
 
 
 def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
@@ -111,6 +112,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
                 _employer(found, span, days),
             )
         )
+    ranks = store.category_ranks(conn)
     sums: dict[tuple[str, str], tuple[int, Decimal]] = {}
     for each in found.between(start, end):
         key = (group(each.row), each.row.leaf)
@@ -121,7 +123,11 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
             Source(name, leaf, count, total.quantize(CENT))
             for (name, leaf), (count, total) in sums.items()
         ),
-        key=lambda source: (GROUPS.index(source.group), -source.total, source.leaf),
+        key=lambda source: (
+            GROUPS.index(source.group),
+            -source.total,
+            ranks.leaf(source.leaf, cashflow.INCOME),
+        ),
     )
     return Income(currency, tuple(periods), tuple(sources), found.through)
 
@@ -132,5 +138,5 @@ def _employer(found: analysis.Rows, span: analysis.Span, days: tuple[date, date]
         return None
     rows: list[Converted] = list(found.between(*window))
     total = sum((each.amount for each in rows), Decimal(0))
-    work = sum((each.amount for each in rows if group(each.row) == LAVORO), Decimal(0))
+    work = sum((each.amount for each in rows if group(each.row) == WORK), Decimal(0))
     return analysis.share(work, total)

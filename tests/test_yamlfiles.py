@@ -12,8 +12,8 @@ from scrooge import categories, classification, yamlfiles
 def test_a_file_is_replaced_whole_and_leaves_nothing_beside_it(tmp_path: Path) -> None:
     path = tmp_path / "rules.yaml"
     path.write_text("rules:\n", encoding="utf-8")
-    yamlfiles.write(path, "rules:\n  - {match: a, category: Spesa}\n")
-    assert path.read_text(encoding="utf-8") == "rules:\n  - {match: a, category: Spesa}\n"
+    yamlfiles.write(path, "rules:\n  - {match: a, category: Groceries}\n")
+    assert path.read_text(encoding="utf-8") == "rules:\n  - {match: a, category: Groceries}\n"
     assert [p.name for p in tmp_path.iterdir()] == ["rules.yaml"]
 
 
@@ -36,9 +36,11 @@ def test_a_write_that_fails_leaves_the_file_as_it_was(
 @pytest.mark.parametrize(
     "write",
     [
-        lambda folder: classification.append_rule(folder / "rules.yaml", "ACME", "in", "Stipendio"),
+        lambda folder: classification.append_rule(
+            folder / "rules.yaml", "ACME", "in", categories.SALARY
+        ),
         lambda folder: categories.add(
-            folder / categories.FILE, categories.Extra("Mance", "entrate")
+            folder / categories.FILE, categories.Extra("Mance", "income")
         ),
     ],
 )

@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from scrooge import networth, portfolio, query, staging
+from scrooge import categories, networth, portfolio, query, staging
 from scrooge.models import Holding, Kind, TypedHolding
 from scrooge.networth import BILLS, ETFS, PENSION, STOCKS, MissingRateError
 from scrooge.portfolio import Portfolio, Position
@@ -184,7 +184,12 @@ def test_what_was_sold_is_not_held(conn: sqlite3.Connection) -> None:
 def test_shares_without_any_price_are_not_listed_and_a_note_says_so(
     conn: sqlite3.Connection,
 ) -> None:
-    close(conn, ibkr(bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category="Giroconto")))
+    close(
+        conn,
+        ibkr(
+            bought("WIDG", "10", "0", day(15), kind=Kind.TRANSFER, category=categories.OWN_TRANSFER)
+        ),
+    )
     conn.execute("UPDATE trades SET price = NULL")
     held = agrees_with_net_worth(conn, None, "USD")
     assert held.positions == ()
@@ -319,6 +324,16 @@ def test_sharing_out_keeps_the_rounded_sum_and_moves_nothing_by_a_cent(
     # what is a whole number of cents already stays as it is when all of them are
     whole = [value.quantize(D("0.01")) for value in exact]
     assert portfolio.shared_out(whole) == whole
+
+
+def test_sharing_out_to_a_coarser_step_keeps_the_rounded_sum() -> None:
+    # Each rounded on its own, 48.5 and 51.5 would be 49 and 52: 101.
+    assert portfolio.shared_out([D("48.5"), D("51.5")], D(1)) == [D(49), D(51)]
+    assert portfolio.shared_out([D("99.2433"), D("0.7195"), D("0.0372")], D("0.1")) == [
+        D("99.3"),
+        D("0.7"),
+        D("0.0"),
+    ]
 
 
 # -------------------------------------------------------------------------------- people

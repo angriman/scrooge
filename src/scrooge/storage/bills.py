@@ -1,8 +1,8 @@
 """Split what a bill pays back into cost and interest, first in, first out (D13).
 
 A bill sold, and at Tastytrade also a bill that matures, comes out of the extractor whole, as
-`Investimenti`. With the purchases in the database the cost of the lots it closes is known:
-the row keeps that cost, and the rest becomes a row of its own under `Interessi`. An IBKR
+`Investments`. With the purchases in the database the cost of the lots it closes is known:
+the row keeps that cost, and the rest becomes a row of its own under `Interest`. An IBKR
 maturity is the exception: its extractor has split it already, from the profit the statement
 prints. It closes its lots here like any other disposal, and is otherwise left alone.
 
@@ -20,9 +20,8 @@ from datetime import date
 from decimal import ROUND_HALF_EVEN, Decimal
 from itertools import groupby
 
+from scrooge.categories import INTEREST
 from scrooge.validation import MissingLotsError
-
-_INTEREST = "Interessi"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +74,7 @@ def split(conn: sqlite3.Connection, owner: int) -> list[MissingLotsError]:
     """Redo the interest split of every bill disposal of `owner`; returns those it could not do."""
     _undo(conn, owner)
     interest = conn.execute(
-        "SELECT id FROM categories WHERE side = 'entrate' AND name = ?", (_INTEREST,)
+        "SELECT id FROM categories WHERE side = 'income' AND key = ?", (INTEREST,)
     ).fetchone()[0]
     missing: list[MissingLotsError] = []
     for row, cost in _disposals(conn, owner):

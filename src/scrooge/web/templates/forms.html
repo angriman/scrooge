@@ -1,12 +1,13 @@
 {#- Forms that the import page and a month's page share. A macro sees none of the page's
     variables, so the page hands over what it needs. -#}
-{#- A category is typed into a field that suggests from this list, each name with what it
-    is under, so it is found without looking for it; `picker.js` refuses a name not there. -#}
+{#- A category is typed into a field that suggests from this list, each label with what it
+    is under, so it is found without looking for it; `picker.js` refuses a label not there.
+    The label is what is sent: the server reads a label or a key. -#}
 {% macro category_list(choices) %}
 <datalist id="categories">
   {%- for heading, names in choices.leaves %}
   {%- for name in names %}
-  <option value="{{ name }}" label="{{ heading }}" data-side="{{ 'transfer' if heading == 'Transfer' else 'entrate' if heading == 'Entrate' else 'uscite' }}"></option>
+  <option value="{{ choices.label(name) }}" label="{{ choices.label(heading) }}" data-side="{{ 'transfer' if heading == 'Transfer' else 'income' if heading == 'Income' else 'expenses' }}"></option>
   {%- endfor %}
   {%- endfor %}
 </datalist>
@@ -39,11 +40,11 @@
     <label>Name <input name="name" required maxlength="60" size="24"></label>
     <label>Under
       <select name="under">
-        <option value="uscite:">Expenses, a group of its own</option>
+        <option value="expenses:">Expenses, a group of its own</option>
         {%- for name in choices.groups %}
-        <option value="uscite:{{ name }}">Expenses, {{ name }}</option>
+        <option value="expenses:{{ choices.label.written(name) }}">Expenses, {{ choices.label(name) }}</option>
         {%- endfor %}
-        <option value="entrate:">Income</option>
+        <option value="income:">Income</option>
       </select>
     </label>
     <button>Add</button>

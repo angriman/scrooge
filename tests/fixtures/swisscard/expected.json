@@ -121,7 +121,7 @@
     "source_file": "statement.txt",
     "source_ref": "0002:20",
     "counterparty": "REVOLUT**1234*",
-    "category": "Topup Revolut",
+    "category": "revolut_top_up",
     "confidence": "1",
     "booking_date": "2026-09-04"
   },
@@ -177,7 +177,7 @@
     "source_file": "statement.txt",
     "source_ref": "Varie:31",
     "counterparty": "CASHBACK",
-    "category": "Cashback",
+    "category": "cashback",
     "confidence": "1",
     "booking_date": "2026-09-04"
   }

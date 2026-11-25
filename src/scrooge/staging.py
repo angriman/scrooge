@@ -153,7 +153,8 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
     last one committed. One that starts before what is committed of an account and reaches
     into it is refused, as is a certificate of a day another committed certificate states.
     """
-    owner, statements, people = batch.owner, batch.statements, batch.people
+    owner, people = batch.owner, batch.people
+    statements = in_date_order(batch.statements)
     over = now.date() - timedelta(days=1)  # the last day that is over
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
@@ -243,6 +244,12 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
             later=later,
             nothing_new=tuple(sorted([*nothing, *unchanged])),
         )
+
+
+def in_date_order(statements: Iterable[Statement]) -> list[Statement]:
+    """The statements by the days they cover, the earliest first, then by name: each is
+    staged after the ones its opening balance follows from, whatever the files are called."""
+    return sorted(statements, key=lambda s: (*s.extraction.period, s.filename))
 
 
 def _refuse_other_owners(
@@ -437,7 +444,7 @@ def _store_certificates(
     stored: set[int] = set()
     replaced: set[int] = set()
     unchanged: list[str] = []
-    for certificate in certificates:
+    for certificate in sorted(certificates, key=lambda c: (c.stated.as_of, c.filename)):
         stated = certificate.stated
         other = seen.setdefault((certificate.account, stated.as_of), certificate.filename)
         if other != certificate.filename:
@@ -605,13 +612,16 @@ def _rules_kept() -> Iterator[dict[Path, str | None]]:
             raise
 
 
+BACKUPS = "backups"  # the folder of the copies, next to the database
+
+
 def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:
     """Save a copy of the database in `backups/` next to it, under a name no copy has yet.
 
     Two commits in one second get two files: dropping the copy of the one that changed
     nothing never takes away the copy the other one kept.
     """
-    folder = database.parent / "backups"
+    folder = database.parent / BACKUPS
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"{database.stem}-{now:%Y%m%dT%H%M%S}"
     taken = 0
@@ -679,7 +689,8 @@ def categorize(  # noqa: PLR0913  # whose rows, which, what for, and how it is r
     remember: Remember | None,
     change: bool = False,
 ) -> int:
-    """Give `category` to staged rows of `owner` that have none. Returns how many.
+    """Give `category` to staged rows of `owner` that have none. Returns how many. It is named
+    by its key or its label (`store.category_key`); a rule names it by its label.
 
     With `remember` the choice also becomes a rule for each counterparty and direction among
     the rows, so the next import makes it again. Without, it is kept as an override of these
@@ -731,7 +742,8 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
     now: datetime,
     remember: Remember | None,
 ) -> int:
-    ids, category, change = choice.ids, choice.category, choice.change
+    ids, change = choice.ids, choice.change
+    category = store.category_key(conn, choice.category)
     owner_id = store.owner_id(conn, owner)
     rows = [] if owner_id is None else store.waiting(conn, owner_id, ids, change=change)
     if not rows or len(rows) != len(set(ids)):
@@ -742,7 +754,7 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
     flows = {kind.value for kind in _BETWEEN_OWNERS}
     rules: dict[tuple[str, str], Path] = {}
     for row in rows:
-        chosen = store.category_for(leaves, category, from_nano(row.amount_nano))
+        chosen = store.category_for(leaves, category, from_nano(row.amount_nano), choice.category)
         if chosen is None:
             msg = "no category was chosen"
             raise StagingError(msg)
@@ -773,10 +785,11 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
         named = any(pattern.search(text) for pattern in remember.people)
         flow = "in" if row.amount_nano > 0 else "out"
         rules[name, flow] = remember.own if named else remember.shared
+    written = store.category_labels(conn).written(category)
     for (name, flow), where in rules.items():
         if where not in before:
             before[where] = where.read_text(encoding="utf-8") if where.exists() else None
-        classification.append_rule(where, name, flow, category, first=change)
+        classification.append_rule(where, name, flow, written, first=change)
     return len(rows)
 
 
@@ -786,12 +799,12 @@ def add_category(
     """Add a category to the taxonomy: in `file` (`categories.yaml`), which every import
     reads, and in the database. Returns it.
 
-    `side` is `uscite` or `entrate`. An expense goes under `group`, one of the top-level
+    `side` is `expenses` or `income`. An expense goes under `group`, one of the top-level
     categories there are, or under a new one named like itself when no group is given.
     """
     name = " ".join(name.split())
-    if not name:
-        msg = "a category needs a name"
+    if not categories.key(name):
+        msg = "a category needs a name, with a letter or a digit"
         raise StagingError(msg)
     if side not in categories.SIDES:
         msg = "a category is added to the expenses or to the income"
@@ -800,13 +813,16 @@ def add_category(
         extras = categories.load(file)
         store.seed_categories(conn, extras)
         leaves = store.leaf_categories(conn)
-        if (side, name) in leaves or ("transfer", name) in leaves:
+        new = categories.key(name)
+        if (side, new) in leaves or ("transfer", new) in leaves:
             msg = f"there is already a category {name!r}"
             raise StagingError(msg)
-        if side == "uscite" and group and group not in categories.groups(extras):
+        if side == "expenses" and group and categories.key(group) not in categories.groups(extras):
             msg = f"no group of categories named {group!r}"
             raise StagingError(msg)
-        extra = Extra(name, side, (group or name) if side == "uscite" else "")
+        if side == "expenses" and group:  # written by its label, which people read
+            group = categories.Labels.of(extras).written(categories.key(group))
+        extra = Extra(name, side, (group or name) if side == "expenses" else "")
         before[file] = file.read_text(encoding="utf-8") if file.exists() else None
         categories.add(file, extra)
         store.seed_categories(conn, categories.load(file))

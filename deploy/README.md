@@ -89,7 +89,9 @@ docker compose exec scrooge scrooge position --owner Name "Broker" 2026-10-31 AC
 docker compose exec scrooge scrooge uncommit --owner Name 42
 docker compose exec scrooge scrooge query --from 2026-09 --text rent
 docker compose exec scrooge scrooge password
+docker compose exec scrooge scrooge keep originals-to-add/
 docker compose exec scrooge scrooge import --owner Name --review users/name/statements/
+docker compose exec scrooge scrooge migrate-files          # then with --write
 ```
 
 A path given to a command is a path inside the container: under `/data`.

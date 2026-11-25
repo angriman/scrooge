@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
@@ -17,7 +18,9 @@ from tests.web.builders import BUILT, close, stage_rows
 WEB = Path(webapp.__file__).parent
 LUKAS = [
     txn("-45.20", date=date(2026, 7, 3), source_ref="1"),
-    txn("6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category="Stipendio"),
+    txn(
+        "6000", date=date(2026, 8, 25), source_ref="2", kind=Kind.INCOME, category=categories.SALARY
+    ),
     txn("-12", date=date(2026, 9, 10), source_ref="3"),
     # Bought on the last day of July, booked in August, at a shop with a name to escape.
     txn(
@@ -25,7 +28,7 @@ LUKAS = [
         date=date(2026, 7, 31),
         booking_date=date(2026, 8, 2),
         source_ref="4",
-        category="Ristoranti e bar",
+        category=categories.EATING_OUT,
         counterparty="<b>Bäckerei</b>",
         description="CARD 1234",
     ),
@@ -204,17 +207,17 @@ def test_transactions_are_listed_newest_first_with_their_totals(client: TestClie
     response = client.get("/transactions")
     assert response.status_code == 200
     assert rows(response.text) == [
-        ["2026-08-25", "Lukas", "Migros file", "Stipendio income", "KONSUM", "6,000.00 CHF"],
+        ["2026-08-25", "Lukas", "Migros file", "Salary income", "KONSUM", "6,000.00 CHF"],
         [
             "2026-07-31 booked 2026-08-02",
             "Lukas",
             "Migros file",
-            "Ristoranti e bar expense",
+            "Eating out expense",
             BAKERY,
             "-80.00 CHF",
         ],
-        ["2026-07-12", "Anna", "Migros file", "Spesa expense", "KONSUM", "-60.00 CHF"],
-        ["2026-07-03", "Lukas", "Migros file", "Spesa expense", "KONSUM", "-45.20 CHF"],
+        ["2026-07-12", "Anna", "Migros file", "Groceries expense", "KONSUM", "-60.00 CHF"],
+        ["2026-07-03", "Lukas", "Migros file", "Groceries expense", "KONSUM", "-45.20 CHF"],
     ]
     assert "4 transactions · 5,814.80 CHF · CSV" in text(response.text)
     assert "By month 2026-07 -185.20 CHF 3 2026-08 6,000.00 CHF 1" in text(response.text)
@@ -223,20 +226,20 @@ def test_transactions_are_listed_newest_first_with_their_totals(client: TestClie
 
 
 def test_the_filter_narrows_the_list_and_stays_in_the_form(client: TestClient) -> None:
-    asked = {"category": "Ristoranti e bar", "from": "2026-08", "booking": "1", "owner": "Lukas"}
+    asked = {"category": categories.EATING_OUT, "from": "2026-08", "booking": "1", "owner": "Lukas"}
     response = client.get("/transactions", params=asked)
     assert rows(response.text) == [
         [
             "2026-08-02 real 2026-07-31",
             "Migros file",
-            "Ristoranti e bar expense",
+            "Eating out expense",
             BAKERY,
             "-80.00 CHF",
         ]
     ]
     assert "1 transaction · -80.00 CHF" in text(response.text)
     assert "By month" not in response.text
-    assert "<option selected>Ristoranti e bar</option>" in response.text
+    assert "<option selected>Eating out</option>" in response.text
     assert 'name="from" value="2026-08"' in response.text
     assert 'name="booking" value="1" checked' in response.text
     assert '<input type="hidden" name="owner" value="Lukas">' in response.text
@@ -314,8 +317,8 @@ def test_the_result_can_be_saved_as_csv_with_exact_amounts(client: TestClient) -
     assert named["counterparty"] == "<b>Bäckerei</b>"
     assert (named["kind"], named["category"], named["category_parent"]) == (
         "expense",
-        "Ristoranti e bar",
-        "Ristoranti e bar",
+        "Eating out",
+        "Eating out",
     )
 
 

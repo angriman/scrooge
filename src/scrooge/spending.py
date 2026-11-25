@@ -25,6 +25,7 @@ from scrooge import analysis, cashflow, query
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.networth import DEFAULT_CURRENCY
+from scrooge.storage import store
 
 SHOWN = 6  # the largest categories, each with its own colour in the chart
 OTHERS = "Others"  # the rest of the categories, together
@@ -147,7 +148,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     came_back = [each.amount for each in inside if paid_back(each.row)]
     returned = sum(came_back, Decimal(0))
     months = _months(span.start, span.end)
-    categories = _categories(found, span, spent, months)
+    categories = _categories(found, span, spent, months, store.category_ranks(conn))
     largest = [category.name for category in categories[:SHOWN] if category.spent > 0]
     parts = (
         *largest,
@@ -183,8 +184,13 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
 
 
 def _categories(
-    found: analysis.Rows, span: analysis.Span, spent: list[Converted], months: int
+    found: analysis.Rows,
+    span: analysis.Span,
+    spent: list[Converted],
+    months: int,
+    ranks: store.Ranks,
 ) -> list[Category]:
+    """The categories spent on, the largest first; equal ones in the taxonomy's order."""
     total = -sum((each.amount for each in spent), Decimal(0))
     by_top: dict[str, list[Converted]] = defaultdict(list)
     for each in spent:
@@ -213,7 +219,7 @@ def _categories(
                             Leaf(leaf, count, sum_.quantize(CENT))
                             for leaf, (count, sum_) in leaves.items()
                         ),
-                        key=lambda leaf: (-leaf.spent, leaf.name),
+                        key=lambda leaf: (-leaf.spent, ranks.leaf(leaf.name, cashflow.EXPENSES)),
                     )
                 ),
             )
@@ -235,7 +241,10 @@ def _categories(
                     (),
                 )
             )
-    return sorted(categories, key=lambda category: (-category.spent, category.name))
+    return sorted(
+        categories,
+        key=lambda category: (-category.spent, ranks.top(category.name, cashflow.EXPENSES)),
+    )
 
 
 def _usual(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:

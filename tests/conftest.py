@@ -1,5 +1,7 @@
 import shutil
-from datetime import date
+from collections.abc import Mapping
+from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -17,11 +19,11 @@ FILES = {
     "swisscard.pdf": "swisscard/statement.txt",
 }
 RULES = """rules:
-  - {match: 'Hans Muster', category: Affitto}
-  - {match: 'ACME SWITZERLAND', category: Stipendio}
-  - {match: 'KONSUM|FRISCHMARKT', category: Spesa}
+  - {match: 'Hans Muster', category: Rent}
+  - {match: 'ACME SWITZERLAND', category: Salary}
+  - {match: 'KONSUM|FRISCHMARKT', category: Groceries}
   - {match: 'Metal plan fee', category: Revolut Metal}
-  - {match: '.', category: Regali}
+  - {match: '.', category: Gifts}
 """
 
 
@@ -79,3 +81,59 @@ def pillar2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     monkeypatch.setattr(ocr, "read_text", stored_text)
     return scans
+
+
+def monthly_migros(
+    folder: Path,
+    names: Mapping[str, date],
+    opening: Decimal,
+    jumps: Mapping[str, Decimal] | None = None,
+) -> list[Path]:
+    """Migros statements of consecutive months, one file each, named as given: each month
+    pays the rent and gets the salary, and starts from where the month before closed, or that
+    plus its jump."""
+    balance = opening
+    files: dict[date, Path] = {}
+    for name, first in sorted(names.items(), key=lambda item: item[1]):
+        balance += (jumps or {}).get(name, Decimal(0))
+        last = (first + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+        lines = []
+        for day, text, amount in (
+            (first.replace(day=2), "Hans Muster, Beispielweg 8, 5000 Aarau", Decimal(-1000)),
+            (first.replace(day=25), "ACME SWITZERLAND GMBH, 0000000001", Decimal(2000)),
+        ):
+            balance += amount
+            lines.append(
+                f'"{day:%d.%m.%Y}";"{text}";"";;"{amount:.2f}";"{balance:.2f}";"{day:%d.%m.%Y}"'
+            )
+        path = folder / name
+        path.write_text(
+            "\n".join(
+                [
+                    f'"Estratto conto da:";"{first}"',
+                    f'"Estratto conto fino:";"{last}"',
+                    ";",
+                    '"Contratto:";"EB00000000"',
+                    '"Numero di conto / IBAN:";"00.000.000 / CH00 0000 0000 0000 0000 0"',
+                    '"Denominazione:";"Conto privato"',
+                    f'"Saldo:";"CHF {balance:.2f}"',
+                    ";",
+                    '"Data";"Testo di registrazione";"Comunicazione";"Numero di riferimento";'
+                    '"Importo";"Saldo";"Valuta"',
+                    *lines,
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        files[first] = path
+    return [files[first] for first in sorted(files)]
+
+
+# Named so that their names sort in another order than their months.
+MONTHS = {
+    "Apr.csv": date(2026, 4, 1),
+    "Feb.csv": date(2026, 2, 1),
+    "Jan.csv": date(2026, 1, 1),
+    "Mar.csv": date(2026, 3, 1),
+}

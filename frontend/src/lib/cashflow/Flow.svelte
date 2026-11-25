@@ -9,7 +9,7 @@ its amount. When more went out than came in, the difference comes from savings.
 	import { Sankey } from 'layerchart/graph';
 	import { approximate, short } from '#lib/format/number.js';
 	import type { CashFlowReport } from '#lib/types.js';
-	import { GROUPS, groupName, incomeColor, OTHERS } from './names.js';
+	import { GROUPS, incomeColor, OTHERS } from './names.js';
 
 	interface Props {
 		report: CashFlowReport;
@@ -44,7 +44,7 @@ its amount. When more went out than came in, the difference comes from savings.
 		const nodes = [
 			...GROUPS.filter((g) => (earned.get(g) ?? 0) > 0).map((g) => ({
 				id: g,
-				label: groupName(g),
+				label: g,
 				fill: incomeColor(g)
 			})),
 			...(out > income ? [{ id: DRAWN, label: DRAWN, fill: 'var(--caution)' }] : []),

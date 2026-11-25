@@ -8,7 +8,7 @@ first. A source opens its transactions over the same range.
 	import type { CashFlowReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
-	import { GROUPS, groupName, incomeColor } from './names.js';
+	import { GROUPS, incomeColor } from './names.js';
 
 	interface Props {
 		report: CashFlowReport;
@@ -32,11 +32,11 @@ first. A source opens its transactions over the same range.
 	{/if}
 	<div class="space-y-4">
 		{#each groups as { group, sources, total } (group)}
-			{@const share = percentOf(total, all, 1)}
+			{@const share = percentOf(total, all, 0)}
 			<div>
 				<p class="flex items-baseline gap-2 text-body text-ink">
 					<span class="size-2 shrink-0 self-center rounded-[2px]" style:background={incomeColor(group)}></span>
-					<span class="flex-1 font-medium">{groupName(group)}</span>
+					<span class="flex-1 font-medium">{group}</span>
 					{#if share !== null}<span class="text-caption text-ink-muted">{percent(share, 0)}</span>{/if}
 					<Amount value={total} places={0} />
 				</p>

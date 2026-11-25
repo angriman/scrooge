@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from datetime import date, timedelta
 from decimal import Decimal
 
+from scrooge.categories import BUY_CURRENCIES, INVESTMENTS, OWN_TRANSFER, SALARY, buy
 from scrooge.errors import ExtractionError
 from scrooge.models import Kind, SecurityTrade, Transaction
 
@@ -187,7 +188,7 @@ def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is
         kind=Kind.INCOME,
         source_file=source_file,
         source_ref=f"{source_ref}:salary",
-        category="Stipendio",
+        category=SALARY,
     )
     purchase = SecurityTrade(
         date=day,
@@ -198,7 +199,7 @@ def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is
         kind=Kind.SECURITY_TRADE,
         source_file=source_file,
         source_ref=source_ref,
-        category="Investimenti",
+        category=INVESTMENTS,
         ticker=ticker,
         quantity=quantity,
         price=price,
@@ -208,16 +209,15 @@ def share_vest(  # noqa: PLR0913  # what differs between the plans: all of it is
     return [salary, purchase]
 
 
-_FX_CATEGORY_CURRENCIES = {"EUR", "USD"}  # Acquisto <ccy> exists only for these
 _HOME_CURRENCY = "CHF"  # converting back into it is a move between one's own accounts
 
 
 def fx_category(bought: str) -> str:
     """The category of a currency exchange, by the currency it buys.
 
-    Back into the home currency it is a move between one's own accounts (`Giroconto`); EUR and
-    USD have an `Acquisto` category of their own; any other currency has none.
+    Back into the home currency it is a move between one's own accounts (`OWN_TRANSFER`); the
+    currencies of `BUY_CURRENCIES` have a category of their own; any other currency has none.
     """
     if bought == _HOME_CURRENCY:
-        return "Giroconto"
-    return f"Acquisto {bought}" if bought in _FX_CATEGORY_CURRENCIES else ""
+        return OWN_TRANSFER
+    return buy(bought) if bought in BUY_CURRENCIES else ""

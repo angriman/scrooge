@@ -2,7 +2,10 @@
 database or knows about HTTP.
 
 An amount, a share or a quantity is text, written as it is (`"1234.50"`, never a float, which
-would lose the cents); a day is ISO text (`"2026-09-30"`); what is not known is `null`.
+would lose the cents); a day is ISO text (`"2026-09-30"`); what is not known is `null`. A
+category is sent by its label (`categories.Labels`), as people read it: the services name
+categories by their keys, and the translation is made here, once. A side of the taxonomy
+keeps the Italian name it had (`side`, `side_sent`).
 Nothing is laid out here: no colours, no shapes, no rounding for the eye. Those are the
 frontend's.
 """
@@ -16,6 +19,7 @@ from typing import TypeVar
 
 from scrooge import (
     attention,
+    categories,
     holds,
     importing,
     months,
@@ -39,6 +43,8 @@ JSON = dict[str, object]
 _T = TypeVar("_T")
 _F = TypeVar("_F")
 
+_WHOLE = Decimal(1)  # a whole percent
+
 
 def number(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
@@ -52,6 +58,23 @@ def sentence(exc: Exception) -> str:
     """What went wrong, as a page says it."""
     message = str(exc)
     return f"{message[0].upper()}{message[1:]}."
+
+
+# The sides of the taxonomy as /api names them. The server says `expenses` and `income` since
+# 2026-11-25; the frontend still says `uscite` and `entrate`, and is another contributor's to
+# change, so the two names meet here, and only here, until the frontend switches too.
+_WIRE_SIDES = {"expenses": "uscite", "income": "entrate"}
+_SIDES_SENT = {wire: side for side, wire in _WIRE_SIDES.items()}
+
+
+def side(name: str) -> str:
+    """A side of the taxonomy as /api sends it; any other (`transfer`, `investing`) as it is."""
+    return _WIRE_SIDES.get(name, name)
+
+
+def side_sent(name: str) -> str:
+    """A side /api was sent, as the server names it."""
+    return _SIDES_SENT.get(name, name)
 
 
 def unless_rate_missing(errors: list[str], compute: Callable[[], _T], fallback: _F) -> _T | _F:
@@ -160,8 +183,19 @@ def series(worth: networth.NetWorth, by: str) -> JSON:
 
 
 def _percent(fraction: Decimal | None) -> str | None:
-    """A part of a whole sent as a fraction (`0.372`), in percent (`"37.200"`)."""
+    """A part of a whole sent as a fraction (`0.372`), in percent (`"37.2"`), not rounded: the
+    app rounds it once, where it shows it."""
     return number(None if fraction is None else fraction * 100)
+
+
+def whole_percents(fractions: Sequence[Decimal | None]) -> list[str | None]:
+    """Parts of one whole sent as fractions, in whole percents shared out so that they add up
+    as the parts do (to 100 when they are all of it): the app shows them so, and each rounded
+    on its own could make 101. None for each when the whole is not above zero."""
+    known = [fraction for fraction in fractions if fraction is not None]
+    if len(known) < len(fractions):
+        return [None] * len(fractions)
+    return [number(part) for part in portfolio.shared_out([f * 100 for f in known], _WHOLE)]
 
 
 def _month(first: date | None) -> str | None:
@@ -178,7 +212,7 @@ def account(line: months.Coverage) -> JSON:
     }
 
 
-def month(shown: recap.Recap) -> JSON:
+def month(shown: recap.Recap, label: categories.Labels) -> JSON:
     """One month at a glance: how net worth moved over it, what was saved, what was spent by
     category against the usual month; rates in percent."""
     return {
@@ -202,7 +236,7 @@ def month(shown: recap.Recap) -> JSON:
         "rate_salary_year": _percent(shown.rate_salary_year),
         "categories": [
             {
-                "name": c.name,
+                "name": label(c.name),
                 "spent": number(c.spent),
                 "usual": number(c.usual),
                 "against_usual": number(c.against_usual),
@@ -363,7 +397,7 @@ def account_holds(held: holds.Holds | None) -> JSON | None:
 _CHANGEABLE = frozenset({"income", "expense", "transfer"})  # `store.CHANGEABLE`, for a row
 
 
-def transaction(row: query.Row, every: str | None) -> JSON:
+def transaction(row: query.Row, every: str | None, label: categories.Labels) -> JSON:
     """One committed row; `every` says how often it comes back ("monthly", "yearly"), when it
     does; `changeable` whether its category can be changed."""
     return {
@@ -377,28 +411,31 @@ def transaction(row: query.Row, every: str | None) -> JSON:
         "description": row.description,
         "counterparty": row.counterparty,
         "kind": row.kind.value,
-        "category": row.category,
-        "category_parent": row.category_parent,
+        "category": row.category and label(row.category),
+        "category_parent": row.category_parent and label(row.category_parent),
         "file": row.file,
         "recurring": every,
         "changeable": row.category is not None and row.kind.value in _CHANGEABLE,
     }
 
 
-def _headed(groups: Sequence[tuple[str, tuple[str, ...]]]) -> list[JSON]:
-    return [{"heading": heading, "names": list(names)} for heading, names in groups]
+def _headed(groups: Sequence[tuple[str, tuple[str, ...]]], label: categories.Labels) -> list[JSON]:
+    return [
+        {"heading": label(heading), "names": [label(name) for name in names]}
+        for heading, names in groups
+    ]
 
 
 def choices(found: query.Choices) -> JSON:
     """What the filters can be set to, and the categories a row can be given."""
     return {
         "accounts": list(found.accounts),
-        "categories": _headed(found.categories),
-        "leaves": _headed(found.leaves),
+        "categories": _headed(found.categories, found.label),
+        "leaves": _headed(found.leaves, found.label),
     }
 
 
-def _pending(row: months.Pending) -> JSON:
+def _pending(row: months.Pending, label: categories.Labels) -> JSON:
     return {
         "id": row.id,
         "date": day(row.date),
@@ -407,15 +444,15 @@ def _pending(row: months.Pending) -> JSON:
         "currency": row.currency,
         "counterparty": row.counterparty,
         "description": row.description,
-        "category": row.category or None,
-        "side": row.side or None,
+        "category": label(row.category) or None,
+        "side": side(row.side) or None,
         # Whether a category can be given here: it has none yet, or one a rule or a choice gave.
         "choosable": row.waiting or row.changeable,
         "statement": row.statement,
     }
 
 
-def draft(staged: months.Draft) -> JSON:
+def draft(staged: months.Draft, label: categories.Labels) -> JSON:
     """What is staged for one person: its statements, every row with the category it has,
     the waiting rows by counterparty (`groups`), what they add up to, and what stands in the
     way of committing them (`gaps`, `waiting`)."""
@@ -432,15 +469,15 @@ def draft(staged: months.Draft) -> JSON:
             }
             for file in staged.files
         ],
-        "rows": [_pending(row) for row in staged.rows],
+        "rows": [_pending(row, label) for row in staged.rows],
         "groups": [
             {"name": group.name, "incoming": group.incoming, "ids": [r.id for r in group.rows]}
             for group in staged.groups
         ],
         "totals": [
             {
-                "side": line.side or None,
-                "category": line.category or None,
+                "side": side(line.side) or None,
+                "category": label(line.category) or None,
                 "currency": line.currency,
                 "count": line.count,
                 "total": number(line.total),
@@ -500,7 +537,7 @@ def _totals(totals: savings.Totals | None) -> JSON | None:
     }
 
 
-def cashflow_report(shown: report.Report) -> JSON:
+def cashflow_report(shown: report.Report, label: categories.Labels) -> JSON:
     """The cash flow of a range: what was saved, where the money went and where it came from,
     period by period and in all, converted into one currency; and income and expenses in each
     currency as they were paid."""
@@ -521,7 +558,8 @@ def cashflow_report(shown: report.Report) -> JSON:
                 "rate_12": _percent(period.rate),
                 "rate_salary_12": _percent(period.rate_salary),
                 "spent_by": {
-                    name: number(value) for name, value in spent_in.get(period.name, {}).items()
+                    label(name): number(value)
+                    for name, value in spent_in.get(period.name, {}).items()
                 },
                 "earned_by": {
                     name: number(value) for name, value in earned_in.get(period.name, {}).items()
@@ -529,12 +567,12 @@ def cashflow_report(shown: report.Report) -> JSON:
             }
             for period in kept.periods
         ],
-        "parts": list(spent.parts),
+        "parts": [label(name) for name in spent.parts],
         "months": spent.months,
         "paid_back": number(spent.paid_back),
         "categories": [
             {
-                "name": category.name,
+                "name": label(category.name),
                 "count": category.count,
                 "spent": number(category.spent),
                 "share": _percent(category.share),
@@ -542,7 +580,7 @@ def cashflow_report(shown: report.Report) -> JSON:
                 "usual": number(category.usual),
                 "year_before": number(category.year_before),
                 "leaves": [
-                    {"name": leaf.name, "count": leaf.count, "spent": number(leaf.spent)}
+                    {"name": label(leaf.name), "count": leaf.count, "spent": number(leaf.spent)}
                     for leaf in category.leaves
                 ],
             }
@@ -551,7 +589,7 @@ def cashflow_report(shown: report.Report) -> JSON:
         "merchants": [
             {
                 "name": merchant.name,
-                "category": merchant.category,
+                "category": label(merchant.category),
                 "count": merchant.count,
                 "spent": number(merchant.spent),
                 "first": day(merchant.first),
@@ -561,7 +599,7 @@ def cashflow_report(shown: report.Report) -> JSON:
         ],
         "other_merchants": {"count": spent.other_merchants, "spent": number(spent.other_spent)},
         "sources": [
-            {"group": s.group, "name": s.leaf, "count": s.count, "total": number(s.total)}
+            {"group": s.group, "name": label(s.leaf), "count": s.count, "total": number(s.total)}
             for s in earned.sources
         ],
         "as_paid": [
@@ -577,38 +615,40 @@ def cashflow_report(shown: report.Report) -> JSON:
         "as_paid_totals": [
             {
                 "currency": line.currency,
-                "side": line.side,
-                "category": line.category,
+                "side": side(line.side),
+                "category": label(line.category),
                 "count": line.count,
                 "total": number(line.total),
             }
             for line in flow.totals
         ],
         "through": day(kept.through),
-        "paid_by": _paid_by(shown.paid_by),
+        "paid_by": _paid_by(shown.paid_by, label),
     }
 
 
-def _paid_by(shown: paidby.PaidBy | None) -> JSON | None:
+def _paid_by(shown: paidby.PaidBy | None, label: categories.Labels) -> JSON | None:
     """Who paid what the household spent: each person, before and after settling up, each
     category split between them, and the net of what they paid each other."""
     if shown is None:
         return None
+    shares = whole_percents([payer.share for payer in shown.people])
+    settled = whole_percents([payer.settled_share for payer in shown.people])
     return {
         "spent": number(shown.spent),
         "people": [
             {
                 "name": payer.name,
                 "spent": number(payer.spent),
-                "share": _percent(payer.share),
+                "share": share,
                 "settled": number(payer.settled),
-                "settled_share": _percent(payer.settled_share),
+                "settled_share": settled_share,
             }
-            for payer in shown.people
+            for payer, share, settled_share in zip(shown.people, shares, settled, strict=True)
         ],
         "categories": [
             {
-                "name": split.name,
+                "name": label(split.name),
                 "spent": number(split.spent),
                 "by": {name: number(amount) for name, amount in split.by.items()},
             }
@@ -715,11 +755,11 @@ def recurring_payments(shown: recurring.Recurring) -> JSON:
     }
 
 
-def transactions_context(shown: Context, balance: Decimal | None) -> JSON:
+def transactions_context(shown: Context, balance: Decimal | None, label: categories.Labels) -> JSON:
     """`shown` as `/api/transactions/context` sends it; `balance` is an account's, now."""
     return {
         "kind": shown.kind,
-        "name": shown.name,
+        "name": label(shown.name) if shown.kind == "category" else shown.name,
         "currency": shown.currency,
         "earned": shown.earned,
         "net": shown.net,
@@ -745,13 +785,14 @@ def needs_a_look(
     unmatched: str,
     unsorted: Sequence[attention.Uncategorised],
     changed: attention.Changes | None,
+    label: categories.Labels,
 ) -> JSON:
     """The rows still in the category `unmatched` (null: there is none), per person, and the
     recurring payments that went up or are new, what changed in `currency` (as paid,
     positive; null when a rate is missing); `recurring` is null when they were not asked for."""
     return {
         "currency": currency,
-        "unmatched": unmatched or None,
+        "unmatched": label(unmatched) or None,
         "uncategorised": [{"owner": each.owner, "count": each.count} for each in unsorted],
         "recurring": None
         if changed is None
@@ -791,7 +832,7 @@ def known_merchants(shown: Merchants) -> JSON:
     }
 
 
-def listed_rule(rule: settings.ListedRule) -> JSON:
+def listed_rule(rule: settings.ListedRule, label: categories.Labels) -> JSON:
     """One rule of the settings page: what it gives, in which file, how many committed rows
     it would match on its own (null when its pattern is none), what a change of it sends back
     (`version`) and why it cannot be changed here (`fixed`, null when it can)."""
@@ -800,7 +841,7 @@ def listed_rule(rule: settings.ListedRule) -> JSON:
         "owner": rule.file.owner,
         "position": rule.position,
         "match": rule.match,
-        "category": rule.category,
+        "category": label(rule.category),
         "direction": rule.direction,
         "account": rule.account,
         "matches": rule.matches,
@@ -813,7 +854,7 @@ def listed_category(category: settings.ListedCategory) -> JSON:
     """One category of the settings page, and how many committed rows carry it."""
     return {
         "name": category.name,
-        "side": category.side,
+        "side": side(category.side),
         "parent": category.parent,
         "built_in": category.built_in,
         "rows": category.rows,

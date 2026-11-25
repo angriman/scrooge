@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -24,7 +25,13 @@ def month(n: int, day: int) -> date:
 LUKAS = [
     *(txn("-100", date=month(n, 5), source_ref=f"f{n}", counterparty=SHOP) for n in range(14)),
     *(
-        txn("6000", date=month(n, 25), source_ref=f"p{n}", kind=Kind.INCOME, category="Stipendio")
+        txn(
+            "6000",
+            date=month(n, 25),
+            source_ref=f"p{n}",
+            kind=Kind.INCOME,
+            category=categories.SALARY,
+        )
         for n in range(14)
     ),
     txn("-30", date=date(2026, 8, 9), source_ref="1", counterparty="Coop-3 Bern"),
@@ -35,9 +42,17 @@ LUKAS_USD = [
         date=date(2026, 3, 2),
         source_ref="1",
         kind=Kind.COMMISSION,
-        category="Commissioni",
+        category=categories.FEES,
         **USD,
-    )
+    ),
+    txn(
+        "-10",
+        date=date(2026, 3, 2),
+        source_ref="2",
+        kind=Kind.TRANSFER,
+        category=categories.OWN_TRANSFER,
+        **USD,
+    ),
 ]
 ANNA = [txn("-60", date=date(2026, 8, 12), source_ref="1", counterparty=SHOP)]
 
@@ -65,7 +80,7 @@ def asked(client: TestClient, **params: str) -> dict[str, object]:
 def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
     client: TestClient,
 ) -> None:
-    sent = asked(client, owner=OWNER, category="Alimentari")
+    sent = asked(client, owner=OWNER, category=categories.GROUP_FOOD)
     months = sent.pop("months")
     assert isinstance(months, list)
     assert len(months) == 24
@@ -74,7 +89,7 @@ def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
     assert months[-1] == {"month": "2026-08", "amount": "130.00"}
     assert sent == {
         "kind": "category",
-        "name": "Alimentari",
+        "name": "Food",
         "currency": "CHF",
         "earned": False,
         "net": False,
@@ -92,7 +107,7 @@ def test_a_category_is_its_last_two_years_its_usual_month_and_its_merchants(
 
 
 def test_an_income_category_is_money_earned(client: TestClient) -> None:
-    sent = asked(client, owner=OWNER, category="Stipendio")
+    sent = asked(client, owner=OWNER, category=categories.SALARY)
     assert (sent["earned"], sent["usual"], sent["this_month"]) == (True, "6000.00", "6000.00")
 
 
@@ -113,9 +128,10 @@ def test_an_account_is_its_net_flow_and_what_it_holds(client: TestClient) -> Non
     sent = asked(client, owner=OWNER, account="IBKR USD")
     months = sent["months"]
     assert isinstance(months, list)
-    assert months[18] == {"month": "2026-03", "amount": "-8.00"}  # 10 dollars out at 0.80
+    # 10 dollars moved out at 0.80; the fee is what the money cost, not money taken out.
+    assert months[18] == {"month": "2026-03", "amount": "-8.00"}
     assert (sent["net"], sent["earned"]) == (True, False)
-    assert (sent["balance"], sent["merchants"], sent["usual"]) == ("-8.00", None, "0.00")
+    assert (sent["balance"], sent["merchants"], sent["usual"]) == ("-16.00", None, "0.00")
     # The salary less the shops: money put aside every month.
     shop = asked(client, owner=OWNER, account="Migros")
     assert (shop["usual"], shop["this_month"]) == ("5900.00", "5870.00")
@@ -140,7 +156,7 @@ def test_a_missing_rate_leaves_the_figures_out_and_says_why(client: TestClient) 
     [
         ({}, "Ask for exactly one of category, merchant and account."),
         (
-            {"category": "Casa", "merchant": "Coop"},
+            {"category": categories.GROUP_HOME, "merchant": "Coop"},
             "Ask for exactly one of category, merchant and account.",
         ),
         ({"category": "Alimentar"}, "No category named 'Alimentar'."),

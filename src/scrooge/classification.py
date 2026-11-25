@@ -2,9 +2,9 @@
 
 Rules are regular expressions matched, case-insensitively, against a transaction's description
 and counterparty; the first match wins. Extractors already set the deterministic categories
-(Trading, Commissioni, top-ups...), so rules only apply to rows still without one.
+(Trading, Fees, top-ups...), so rules only apply to rows still without one.
 
-A rule that gives a transfer category (Topup Revolut, Giroconto...) to a row the extractor took
+A rule that gives a transfer category (Revolut top-up, Own transfer...) to a row the extractor took
 for income or an expense also makes it a transfer, which is never income or an expense: the
 answers of `--review` need no `kind`.
 
@@ -129,7 +129,10 @@ def _load(path: Path, key: str) -> object:
 def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -> tuple[Rule, ...]:
     """Read rules from each existing file, in order: earlier files take precedence.
 
-    `known` is every category a rule may name: the taxonomy plus what `categories.yaml` adds.
+    `known` is the key of every category a rule may name: the taxonomy plus what
+    `categories.yaml` adds. A rule may name one by its key, its English label or its Italian
+    name (`categories.key`; the Italian can go once `scrooge migrate-files` has been out for a
+    release or two); the rule keeps its key.
     """
     rules: list[Rule] = []
     for path in paths:
@@ -144,9 +147,9 @@ def load_rules(paths: Iterable[Path], known: Collection[str] = categories.ALL) -
             if not isinstance(entry, dict) or not {"match", "category"} <= entry.keys():
                 msg = f"{where}: needs 'match' and 'category'"
                 raise ConfigError(msg)
-            category = str(entry["category"])
+            category = categories.key(str(entry["category"]))
             if category not in known:
-                msg = f"{where}: unknown category {category!r}"
+                msg = f"{where}: unknown category {str(entry['category'])!r}"
                 raise ConfigError(msg)
             try:
                 pattern = re.compile(str(entry["match"]), re.IGNORECASE)

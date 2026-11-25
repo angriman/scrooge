@@ -17,7 +17,7 @@ from scrooge.storage.money import from_nano, to_nano, to_text
 
 _CURRENCY_DECIMALS = 2
 _INSTRUMENT_TYPES = {"ETFs": "etf", "Stocks": "stock", "Bonds": "bill", "Funds": "fund"}
-_SIDES = ("uscite", "entrate")
+_SIDES = ("expenses", "income")
 
 
 class UnknownCategoryError(Exception):
@@ -117,47 +117,123 @@ def account_of(conn: sqlite3.Connection, owner: int, name: str) -> Account | Non
 
 
 def seed_categories(conn: sqlite3.Connection, extras: Sequence[categories.Extra] = ()) -> None:
-    """Make sure the agreed taxonomy (D6) and what `categories.yaml` adds are in the database.
+    """Make sure the agreed taxonomy (D6) and what `categories.yaml` adds are in the database,
+    each by its key: a built-in category under its English label, which is never read (what is
+    shown is the label of its key), an added one under the name it was given, which is.
 
     Existing rows are left alone.
     """
     insert = (
-        "INSERT OR IGNORE INTO categories (name, parent_id, side, sort_order) VALUES (?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO categories (key, name, parent_id, side, sort_order) "
+        "VALUES (?, ?, ?, ?, ?)"
     )
-    uscite = {parent: list(leaves) for parent, leaves in categories.USCITE.items()}
+    names = {**categories.LABELS_EN}
+    expenses = {parent: list(leaves) for parent, leaves in categories.EXPENSE_GROUPS.items()}
     for extra in extras:
-        if extra.side == "uscite":
-            uscite.setdefault(extra.group, []).append(extra.name)
+        names.setdefault(extra.key, extra.name)
+        if extra.side == "expenses":
+            names.setdefault(extra.group_key, extra.group)
+            expenses.setdefault(extra.group_key, []).append(extra.key)
     order = 0
-    for parent, leaves in uscite.items():
-        conn.execute(insert, (parent, None, "uscite", order))
+    for parent, leaves in expenses.items():
+        conn.execute(insert, (parent, names[parent], None, "expenses", order))
         parent_id = conn.execute(
-            "SELECT id FROM categories WHERE side = 'uscite' AND parent_id IS NULL AND name = ?",
+            "SELECT id FROM categories WHERE side = 'expenses' AND parent_id IS NULL AND key = ?",
             (parent,),
         ).fetchone()[0]
         for leaf in leaves:
             order += 1
-            conn.execute(insert, (leaf, parent_id, "uscite", order))
+            conn.execute(insert, (leaf, names[leaf], parent_id, "expenses", order))
         order += 1
-    entrate = (*categories.ENTRATE, *(e.name for e in extras if e.side == "entrate"))
-    for side, names in (("entrate", entrate), ("transfer", categories.TRANSFERS)):
-        for name in names:
+    income = (*categories.INCOME_LEAVES, *(e.key for e in extras if e.side == "income"))
+    for side, keys in (("income", income), ("transfer", categories.TRANSFERS)):
+        for key in keys:
             order += 1
-            conn.execute(insert, (name, None, side, order))
+            conn.execute(insert, (key, names[key], None, side, order))
+
+
+def category_key(conn: sqlite3.Connection, name: str) -> str:
+    """The key of the category `name` means: a key the database holds, else the key of a
+    label (`categories.key`), else that of an added category named so; `name` itself when
+    none is."""
+    for each in (name, categories.key(name)):
+        if conn.execute("SELECT 1 FROM categories WHERE key = ?", (each,)).fetchone():
+            return each
+    found = conn.execute("SELECT key FROM categories WHERE name = ?", (name.strip(),)).fetchone()
+    return str(found[0]) if found else name
+
+
+def category_labels(conn: sqlite3.Connection) -> categories.Labels:
+    """The label of every category the database holds: a built-in one's from its key, an added
+    one's the name it was given."""
+    rows = conn.execute("SELECT key, name FROM categories ORDER BY id").fetchall()
+    return categories.Labels({row["key"]: row["name"] for row in rows})
+
+
+# The taxonomy's own order, never the names (which change with the language): expenses, then
+# income, then transfers; each top-level category by its sort_order, its leaves right after
+# it by theirs; the id breaks a tie. For `categories c LEFT JOIN categories p` (the parent).
+TAXONOMY_ORDER = (
+    "CASE c.side WHEN 'expenses' THEN 0 WHEN 'income' THEN 1 ELSE 2 END, "
+    "coalesce(p.sort_order, c.sort_order), coalesce(p.id, c.id), c.parent_id IS NOT NULL, "
+    "c.sort_order, c.id"
+)
+_ALL_SIDES = (*_SIDES, "transfer")
+
+
+@dataclass(frozen=True, slots=True)
+class Ranks:
+    """Where each category stands in `TAXONOMY_ORDER`: what lists of categories sort by."""
+
+    tops: Mapping[tuple[str, str], int]  # (side, key) of each top-level category
+    leaves: Mapping[tuple[str, str], int]  # (side, key) of each category a row can carry
+
+    def top(self, name: str, *sides: str) -> int:
+        """The place of the top-level category of key `name`, on the first of `sides` (of all
+        sides, expenses first) that has one; after every category when none has."""
+        return _rank(self.tops, name, sides)
+
+    def leaf(self, name: str, *sides: str) -> int:
+        """The place of the category of key `name` a row carries, as `top` finds it."""
+        return _rank(self.leaves, name, sides)
+
+
+def _rank(ranks: Mapping[tuple[str, str], int], name: str, sides: Sequence[str]) -> int:
+    found = (ranks[side, name] for side in sides or _ALL_SIDES if (side, name) in ranks)
+    return next(found, len(ranks))
+
+
+def category_ranks(conn: sqlite3.Connection) -> Ranks:
+    """The place in the taxonomy of every category the database holds."""
+    tops: dict[tuple[str, str], int] = {}
+    leaves: dict[tuple[str, str], int] = {}
+    found = conn.execute(
+        "SELECT c.side, c.key, c.parent_id IS NULL, c.side = 'expenses' AND c.parent_id IS NULL "  # noqa: S608  # only fixed text is interpolated
+        f"FROM categories c LEFT JOIN categories p ON p.id = c.parent_id ORDER BY {TAXONOMY_ORDER}"
+    )
+    for side, name, top, group in found:
+        if top:
+            tops[side, name] = len(tops)
+        if not group:
+            leaves[side, name] = len(leaves)
+    return Ranks(tops, leaves)
 
 
 def leaf_categories(conn: sqlite3.Connection) -> dict[tuple[str, str], int]:
-    """(side, name) -> id of every category a transaction can carry."""
+    """(side, key) -> id of every category a transaction can carry."""
     rows = conn.execute(
-        "SELECT id, side, name FROM categories WHERE side <> 'uscite' OR parent_id IS NOT NULL"
+        "SELECT id, side, key FROM categories WHERE side <> 'expenses' OR parent_id IS NOT NULL"
     ).fetchall()
-    return {(row["side"], row["name"]): int(row["id"]) for row in rows}
+    return {(row["side"], row["key"]): int(row["id"]) for row in rows}
 
 
-def category_for(leaves: dict[tuple[str, str], int], name: str, amount: Decimal) -> int | None:
-    """The category `name` on the side the sign points to, or on the other one.
+def category_for(
+    leaves: dict[tuple[str, str], int], name: str, amount: Decimal, said: str = ""
+) -> int | None:
+    """The category of key `name` on the side the sign points to, or on the other one;
+    `said` is how it was asked for, which an error repeats (the key without it).
 
-    Several names exist on both sides (Trading, Commissioni, Investimenti): the sign decides,
+    Several keys exist on both sides (Trading, Fees, Investments): the sign decides,
     as in D1. A refund keeps its expense category although it is money coming in.
     """
     if not name:
@@ -167,7 +243,7 @@ def category_for(leaves: dict[tuple[str, str], int], name: str, amount: Decimal)
     for side in _SIDES if amount < 0 else _SIDES[::-1]:
         if (side, name) in leaves:
             return leaves[side, name]
-    msg = f"unknown category {name!r}"
+    msg = f"unknown category {said or name!r}"
     raise UnknownCategoryError(msg)
 
 

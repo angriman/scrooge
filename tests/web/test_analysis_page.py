@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import spending
+from scrooge import categories, spending
 from scrooge.models import Kind
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
@@ -18,13 +18,15 @@ from tests.web.test_analysis_cashflow import tables
 from tests.web.test_app import text
 
 SITE = "http://127.0.0.1:8765"
-TRADE = {"kind": Kind.TRADING, "category": "Trading"}
+TRADE = {"kind": Kind.TRADING, "category": categories.TRADING}
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 LUKAS = [
     *salaries("5000", date(2025, 1, 1), 20),
     txn("500", date=date(2026, 2, 10), source_ref="1", **TRADE),
     txn("-300", date=date(2026, 5, 10), source_ref="2", **TRADE),  # a month that lost
-    txn("15", date=date(2026, 7, 5), source_ref="3", kind=Kind.INCOME, category="Cashback"),
+    txn(
+        "15", date=date(2026, 7, 5), source_ref="3", kind=Kind.INCOME, category=categories.CASHBACK
+    ),
 ]
 LUKAS_USD = [
     txn(
@@ -32,7 +34,7 @@ LUKAS_USD = [
         date=date(2026, 3, 16),
         source_ref="1",
         kind=Kind.DIVIDEND,
-        category="Dividendi",
+        category=categories.DIVIDENDS,
         **USD,
     )
 ]
@@ -82,9 +84,10 @@ def test_income_by_source(client: TestClient) -> None:
     assert "40,305.00 CHF of income." in text(page)
     ring, periods, sources = tables(before_cash_flow(page))
     assert ring == [
-        ["Lavoro", "40,000.00", "99.2%"],
-        ["Investimenti", "290.00", "0.7%"],
-        ["Altro", "15.00", "0.0%"],
+        # Shared out so that the ring adds up to 100%: on their own, 99.2, 0.7 and 0.0.
+        ["Work", "40,000.00", "99.3%"],
+        ["Investments", "290.00", "0.7%"],
+        ["Other", "15.00", "0.0%"],
     ]
     # Nothing is spent: all income is saved.
     assert periods[0] == ["2026-08", "5,000.00", "0.00", "0.00", "5,000.00", "99.5%", "100.0%"]
@@ -92,9 +95,9 @@ def test_income_by_source(client: TestClient) -> None:
     assert periods[5] == ["2026-03", "5,000.00", "90.00", "0.00", "5,090.00", "99.0%", "100.0%"]
     assert periods[7] == ["2026-01", "5,000.00", "0.00", "0.00", "5,000.00", "100.0%", "100.0%"]
     assert sources == [
-        ["Stipendio", "40,000.00", "99.2%", "8"],
+        ["Salary", "40,000.00", "99.2%", "8"],
         ["Trading", "200.00", "0.5%", "2"],
-        ["Dividendi", "90.00", "0.2%", "1"],
+        ["Dividends", "90.00", "0.2%", "1"],
         ["Cashback", "15.00", "0.0%", "1"],
     ]
     assert "Statements up to 2026-08-31, for both of you." in text(page)
@@ -104,7 +107,7 @@ def test_a_loss_is_not_in_the_ring(client: TestClient) -> None:
     page = client.get(
         "/analysis", params={"from": "2026-05", "to": "2026-05", "currency": "CHF"}
     ).text
-    assert "Not in the ring: Investimenti -300.00 CHF." in text(page)
+    assert "Not in the ring: Investments -300.00 CHF." in text(page)
 
 
 def test_before_twelve_months_of_income_there_is_no_share(client: TestClient) -> None:
@@ -132,7 +135,7 @@ def test_the_chart_stacks_each_period_and_hangs_a_loss_below_zero(client: TestCl
     [line] = re.findall(r'<polyline class="share" points="([^"]+)"/>', page)
     assert len(line.split()) == 8
     assert (
-        "<title>2026-05: 4,700.00 CHF, Lavoro 5,000.00, Investimenti -300.00; "
+        "<title>2026-05: 4,700.00 CHF, Work 5,000.00, Investments -300.00; "
         "99.5% from work over 12 months</title>" in page
     )
     assert "style=" not in page  # the page's own policy would refuse it
@@ -164,11 +167,11 @@ def test_what_cannot_be_shown_is_said(client: TestClient) -> None:
 
 @pytest.fixture(scope="module")
 def spender(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
-    """The rows of the spending tests, and a bill that gives Casa a second leaf."""
+    """The rows of the spending tests, and a bill that gives Home a second leaf."""
     path: Path = tmp_path_factory.mktemp("spending") / "scrooge.db"
     conn = db.connect(path)
     db.migrate(conn, BUILT)
-    bill = txn("-90", date=date(2026, 7, 3), source_ref="bill", category="Utenze")
+    bill = txn("-90", date=date(2026, 7, 3), source_ref="bill", category=categories.UTILITIES)
     lukas = (("migros", [*spent.LUKAS, bill]), ("ibkr", spent.LUKAS_USD))
     close(conn, OWNER, (spent.START, spent.END), *lukas)
     close(conn, PARTNER, (date(2026, 7, 1), spent.END), ("migros", spent.ANNA))
@@ -198,34 +201,35 @@ def test_where_the_money_goes(spender: TestClient) -> None:
     assert "14,654.50 CHF spent once Anna paid back 900.00, 1,831.81 a month." in text(page)
     assert "Not in the ring: Paid back -900.00 CHF." in text(page)
     ring, categories, merchants, *_ = tables(page)
+    # The ring adds up to 100%: each rounded on its own, Home would be 93.2% and the sum 100.1.
     assert ring == [
-        ["Casa", "14,490.00", "93.2%", "+1%"],
-        ["Alimentari", "820.00", "5.3%", "+2%"],
-        ["Regali", "200.00", "1.3%", "\N{EN DASH}"],
-        ["Ristoranti e bar", "40.00", "0.3%", "\N{EN DASH}"],
-        ["Banca e broker", "4.50", "0.0%", "\N{EN DASH}"],
+        ["Home", "14,490.00", "93.1%", "+1%"],
+        ["Food", "820.00", "5.3%", "+2%"],
+        ["Gifts", "200.00", "1.3%", "\N{EN DASH}"],
+        ["Eating out", "40.00", "0.3%", "\N{EN DASH}"],
+        ["Banking", "4.50", "0.0%", "\N{EN DASH}"],
     ]
     # The tables are folded under the charts.
     assert page.index("<summary>Every category") < page.index('<table class="cards">')
     assert "what Anna paid you back lowers the total" in text(page)
     assert categories[:3] == [
-        ["Casa", "14,490.00", "93.2%", "1,811.25", "1,800.00", "+1%", "14,400.00", "+1%"],
-        ["Affitto", "14,400.00", ""],
-        ["Utenze", "90.00", ""],
+        ["Home", "14,490.00", "93.2%", "1,811.25", "1,800.00", "+1%", "14,400.00", "+1%"],
+        ["Rent", "14,400.00", ""],
+        ["Utilities", "90.00", ""],
     ]
     # Nothing was spent on it before: there is no change to give.
     none = "\N{EN DASH}"
-    assert ["Regali", "200.00", "1.3%", "25.00", "0.00", none, "0.00", none] in categories
+    assert ["Gifts", "200.00", "1.3%", "25.00", "0.00", none, "0.00", none] in categories
     assert merchants[0] == [
         "Hans Muster",
-        "Casa",
+        "Home",
         "14,400.00",
         "8",
         "1,800.00",
         "2026-01-01",
         "2026-08-01",
     ]
-    assert ["Migros", "Casa", "90.00", "1", "90.00", "2026-07-03", "2026-07-03"] in merchants
+    assert ["Migros", "Home", "90.00", "1", "90.00", "2026-07-03", "2026-07-03"] in merchants
 
 
 def test_a_change_of_a_tenth_is_coloured_by_whether_it_is_good_news(spender: TestClient) -> None:
@@ -246,7 +250,7 @@ def test_what_was_paid_back_hangs_below_zero(spender: TestClient) -> None:
         0
     ]
     legend = re.findall(r'<span class="key slot-(\d)"></span>([^<]+)</span>', spending_part)
-    assert legend == [("1", "Casa"), ("2", "Regali"), ("3", "Alimentari"), ("0", "Paid back")]
+    assert legend == [("1", "Home"), ("2", "Gifts"), ("3", "Food"), ("0", "Paid back")]
     [zero] = re.findall(r'<line class="axis" x1="0" x2="940" y1="([\d.]+)"', spending_part)
     assert re.search(rf'<rect class="slot-0" x="[\d.]+" y="{zero}"', spending_part)
     assert '<polyline class="share"' not in spending_part
@@ -274,7 +278,7 @@ def test_the_ring_puts_the_smaller_categories_together(
     page = spender.get("/analysis", params={**IN_2026, "owner": OWNER}).text
     ring, *_ = tables(page)
     assert ring == [
-        ["Casa", "14,490.00", "93.2%", "+1%"],
+        ["Home", "14,490.00", "93.2%", "+1%"],
         ["Others", "1,064.50", "6.8%", "\N{EN DASH}"],
     ]
 
