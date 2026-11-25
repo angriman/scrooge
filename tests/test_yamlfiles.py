@@ -2,6 +2,7 @@
 
 import os
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -121,11 +122,13 @@ def test_a_write_that_fails_leaves_the_file_as_it_was(
         ),
     ],
 )
-def test_the_import_page_waits_for_a_change_in_progress(tmp_path: Path, write: object) -> None:
+def test_the_import_page_waits_for_a_change_in_progress(
+    tmp_path: Path, write: Callable[[Path], object]
+) -> None:
     done = threading.Event()
 
     def remember() -> None:
-        write(tmp_path)  # type: ignore[operator]  # one of the writers above
+        write(tmp_path)
         done.set()
 
     with yamlfiles.LOCK:

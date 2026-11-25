@@ -341,8 +341,7 @@ def _spent_at(
 ) -> tuple[Row, ...]:
     """The `rows` the cash flow counts as money spent at the merchant `name`, of `owner` or of
     everyone: their total is then the figure the cash flow shows for it."""
-    # The cash flow reads its rows through this module: it is imported when asked for.
-    from scrooge import cashflow, spending  # noqa: PLC0415
+    from scrooge import cashflow, spending  # noqa: PLC0415  # cashflow imports query
 
     at = spending.spent_at(name)
     spent = {row.id for row in cashflow.counted(conn, owner) if at(row)}

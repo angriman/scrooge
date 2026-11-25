@@ -12,7 +12,7 @@ SLOW = ("Migros", False, "a" * 40 + "b", "")  # `(a+)+$` takes for ever on it
 def test_matching_hands_back_what_it_decided_a_batch_at_a_time() -> None:
     got: list[object] = []
     texts = [KONSUM, SALARY] * 300
-    patterns.matching("konsum", "out", texts, got.append)
+    patterns.matching(got.append, "konsum", "out", texts)
     assert got == [(500, list(range(0, 500, 2))), (600, list(range(500, 600, 2)))]
 
 
@@ -26,7 +26,7 @@ def test_counting_hands_back_each_rule_in_its_order() -> None:
         ("acme", "", "in", None),
         ("(", "", "", None),
     ]
-    patterns.counting(specs, texts, got.append)
+    patterns.counting(got.append, specs, texts)
     assert got == [(0, 4), (1, 1), (2, 0), (3, 2), (4, None)]
 
 

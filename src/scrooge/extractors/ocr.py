@@ -62,8 +62,7 @@ def _read_page(program: str, page: pdfplumber.page.Page, what: str) -> str:
     image = io.BytesIO()
     page.to_image(resolution=DPI).original.convert("L").save(image, format="PNG")
     command = [program, "stdin", "stdout", "-l", LANGUAGE, "--psm", _PAGE_AS_ONE_BLOCK]
-    # No shell, and the program is the one found on PATH above with fixed arguments.
-    done = subprocess.run(  # noqa: S603
+    done = subprocess.run(  # noqa: S603  # no shell; program found on PATH with fixed arguments
         [*command, "--dpi", str(DPI)], input=image.getvalue(), capture_output=True, check=False
     )
     if done.returncode != 0:

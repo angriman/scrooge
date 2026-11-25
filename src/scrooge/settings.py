@@ -152,7 +152,7 @@ def rules(
     if specs:
         rows = [(whose, text, count) for (whose, text), count in texts.items()]
         got, complete = patterns.bounded(patterns.counting, (specs, rows), budget)
-        counts = dict(got)  # type: ignore[arg-type]  # (index, rows) pairs, as `counting` puts them
+        counts = dict(got)
         if not complete:
             problems.append(
                 f"counting the rules took too long: {len(found) - len(counts)} of them, from "
@@ -204,8 +204,7 @@ def try_pattern(
     order: dict[patterns.Text, int] = {}  # each text once, in the order of its newest row
     for row in rows:
         order.setdefault(_text(row), len(order))
-    got, _ = patterns.bounded(patterns.matching, (match, direction, list(order)), budget)
-    batches: list[tuple[int, list[int]]] = got  # type: ignore[assignment]  # as `matching` puts them
+    batches, _ = patterns.bounded(patterns.matching, (match, direction, list(order)), budget)
     decided = max((upto for upto, _ in batches), default=0)
     matched = {n for _, found in batches for n in found}
     reached = next((n for n, row in enumerate(rows) if order[_text(row)] >= decided), len(rows))

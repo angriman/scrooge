@@ -23,11 +23,11 @@ def _headers(site: Site) -> dict[str, str]:
     return {"X-Token": site.token}
 
 
-def _upload(site: Site, *names: str, owner: str = "Lukas") -> dict[str, object]:
+def _upload(site: Site, *names: str, owner: str = "Lukas") -> dict[str, Any]:
     response = site.client.post(
         "/api/import", data={"owner": owner}, files=site.uploads(*names), headers=_headers(site)
     )
-    sent: dict[str, object] = response.json()
+    sent: dict[str, Any] = response.json()
     sent["status"] = response.status_code
     return sent
 
@@ -59,7 +59,7 @@ def test_the_draft_is_empty_until_statements_are_sent(site: Site) -> None:
 def test_every_file_sent_says_what_became_of_it_and_is_staged(site: Site) -> None:
     sent = _upload(site, "Migros.csv", "Revolut Savings.tsv", "notes.txt")
     assert sent["status"] == 200
-    files = sent["imported"]["files"]  # type: ignore[index]  # JSON of the API
+    files = sent["imported"]["files"]
     assert [(f["name"], f["staged"], f["problem"]) for f in files] == [
         ("Migros.csv", True, None),
         ("Revolut Savings.tsv", True, None),
@@ -185,8 +185,8 @@ def test_bills_without_a_maturity_are_looked_up_and_the_same_files_imported(site
     undated(site, source)
     stopped = _upload(site, "tastytrade.csv")
     assert stopped["status"] == 409
-    held = stopped["undated"]["held"]  # type: ignore[index]  # JSON of the API
-    assert stopped["undated"]["bills"] == [BILL]  # type: ignore[index]  # JSON of the API
+    held = stopped["undated"]["held"]
+    assert stopped["undated"]["bills"] == [BILL]
     response = site.client.post(
         "/api/import/maturities", json={"held": held}, headers=_headers(site)
     )
@@ -218,7 +218,7 @@ def test_a_bill_that_cannot_be_looked_up_says_why_and_keeps_the_files(site: Site
         (FakeMaturities(), 409, f"TreasuryDirect knows no bill {BILL}"),
     ):
         undated(site, source)
-        held = _upload(site, "tastytrade.csv")["undated"]["held"]  # type: ignore[index]  # JSON of the API
+        held = _upload(site, "tastytrade.csv")["undated"]["held"]
         response = site.client.post(
             "/api/import/maturities", json={"held": held}, headers=_headers(site)
         )
