@@ -384,19 +384,6 @@ OLD_SIDES = {"uscite": "expenses", "entrate": "income"}
 _SIDE_NAMES = {"expenses": "expenses", "income": "income", **OLD_SIDES}
 
 
-def builtin(side: str, name: str, *, group: bool = False) -> bool:
-    """Whether the key `name` is a category of the taxonomy on `side`: a top-level one of the
-    expenses with `group`, else one a row can carry."""
-    if group:
-        return side == "expenses" and name in EXPENSE_GROUPS
-    leaves = {
-        "expenses": {leaf for leaves in EXPENSE_GROUPS.values() for leaf in leaves},
-        "income": set(INCOME_LEAVES),
-        "transfer": set(TRANSFERS),
-    }
-    return name in leaves.get(side, set())
-
-
 @dataclass(frozen=True, slots=True)
 class Extra:
     """A leaf category added by `categories.yaml`, by the names written there."""

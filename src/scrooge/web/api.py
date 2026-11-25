@@ -31,13 +31,11 @@ from scrooge import (
     analysis,
     attention,
     categories,
-    classification,
     closing,
     context,
     costs,
     holding_returns,
     holds,
-    marketdata,
     merchants,
     months,
     networth,
@@ -58,7 +56,6 @@ from scrooge import (
 from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
 from scrooge.models import Kind, TypedHolding
-from scrooge.prices import PriceError
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
 from scrooge.validation import ReconciliationError
@@ -198,11 +195,7 @@ def _attention(request: Request) -> Response:
     with db.reading(request.app.state.database) as conn:
         people = [p for p in query.people(conn) if owner in (None, p.name)]
         lines = together.lines(conn, owner)
-        try:
-            checks = networth.checks(conn, owner=owner)
-        except networth.MissingRateError as exc:
-            errors.append(wire.sentence(exc))
-            checks = ()
+        checks = wire.unless_rate_missing(errors, lambda: networth.checks(conn, owner=owner), ())
         unmatched: str = request.app.state.unmatched
         unsorted = attention.uncategorised(conn, owner, unmatched)
         label = store.category_labels(conn, language=language_of(request))
@@ -616,33 +609,14 @@ async def _look_up(request: Request) -> Response:
     if state.maturities is None:
         raise HTTPException(404)
     key = str((sent or {}).get("held", ""))
-    held = state.held.get(key)
-    if held is None or held.until <= state.clock():
-        return JSONResponse(
-            {"errors": ["The files of that import are no longer kept: choose them again."]}, 409
-        )
-    # What failed keeps the files, and the button that tries again.
-    again = {"bills": list(held.bills), "held": key}
     try:
-        looked = await run_in_threadpool(marketdata.maturities, state.maturities, held.bills)
-    except PriceError as exc:
-        message = f"TreasuryDirect could not tell: {wire.sentence(exc)} Try again later, or add "
-        return JSONResponse(
-            {"errors": [message + "the maturity to instruments.yaml."], "undated": again}, 502
-        )
-    if looked.unknown:
-        unknown = ", ".join(looked.unknown)
-        message = f"TreasuryDirect knows no bill {unknown}: add its maturity to instruments.yaml."
-        return JSONResponse({"errors": [message], "undated": again}, 409)
-    try:
-        classification.add_maturities(state.imports.instruments, looked.found)
-    except ConfigError as exc:
-        return JSONResponse({"errors": [wire.sentence(exc)], "undated": again}, 409)
-    state.held.pop(key, None)
-    days = "; ".join(f"{bill} matures on {day}" for bill, day in looked.found.items())
-    return await _stage(
-        request, held.owner, held.uploads, f"{days} (TreasuryDirect), written in instruments.yaml."
-    )
+        held, notice = await run_in_threadpool(uploads_.look_up, state, key)
+    except uploads_.LookupRefusedError as exc:
+        body: wire.JSON = {"errors": [exc.message]}
+        if exc.held is not None:
+            body["undated"] = {"bills": list(exc.held.bills), "held": key}
+        return JSONResponse(body, exc.status)
+    return await _stage(request, held.owner, held.uploads, notice)
 
 
 class _Refused(Exception):
