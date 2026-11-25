@@ -69,8 +69,8 @@ web: ## Build the frontend into src/scrooge/web/spa, where `scrooge serve` finds
 web-dev: ## The frontend with reloading at http://localhost:5173/app, over `scrooge serve` on 8765
 	cd frontend && npm run dev
 
-web-check: ## Type-check the frontend and run its unit tests
-	cd frontend && npm ci && npm run check && npm test
+web-check: ## Check the frontend's formatting, type-check it and run its unit tests
+	cd frontend && npm ci && npm run format:check && npm run check && npm test
 
 ICONS := src/scrooge/web/static/icons
 
