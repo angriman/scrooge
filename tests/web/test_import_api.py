@@ -165,7 +165,7 @@ def test_bills_without_a_maturity_are_looked_up_and_the_same_files_imported(site
 
 
 def test_a_category_is_added_where_rules_are_kept(site: Site) -> None:
-    sent = {"name": "Garden", "side": "uscite", "group": ""}
+    sent = {"name": "Garden", "side": "expenses", "group": ""}
     assert (
         site.client.post("/api/import/category", json=sent, headers=_headers(site)).status_code
         == 404

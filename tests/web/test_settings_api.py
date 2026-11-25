@@ -209,26 +209,26 @@ def test_a_change_needs_the_token_and_a_writable_database(site: Site) -> None:
 def test_the_categories_are_listed_with_their_rows(site: Site) -> None:
     sent = site.client.get("/api/settings/categories").json()
     listed = {(c["name"], c["side"]): c for c in sent["categories"]}
-    assert listed["Prestiti", "uscite"] == {
+    assert listed["Prestiti", "expenses"] == {
         "name": "Prestiti",
-        "side": "uscite",
+        "side": "expenses",
         "parent": "Prestiti",
         "built_in": False,
         "rows": 1,
     }
-    assert listed["Groceries", "uscite"]["rows"] == 2
+    assert listed["Groceries", "expenses"]["rows"] == 2
     assert "Prestiti" in sent["groups"]
     assert sent["editable"] is True
 
 
 def test_categories_are_added_renamed_merged_and_removed(site: Site) -> None:
-    added = _post(site, "categories/add", {"name": "Mance", "side": "entrate", "group": ""})
+    added = _post(site, "categories/add", {"name": "Mance", "side": "income", "group": ""})
     assert added.json() == {"name": "Mance", "errors": []}
     conn = sqlite3.connect(site.database)
     stored = conn.execute("SELECT side FROM categories WHERE name = 'Mance'").fetchall()
     conn.close()
     assert stored == [("income",)]  # the side as the server names it
-    assert _post(site, "categories/add", {"name": "Mance", "side": "entrate"}).status_code == 409
+    assert _post(site, "categories/add", {"name": "Mance", "side": "income"}).status_code == 409
     renamed = _post(site, "categories/rename", {"name": "Prestiti", "to": "Mutuo"})
     assert renamed.json() == {"rows": 1, "errors": []}
     merged = _post(site, "categories/merge", {"name": "Mutuo", "into": "Gifts"})
@@ -288,7 +288,7 @@ def test_settings_api_uses_the_chosen_language(site: Site) -> None:
     cats_json = client.get("/api/settings/categories").json()
     listed = {(c["name"], c["side"]): c for c in cats_json["categories"]}
     groceries_it = categories.LABELS_IT[categories.GROCERIES]
-    assert listed[groceries_it, "uscite"]["parent"] == categories.LABELS_IT[categories.GROUP_FOOD]
+    assert listed[groceries_it, "expenses"]["parent"] == categories.LABELS_IT[categories.GROUP_FOOD]
     assert cats_json["unmatched"] == categories.LABELS_IT[categories.UNSORTED]
-    assert (cats_json["unmatched"], "uscite") in listed
+    assert (cats_json["unmatched"], "expenses") in listed
     assert categories.LABELS_IT[categories.GROUP_FOOD] in cats_json["groups"]

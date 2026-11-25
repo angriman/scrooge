@@ -40,19 +40,6 @@ def test_a_person_is_sent_without_a_day_covered_unless_one_is_given() -> None:
     assert wire.person(anna, date(2026, 9, 30))["covered"] == "2026-09-30"
 
 
-def test_a_side_keeps_its_italian_name_on_the_wire() -> None:
-    assert [wire.side(name) for name in ("expenses", "income", "transfer")] == [
-        "uscite",
-        "entrate",
-        "transfer",
-    ]
-    assert [wire.side_sent(name) for name in ("uscite", "entrate", "transfer")] == [
-        "expenses",
-        "income",
-        "transfer",
-    ]
-
-
 def test_parts_of_a_whole_are_sent_in_whole_percents_that_add_up() -> None:
     # 48.5% and 51.5% each rounded would be 49% and 52%.
     assert wire.whole_percents([Decimal("0.485"), Decimal("0.515")]) == ["49", "51"]

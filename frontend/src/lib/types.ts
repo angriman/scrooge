@@ -906,7 +906,7 @@ export interface PatternTest {
 
 export interface ListedCategory {
 	name: string;
-	side: 'uscite' | 'entrate' | 'transfer';
+	side: 'expenses' | 'income' | 'transfer';
 	/** The top-level category of an expense. */
 	parent: string | null;
 	built_in: boolean;

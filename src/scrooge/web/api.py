@@ -702,8 +702,8 @@ async def _add_rule(request: Request) -> Response:
 
 async def _add_category(request: Request) -> Response:
     """One more category in the taxonomy, for every import from now on: `{"name", "side",
-    "group"}`, an expense (`uscite`) under `group` or a group of its own, or income
-    (`entrate`)."""
+    "group"}`, an expense (`expenses`) under `group` or a group of its own, or income
+    (`income`)."""
     sent = await _sent(request)
     state = request.app.state
     _importable(request)
@@ -719,7 +719,7 @@ async def _add_category(request: Request) -> Response:
                 conn,
                 state.rules.shared.with_name(categories.FILE),
                 name=str(sent.get("name", "")),
-                side=wire.side_sent(str(sent.get("side", ""))),
+                side=str(sent.get("side", "")),
                 group=str(sent.get("group", "")),
             )
         finally:

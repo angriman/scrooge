@@ -4,8 +4,7 @@ database or knows about HTTP.
 An amount, a share or a quantity is text, written as it is (`"1234.50"`, never a float, which
 would lose the cents); a day is ISO text (`"2026-09-30"`); what is not known is `null`. A
 category is sent by its label (`categories.Labels`), as people read it: the services name
-categories by their keys, and the translation is made here, once. A side of the taxonomy
-keeps the Italian name it had (`side`, `side_sent`).
+categories by their keys, and the translation is made here, once.
 Nothing is laid out here: no colours, no shapes, no rounding for the eye. Those are the
 frontend's. Shares of one whole are the exception: rounded on its own, each could make the
 parts add up to 101, so they are sent shared out at the precision the app shows them
@@ -65,23 +64,6 @@ def sentence(exc: Exception) -> str:
     """What went wrong, as a page says it."""
     message = str(exc)
     return f"{message[0].upper()}{message[1:]}."
-
-
-# The sides of the taxonomy as /api names them. The server says `expenses` and `income` since
-# 2026-11-25; the frontend still says `uscite` and `entrate`, and is another contributor's to
-# change, so the two names meet here, and only here, until the frontend switches too.
-_WIRE_SIDES = {"expenses": "uscite", "income": "entrate"}
-_SIDES_SENT = {wire: side for side, wire in _WIRE_SIDES.items()}
-
-
-def side(name: str) -> str:
-    """A side of the taxonomy as /api sends it; any other (`transfer`, `investing`) as it is."""
-    return _WIRE_SIDES.get(name, name)
-
-
-def side_sent(name: str) -> str:
-    """A side /api was sent, as the server names it."""
-    return _SIDES_SENT.get(name, name)
 
 
 def unless_rate_missing(errors: list[str], compute: Callable[[], _T], fallback: _F) -> _T | _F:
@@ -506,7 +488,7 @@ def _pending(row: months.Pending, label: categories.Labels) -> JSON:
         "counterparty": row.counterparty,
         "description": row.description,
         "category": label(row.category) or None,
-        "side": side(row.side) or None,
+        "side": row.side or None,
         # Whether a category can be given here: it has none yet, or one a rule or a choice gave.
         "choosable": row.waiting or row.changeable,
         "statement": row.statement,
@@ -552,7 +534,7 @@ def draft(staged: months.Draft, label: categories.Labels) -> JSON:
         ],
         "totals": [
             {
-                "side": side(line.side) or None,
+                "side": line.side or None,
                 "category": label(line.category) or None,
                 "currency": line.currency,
                 "count": line.count,
@@ -691,7 +673,7 @@ def cashflow_report(shown: report.Report, label: categories.Labels) -> JSON:
         "as_paid_totals": [
             {
                 "currency": line.currency,
-                "side": side(line.side),
+                "side": line.side,
                 "category": label(line.category),
                 "count": line.count,
                 "total": number(line.total),
@@ -932,7 +914,7 @@ def listed_category(category: settings.ListedCategory) -> JSON:
     """One category of the settings page, and how many committed rows carry it."""
     return {
         "name": category.name,
-        "side": side(category.side),
+        "side": category.side,
         "parent": category.parent,
         "built_in": category.built_in,
         "rows": category.rows,
