@@ -1,0 +1,57 @@
+# The image, built and run on each processor it is for, natively: deploy/smoke-test.sh goes
+# through the first run of deploy/README.md (init, compose up, sign in, import, commit) on
+# x86-64 and on ARM. On every pull request that touches what goes in the image, and before
+# image.yml pushes a release.
+#
+# Third-party actions are pinned to the full commit SHA of a release, its version beside it.
+
+name: container
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - deploy/**
+      - src/**
+      - frontend/**
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/container.yml
+  workflow_call:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Into the runner's own Docker, not a registry.
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: scrooge:test
+          cache-from: type=gha,scope=smoke-${{ matrix.runner }}
+          cache-to: type=gha,mode=max,scope=smoke-${{ matrix.runner }}
+
+      - run: deploy/smoke-test.sh scrooge:test

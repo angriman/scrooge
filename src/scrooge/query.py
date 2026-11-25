@@ -38,7 +38,8 @@ class Filter:
     booking date when `booking` is set. `category` is a name at either level of the taxonomy:
     a top-level category stands for all its leaves. `kinds` keeps the rows of any of them, as
     `kind` does those of one. `at_least` and `at_most` bound the size of the amount, whatever
-    its sign. `text` is looked for in the counterparty and the description, ignoring case.
+    its sign. `account_kinds` keeps the rows of the accounts of those kinds (`ACCOUNTS` names
+    them in groups). `text` is looked for in the counterparty and the description, ignoring case.
     `merchant` is who was paid as the cash flow names them (`merchant`), ignoring case, and
     keeps only what the cash flow counts as spent there: no income, transfer, trade or money
     paid back.
@@ -56,7 +57,16 @@ class Filter:
     at_most: Decimal | None = None
     text: str = ""
     merchant: str | None = None
+    account_kinds: tuple[str, ...] = ()
 
+
+# The kinds of account a filter can be cut to, by the name the address gives them: a broker's
+# statements feed two kinds, one for its cash and one for what it holds.
+ACCOUNTS: dict[str, tuple[str, ...]] = {
+    "broker": ("broker_cash", "broker_securities"),
+    "bank": ("bank",),
+    "card": ("card",),
+}
 
 _FEES = frozenset({Kind.COMMISSION, Kind.TAX, Kind.INTEREST})
 
@@ -231,6 +241,11 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         (
             "kind IN (SELECT value FROM json_each(?))",
             json.dumps([kind.value for kind in wanted.kinds]) if wanted.kinds else None,
+        ),
+        (
+            "(SELECT a.kind FROM transactions t JOIN accounts a ON a.id = t.account_id "
+            "WHERE t.id = committed_transactions.id) IN (SELECT value FROM json_each(?))",
+            json.dumps(list(wanted.account_kinds)) if wanted.account_kinds else None,
         ),
         ("abs(amount_nano) >= ?", None if wanted.at_least is None else to_nano(wanted.at_least)),
         ("abs(amount_nano) <= ?", None if wanted.at_most is None else to_nano(wanted.at_most)),

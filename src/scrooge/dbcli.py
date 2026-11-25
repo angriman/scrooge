@@ -2,6 +2,8 @@
 prices | query | serve | password | publish | migrate-files`: the database from the terminal.
 
     scrooge init              first run: ask who you are and make your setup in users/<name>/
+                              (--container: for the app in a container, its pages reached
+                              from outside it with a password)
     scrooge import <path>...  reconcile and classify the statements, then stage them
     scrooge commit            make what is staged visible to the dashboards
     scrooge statements        list the statements stored, staged ones first, with their ids
@@ -213,7 +215,7 @@ def main(
         if args.command == "password":  # about no database and no config
             return _password(out)
         if args.command == "init":
-            return onboarding.run(Path(onboarding.USERS), out, ask)
+            return onboarding.run(Path(onboarding.USERS), out, ask, container=args.container)
         args.config = _find_config(args)
         if args.command == "migrate-files":  # about the files alone, not the database
             return _migrate_files(args, out)
@@ -321,7 +323,13 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765, help="default: 8765")
     _rules_flags(serve)
     commands.add_parser("password", help="print a password's digest, for 'serve' in the config")
-    commands.add_parser("init", help="first run: make a setup of your own in users/<name>/")
+    first = commands.add_parser("init", help="first run: make a setup of your own in users/<name>/")
+    first.add_argument(
+        "--container",
+        action="store_true",
+        help="for the app in a container: its pages listen on every address of it, under the "
+        "names and with the password asked for",
+    )
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
         "folder",
@@ -620,6 +628,12 @@ def _migrate_files(args: argparse.Namespace, out: TextIO) -> int:
 
 def _setting(args: argparse.Namespace, config: dict[str, object], flag: str, key: str) -> str:
     value = getattr(args, flag) or config.get(key)
+    if not value and not Path(args.config).exists():
+        msg = (
+            f"no {key}: there is no {args.config}: make a setup with 'scrooge init', "
+            f"or pass --{flag}"
+        )
+        raise ConfigError(msg)
     if not value:
         msg = f"no {key}: pass --{flag} or set '{key}' in {args.config}"
         raise ConfigError(msg)

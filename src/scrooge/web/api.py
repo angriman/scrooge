@@ -31,6 +31,7 @@ from scrooge import (
     categories,
     classification,
     context,
+    costs,
     holds,
     marketdata,
     merchants,
@@ -759,6 +760,22 @@ def _performance(request: Request) -> Response:
     return JSONResponse({"performance": wire.performance_report(shown), "errors": errors})
 
 
+def _costs(request: Request) -> Response:
+    """What investing cost `owner`, or everyone, each year in `currency`: commissions and tax
+    withheld. Rows in a currency without a rate are left out, each such currency said in
+    `errors`."""
+    asked = forms.holdings_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            shown = costs.run(conn, owner=asked.owner, currency=asked.currency)
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+    errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
+    return JSONResponse({"costs": wire.costs_report(shown), "errors": errors})
+
+
 def _recurring(request: Request) -> Response:
     """The payments that come back at a steady pace for `owner`, or for everyone, and what
     they cost a month in `currency`."""
@@ -880,6 +897,7 @@ routes = [
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
     Route("/performance", _performance, name="api_performance"),
+    Route("/costs", _costs, name="api_costs"),
     Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),
     Route("/import", _upload, methods=["POST"], name="api_upload"),

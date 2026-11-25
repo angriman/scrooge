@@ -9,6 +9,7 @@ import {
 	fileNote,
 	fileTitle,
 	matchesName,
+	moved,
 	ruleKey,
 	testQuery
 } from './rules.js';
@@ -26,7 +27,8 @@ const rule = (file: RulesFile, position: number, match = 'KONSUM'): Rule => ({
 	account: '',
 	matches: 2,
 	version: `v${position}`,
-	fixed: null
+	fixed: null,
+	counted: true
 });
 
 describe('byFile', () => {
@@ -52,6 +54,7 @@ describe('names', () => {
 		expect(directionName('out')).toBe('money out');
 		expect(directionName('')).toBe('in and out');
 		expect(matchesName(null)).toBe('not a pattern');
+		expect(matchesName(null, false)).toBe('not counted: counting took too long');
 		expect(matchesName(0)).toBe('would match no rows');
 		expect(matchesName(1)).toBe('would match 1 row on its own');
 		expect(matchesName(12)).toBe('would match 12 rows on its own');
@@ -77,6 +80,19 @@ describe('a change', () => {
 			version: 'v2',
 			...draft
 		});
+	});
+});
+
+describe('moved', () => {
+	it('sends the rule passed as it was shown', () => {
+		expect(moved(rule(shared, 2), -1, rule(shared, 1))).toEqual({
+			file: 'rules.yaml',
+			position: 2,
+			version: 'v2',
+			by: -1,
+			beside: 'v1'
+		});
+		expect(moved(rule(shared, 2), 1, undefined).beside).toBe('');
 	});
 });
 
