@@ -106,8 +106,8 @@ def run(
     rates = networth.rates_on(conn, days)
     # Measured as the performance view measures an investment account: the same flows, and
     # the same days of return.
-    flows = performance._flows(conn, set(by_account), days)
-    floor = performance._floor(currency, rates, days)
+    flows = performance.external_flows(conn, set(by_account), days)
+    floor = performance.floors(currency, rates, days)
     names = dict(conn.execute("SELECT id, name FROM accounts").fetchall())
     figures = _figures(conn, set(by_account))
     on_last = {code: values[-1:] for code, values in rates.items()}
@@ -117,7 +117,7 @@ def run(
     for account_id, series in sorted(by_account.items()):
         holder, pillar = series[0].owner, series[0].asset
         try:
-            daily = performance._daily(
+            daily = performance.daily_worth(
                 [account_id], {account_id: series}, flows, days, currency=currency, rates=rates
             )
         except MissingRateError as exc:
@@ -154,7 +154,7 @@ def run(
 
 
 def _measured(
-    range_: str, days: tuple[date, ...], daily: performance._Days, floor: performance._Days
+    range_: str, days: tuple[date, ...], daily: performance.Days, floor: performance.Days
 ) -> Change:
     """What a 3a account did over `range_`, measured as an investment account is: its money
     paid in, and both its returns."""

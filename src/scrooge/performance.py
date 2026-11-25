@@ -335,25 +335,28 @@ class _Flow:
 
 
 @dataclass(frozen=True, slots=True)
-class _Days:
+class Days:
     """What a holder is worth at the end of each day, and what came in and went out, in the
-    currency asked for: one per day, the first that before the range."""
+    currency asked for: one per day, the first that before the range. Shared with `pensions`,
+    which measures a 3a account as one."""
 
     values: list[Decimal]
     flows: list[Decimal]
     late: list[Decimal]  # the part of `flows` valued at the day's close
 
-    def after(self, start: int) -> _Days:
+    def after(self, start: int) -> Days:
         """From the `start`th day; from a day before the first, that held nothing, when it is
         negative."""
         if start < 0:
-            return _Days(*([Decimal(0), *part] for part in (self.values, self.flows, self.late)))
-        return _Days(self.values[start:], self.flows[start:], self.late[start:])
+            return Days(*([Decimal(0), *part] for part in (self.values, self.flows, self.late)))
+        return Days(self.values[start:], self.flows[start:], self.late[start:])
 
 
-def _flows(conn: sqlite3.Connection, ids: set[int], days: Sequence[date]) -> dict[int, list[_Flow]]:
+def external_flows(
+    conn: sqlite3.Connection, ids: set[int], days: Sequence[date]
+) -> dict[int, list[_Flow]]:
     """account -> each row of the accounts `ids` within `days` that is money put in or taken
-    out, and each move of shares in kind, valued (see the module).
+    out, and each move of shares in kind, valued (see the module). Shared with `pensions`.
 
     A committed row always has a category (a row waiting for one holds its month back), so an
     income or an expense is investing or not by its category; one typed without a category is
@@ -420,16 +423,16 @@ def run(
     # the first one, that held nothing.
     start = (base - days[0]).days
     rates = rates_on(conn, days)
-    flows = _flows(conn, {i for members in holders.values() for i in members}, days)
+    flows = external_flows(conn, {i for members in holders.values() for i in members}, days)
     by_account: dict[int, list[Series]] = defaultdict(list)
     for each in valued.series:
         by_account[each.account_id].append(each)
-    measured: list[tuple[tuple[str, str], list[int], _Days]] = []
+    measured: list[tuple[tuple[str, str], list[int], Days]] = []
     missing: set[str] = set()
     left_out: list[str] = []
     for key, members in sorted(holders.items()):
         try:
-            daily = _daily(members, by_account, flows, days, currency=currency, rates=rates)
+            daily = daily_worth(members, by_account, flows, days, currency=currency, rates=rates)
         except MissingRateError as exc:
             missing.add(str(exc))
             left_out.append(f"{key[1]} ({key[0]})")
@@ -448,9 +451,9 @@ def run(
     )
     if not measured:
         return found
-    every = _Days(*(_added(getattr(m[2], part) for m in measured) for part in _Days.__slots__))
+    every = Days(*(_added(getattr(m[2], part) for m in measured) for part in Days.__slots__))
     total, put = every.values, every.flows
-    floor = _floor(currency, rates, days).after(start).values
+    floor = floors(currency, rates, days).after(start).values
     invested, points = total[0], []
     for at, day in enumerate([base, *days[start + 1 :]]):
         if at:
@@ -484,7 +487,7 @@ def _rounded(measured: Measured) -> Measured:
     )
 
 
-def _measure(daily: _Days, first: date, floor: Sequence[Decimal]) -> Measured:
+def _measure(daily: Days, first: date, floor: Sequence[Decimal]) -> Measured:
     return measure(daily.values, daily.flows, first, late=daily.late, floor=floor)
 
 
@@ -492,15 +495,16 @@ def _added(parts: Iterable[Sequence[Decimal]]) -> list[Decimal]:
     return [sum(day, Decimal(0)) for day in zip(*parts, strict=True)]
 
 
-def _floor(currency: str, rates: Mapping[str, Sequence[Decimal]], days: Sequence[date]) -> _Days:
-    """`FLOOR` francs in `currency` on each day, as the values of `_Days` (to cut it to the
-    range as they are); 100 of `currency` a day without a rate for it."""
+def floors(currency: str, rates: Mapping[str, Sequence[Decimal]], days: Sequence[date]) -> Days:
+    """`FLOOR` francs in `currency` on each day, as the values of `Days` (to cut it to the
+    range as they are); 100 of `currency` a day without a rate for it. Shared with `pensions`,
+    so that the same days count."""
     francs = rates.get(currency) or [Decimal(1)] * len(days)  # francs per unit
     floor = [FLOOR / rate for rate in francs]
-    return _Days(floor, list(floor), list(floor))
+    return Days(floor, list(floor), list(floor))
 
 
-def _daily(  # noqa: PLR0913  # the accounts, what they are made of, and how to convert them
+def daily_worth(  # noqa: PLR0913  # the accounts, what they are made of, and how to convert them
     members: Sequence[int],
     series: Mapping[int, Sequence[Series]],
     flows: Mapping[int, Sequence[_Flow]],
@@ -508,10 +512,10 @@ def _daily(  # noqa: PLR0913  # the accounts, what they are made of, and how to 
     *,
     currency: str,
     rates: Mapping[str, Sequence[Decimal]],
-) -> _Days:
+) -> Days:
     """What the accounts are worth at the end of each day, and the money put in that day, in
     `currency`. Cash an account brings when it comes into view is there before the day's rows;
-    the shares it brings are valued at the day's close."""
+    the shares it brings are valued at the day's close. Shared with `pensions`."""
     values = [Decimal(0)] * len(days)
     put_in = [Decimal(0)] * len(days)
     late = [Decimal(0)] * len(days)
@@ -531,7 +535,7 @@ def _daily(  # noqa: PLR0913  # the accounts, what they are made of, and how to 
             put_in[at] += amount
             if flow.at_close:
                 late[at] += amount
-    return _Days(values, put_in, late)
+    return Days(values, put_in, late)
 
 
 def _on(
@@ -540,3 +544,10 @@ def _on(
     """`amount` of `currency` in `into` at the rate of the `at`th day."""
     that_day = {code: values[at : at + 1] for code, values in rates.items()}
     return convert([amount], currency, into, that_day)[0]
+
+
+# The names these had while they were private, for branches that still use them.
+_Days = Days
+_flows = external_flows
+_floor = floors
+_daily = daily_worth
