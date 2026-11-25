@@ -19,13 +19,16 @@ the worth at the end, less that at the start, less what was put in. A range othe
 bought is shown only for a holding held through all of it; one bought since has no return
 over it, rather than one over a part of it that would read as one over all of it. Since
 bought runs from the first day anything was held, which is the day the history starts for
-shares already held then.
+shares already held then. A day that starts with less than 100 francs in the holding counts
+for nothing (`performance.FLOOR`), as for an account: a holding that never had that much has
+no return at all, and is said to be too small for one.
 
 **Realised** is what the sales brought less what the lots they closed cost, first in, first
 out, each lot at the rate of the day it was bought and each sale at the rate of its own day,
 as `portfolio` counts the cost of the lots still held; shares moved out in kind realise
 nothing. Not known when the lots a sale closed are not known (the history starts with shares
-already held, or they came in without a price). **Unrealised** is the gain of `portfolio`:
+already held, or they came in without a price); nothing when nothing was ever sold, which is
+said apart from a sale that realised nothing. **Unrealised** is the gain of `portfolio`:
 what is held less what its lots cost.
 
 A holding is one instrument in every account together, and only the positions held on the
@@ -78,6 +81,10 @@ class Returns:
     unrealised: Decimal | None  # None: the cost of what is held is not known
     dividends: Decimal  # received, before tax
     tax: Decimal  # withheld from them: negative, as stored
+    sold: bool = False  # anything of it was ever sold: else nothing could be realised
+    # Held, yet no day ever counts: it never started a day with `performance.FLOOR` francs
+    # in it, so no range has a return (rather than one it was not held through)
+    too_small: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +101,7 @@ class _Of:
     series: list[Series] = field(default_factory=list)
     moved: list[_Moved] = field(default_factory=list)
     realised: Decimal | None = Decimal(0)
+    sold: bool = False
     dividends: Decimal = Decimal(0)
     tax: Decimal = Decimal(0)
 
@@ -149,6 +157,7 @@ def run(conn: sqlite3.Connection, valued: networth.Valued | None, held: Portfoli
                 else from_nano(trade.lot.event.cost_nano)
             )
             of.moved.append((trade.lot.day, native, worth, trade.in_kind))
+        of.sold = any(t.lot.event.quantity < 0 and not t.in_kind for t in its)
         of.realised = _realised(
             its, splits[its[0].instrument], days, native, currency=currency, rates=rates
         )
@@ -201,6 +210,9 @@ def _returns(
         unrealised,
         _cents(sum((part.dividends for part in parts), Decimal(0))),
         _cents(sum((part.tax for part in parts), Decimal(0))),
+        sold=any(part.sold for part in parts),
+        too_small=periods["all"] is None
+        and any(each.values[-1] > 0 for part in parts for each in part.series),
     )
 
 

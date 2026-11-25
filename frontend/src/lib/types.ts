@@ -233,6 +233,10 @@ export interface HoldingReturns {
 	dividends: Amount;
 	/** Withheld from them: negative. */
 	tax: Amount;
+	/** Anything of it was ever sold: else nothing could be realised. */
+	sold: boolean;
+	/** Never worth 100 francs at the start of a day: no range has a return. */
+	too_small: boolean;
 }
 
 export interface SpreadSlice {

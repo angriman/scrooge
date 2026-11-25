@@ -50,6 +50,8 @@ def test_each_holding_and_position_says_what_it_returned(client: TestClient) -> 
         "unrealised": "50.00",
         "dividends": "5.00",
         "tax": "0.00",
+        "sold": False,
+        "too_small": False,
     }
     assert holding["returns"] == expected
     [position] = holding["positions"]

@@ -12,7 +12,7 @@ from scrooge.holding_returns import Period, Returns
 from scrooge.models import Holding, Kind
 from scrooge.performance import instrument_ranges
 from scrooge.storage import db, store
-from tests.storage.helpers import OWNER, PARTNER
+from tests.storage.helpers import OCTOBER, OWNER, PARTNER
 from tests.test_networth import NOW, bought, close, day, ibkr, price, rate, spent
 
 D = Decimal
@@ -54,6 +54,8 @@ def test_a_holding_bought_this_month_has_a_return_since_bought_only(
     }
     assert (returns.realised, returns.unrealised) == (D(0), D("50.00"))
     assert (returns.dividends, returns.tax) == (D(0), D(0))
+    # Nothing sold: nothing could be realised, and it is no sale that realised nothing.
+    assert (returns.sold, returns.too_small) == (False, False)
 
 
 def test_a_partial_sale_and_a_dividend_are_taken_out_of_the_holding(
@@ -106,6 +108,7 @@ def test_a_partial_sale_and_a_dividend_are_taken_out_of_the_holding(
     assert returns.periods["ytd"] is None
     # 480 for 4 shares that cost 400; 6 at 130 that cost 600; 12 paid, 2 withheld: 270.
     assert (returns.realised, returns.unrealised) == (D("80.00"), D("180.00"))
+    assert returns.sold
     assert (returns.dividends, returns.tax) == (D("12.00"), D("-2.00"))
 
 
@@ -188,6 +191,28 @@ def test_shares_moved_in_kind_come_in_at_the_close_of_their_day(
     returns = only(returned(conn))
     # They came at the end of the 15th, worth 520: the return counts from the 16th.
     assert returns.periods["all"] == Period(day(16), D("10.00"), D("52.00"))
+
+
+def test_a_holding_never_worth_a_hundred_francs_is_too_small_for_a_return(
+    conn: sqlite3.Connection,
+) -> None:
+    # 5 shares at 16 dollars, 0.8 francs each: 64 francs, below the floor every day.
+    close(conn, ibkr(bought("TINY", "5", "-80", day(10))))
+    price(conn, "TINY", day(10), "16")
+    price(conn, "TINY", day(20), "18")
+    rate(conn, "USD", day(1), "0.8")
+    returns = only(returned(conn), "TINY")
+    assert set(returns.periods.values()) == {None}
+    assert returns.too_small
+    assert returns.unrealised == D("10.00")  # the gain is still known
+    # One worth more is not too small, even with no range it was held through but since bought.
+    close(
+        conn,
+        ibkr(bought("WIDG", "10", "-500", day(10, 10)), opening="9920", month=OCTOBER),
+        month=OCTOBER,
+    )
+    price(conn, "WIDG", day(10, 10), "50")
+    assert not only(returned(conn)).too_small
 
 
 def test_nothing_held_has_no_returns(conn: sqlite3.Connection) -> None:

@@ -285,6 +285,8 @@ def _returns(returned: holding_returns.Returns | None) -> JSON | None:
         "unrealised": number(returned.unrealised),
         "dividends": number(returned.dividends),
         "tax": number(returned.tax),
+        "sold": returned.sold,
+        "too_small": returned.too_small,
     }
 
 
