@@ -612,13 +612,16 @@ def _rules_kept() -> Iterator[dict[Path, str | None]]:
             raise
 
 
+BACKUPS = "backups"  # the folder of the copies, next to the database
+
+
 def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:
     """Save a copy of the database in `backups/` next to it, under a name no copy has yet.
 
     Two commits in one second get two files: dropping the copy of the one that changed
     nothing never takes away the copy the other one kept.
     """
-    folder = database.parent / "backups"
+    folder = database.parent / BACKUPS
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"{database.stem}-{now:%Y%m%dT%H%M%S}"
     taken = 0
