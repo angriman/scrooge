@@ -58,17 +58,17 @@ describe('what investing costs', () => {
 	});
 
 	it('opens the commissions of a year on broker accounts alone, for the person shown', () => {
-		expect(costsOf({ category: 'Commissioni', year: 2026 }, 'Lukas').toString()).toBe(
-			'owner=Lukas&category=Commissioni&accounts=broker&from=2026&to=2026'
+		expect(costsOf({ category: 'fees', year: 2026 }, 'Lukas').toString()).toBe(
+			'owner=Lukas&category=fees&accounts=broker&from=2026&to=2026'
 		);
-		expect(costsOf({ category: 'Commissioni' }, null).toString()).toBe(
-			'category=Commissioni&accounts=broker'
+		expect(costsOf({ category: 'fees' }, null).toString()).toBe(
+			'category=fees&accounts=broker'
 		);
 	});
 
 	it('opens the tax withheld of a year wherever it was withheld', () => {
-		expect(costsOf({ category: 'Ritenute', year: 2026 }, null).toString()).toBe(
-			'category=Ritenute&from=2026&to=2026'
+		expect(costsOf({ category: 'withholding_tax', year: 2026 }, null).toString()).toBe(
+			'category=withholding_tax&from=2026&to=2026'
 		);
 	});
 
@@ -81,7 +81,7 @@ describe('what investing costs', () => {
 	it('opens only the tax withheld of another account: its fees are no cost of investing', () => {
 		// A bank account listed for 1.75 of tax withheld, whose fee of 5 the panel does not count.
 		expect(costsOf({ account: 'Migros', owner: 'Lukas', broker: false }, 'Lukas').toString()).toBe(
-			'owner=Lukas&account=Migros&category=Ritenute'
+			'owner=Lukas&account=Migros&category=withholding_tax'
 		);
 	});
 });

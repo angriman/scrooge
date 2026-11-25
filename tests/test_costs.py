@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scrooge import costs, query
+from scrooge import categories, costs, query
 from scrooge.costs import Account, Cost
 from scrooge.models import Kind, Transaction
 from scrooge.storage import db, store
@@ -16,10 +16,10 @@ START, END = date(2025, 1, 1), date(2026, 8, 31)
 USD = {"account": "IBKR USD", "currency": "USD", "source_file": "ibkr.csv"}
 GBP = {"account": "IBKR GBP", "currency": "GBP", "source_file": "ibkr gbp.csv"}
 FUND = {"account": "Finpension", "source_file": "finpension.csv"}
-COMMISSION = {"kind": Kind.COMMISSION, "category": "Commissioni"}
-TAX = {"kind": Kind.TAX, "category": "Ritenute"}
-DIVIDEND = {"kind": Kind.DIVIDEND, "category": "Dividendi"}
-INTEREST = {"kind": Kind.INTEREST, "category": "Interessi"}
+COMMISSION = {"kind": Kind.COMMISSION, "category": categories.FEES}
+TAX = {"kind": Kind.TAX, "category": categories.WITHHOLDING_TAX}
+DIVIDEND = {"kind": Kind.DIVIDEND, "category": categories.DIVIDENDS}
+INTEREST = {"kind": Kind.INTEREST, "category": categories.INTEREST}
 
 
 def row(amount: str, day: date, ref: str, **fields: Any) -> Transaction:
@@ -115,10 +115,11 @@ def test_each_year_has_its_commissions_and_tax_each_row_at_its_day_s_rate(
     assert second.cost.total == Decimal("27.05")
     # The year of the last day committed is counted so far.
     assert not second.whole
-    assert second.tax_share == Decimal("0.105")
+    # Not rounded: it is rounded once, where it is shown.
+    assert second.tax_share == Decimal("15.25") / 145
     assert shown.totals == cost("13.40", "15.25")
     assert shown.paid == Decimal(225)
-    assert shown.tax_share == Decimal("0.068")
+    assert shown.tax_share == Decimal("15.25") / 225
 
 
 def test_each_account_what_cost_the_most_first(conn: sqlite3.Connection) -> None:
@@ -182,11 +183,11 @@ def test_the_rows_behind_the_commissions_are_those_of_broker_accounts(
 ) -> None:
     """What the panel's link to a year's commissions lists: the bank's fee is not there."""
     wanted = query.Filter(
-        owner=OWNER, category="Commissioni", account_kinds=query.ACCOUNTS["broker"]
+        owner=OWNER, category=categories.FEES, account_kinds=query.ACCOUNTS["broker"]
     )
     found = query.run(conn, wanted).rows
     assert {row.account for row in found} == {"IBKR USD", "IBKR GBP", "Finpension"}
-    every = query.run(conn, query.Filter(owner=OWNER, category="Commissioni")).rows
+    every = query.run(conn, query.Filter(owner=OWNER, category=categories.FEES)).rows
     assert {row.account for row in every} - {row.account for row in found} == {"Migros"}
     banks = query.Filter(owner=OWNER, account_kinds=query.ACCOUNTS["bank"])
     assert {row.account for row in query.run(conn, banks).rows} == {"Migros"}

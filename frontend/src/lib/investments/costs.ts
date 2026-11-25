@@ -5,9 +5,10 @@ import { isHttpError } from '@sveltejs/kit';
 import { approximate, money, negate } from '#lib/format/number.js';
 import type { Cost, CostsReport, CostYear } from '#lib/types.js';
 
-/** The categories the rows of a cost have: commissions, and the tax withheld. */
-export const COMMISSIONS = 'Commissioni';
-export const TAX = 'Ritenute';
+/** The categories the rows of a cost have, by their keys: commissions (`categories.FEES`),
+ * and the tax withheld (`categories.WITHHOLDING_TAX`). */
+export const COMMISSIONS = 'fees';
+export const TAX = 'withholding_tax';
 
 /** The years of the table, newest first. */
 export function newestFirst(years: readonly CostYear[]): CostYear[] {

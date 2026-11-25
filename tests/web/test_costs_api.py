@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from scrooge import categories
 from scrooge.storage import db, store
 from scrooge.web import app as webapp
+from scrooge.web import wire
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close
 from tests.test_costs import (
     ANNA_FUND,
@@ -23,6 +25,7 @@ from tests.test_costs import (
 )
 
 SITE = "http://127.0.0.1:8765"
+COSTS_TS = Path(__file__).parents[2] / "frontend" / "src" / "lib" / "investments" / "costs.ts"
 
 
 @pytest.fixture(scope="module")
@@ -61,7 +64,7 @@ def test_each_year_and_account_is_sent_and_a_currency_without_a_rate_said(
             "tax": "0.00",
             "total": "1.60",
             "paid": "80.00",
-            "tax_share": "0.000",
+            "tax_share": "0",
             "last": "2025-12-31",
             "whole": True,
         },
@@ -71,7 +74,7 @@ def test_each_year_and_account_is_sent_and_a_currency_without_a_rate_said(
             "tax": "15.25",
             "total": "27.05",
             "paid": "145.00",
-            "tax_share": "10.500",
+            "tax_share": wire.number(Decimal("15.25") / 145 * 100),
             "last": "2026-08-31",
             "whole": False,
         },
@@ -81,7 +84,7 @@ def test_each_year_and_account_is_sent_and_a_currency_without_a_rate_said(
         "tax": "15.25",
         "total": "28.65",
         "paid": "225.00",
-        "tax_share": "6.800",
+        "tax_share": wire.number(Decimal("15.25") / 225 * 100),
     }
     assert shown["accounts"][0] == {
         "owner": OWNER,
@@ -107,13 +110,21 @@ def test_for_everyone_two_accounts_of_a_name_are_named_after_their_owners(
 
 
 def test_transactions_can_be_cut_to_broker_accounts(client: TestClient) -> None:
-    params = {"owner": OWNER, "category": "Commissioni", "accounts": "broker"}
+    params = {"owner": OWNER, "category": categories.FEES, "accounts": "broker"}
     sent = client.get("/api/transactions", params=params).json()
     assert sent["errors"] == []
     assert {row["account"] for row in sent["rows"]} == {"IBKR USD", "IBKR GBP", "Finpension"}
     refused = client.get("/api/transactions", params={"accounts": "savings"})
     assert refused.status_code == 400
     assert refused.json()["errors"] == ["'savings' is not broker, bank or card accounts."]
+
+
+def test_the_panel_links_to_the_categories_by_their_keys() -> None:
+    """The keys the costs panel opens the transactions with are the services' own: a category
+    renamed here and not there would open nothing."""
+    written = COSTS_TS.read_text()
+    assert f"COMMISSIONS = '{categories.FEES}'" in written
+    assert f"TAX = '{categories.WITHHOLDING_TAX}'" in written
 
 
 def test_a_field_that_cannot_be_read_is_refused(client: TestClient) -> None:

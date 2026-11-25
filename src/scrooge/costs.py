@@ -1,12 +1,14 @@
 """What investing costs, year by year: the commissions the brokers charged and the tax withheld
 from what investments paid. The costs under the income view of the investments page.
 
-**Commissions** are the rows of the category `Commissioni` on the accounts a broker's statements
-feed (`query.ACCOUNTS["broker"]`): what a trade cost at IBKR or Tastytrade, a regulatory
-fee, the administrative fee of the pension fund at Finpension. A bank's fees have the same
-category but are no cost of investing, and are left out; so is the fee Revolut's savings fund
-takes from its interest, booked on the bank account. **Tax withheld** is every row of the
-category `Ritenute`, as the income view counts it (`payouts`), wherever it was withheld.
+**Commissions** are the rows of the category `Fees` (`categories.FEES`) on the accounts a
+broker's statements feed (`query.ACCOUNTS["broker"]`): what a trade cost at IBKR or
+Tastytrade, a regulatory fee, the administrative fee of the pension fund at Finpension. A
+bank's fees have the same category but are no cost of investing, and are left out; so is the
+fee Revolut's savings fund takes from its interest, booked on the bank account. **Tax
+withheld** is every row of the category `Withholding tax` (`categories.WITHHOLDING_TAX`), as
+the income view counts it (`payouts`), wherever it was withheld. Interest charged on a debit
+balance is not counted here, as what was paid leaves it out too (`payouts`).
 Both are rows of their own as the statements are read: IBKR and Tastytrade write each
 commission apart from its trade, and IBKR, Morgan Stanley and Schwab the tax apart from its
 dividend. Morgan Stanley's statements charge no commission, and a Schwab export with one is
@@ -35,9 +37,9 @@ from decimal import Decimal
 from scrooge import analysis, payouts, query
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted
+from scrooge.categories import FEES, WITHHOLDING_TAX
 from scrooge.networth import DEFAULT_CURRENCY, MissingRateError, convert, rates_on
 
-COMMISSIONS, TAX = "Commissioni", payouts.TAX
 _BROKERS = query.ACCOUNTS["broker"]  # the kinds of account a broker feeds
 
 
@@ -118,7 +120,9 @@ def run(
     why: dict[str, str | None] = {}  # currency -> why its rows cannot be converted, if not
 
     def wanted(row: Counted) -> bool:
-        if row.leaf != TAX and (row.leaf != COMMISSIONS or (row.owner, row.account) not in brokers):
+        if row.leaf != WITHHOLDING_TAX and (
+            row.leaf != FEES or (row.owner, row.account) not in brokers
+        ):
             return False
         if row.currency not in why:
             try:
@@ -157,10 +161,10 @@ def run(
 
 def _cost(rows: Iterable[Converted]) -> Cost:
     """What `rows` cost, to the cent."""
-    sums = dict.fromkeys((COMMISSIONS, TAX), Decimal(0))
+    sums = dict.fromkeys((FEES, WITHHOLDING_TAX), Decimal(0))
     for each in rows:
         sums[each.row.leaf] -= each.amount
-    return Cost(sums[COMMISSIONS].quantize(CENT), sums[TAX].quantize(CENT))
+    return Cost(sums[FEES].quantize(CENT), sums[WITHHOLDING_TAX].quantize(CENT))
 
 
 def _accounts(rows: Iterable[Converted], brokers: set[tuple[str, str]]) -> tuple[Account, ...]:
