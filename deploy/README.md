@@ -129,6 +129,19 @@ Before an update, `scrooge doctor` (see Commands) says whether the database's sc
 than the code's, which the new version would migrate, and whatever else is wrong: the rules,
 the originals, the prices. It changes nothing.
 
+After it, in the folder of `compose.yaml`:
+
+1. `docker compose exec scrooge scrooge doctor`: the schema is the one the new version
+   expects, and nothing else is wrong. When the container did not start, `exec` cannot reach
+   it: `docker compose logs scrooge` says why.
+2. When the version renamed categories, `docker compose exec scrooge scrooge migrate-files`
+   says what it would change in the rules, `categories.yaml` and the config, and again with
+   `--write` changes it, keeping each file as it was beside it. The old names are still read
+   until then.
+3. When prices were fetched by the machine's own scheduler before the `prices` service
+   came, remove that task (on a Synology NAS: Control Panel > Task Scheduler). The service
+   fetches them now (see Prices, every day).
+
 ## Looking at it
 
 ```sh
@@ -202,6 +215,8 @@ both processors and pushes `ghcr.io/<owner>/scrooge:<tag>` and `:latest`
 make release VERSION=v1.2.3     # tag main, push the tag, wait for GitHub to build the image
 make deploy-update              # where the app runs: pull it, restart, drop the image replaced
 ```
+
+Then the steps after an update of "A new version", where the app runs: `doctor` first.
 
 `deploy-update` runs the three commands of "A new version" over ssh. Where is set in
 `Makefile.local` (git-ignored), for example for a Synology NAS:

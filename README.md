@@ -177,7 +177,9 @@ docker compose up -d                                       # http://localhost:87
 Everything else, from updates to reaching it from other devices and a Synology NAS:
 [deploy/README.md](deploy/README.md). GitHub builds the image on every tag `v*` once
 `make check` passes; `make release VERSION=v1.2.3` tags `main` and waits for it, and
-`make deploy-update` pulls it where the app runs (`Makefile.local` says where).
+`make deploy-update` pulls it where the app runs (`Makefile.local` says where); after it,
+`scrooge doctor` there says the database was brought up to date, and "A new version" in
+deploy/README.md lists what else an update may ask for.
 
 ## Everything in this folder
 
