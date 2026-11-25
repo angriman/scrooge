@@ -9,6 +9,7 @@
 	import Notices from '#lib/overview/Notices.svelte';
 	import Checks from '#lib/coverage/Checks.svelte';
 	import Coverage from '#lib/coverage/Coverage.svelte';
+	import TypedFigure from '#lib/coverage/TypedFigure.svelte';
 	import { heldTogether } from '#lib/coverage/held.js';
 	import type { StatementsAccount } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
@@ -178,4 +179,24 @@
 			<Checks checks={listed.checks} open={page.url.hash === '#checks'} {single} />
 		</div>
 	{/if}
+{/if}
+
+{#if data.session.typing.length}
+	<div class="mt-10">
+		<TypedFigure
+			owners={data.session.typing}
+			{owner}
+			accounts={[
+				...new Set(
+					listed.accounts
+						.filter((account) => !account.monthly || account.source === 'schwab')
+						.map((account) => account.account)
+				)
+			]}
+			currencies={data.session.currencies}
+			{today}
+			token={data.session.token}
+			ondone={() => invalidateAll()}
+		/>
+	</div>
 {/if}

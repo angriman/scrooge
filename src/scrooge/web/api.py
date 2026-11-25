@@ -53,10 +53,11 @@ from scrooge import (
     staging,
     suggestions,
     together,
+    typed,
 )
 from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
-from scrooge.models import Kind
+from scrooge.models import Kind, TypedHolding
 from scrooge.prices import PriceError
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
@@ -115,6 +116,9 @@ def _session(request: Request) -> Response:
             "signing": state.access is not None,
             # Whether a category chosen can be remembered as a rule for the next import.
             "rules": state.rules is not None,
+            # Whose figures can be typed (`/api/accounts/typed`): the people the config names,
+            # none over a copy or without the import page.
+            "typing": [] if state.imports is None else list(state.imports.people),
             "token": state.token,
         }
     )
@@ -891,6 +895,70 @@ async def _close(request: Request) -> Response:
     return await _closing(request, True)
 
 
+def _typed_where(sent: dict[str, object], owners: list[str]) -> typed.Where:
+    owner, account = str(sent.get("owner", "")), str(sent.get("account", "")).strip()
+    if owner not in owners:
+        msg = f"{owner or 'nobody'} is nobody the config names"
+        raise staging.StagingError(msg)
+    if not account:
+        msg = "say which account"
+        raise staging.StagingError(msg)
+    try:
+        day = date.fromisoformat(str(sent.get("day", "")))
+    except ValueError:
+        msg = f"{sent.get('day')!r} is not a day like 2026-10-31"
+        raise staging.StagingError(msg) from None
+    return typed.Where(owner, account, day)
+
+
+async def _type_figure(request: Request) -> Response:
+    """Type what an account held at the end of a day where no statement says it, as
+    `scrooge balance` and `scrooge position` do: `{"owner", "account", "day", "what"}` with
+    `what` "balance" (`amount`, `currency`) or "position" (`symbol`, `quantity`, `currency`,
+    and `tab` for an instrument not known yet); with `"remove": true` the figure typed for that
+    day (of `symbol`, for a position) is removed instead. Refused as the command refuses it."""
+    sent = await _sent(request)
+    owners = _importable(request)
+    if sent is None or sent.get("what") not in {"balance", "position"}:
+        return _refused(('Send the owner, the account, the day and "what" as JSON.',))
+    state = request.app.state
+    instruments = state.imports.instruments
+    position = sent["what"] == "position"
+    today = state.clock().date()
+
+    def act() -> str:
+        where = _typed_where(sent, owners)
+        symbol = str(sent.get("symbol", "")).strip()
+        currency = str(sent.get("currency", "")).strip()
+        conn = db.connect(state.database)
+        try:
+            if sent.get("remove") is True:
+                if position:
+                    symbol = typed.remove_position(conn, where, symbol, instruments)
+                else:
+                    typed.remove_balance(conn, where)
+                return symbol
+            if position:
+                tab = sent.get("tab")
+                holding = TypedHolding(
+                    symbol,
+                    typed.quantity(str(sent.get("quantity", ""))),
+                    currency,
+                    str(tab) if tab else None,
+                )
+                return typed.position(conn, where, holding, today, instruments).symbol
+            typed.balance(conn, where, typed.amount(str(sent.get("amount", ""))), currency, today)
+            return ""
+        finally:
+            conn.close()
+
+    try:
+        symbol = await run_in_threadpool(act)
+    except uploads_.REFUSED as exc:
+        return JSONResponse({"errors": [wire.sentence(exc)]}, 409)
+    return JSONResponse({"symbol": symbol or None, "errors": []})
+
+
 async def _reopen(request: Request) -> Response:
     return await _closing(request, False)
 
@@ -1180,6 +1248,7 @@ routes = [
     Route("/import/rules", _add_rule, methods=["POST"], name="api_add_rule"),
     Route("/accounts/close", _close, methods=["POST"], name="api_close"),
     Route("/accounts/reopen", _reopen, methods=["POST"], name="api_reopen"),
+    Route("/accounts/typed", _type_figure, methods=["POST"], name="api_type_figure"),
     Route("/statements/{number:int}/discard", _discard, methods=["POST"], name="api_discard"),
     Route("/statements/{number:int}/uncommit", _uncommit, methods=["POST"], name="api_uncommit"),
     Route("/pensions", _pensions, name="api_pensions"),

@@ -858,5 +858,23 @@ export const it: Messages = {
 	'settings.committedRowMany': '{count} movimenti confermati',
 	'settings.matchesCountPrefix': 'Abbinato a {rows}{tail}',
 	'settings.matchesNewestTail': '; ultimi {shown}:',
-	'settings.noCategoryTag': 'senza categoria'
+	'settings.noCategoryTag': 'senza categoria',
+
+	'typed.title': 'Inserisci saldo o posizione',
+	'typed.note':
+		'Per conti senza estratti, fondi pensione tra un certificato e l’altro o esportazioni senza saldi (Schwab).',
+	'typed.whatLabel': 'Dato',
+	'typed.balance': 'Saldo',
+	'typed.position': 'Posizione',
+	'typed.ownerLabel': 'Persona',
+	'typed.dayLabel': 'Fine giornata',
+	'typed.symbolLabel': 'Simbolo',
+	'typed.amountLabel': 'Saldo',
+	'typed.currencyLabel': 'Valuta',
+	'typed.tabLabel': 'Tipo',
+	'typed.tabKnown': 'Come già noto (o Azioni)',
+	'typed.keep': 'Salva dato',
+	'typed.remove': 'Rimuovi inserito',
+	'typed.kept': 'Salvato per {account} al {day}.',
+	'typed.removed': 'Rimosso il dato inserito per {account} al {day}.'
 };
