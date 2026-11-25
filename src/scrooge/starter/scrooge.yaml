@@ -1,9 +1,10 @@
 # Your setup. `scrooge` finds it by itself while it is the only one in users/ and there is no
 # scrooge.yaml in the folder the commands run in; with `--user <name>` (or SCROOGE_USER)
 # otherwise. Relative paths are relative to the folder the commands run in, the one users/
-# is in. `scrooge init` wrote it from src/scrooge/starter/; it is yours now.
+# is in: run from another, a command finds no database or rules there and refuses to go on.
+# `scrooge init` wrote it from src/scrooge/starter/; it is yours now.
 
-# The database, made on the first import. Its backups/ and originals/ (a copy of every
+# The database, made empty by `scrooge init`. Its backups/ and originals/ (a copy of every
 # statement imported) are kept next to it.
 database: $home/scrooge.db
 

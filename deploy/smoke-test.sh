@@ -61,6 +61,7 @@ printf '%s\n' "${answers[@]}" | compose run --rm -T scrooge scrooge init --conta
 }
 grep -q 'docker compose up -d' "$work/init.log" || fail "init printed no next steps"
 grep -q '^  host: 0.0.0.0$' "$work/data/users/test/scrooge.yaml" || fail "no serve in the config"
+[ -f "$work/data/users/test/scrooge.db" ] || fail "init made no database"
 
 step "docker compose up"
 compose up -d || fail "the services did not start"

@@ -52,6 +52,22 @@ def connect(path: Path | str) -> sqlite3.Connection:
     return conn
 
 
+def create(path: Path, now: datetime) -> None:
+    """Make a new database at `path`, and its folder, with this code's schema.
+
+    The one place a database is made (`scrooge init`): every command opens one that exists.
+    A file already at `path` is left as it is: FileExistsError.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x"):  # an empty file is an empty database; one that is there stays
+        pass
+    conn = connect(path)
+    try:
+        migrate(conn, now)
+    finally:
+        conn.close()
+
+
 @contextmanager
 def reading(path: Path) -> Iterator[sqlite3.Connection]:
     """A connection that cannot change the database, closed on the way out."""
