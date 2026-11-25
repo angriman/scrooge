@@ -29,26 +29,35 @@ Amounts in several currencies are never added: each currency is shown on its own
 	// The currency with the most rows first: the one most of them are in.
 	const currencies = $derived.by(() => {
 		const rows = new Map<string, number>();
-		for (const total of totals) rows.set(total.currency, (rows.get(total.currency) ?? 0) + total.count);
+		for (const total of totals)
+			rows.set(total.currency, (rows.get(total.currency) ?? 0) + total.count);
 		return [...rows].sort((a, b) => b[1] - a[1]).map(([currency]) => currency);
 	});
 	let picked = $state<string | null>(null);
 	const currency = $derived(picked && currencies.includes(picked) ? picked : currencies[0]);
 
-	const mine = $derived(totals.filter((total) => total.currency === currency && total.name !== TRANSFERS));
-	const sides = $derived([
-		{
-			name: 'Money out',
-			lines: mine.filter((total) => total.total.startsWith('-')).map((total) => ({ ...total, size: negate(total.total) }))
-		},
-		{
-			name: 'Money in',
-			lines: mine
-				.filter((total) => !total.total.startsWith('-') && approximate(total.total) > 0)
-				.map((total) => ({ ...total, size: total.total }))
-		}
-	].filter((side) => side.lines.length));
-	const largest = $derived(Math.max(1, ...sides.flatMap((side) => side.lines.map((line) => approximate(line.size)))));
+	const mine = $derived(
+		totals.filter((total) => total.currency === currency && total.name !== TRANSFERS)
+	);
+	const sides = $derived(
+		[
+			{
+				name: 'Money out',
+				lines: mine
+					.filter((total) => total.total.startsWith('-'))
+					.map((total) => ({ ...total, size: negate(total.total) }))
+			},
+			{
+				name: 'Money in',
+				lines: mine
+					.filter((total) => !total.total.startsWith('-') && approximate(total.total) > 0)
+					.map((total) => ({ ...total, size: total.total }))
+			}
+		].filter((side) => side.lines.length)
+	);
+	const largest = $derived(
+		Math.max(1, ...sides.flatMap((side) => side.lines.map((line) => approximate(line.size))))
+	);
 	let all = $state(false);
 </script>
 
@@ -74,7 +83,9 @@ Amounts in several currencies are never added: each currency is shown on its own
 								<button
 									type="button"
 									onclick={() => onchoose(line)}
-									title="{line.count === 1 ? '1 transaction' : `${line.count} transactions`}: show only these"
+									title="{line.count === 1
+										? '1 transaction'
+										: `${line.count} transactions`}: show only these"
 									aria-pressed={chosen === line.name}
 									class="block w-full rounded-control px-1.5 py-1.5 text-left hover:bg-sunken"
 								>

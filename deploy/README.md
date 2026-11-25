@@ -33,7 +33,8 @@ curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deplo
    ```
 
    It writes `data/users/<name>/`: the config, the rules, the categories, the instruments,
-   and `statements/`. The database is made there on the first import.
+   `statements/` and the database, empty. Only `init` makes a database: the pages and every
+   command refuse to start without one.
 
 3. **Start**:
 
@@ -59,9 +60,10 @@ curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deplo
 The image holds only the code. Back up `data/`, and that is everything.
 
 A config in `data/scrooge.yaml` itself, with its paths under `/data`, is used instead of the
-setup in `users/` (a setup made before `scrooge init` existed). The container reads the one
-setup there is; with several, `SCROOGE_USER=<name>` in the `environment` of both services
-chooses.
+setup in `users/` (a setup made before `scrooge init` existed). If its database is not there
+yet, `docker compose run --rm scrooge scrooge init --db /data/scrooge.db` makes an empty one
+(the path the config names). The container reads the one setup there is; with several,
+`SCROOGE_USER=<name>` in the `environment` of both services chooses.
 
 The part of the config that `init --container` writes about the pages:
 

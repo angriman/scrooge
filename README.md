@@ -46,7 +46,10 @@ is refused on its own, and the others are staged. Every command has `--help`.
 
 A command reads `--config <path>`, else `scrooge.yaml` in the folder it runs in, else the
 setup `--user <name>` (or `SCROOGE_USER`) names, or the only one in `users/`. Relative paths
-in it are relative to the folder the command runs in.
+in it are relative to the folder the command runs in: run from another folder, a command finds
+no database or rules file there and refuses to go on, saying where it looked. Only `scrooge
+init` makes a database (`scrooge init --db <path>` an empty one alone, for a config written by
+hand).
 
 ```yaml
 database: users/lukas/scrooge.db

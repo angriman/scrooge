@@ -35,7 +35,10 @@ cross that clears it. Choosing it opens what it can be set to.
 >
 	<Popover.Root bind:open>
 		<Popover.Trigger
-			class={cn('inline-flex h-full items-center gap-1.5 rounded-full pl-3', value ? 'pr-1.5' : 'pr-2.5')}
+			class={cn(
+				'inline-flex h-full items-center gap-1.5 rounded-full pl-3',
+				value ? 'pr-1.5' : 'pr-2.5'
+			)}
 		>
 			{#if value}
 				<span class="sr-only">{label}:</span>

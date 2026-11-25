@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Attention, RecurringChange } from '#lib/types.js';
-import {
-	changeText,
-	folded,
-	noticeLines,
-	type NoticeLinks
-} from './notices.js';
+import { changeText, folded, noticeLines, type NoticeLinks } from './notices.js';
 
 const links: NoticeLinks = {
 	importing: (owner) => `/import?owner=${owner}`,
@@ -60,45 +55,22 @@ describe('what needs a look', () => {
 				],
 				differ: 1,
 				uncategorised: [{ owner: 'Anna', count: 3 }],
-				recurring: [
-					payment({}),
-					payment({ id: 'g1', name: 'Gymly', kind: 'new', change: '50.00' })
-				]
+				recurring: [payment({}), payment({ id: 'g1', name: 'Gymly', kind: 'new', change: '50.00' })]
 			},
 			household,
 			links
 		);
 		expect(lines.map((line) => [line.kind, line.tone, line.text])).toEqual([
-			[
-				'staged',
-				'waiting',
-				'2 statements of Anna are staged and not yet counted.'
-			],
+			['staged', 'waiting', '2 statements of Anna are staged and not yet counted.'],
 			[
 				'behind',
 				'caution',
 				'Lukas’s Swisscard statements end on 30 Sep 2026, over a month before the others.'
 			],
-			[
-				'differ',
-				'caution',
-				'1 balance differs from what the statements say.'
-			],
-			[
-				'uncategorised',
-				'waiting',
-				'3 rows of Anna are still in Uncategorized.'
-			],
-			[
-				'up',
-				'caution',
-				'Lukas’s Streamio costs 2.00 CHF more a month since 3 Sep.'
-			],
-			[
-				'new',
-				'waiting',
-				'Lukas’s Gymly is a new payment: 50.00 CHF a month since 3 Sep.'
-			]
+			['differ', 'caution', '1 balance differs from what the statements say.'],
+			['uncategorised', 'waiting', '3 rows of Anna are still in Uncategorized.'],
+			['up', 'caution', 'Lukas’s Streamio costs 2.00 CHF more a month since 3 Sep.'],
+			['new', 'waiting', 'Lukas’s Gymly is a new payment: 50.00 CHF a month since 3 Sep.']
 		]);
 		expect(new Set(lines.map((line) => line.key)).size).toBe(lines.length);
 	});
@@ -145,19 +117,15 @@ describe('what needs a look', () => {
 	});
 
 	it('says what changed, or only that it did when a rate is missing', () => {
-		expect(
-			changeText(
-				payment({ every: 'yearly', change: '1200' }),
-				'EUR',
-				true
-			)
-		).toBe('Streamio costs 1’200.00 EUR more a year since 3 Sep.');
+		expect(changeText(payment({ every: 'yearly', change: '1200' }), 'EUR', true)).toBe(
+			'Streamio costs 1’200.00 EUR more a year since 3 Sep.'
+		);
 		expect(changeText(payment({ change: null }), 'EUR', true)).toBe(
 			'Streamio costs more since 3 Sep.'
 		);
-		expect(
-			changeText(payment({ kind: 'new', change: null }), 'EUR', true)
-		).toBe('Streamio is a new payment since 3 Sep.');
+		expect(changeText(payment({ kind: 'new', change: null }), 'EUR', true)).toBe(
+			'Streamio is a new payment since 3 Sep.'
+		);
 	});
 
 	it('keeps to five lines, the rest behind one that says how many more', () => {

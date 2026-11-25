@@ -50,9 +50,7 @@
 		)
 	);
 	const months = $derived(view === 'table' ? data.monthEnds() : null);
-	const lastDay = $derived(
-		series?.first ? addDays(series.first, series.total.length - 1) : null
-	);
+	const lastDay = $derived(series?.first ? addDays(series.first, series.total.length - 1) : null);
 	const back = $derived(lastDay ? daysBack(range, lastDay) : null);
 
 	// The investments card follows the range: each is asked once, when first chosen. Signed out
@@ -153,5 +151,4 @@
 			<Investments {returned} paid={data.paid} {range} {returnsHref} {incomeHref} />
 		</div>
 	</div>
-
 {/if}

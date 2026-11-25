@@ -37,7 +37,8 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 
 	let sort = $state<Sort>('value');
 
-	const keyOf = (holding: HeldInstrument) => `${holding.symbol}|${holding.currency}|${holding.asset}`;
+	const keyOf = (holding: HeldInstrument) =>
+		`${holding.symbol}|${holding.currency}|${holding.asset}`;
 	const sorted = $derived(sortHoldings(holdings, sort));
 	const withLogos = $derived(holdings.some((holding) => logos[holding.symbol]));
 
@@ -58,7 +59,12 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 		<h2 id="holdings-title" class="text-heading font-medium text-ink">
 			{holdings.length === 1 ? '1 holding' : `${holdings.length} holdings`}
 		</h2>
-		<Segmented label="Sort by" value={sort} options={SORTS} onchange={(chosen) => (sort = chosen)} />
+		<Segmented
+			label="Sort by"
+			value={sort}
+			options={SORTS}
+			onchange={(chosen) => (sort = chosen)}
+		/>
 	</header>
 
 	<ul class="rounded-panel bg-panel">
@@ -76,18 +82,26 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 					<span class="flex min-w-0 items-center gap-3">
 						{#if withLogos}
 							{#if logos[holding.symbol]}
-								<img src={logos[holding.symbol]} alt="" class="size-7 shrink-0 rounded-control bg-ink object-contain p-0.5" />
+								<img
+									src={logos[holding.symbol]}
+									alt=""
+									class="size-7 shrink-0 rounded-control bg-ink object-contain p-0.5"
+								/>
 							{:else}
 								<span class="size-7 shrink-0" aria-hidden="true"></span>
 							{/if}
 						{/if}
 						<span class="min-w-0">
-							<span class="block truncate font-medium text-ink">{holding.name || holding.symbol}</span>
+							<span class="block truncate font-medium text-ink"
+								>{holding.name || holding.symbol}</span
+							>
 							<span class="flex items-center gap-1.5 text-small text-ink-muted">
 								<Swatch {color} class="size-2 rounded-full" />
 								<span class="text-ink-secondary">{holding.asset}</span>
 								{#if holding.name}<span class="truncate">{holding.symbol}</span>{/if}
-								{#if holding.positions.length > 1}<span class="shrink-0">in {holding.positions.length} accounts</span>{/if}
+								{#if holding.positions.length > 1}<span class="shrink-0"
+										>in {holding.positions.length} accounts</span
+									>{/if}
 							</span>
 						</span>
 					</span>
@@ -122,7 +136,11 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 					<div class="overflow-x-auto px-4 pb-4">
 						{#if holding.gain !== null}
 							<p class="mb-2 text-small sm:hidden">
-								<Change amount={holding.gain} percent={holding.return_percent} label="since bought" />
+								<Change
+									amount={holding.gain}
+									percent={holding.return_percent}
+									label="since bought"
+								/>
 							</p>
 						{/if}
 						<table class="w-full text-small">
@@ -140,15 +158,20 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 								{#each holding.positions as position (position.owner + position.account)}
 									<tr class="border-t border-line">
 										<td class="py-2 whitespace-nowrap">
-											{position.account}{#if people}<span class="text-ink-muted">, {position.owner}</span>{/if}
+											{position.account}{#if people}<span class="text-ink-muted"
+													>, {position.owner}</span
+												>{/if}
 										</td>
 										<td class="py-2 text-right tabular-nums">{exact(position.quantity)}</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
 											{priced(position)}
-											{#if priceNote(position)}<span class="block text-caption text-ink-muted">{priceNote(position)}</span>{/if}
+											{#if priceNote(position)}<span class="block text-caption text-ink-muted"
+													>{priceNote(position)}</span
+												>{/if}
 										</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
-											{money(position.value_native)} <span class="text-caption text-ink-muted">{holding.currency}</span>
+											{money(position.value_native)}
+											<span class="text-caption text-ink-muted">{holding.currency}</span>
 										</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
 											{position.cost_native === null ? 'not known' : money(position.cost_native)}

@@ -154,7 +154,8 @@ export function instead(benchmarks: readonly BenchmarkReturn[]): string {
 	const symbols = benchmarks.map((benchmark) => benchmark.symbol);
 	if (!symbols.length) return '';
 	const worth = 'what that money would be worth had it gone into';
-	if (symbols.length === 1) return ` In ${symbols[0]} is ${worth} ${symbols[0]} instead, on the same days.`;
+	if (symbols.length === 1)
+		return ` In ${symbols[0]} is ${worth} ${symbols[0]} instead, on the same days.`;
 	const listed = `In ${symbols.slice(0, -1).join(', in ')} and in ${symbols.at(-1)}`;
 	return ` ${listed} are ${worth} each instead, on the same days.`;
 }

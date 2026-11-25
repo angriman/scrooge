@@ -80,7 +80,10 @@
 				scrooge
 			</a>
 
-			<nav aria-label="Pages" class="order-last -mx-1 flex w-full [scrollbar-width:none] overflow-x-auto md:order-none md:w-auto">
+			<nav
+				aria-label="Pages"
+				class="order-last -mx-1 flex w-full [scrollbar-width:none] overflow-x-auto md:order-none md:w-auto"
+			>
 				{#each pages as item (item.label)}
 					<a
 						href={item.href}

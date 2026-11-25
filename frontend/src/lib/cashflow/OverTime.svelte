@@ -59,8 +59,11 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	// The rate of each period, from no saving (the line) to all of it saved (the top).
 	const rate = $derived(
 		periods.map((period, index) => {
-			const value = period.rate === null ? null : Math.min(100, Math.max(0, approximate(period.rate)));
-			return value === null ? null : { x: LEFT + step * index + step / 2, y: zero - ((zero - TOP) * value) / 100 };
+			const value =
+				period.rate === null ? null : Math.min(100, Math.max(0, approximate(period.rate)));
+			return value === null
+				? null
+				: { x: LEFT + step * index + step / 2, y: zero - ((zero - TOP) * value) / 100 };
 		})
 	);
 	const path = $derived(
@@ -69,7 +72,9 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 			.join('')
 	);
 	const label = (name: string) =>
-		/^\d{4}-\d{2}$/.test(name) ? monthName(`${name}-01`).replace(/ \d{4}$/, '') : name.replace(/^\d{4}-/, '');
+		/^\d{4}-\d{2}$/.test(name)
+			? monthName(`${name}-01`).replace(/ \d{4}$/, '')
+			: name.replace(/^\d{4}-/, '');
 	// Names every few columns when they would crowd.
 	const every = $derived(Math.ceil(42 / Math.max(1, step)));
 
@@ -84,8 +89,12 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 		role="img"
 		aria-label="Income above the line and spending below it, period by period, with the savings rate"
 	>
-		<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption">{short(String(highest))}</text>
-		<text x={LEFT - 6} y={HEIGHT - BOTTOM} text-anchor="end" class="fill-ink-muted text-caption">−{short(String(lowest))}</text>
+		<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption"
+			>{short(String(highest))}</text
+		>
+		<text x={LEFT - 6} y={HEIGHT - BOTTOM} text-anchor="end" class="fill-ink-muted text-caption"
+			>−{short(String(lowest))}</text
+		>
 		<text x={width - RIGHT + 6} y={TOP + 4} class="fill-brand text-caption">100%</text>
 		{#each columns as column, index (column.period.name)}
 			<g
@@ -96,13 +105,31 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 			>
 				<rect x={LEFT + step * index} y={TOP} width={step} height={plot} fill="transparent" />
 				{#each column.above as piece (piece.name)}
-					{#if piece.height > 0}<rect x={column.x} y={piece.y} width={bar} height={piece.height} fill={piece.fill} />{/if}
+					{#if piece.height > 0}<rect
+							x={column.x}
+							y={piece.y}
+							width={bar}
+							height={piece.height}
+							fill={piece.fill}
+						/>{/if}
 				{/each}
 				{#each column.below as piece (piece.name)}
-					{#if piece.height > 0}<rect x={column.x} y={piece.y} width={bar} height={piece.height} fill={piece.fill} opacity="0.85" />{/if}
+					{#if piece.height > 0}<rect
+							x={column.x}
+							y={piece.y}
+							width={bar}
+							height={piece.height}
+							fill={piece.fill}
+							opacity="0.85"
+						/>{/if}
 				{/each}
 				{#if index % every === 0 || index === columns.length - 1}
-					<text x={column.x + bar / 2} y={HEIGHT - 6} text-anchor="middle" class="fill-ink-muted text-caption">
+					<text
+						x={column.x + bar / 2}
+						y={HEIGHT - 6}
+						text-anchor="middle"
+						class="fill-ink-muted text-caption"
+					>
 						{label(column.period.name)}
 					</text>
 				{/if}
@@ -111,20 +138,37 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 		<line x1={LEFT} x2={width - RIGHT} y1={zero} y2={zero} class="stroke-line-strong" />
 		<path d={path} fill="none" class="stroke-brand" stroke-width="2" stroke-linejoin="round" />
 		{#each rate as point, index (index)}
-			{#if point}<circle cx={point.x} cy={point.y} r={shown === index ? 4 : 2.5} class="fill-brand" />{/if}
+			{#if point}<circle
+					cx={point.x}
+					cy={point.y}
+					r={shown === index ? 4 : 2.5}
+					class="fill-brand"
+				/>{/if}
 		{/each}
 	</svg>
 
 	{#if detail}
-		<p class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary" aria-live="polite">
+		<p
+			class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary"
+			aria-live="polite"
+		>
 			<span class="font-medium text-ink">{label(detail.name)} {detail.name.slice(0, 4)}</span>
 			<span>In <Amount value={detail.income} {currency} places={0} class="text-gain" /></span>
 			<span>Out <Amount value={detail.spent} {currency} places={0} class="text-ink" /></span>
 			<span>Saved <Amount value={detail.saved} {currency} places={0} class="text-ink" /></span>
-			{#if detail.rate !== null}<span>Rate <span class="text-brand">{percent(detail.rate, 0)}</span></span>{/if}
-			{#if detail.rate_salary !== null}<span>On salary <span class="text-brand">{percent(detail.rate_salary, 0)}</span></span>{/if}
-			{#if detail.rate_12 !== null}<span>12-month rate <span class="text-brand">{percent(detail.rate_12, 0)}</span></span>{/if}
-			{#if detail.rate_salary_12 !== null}<span>12-month on salary <span class="text-brand">{percent(detail.rate_salary_12, 0)}</span></span>{/if}
+			{#if detail.rate !== null}<span
+					>Rate <span class="text-brand">{percent(detail.rate, 0)}</span></span
+				>{/if}
+			{#if detail.rate_salary !== null}<span
+					>On salary <span class="text-brand">{percent(detail.rate_salary, 0)}</span></span
+				>{/if}
+			{#if detail.rate_12 !== null}<span
+					>12-month rate <span class="text-brand">{percent(detail.rate_12, 0)}</span></span
+				>{/if}
+			{#if detail.rate_salary_12 !== null}<span
+					>12-month on salary <span class="text-brand">{percent(detail.rate_salary_12, 0)}</span
+					></span
+				>{/if}
 		</p>
 	{/if}
 
@@ -136,9 +180,12 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 		{/each}
 		{#each parts as name (name)}
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px] opacity-85" style:background={colors.get(name)}></span>{name}
+				<span class="size-2 rounded-[2px] opacity-85" style:background={colors.get(name)}
+				></span>{name}
 			</li>
 		{/each}
-		<li class="flex items-center gap-1.5"><span class="h-0.5 w-3 rounded bg-brand"></span>Savings rate</li>
+		<li class="flex items-center gap-1.5">
+			<span class="h-0.5 w-3 rounded bg-brand"></span>Savings rate
+		</li>
 	</ul>
 </div>

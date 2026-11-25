@@ -38,7 +38,10 @@ the percent beside it. What span it is over is the caller's to say, above it.
 				way === 'flat' && 'text-ink-secondary'
 			)}
 		>
-			{#if way === 'up'}<ArrowUpRight class="size-6 self-center" aria-hidden="true" />{:else if way === 'down'}<ArrowDownRight
+			{#if way === 'up'}<ArrowUpRight
+					class="size-6 self-center"
+					aria-hidden="true"
+				/>{:else if way === 'down'}<ArrowDownRight
 					class="size-6 self-center"
 					aria-hidden="true"
 				/>{/if}

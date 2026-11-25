@@ -48,7 +48,9 @@ currencies, and its rows under it.
 			<header class="flex items-baseline justify-between gap-4 px-4 pb-1.5">
 				<h3 class="text-small font-medium text-ink-secondary">{weekday(group.day, thisYear)}</h3>
 				<p class="text-caption text-ink-muted tabular-nums">
-					{#each group.totals as total, index (total.currency)}{index ? ', ' : ''}{signed(total.total)}
+					{#each group.totals as total, index (total.currency)}{index ? ', ' : ''}{signed(
+							total.total
+						)}
 						{total.currency}{/each}
 				</p>
 			</header>

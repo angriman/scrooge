@@ -75,7 +75,10 @@
 	</header>
 
 	<div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-		<Panel title="Categories" note="Built in, then those added. A rename or a merge changes the committed rows and the rules too.">
+		<Panel
+			title="Categories"
+			note="Built in, then those added. A rename or a merge changes the committed rows and the rules too."
+		>
 			{#each listed.errors as error (error)}
 				<p class="mb-2 text-small text-caution" role="status">{error}</p>
 			{/each}
@@ -146,7 +149,8 @@
 								</ul>
 							{:else}
 								<p class="mt-1 text-small text-ink-secondary">
-									No rules yet: choosing a category on Import or Transactions with “remember” adds them.
+									No rules yet: choosing a category on Import or Transactions with “remember” adds
+									them.
 								</p>
 							{/if}
 						</section>

@@ -3,12 +3,23 @@ import type { KnownMerchant } from '#lib/types.js';
 import { fold, narrow, offered, typedName } from './merchants.js';
 
 const known = (...names: string[]): KnownMerchant[] =>
-	names.map((name, index) => ({ name, spent: String(1000 - index * 100), count: 1, last: '2026-08-01' }));
+	names.map((name, index) => ({
+		name,
+		spent: String(1000 - index * 100),
+		count: 1,
+		last: '2026-08-01'
+	}));
 
 const names = (merchants: { name: string }[]) => merchants.map((merchant) => merchant.name);
 
 describe('the merchants the chip offers', () => {
-	const merchants = known('Hotel Adler', 'KONSUM ZUERICH', 'Coop Bern', 'Café Zürich', 'Coop Pronto');
+	const merchants = known(
+		'Hotel Adler',
+		'KONSUM ZUERICH',
+		'Coop Bern',
+		'Café Zürich',
+		'Coop Pronto'
+	);
 
 	it('lists them all, the largest first, until something is typed', () => {
 		expect(names(narrow(merchants, ''))).toEqual(names(merchants));

@@ -56,7 +56,12 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 	}
 
 	async function remove() {
-		if (!confirm(`Remove the rule ${rule.match} → ${rule.category}? Rows committed keep their category.`)) return;
+		if (
+			!confirm(
+				`Remove the rule ${rule.match} → ${rule.category}? Rows committed keep their category.`
+			)
+		)
+			return;
 		await act(onremove);
 	}
 
@@ -71,11 +76,21 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 		<form onsubmit={save} class="flex flex-wrap items-end gap-2">
 			<label class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary">
 				Pattern
-				<input bind:value={draft.match} required maxlength="200" spellcheck="false" class="{field} w-full font-mono" />
+				<input
+					bind:value={draft.match}
+					required
+					maxlength="200"
+					spellcheck="false"
+					class="{field} w-full font-mono"
+				/>
 			</label>
 			<label class="flex flex-col gap-1 text-caption text-ink-secondary">
 				Category
-				<CategorySelect bind:value={draft.category} {leaves} label={`Category of the rule ${rule.match}`} />
+				<CategorySelect
+					bind:value={draft.category}
+					{leaves}
+					label={`Category of the rule ${rule.match}`}
+				/>
 			</label>
 			<label class="flex flex-col gap-1 text-caption text-ink-secondary">
 				Money
@@ -111,35 +126,74 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 		</form>
 	{:else}
 		<div class="flex items-center gap-3">
-			<span class="w-6 shrink-0 text-right text-caption text-ink-muted tabular-nums">{rule.position}</span>
+			<span class="w-6 shrink-0 text-right text-caption text-ink-muted tabular-nums"
+				>{rule.position}</span
+			>
 			<div class="min-w-0 flex-1">
 				<p class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-body">
-					<code class="min-w-0 truncate font-mono text-small text-ink" title={rule.match}>{rule.match}</code>
+					<code class="min-w-0 truncate font-mono text-small text-ink" title={rule.match}
+						>{rule.match}</code
+					>
 					<span class="text-ink-muted" aria-hidden="true">→</span>
 					<span class="text-ink">{rule.category}</span>
 				</p>
 				<p class="text-caption text-ink-muted">
 					{directionName(rule.direction)}{rule.account ? ` · ${rule.account} only` : ''} ·
-					<span class={rule.matches === null ? 'text-caution' : ''}>{matchesName(rule.matches, rule.counted)}</span>
+					<span class={rule.matches === null ? 'text-caution' : ''}
+						>{matchesName(rule.matches, rule.counted)}</span
+					>
 				</p>
 				{#if editable && rule.fixed}
 					<p class="text-caption text-caution">Change it in the file: {rule.fixed}.</p>
 				{/if}
 			</div>
-			<button type="button" class={icon} aria-label={`Try ${rule.match}`} title="Try its pattern" onclick={() => ontry(rule.match, rule.direction)}>
+			<button
+				type="button"
+				class={icon}
+				aria-label={`Try ${rule.match}`}
+				title="Try its pattern"
+				onclick={() => ontry(rule.match, rule.direction)}
+			>
 				<span class="text-caption">Try</span>
 			</button>
 			{#if editable && !rule.fixed}
-				<button type="button" class={icon} aria-label={`Edit the rule ${rule.match}`} title="Edit" onclick={edit}>
+				<button
+					type="button"
+					class={icon}
+					aria-label={`Edit the rule ${rule.match}`}
+					title="Edit"
+					onclick={edit}
+				>
 					<Pencil class="size-4" aria-hidden="true" />
 				</button>
-				<button type="button" class={icon} aria-label={`Move ${rule.match} up`} title="Tried earlier" disabled={first || busy} onclick={() => act(() => onmove(-1))}>
+				<button
+					type="button"
+					class={icon}
+					aria-label={`Move ${rule.match} up`}
+					title="Tried earlier"
+					disabled={first || busy}
+					onclick={() => act(() => onmove(-1))}
+				>
 					<ArrowUp class="size-4" aria-hidden="true" />
 				</button>
-				<button type="button" class={icon} aria-label={`Move ${rule.match} down`} title="Tried later" disabled={last || busy} onclick={() => act(() => onmove(1))}>
+				<button
+					type="button"
+					class={icon}
+					aria-label={`Move ${rule.match} down`}
+					title="Tried later"
+					disabled={last || busy}
+					onclick={() => act(() => onmove(1))}
+				>
 					<ArrowDown class="size-4" aria-hidden="true" />
 				</button>
-				<button type="button" class={icon} aria-label={`Remove the rule ${rule.match}`} title="Remove" disabled={busy} onclick={remove}>
+				<button
+					type="button"
+					class={icon}
+					aria-label={`Remove the rule ${rule.match}`}
+					title="Remove"
+					disabled={busy}
+					onclick={remove}
+				>
 					<Trash class="size-4" aria-hidden="true" />
 				</button>
 			{/if}

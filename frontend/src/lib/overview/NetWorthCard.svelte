@@ -24,7 +24,14 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import MonthEnds from './MonthEnds.svelte';
-	import { arrivedBetween, change as moveOf, daysBack, RANGES, rangeLabel, type Range } from './range.js';
+	import {
+		arrivedBetween,
+		change as moveOf,
+		daysBack,
+		RANGES,
+		rangeLabel,
+		type Range
+	} from './range.js';
 
 	interface Props {
 		series: Series;
@@ -116,7 +123,10 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		<h1 id="net-worth" class="truncate text-small text-ink-secondary [grid-area:title]">
 			{shownTitle}
 		</h1>
-		<p class="mt-1 text-hero font-medium tracking-tight text-ink [grid-area:figure]" aria-live="polite">
+		<p
+			class="mt-1 text-hero font-medium tracking-tight text-ink [grid-area:figure]"
+			aria-live="polite"
+		>
 			<Amount value={headline} {currency} />
 		</p>
 		<p class="mt-1 text-small text-ink-muted [grid-area:when]">
@@ -137,7 +147,8 @@ headline and the legend. The chart can give way to a table of the month-ends.
 			/>
 			{#if leftOut}
 				<p class="mt-1 text-small text-ink-muted">
-					Leaves out {money(leftOut, 0)} {currency} that accounts held when first counted
+					Leaves out {money(leftOut, 0)}
+					{currency} that accounts held when first counted
 				</p>
 			{/if}
 		</div>

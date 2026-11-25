@@ -31,7 +31,9 @@ scrolls sideways, the months staying in sight.
 
 <div class={className}>
 	{#await months}
-		<p class="py-16 text-center text-small text-ink-muted" role="status">Working out the month-ends…</p>
+		<p class="py-16 text-center text-small text-ink-muted" role="status">
+			Working out the month-ends…
+		</p>
 	{:then sent}
 		{@const shown = table(sent, currency)}
 		{#each sent.errors as error, n (n)}

@@ -34,7 +34,11 @@ a note under the table tells the two apart.
 	const totals = $derived([
 		{ label: 'Realised', note: 'from sales', pick: 'realised' as const },
 		{ label: 'Unrealised', note: 'still held', pick: 'unrealised' as const },
-		{ label: holding.asset === 'Bills' ? 'Interest' : 'Dividends', note: '', pick: 'dividends' as const }
+		{
+			label: holding.asset === 'Bills' ? 'Interest' : 'Dividends',
+			note: '',
+			pick: 'dividends' as const
+		}
 	]);
 </script>
 
@@ -47,7 +51,9 @@ a note under the table tells the two apart.
 		<table class="w-full text-small" aria-labelledby={titleId}>
 			<thead class="text-caption text-ink-muted">
 				<tr>
-					<th class="sticky left-0 bg-panel pb-2 text-left font-normal"><span class="sr-only">Over</span></th>
+					<th class="sticky left-0 bg-panel pb-2 text-left font-normal"
+						><span class="sr-only">Over</span></th
+					>
 					{#each columns as column (column.label)}
 						<th class="pb-2 pl-3 text-right font-normal whitespace-nowrap">{column.label}</th>
 					{/each}
@@ -56,7 +62,10 @@ a note under the table tells the two apart.
 			<tbody>
 				{#each lines as line (line.label)}
 					<tr class="border-t border-line">
-						<th scope="row" class="sticky left-0 bg-panel py-2 pr-3 text-left font-normal whitespace-nowrap text-ink-secondary">
+						<th
+							scope="row"
+							class="sticky left-0 bg-panel py-2 pr-3 text-left font-normal whitespace-nowrap text-ink-secondary"
+						>
 							{line.label}
 							{#if line.note}<span class="block text-caption text-ink-muted">{line.note}</span>{/if}
 						</th>
@@ -65,7 +74,9 @@ a note under the table tells the two apart.
 								{#if cell.percent === null || cell.amount === null}
 									<span class="text-ink-muted" title="not held through all of it">–</span>
 								{:else}
-									<span class={cn('block font-medium', tone(cell.percent, 1))}>{signedPercent(cell.percent)}</span>
+									<span class={cn('block font-medium', tone(cell.percent, 1))}
+										>{signedPercent(cell.percent)}</span
+									>
 									<span class="block text-caption text-ink-muted">{signed(cell.amount)}</span>
 								{/if}
 							</td>
@@ -74,23 +85,31 @@ a note under the table tells the two apart.
 				{/each}
 				{#each totals as total (total.pick)}
 					<tr class="border-t border-line">
-						<th scope="row" class="sticky left-0 bg-panel py-2 pr-3 text-left font-normal whitespace-nowrap text-ink-secondary">
+						<th
+							scope="row"
+							class="sticky left-0 bg-panel py-2 pr-3 text-left font-normal whitespace-nowrap text-ink-secondary"
+						>
 							{total.label}
-							{#if total.note}<span class="block text-caption text-ink-muted">{total.note}</span>{/if}
+							{#if total.note}<span class="block text-caption text-ink-muted">{total.note}</span
+								>{/if}
 						</th>
 						{#each columns as column (column.label)}
 							{@const value = column.returns?.[total.pick] ?? null}
-							{@const withheld = total.pick === 'dividends' ? withheldNote(column.returns, money) : ''}
+							{@const withheld =
+								total.pick === 'dividends' ? withheldNote(column.returns, money) : ''}
 							<td class="py-2 pl-3 text-right whitespace-nowrap tabular-nums">
 								{#if total.pick === 'realised' && column.returns && !column.returns.sold}
 									<span class="text-ink-muted">{realisedText(column.returns, signed)}</span>
 								{:else if value === null}
 									<span class="text-ink-muted" title="not known">–</span>
 								{:else}
-									<span class={cn('block', total.pick === 'dividends' ? 'text-ink' : tone(value, 2))}>
+									<span
+										class={cn('block', total.pick === 'dividends' ? 'text-ink' : tone(value, 2))}
+									>
 										{total.pick === 'dividends' ? money(value) : signed(value)}
 									</span>
-									{#if withheld}<span class="block text-caption text-ink-muted">{withheld}</span>{/if}
+									{#if withheld}<span class="block text-caption text-ink-muted">{withheld}</span
+										>{/if}
 								{/if}
 							</td>
 						{/each}

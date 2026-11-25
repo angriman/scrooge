@@ -25,7 +25,11 @@ function read(text: string): Exact {
 		throw new RangeError(`Not a decimal: ${JSON.stringify(text)}`);
 	}
 	const [, sign, whole, fraction = ''] = found;
-	return { negative: sign === '-', units: BigInt((whole || '0') + fraction), scale: fraction.length };
+	return {
+		negative: sign === '-',
+		units: BigInt((whole || '0') + fraction),
+		scale: fraction.length
+	};
 }
 
 /** `value` to `places` decimals. A tie goes to the even neighbour, as a Decimal formats, or

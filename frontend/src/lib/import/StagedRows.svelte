@@ -22,12 +22,15 @@ changed here, and a row waiting can be given one of its own, apart from its coun
 
 <ul class="divide-y divide-line">
 	{#each rows as row (row.id)}
-		<li class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 md:grid-cols-[3rem_minmax(0,1fr)_auto_14rem]">
+		<li
+			class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 md:grid-cols-[3rem_minmax(0,1fr)_auto_14rem]"
+		>
 			<span class="text-small text-ink-muted tabular-nums">{dayOfYear(row.date)}</span>
 			<span class="min-w-0">
 				<span class="block truncate text-body text-ink">{row.counterparty || row.description}</span>
 				<span class="block truncate text-small text-ink-muted">
-					{#if row.counterparty && row.description !== row.counterparty}{row.description}, {/if}{row.account}
+					{#if row.counterparty && row.description !== row.counterparty}{row.description},
+					{/if}{row.account}
 				</span>
 			</span>
 			<Amount

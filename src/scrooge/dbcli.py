@@ -1,9 +1,10 @@
 """`scrooge init | import | commit | statements | uncommit | discard | balance | keep | logo |
 prices | query | serve | password | publish | migrate-files`: the database from the terminal.
 
-    scrooge init              first run: ask who you are and make your setup in users/<name>/
-                              (--container: for the app in a container, its pages reached
-                              from outside it with a password)
+    scrooge init              first run: ask who you are and make your setup in users/<name>/,
+                              its database too (--container: for the app in a container, its
+                              pages reached from outside it with a password; --db <path>: only
+                              an empty database there)
     scrooge import <path>...  reconcile and classify the statements, then stage them
     scrooge commit            make what is staged visible to the dashboards
     scrooge statements        list the statements stored, staged ones first, with their ids
@@ -52,7 +53,10 @@ The config is `--config`; else `scrooge.yaml` in the folder the command runs in;
 setup `users/<name>/scrooge.yaml` that `--user` or $SCROOGE_USER names, or the only one in
 `users/`. Its relative paths are relative to the folder the command runs in, as before: the
 config `scrooge init` writes names `users/<name>/...`, so the commands run from the folder
-`users/` is in.
+`users/` is in. Run from another, they name files that are not there: a database or a rules
+file that is not there is refused, with the path looked for and the folder run in, never
+made or read as empty. `rules.<owner>.yaml`, `categories.yaml` and `instruments.yaml` may be
+missing: they are written when there is something to keep in them.
 The database path, the person and the names that recognise each person as a counterparty
 come from the config (`database`, `owner`, `owners`), or from `--db` and `--owner`. `currency`
 there is what the pages show figures in until another is chosen on them.
@@ -78,9 +82,10 @@ database.
 `prices` is the only command that uses the network (D9); `serve` too, only when the import
 page's button looks up a T-bill's maturity (decided 2026-11-03).
 
-Every command but a read-only `serve` creates the database if there is none and brings its
-schema up to date: a database at an older schema is copied to `backups/` next to it first,
-and a migration that fails stops the command (`serve` does not start).
+Only `scrooge init` makes a database: every other command refuses one that is not there, an
+explicit `--db` too. Every command but a read-only `serve` brings its schema up to date: a
+database at an older schema is copied to `backups/` next to it first, and a migration that
+fails stops the command (`serve` does not start).
 
 `serve` listens on 127.0.0.1 and asks for no password, unless the config has (D18):
 
@@ -215,7 +220,9 @@ def main(
         if args.command == "password":  # about no database and no config
             return _password(out)
         if args.command == "init":
-            return onboarding.run(Path(onboarding.USERS), out, ask, container=args.container)
+            if args.db is not None:
+                return _create(args.db.expanduser(), now(), out)
+            return onboarding.run(Path(onboarding.USERS), out, ask, now(), container=args.container)
         args.config = _find_config(args)
         if args.command == "migrate-files":  # about the files alone, not the database
             return _migrate_files(args, out)
@@ -329,6 +336,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="for the app in a container: its pages listen on every address of it, under the "
         "names and with the password asked for",
+    )
+    first.add_argument(
+        "--db",
+        type=Path,
+        help="make only an empty database there, for a config written by hand; nothing is asked",
     )
     send = commands.add_parser("publish", parents=[files], help="copy the database to be shown")
     send.add_argument(
@@ -530,16 +542,49 @@ def _labels(config: dict[str, object], path: Path) -> dict[str, str]:
     return {str(number): str(label) for number, label in labels.items()}
 
 
-def _rules(args: argparse.Namespace, config: dict[str, object]) -> list[Path]:
-    """`--rules`, or `rules: [path, ...]` in the config, or the two files of the folder the
-    command runs in."""
+def _rules(
+    args: argparse.Namespace, config: dict[str, object], *, present: bool = True
+) -> list[Path]:
+    """`--rules`, or `rules: [path, ...]` in the config, or `rules.yaml` in the folder the
+    command runs in. Each must be there, unless not `present` is asked for (a copy shown has
+    none): a file that is not, from another folder, would read as no rules at all."""
     if args.rules:
-        return list(args.rules)
-    listed = config.get("rules", RULES)
-    if not isinstance(listed, list) or not listed or not all(isinstance(p, str) for p in listed):
-        msg = f"{args.config}: 'rules' must list the rules files, the one both people share first"
-        raise ConfigError(msg)
-    return [Path(path).expanduser() for path in listed]
+        found, origin = list(args.rules), "--rules"
+    else:
+        listed = config.get("rules", RULES)
+        if (
+            not isinstance(listed, list)
+            or not listed
+            or not all(isinstance(p, str) for p in listed)
+        ):
+            msg = (
+                f"{args.config}: 'rules' must list the rules files, the one both people share first"
+            )
+            raise ConfigError(msg)
+        found = [Path(path).expanduser() for path in listed]
+        named = "rules" in config
+        origin = (
+            f"'rules' in {args.config}" if named else f"{RULES[0]}, as {args.config} names none,"
+        )
+    for path in found if present else ():
+        then = "A rules file with no rules yet holds the line 'rules: []'"
+        _refuse_missing(path, "rules file", origin, then)
+    return found
+
+
+def _refuse_missing(path: Path, what: str, origin: str, then: str) -> None:
+    """A file the config or a flag names that is not there is refused, never taken as empty:
+    a relative path is read from the folder the command runs in, which may be another."""
+    if path.is_file():
+        return
+    if path.is_absolute():
+        msg = f"no {what} at {path} ({origin}). {then}"
+    else:
+        msg = (
+            f"no {what} at {path.absolute()}: {origin} is relative to the folder this runs in, "
+            f"{Path.cwd()}: run scrooge from the folder 'scrooge init' was run in. {then}"
+        )
+    raise ConfigError(msg)
 
 
 def _instruments(args: argparse.Namespace, config: dict[str, object]) -> Path:
@@ -672,6 +717,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         raise ConfigError(msg)
     owner = "" if args.command in _READ_BOTH else _setting(args, config, "owner", "owner")
     path = Path(_setting(args, config, "db", "database")).expanduser()
+    origin = "--db" if args.db else f"'database' in {args.config}"
     people = _people(config, args.config)
     if reach.read_only and args.command != "serve":
         _check_copy(path)  # a copy is read where it is, never opened to write
@@ -680,9 +726,10 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
         if reach.read_only:
             _check_copy(path)
         else:
-            _open(path, now, out).close()
-        # What the import page reads, as `scrooge import` would here.
-        rules, labels = _rules(args, config), _labels(config, args.config)
+            _open(path, origin, now, out).close()
+        # What the import page reads, as `scrooge import` would here; a copy has none.
+        rules = _rules(args, config, present=not reach.read_only)
+        labels = _labels(config, args.config)
         imports = importing.Setup(
             rules, _instruments(args, config), people, labels, _unmatched(config, args.config)
         )
@@ -695,10 +742,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             _benchmarks(config, args.config),
         )
         return _serve(path, args.port, pages, reach, out)
-    if args.command == "publish" and not path.is_file():
-        msg = f"{path}: no database to publish"
-        raise ConfigError(msg)
-    conn = _open(path, now, out)
+    conn = _open(path, origin, now, out)
     try:
         if args.command == "publish":
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
@@ -734,14 +778,16 @@ def _show(
         return _statements(_Session(conn, path, owner, people, labels, console, now))
 
 
-def _open(path: Path, now: datetime, out: TextIO) -> sqlite3.Connection:
-    """The database, created if there is none, with its schema brought up to date.
+def _open(path: Path, origin: str, now: datetime, out: TextIO) -> sqlite3.Connection:
+    """The database, with its schema brought up to date. One that is not there is refused
+    (`origin` says who named it): only `scrooge init` makes one.
 
     A database at an older schema is copied to `backups/` next to it first, and the copy is
     said. A migration that fails is refused with its reason: the migrations applied before it
     stay (each is one transaction), and the copy is dropped when none was.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    then = "Only 'scrooge init' makes a database ('scrooge init --db <path>' an empty one alone)"
+    _refuse_missing(path, "database", origin, then)
     conn = db.connect(path)
     try:
         found, latest = db.version(conn), db.latest()
@@ -767,6 +813,17 @@ def _open(path: Path, now: datetime, out: TextIO) -> sqlite3.Connection:
             f"{path}: schema version {found} brought up to {latest}. Copy from before: {copy}\n"
         )
     return conn
+
+
+def _create(path: Path, now: datetime, out: TextIO) -> int:
+    """`scrooge init --db`: an empty database at `path`, for a config written by hand."""
+    try:
+        db.create(path, now)
+    except FileExistsError:
+        msg = f"{path.absolute()}: there is a database there already"
+        raise ConfigError(msg) from None
+    out.write(f"{path.absolute()}: a new, empty database, at schema version {db.latest()}.\n")
+    return OK
 
 
 def _check_copy(path: Path) -> None:

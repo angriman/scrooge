@@ -43,7 +43,9 @@ much one of them weighs. A tile chosen opens that holding in the list.
 	});
 
 	const label = (holding: HeldInstrument) =>
-		holding.name && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(holding.symbol) ? holding.name : holding.symbol;
+		holding.name && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(holding.symbol)
+			? holding.name
+			: holding.symbol;
 </script>
 
 <div bind:clientWidth={width} class="relative w-full" style:height="{height}px">
@@ -54,7 +56,9 @@ much one of them weighs. A tile chosen opens that holding in the list.
 		<button
 			type="button"
 			onclick={() => onchoose(holding)}
-			title="{holding.name || holding.symbol}: {short(holding.value)} {currency}, {percent(holding.share)} of securities"
+			title="{holding.name || holding.symbol}: {short(holding.value)} {currency}, {percent(
+				holding.share
+			)} of securities"
 			class="absolute flex flex-col justify-start overflow-hidden rounded-control border-t-2 text-left transition-[filter] hover:brightness-125 focus-visible:z-10"
 			style:left="{tile.x}px"
 			style:top="{tile.y}px"
@@ -65,11 +69,15 @@ much one of them weighs. A tile chosen opens that holding in the list.
 		>
 			{#if tile.w >= 44 && tile.h >= 28}
 				<span class="block px-2 pt-1.5">
-					<span class={cn('block truncate font-medium text-ink', roomy ? 'text-body' : 'text-caption')}>
+					<span
+						class={cn('block truncate font-medium text-ink', roomy ? 'text-body' : 'text-caption')}
+					>
 						{label(holding)}
 					</span>
 					{#if roomy}
-						<span class="block text-small text-ink-secondary tabular-nums">{short(holding.value)}</span>
+						<span class="block text-small text-ink-secondary tabular-nums"
+							>{short(holding.value)}</span
+						>
 						{#if holding.return_percent !== null}
 							<span
 								class={cn(

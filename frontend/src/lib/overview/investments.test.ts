@@ -100,9 +100,7 @@ describe('the links to the investments page', () => {
 	});
 
 	it('open the income over the last twelve months', () => {
-		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe(
-			'owner=Anna&view=income'
-		);
+		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe('owner=Anna&view=income');
 	});
 });
 

@@ -42,7 +42,10 @@
 	const blocked = $derived.by(() => {
 		const given = new Set(pending.flatMap((choice) => choice.ids));
 		const left = staged.rows.filter((row) => row.category === null && !given.has(row.id)).length;
-		const waiting = left === 1 ? '1 transaction still needs a category' : `${left} transactions still need a category`;
+		const waiting =
+			left === 1
+				? '1 transaction still needs a category'
+				: `${left} transactions still need a category`;
 		return [...staged.gaps, ...(left ? [waiting] : [])];
 	});
 
@@ -120,10 +123,15 @@
 		return null;
 	}
 
-	const sides: Record<string, string> = { uscite: 'Expenses', entrate: 'Income', transfer: 'Transfers' };
+	const sides: Record<string, string> = {
+		uscite: 'Expenses',
+		entrate: 'Income',
+		transfer: 'Transfers'
+	};
 	const statements = (count: number) => (count === 1 ? '1 statement' : `${count} statements`);
 	const transactions = $derived(
-		resolve('/transactions') + (page.url.searchParams.get('owner') ? `?owner=${encodeURIComponent(staged.owner)}` : '')
+		resolve('/transactions') +
+			(page.url.searchParams.get('owner') ? `?owner=${encodeURIComponent(staged.owner)}` : '')
 	);
 </script>
 
@@ -144,13 +152,20 @@
 </div>
 
 {#if committed !== null}
-	<p class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-panel border border-gain/30 bg-gain-soft px-4 py-2.5 text-body text-ink" role="status">
+	<p
+		class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-panel border border-gain/30 bg-gain-soft px-4 py-2.5 text-body text-ink"
+		role="status"
+	>
 		<CircleCheck class="size-4 text-gain" aria-hidden="true" />
 		<span class="flex-1">
-			{committed ? `${statements(committed)} committed: every page counts them now.` : 'Nothing was staged to commit.'}
+			{committed
+				? `${statements(committed)} committed: every page counts them now.`
+				: 'Nothing was staged to commit.'}
 		</span>
 		{#if committed}
-			<a href={transactions} class="text-small font-medium text-brand hover:text-brand-hover">See the transactions</a>
+			<a href={transactions} class="text-small font-medium text-brand hover:text-brand-hover"
+				>See the transactions</a
+			>
 		{/if}
 	</p>
 {/if}
@@ -173,19 +188,29 @@
 		Nothing is staged for {staged.owner}. Statements show here once imported, to check and commit.
 	</p>
 {:else}
-	<div class="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+	<div
+		class="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]"
+	>
 		<div class="space-y-6">
 			{#if staged.groups.length}
-				<Waiting groups={staged.groups} {rows} leaves={staged.choices.leaves} rules={staged.rules} bind:chosen />
+				<Waiting
+					groups={staged.groups}
+					{rows}
+					leaves={staged.choices.leaves}
+					rules={staged.rules}
+					bind:chosen
+				/>
 			{/if}
 
 			<details class="rounded-panel bg-panel px-4 py-3" open={!staged.groups.length}>
 				<summary class="cursor-pointer text-title font-medium text-ink">
-					Every staged row <span class="text-body font-normal text-ink-muted">{staged.rows.length}</span>
+					Every staged row <span class="text-body font-normal text-ink-muted"
+						>{staged.rows.length}</span
+					>
 				</summary>
 				<p class="mt-1 mb-2 text-small text-ink-secondary">
-					A category a rule gave can be changed here; a row chosen on its own keeps its choice over its
-					counterparty's.
+					A category a rule gave can be changed here; a row chosen on its own keeps its choice over
+					its counterparty's.
 				</p>
 				<StagedRows rows={staged.rows} leaves={staged.choices.leaves} bind:own />
 			</details>
@@ -241,6 +266,5 @@
 				</ul>
 			</Panel>
 		</div>
-
 	</div>
 {/if}

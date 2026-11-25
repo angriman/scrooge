@@ -74,7 +74,7 @@ reader is already looking, in the headline and the legend.
 					value: (row: Day) => part.values[row.index],
 					color: colors.get(part.name) ?? 'var(--data-other)'
 				}))
-				: series.parts.length
+			: series.parts.length
 				? []
 				: [{ key: 'total', label: 'Net worth', value: (row: Day) => total[row.index], color }]
 	);
@@ -90,7 +90,6 @@ reader is already looking, in the headline and the legend.
 	$effect(() => {
 		hovered = context?.tooltip.data ?? null;
 	});
-
 </script>
 
 <div class={className}>
@@ -116,7 +115,10 @@ reader is already looking, in the headline and the legend.
 				tickLabelProps: { dx: 10 }
 			},
 			grid: { class: '[&_line]:stroke-chart-grid' },
-			highlight: { points: { r: 3, class: 'stroke-panel stroke-2' }, lines: { class: 'stroke-ink-muted' } }
+			highlight: {
+				points: { r: 3, class: 'stroke-panel stroke-2' },
+				lines: { class: 'stroke-ink-muted' }
+			}
 		}}
 	>
 		{#snippet aboveMarks()}

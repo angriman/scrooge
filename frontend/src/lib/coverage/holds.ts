@@ -74,7 +74,10 @@ export function sparkline(
 
 /** How the balance moved over the months of its line, for who cannot see it: `up from 41’000
  * CHF at the end of Oct 2025`, `unchanged since the end of Oct 2025`. Empty with fewer than two months, which draw no line. */
-export function trend(months: readonly { day: string; balance: Amount }[], currency: string): string {
+export function trend(
+	months: readonly { day: string; balance: Amount }[],
+	currency: string
+): string {
 	if (months.length < 2) return '';
 	const [first, last] = [months[0], months[months.length - 1]];
 	const [was, is] = [approximate(first.balance), approximate(last.balance)];

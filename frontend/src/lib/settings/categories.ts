@@ -38,7 +38,8 @@ export function rowsName(rows: number): string {
 /** The sides each name is on: a few are on both (Trading). */
 function sidesOf(listed: readonly ListedCategory[]): Map<string, Set<string>> {
 	const sides = new Map<string, Set<string>>();
-	for (const each of listed) sides.set(each.name, (sides.get(each.name) ?? new Set()).add(each.side));
+	for (const each of listed)
+		sides.set(each.name, (sides.get(each.name) ?? new Set()).add(each.side));
 	return sides;
 }
 

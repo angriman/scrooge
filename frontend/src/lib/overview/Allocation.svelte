@@ -66,7 +66,9 @@ of securities alone.
 			<div class="pointer-events-none absolute inset-0 grid place-content-center text-center">
 				{#if pointed}
 					<span class="text-caption text-ink-secondary">{pointed.name}</span>
-					<span class="text-title font-medium text-ink">{pointed.share === null ? '' : percent(pointed.share)}</span>
+					<span class="text-title font-medium text-ink"
+						>{pointed.share === null ? '' : percent(pointed.share)}</span
+					>
 				{:else}
 					<span class="text-caption text-ink-secondary">Owned</span>
 					<span class="text-title font-medium text-ink">{money(heldTotal, 0)}</span>
@@ -99,7 +101,9 @@ of securities alone.
 							{#if part.share !== null}
 								<span class="flex items-center gap-2">
 									<Share share={part.share} color={colorOf(part.name)} class="w-24" />
-									<span class="w-12 text-right text-small text-ink-secondary">{percent(part.share)}</span>
+									<span class="w-12 text-right text-small text-ink-secondary"
+										>{percent(part.share)}</span
+									>
 								</span>
 							{/if}
 						</td>
