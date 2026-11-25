@@ -491,6 +491,24 @@ export interface Upload {
 	errors: string[];
 }
 
+/** A rule offered for a row whose category was changed by hand (`/api/import/categories`). */
+export interface RuleSuggestion {
+	/** The row it was offered for: accepting it sends `{ owner, id }`. */
+	id: string;
+	merchant: string;
+	match: string;
+	direction: 'in' | 'out';
+	category: string;
+	file: string;
+}
+
+export interface CategorizeResult {
+	changed: number;
+	committed: number | null;
+	suggestions: RuleSuggestion[];
+	unoffered: string | null;
+}
+
 /** Income, spending and what was saved over a span (src/scrooge/savings.py `Totals`). */
 export interface Saved {
 	income: Amount;

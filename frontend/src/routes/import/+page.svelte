@@ -7,12 +7,13 @@
 	import { send } from '#lib/api.js';
 	import AddCategory from '#lib/import/AddCategory.svelte';
 	import DropZone from '#lib/import/DropZone.svelte';
+	import RuleOffers from '#lib/import/RuleOffers.svelte';
 	import StagedFiles from '#lib/import/StagedFiles.svelte';
 	import StagedRows from '#lib/import/StagedRows.svelte';
 	import UploadResult from '#lib/import/UploadResult.svelte';
 	import Waiting from '#lib/import/Waiting.svelte';
 	import { fresh, toSend, type GroupChoice } from '#lib/import/choices.js';
-	import type { Staged, Upload } from '#lib/types.js';
+	import type { CategorizeResult, RuleSuggestion, Staged, Upload } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
@@ -56,6 +57,19 @@
 	let saving = $state<'save' | 'commit' | null>(null);
 	let problems = $state<string[]>([]);
 	let committed = $state<number | null>(null);
+	let offers = $state<RuleSuggestion[]>([]);
+	let unoffered = $state<string | null>(null);
+	let adding = $state<string | null>(null);
+	let added = $state<Record<string, boolean>>({});
+	let offerErrors = $state<Record<string, string>>({});
+
+	function clearOffers() {
+		offers = [];
+		unoffered = null;
+		adding = null;
+		added = {};
+		offerErrors = {};
+	}
 
 	// What was just done is said for the person it was done for: a name, which changes only
 	// when another person is chosen, not each time the draft is loaded again.
@@ -66,6 +80,7 @@
 			answer = null;
 			committed = null;
 			problems = [];
+			clearOffers();
 		});
 	});
 
@@ -75,6 +90,7 @@
 		for (const file of files) form.append('file', file);
 		uploading = true;
 		committed = null;
+		clearOffers();
 		answer = (await send<Upload>('/api/import', form, token)).sent;
 		uploading = false;
 		await invalidate('api:import');
@@ -99,7 +115,8 @@
 	async function save(commit: boolean) {
 		saving = commit ? 'commit' : 'save';
 		problems = [];
-		const done = await send<{ changed: number; committed: number | null }>(
+		clearOffers();
+		const done = await send<CategorizeResult>(
 			'/api/import/categories',
 			{ owner: staged.owner, choices: pending, commit },
 			token
@@ -109,11 +126,32 @@
 			own = {};
 			chosen = {};
 			committed = done.sent.committed;
+			offers = done.sent.suggestions ?? [];
+			unoffered = done.sent.unoffered ?? null;
 			if (committed) answer = null;
 		} else {
 			problems = done.sent.errors ?? [];
 		}
 		await invalidate('api:import');
+	}
+
+	async function addRule(offer: RuleSuggestion) {
+		adding = offer.id;
+		offerErrors = { ...offerErrors, [offer.id]: '' };
+		const done = await send<{ rule?: RuleSuggestion }>(
+			'/api/import/rules',
+			{ owner: staged.owner, id: offer.id },
+			token
+		);
+		adding = null;
+		if (done.ok) {
+			added = { ...added, [offer.id]: true };
+		} else {
+			offerErrors = {
+				...offerErrors,
+				[offer.id]: (done.sent.errors ?? []).join(' ') || 'No rule was added.'
+			};
+		}
 	}
 
 	async function addCategory(name: string, side: string, group: string) {
@@ -168,6 +206,12 @@
 			>
 		{/if}
 	</p>
+{/if}
+
+{#if offers.length || unoffered}
+	<div class="mb-4">
+		<RuleOffers {offers} {unoffered} {adding} {added} errors={offerErrors} onadd={addRule} />
+	</div>
 {/if}
 
 <DropZone
