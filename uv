@@ -6,7 +6,7 @@
 # in ~/.cache, ~/.local or ~/.config. Deleting the folder deletes all of it. A uv installed
 # elsewhere is neither needed nor used.
 #
-# VERSION is the uv of the Dockerfile and of .github/workflows/check.yml: change the three
+# VERSION is the uv of the Dockerfile and of .github/workflows/ci.yml: change the three
 # together, with the digests of the new release (each `uv-<target>.tar.gz.sha256` on its GitHub
 # release page).
 set -eu

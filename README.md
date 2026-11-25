@@ -1,7 +1,7 @@
 # scrooge
 
-[![check](https://github.com/angriman/scrooge/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/angriman/scrooge/actions/workflows/check.yml)
-[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fangriman%2Fscrooge%2Fbadges%2Fcoverage.json)](https://github.com/angriman/scrooge/actions/workflows/coverage.yml)
+[![CI](https://github.com/angriman/scrooge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/angriman/scrooge/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fangriman%2Fscrooge%2Fbadges%2Fcoverage.json)](https://github.com/angriman/scrooge/actions/workflows/coverage-badge.yml)
 [![version](https://img.shields.io/github/v/tag/angriman/scrooge?sort=semver&label=version)](https://github.com/angriman/scrooge/tags)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 

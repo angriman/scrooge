@@ -82,7 +82,7 @@ icons: ## Draw the PNG icons from icons/icon.svg (needs rsvg-convert: brew insta
 	rsvg-convert -w 32 -h 32 $(ICONS)/icon.svg -o $(ICONS)/icon-32.png
 	sed 's/ rx="14"//' $(ICONS)/icon.svg | rsvg-convert -w 180 -h 180 -o $(ICONS)/apple-touch-icon.png
 
-# GitHub builds the image of a tag v* once `make check` passes (.github/workflows/image.yml).
+# GitHub builds the image of a tag v* once CI passes (.github/workflows/release.yml).
 release: ## Tag what is pushed to main as VERSION (make release VERSION=v1.2.3), wait for its image
 	@case "$(VERSION)" in v*) ;; *) echo "release: VERSION=v1.2.3 is missing"; exit 1;; esac
 	@test -z "$$(git status --porcelain)" || { echo "release: commit or stash first"; exit 1; }
@@ -91,7 +91,7 @@ release: ## Tag what is pushed to main as VERSION (make release VERSION=v1.2.3),
 		|| { echo "release: this is not what main on GitHub is: push main first"; exit 1; }
 	git tag -a $(VERSION) -m $(VERSION) && git push origin $(VERSION)
 	@for n in $$(seq 30); do \
-		run=$$(gh run list --workflow image.yml --branch $(VERSION) -L 1 --json databaseId -q '.[0].databaseId'); \
+		run=$$(gh run list --workflow release.yml --branch $(VERSION) -L 1 --json databaseId -q '.[0].databaseId'); \
 		[ -n "$$run" ] && exec gh run watch --exit-status "$$run"; sleep 2; \
 	done; echo "release: no image run for $(VERSION) yet: see GitHub > Actions"; exit 1
 
