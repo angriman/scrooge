@@ -86,16 +86,29 @@
 				options={flow.ranges.map((range) => ({ value: range.label, label: range.label }))}
 				onchange={(label) => {
 					const range = flow.ranges.find((r) => r.label === label)!;
-					show(here(), label === flow.ranges[0].label ? { from: null, to: null } : { from: range.from, to: range.to || null });
+					show(
+						here(),
+						label === flow.ranges[0].label
+							? { from: null, to: null }
+							: { from: range.from, to: range.to || null }
+					);
 				}}
 			/>
-			<Segmented label="Each column" value={by} options={BY} onchange={(value) => show(here(), { by: value === 'month' ? null : value })} />
+			<Segmented
+				label="Each column"
+				value={by}
+				options={BY}
+				onchange={(value) => show(here(), { by: value === 'month' ? null : value })}
+			/>
 		</div>
 	{/if}
 </div>
 
 {#each flow.errors as error (error)}
-	<p class="mb-4 flex items-start gap-2 rounded-panel border border-caution/40 bg-caution-soft px-4 py-3 text-body text-ink" role="status">
+	<p
+		class="mb-4 flex items-start gap-2 rounded-panel border border-caution/40 bg-caution-soft px-4 py-3 text-body text-ink"
+		role="status"
+	>
 		<CircleAlert class="mt-0.5 size-4 shrink-0 text-caution" aria-hidden="true" />
 		{error}
 	</p>
@@ -125,15 +138,27 @@
 
 	{@const moved = whatMoved(report.categories)}
 	{#if report.paid_by || moved.length}
-		<div class={['mt-6 grid items-start gap-6', report.paid_by && moved.length && 'lg:grid-cols-2']}>
+		<div
+			class={['mt-6 grid items-start gap-6', report.paid_by && moved.length && 'lg:grid-cols-2']}
+		>
 			{#if moved.length}<WhatMoved {moved} {colors} {transactions} />{/if}
-			{#if report.paid_by}<WhoPaid paidBy={report.paid_by} currency={report.currency} people={data.session.people} />{/if}
+			{#if report.paid_by}<WhoPaid
+					paidBy={report.paid_by}
+					currency={report.currency}
+					people={data.session.people}
+				/>{/if}
 		</div>
 	{/if}
 
 	<Panel class="mt-6">
 		{#snippet actions()}
-			<Segmented label="Show" value={view} options={VIEWS} onchange={(value) => show(here(), { view: value === 'time' ? null : value }, { shallow: true })} />
+			<Segmented
+				label="Show"
+				value={view}
+				options={VIEWS}
+				onchange={(value) =>
+					show(here(), { view: value === 'time' ? null : value }, { shallow: true })}
+			/>
 		{/snippet}
 		{#if view === 'flow'}
 			<Flow {report} {colors} />

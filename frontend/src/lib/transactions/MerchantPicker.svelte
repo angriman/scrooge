@@ -56,10 +56,19 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 		'flex w-full cursor-default items-baseline gap-3 rounded-control px-2 py-1.5 text-left text-small text-ink outline-none data-selected:bg-brand-soft';
 </script>
 
-<Command.Root shouldFilter={false} loop bind:value={highlighted} label="Merchants" class="flex flex-col">
+<Command.Root
+	shouldFilter={false}
+	loop
+	bind:value={highlighted}
+	label="Merchants"
+	class="flex flex-col"
+>
 	<label class="relative block">
 		<span class="sr-only">Who was paid, as the cash flow names them</span>
-		<Search class="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
+		<Search
+			class="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-ink-muted"
+			aria-hidden="true"
+		/>
 		<Command.Input
 			bind:value={typed}
 			placeholder="Who was paid"
@@ -110,7 +119,9 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 			<p class="px-2 py-1.5 text-caption text-ink-secondary" role="status">{error}</p>
 		{/each}
 		{#if !shown.length && own === null && !known.errors.length}
-			<p class="px-2 py-1.5 text-caption text-ink-muted" role="status">Nothing was spent at a merchant yet.</p>
+			<p class="px-2 py-1.5 text-caption text-ink-muted" role="status">
+				Nothing was spent at a merchant yet.
+			</p>
 		{/if}
 	{/if}
 	<p class="mt-1 border-t border-line px-2 pt-2 text-caption text-ink-muted">

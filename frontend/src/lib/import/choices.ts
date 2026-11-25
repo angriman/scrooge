@@ -55,7 +55,8 @@ export function toSend(
 	for (const group of groups) {
 		const choice = chosen[groupKey(group)];
 		const ids = group.ids.filter((id) => !own[id]);
-		if (choice?.category && ids.length) sent.push({ ids, category: choice.category, rule: choice.rule });
+		if (choice?.category && ids.length)
+			sent.push({ ids, category: choice.category, rule: choice.rule });
 	}
 	return sent;
 }

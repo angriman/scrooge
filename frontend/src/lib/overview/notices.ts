@@ -38,11 +38,7 @@ const counted = (count: number, one: string, many: string) =>
 	count === 1 ? `1 ${one}` : `${count} ${many}`;
 
 /** What changed about a recurring payment, as a sentence. */
-export function changeText(
-	payment: RecurringChange,
-	currency: string,
-	onePerson: boolean
-): string {
+export function changeText(payment: RecurringChange, currency: string, onePerson: boolean): string {
 	const name = `${onePerson ? '' : `${payment.owner}’s `}${payment.name}`;
 	const since = dayOfYear(payment.since);
 	const every = everyName(payment.every);

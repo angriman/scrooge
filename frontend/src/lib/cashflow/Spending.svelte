@@ -27,11 +27,20 @@ most was spent at. Each opens its transactions over the same range.
 		return percentOf(difference(now, then), then, 0);
 	};
 	const tone = (change: string | null) =>
-		change === null ? '' : approximate(change) > 10 ? 'text-caution' : approximate(change) < -10 ? 'text-gain' : 'text-ink-secondary';
+		change === null
+			? ''
+			: approximate(change) > 10
+				? 'text-caution'
+				: approximate(change) < -10
+					? 'text-gain'
+					: 'text-ink-secondary';
 	let merchants = $state(false);
 </script>
 
-<Panel title="Where the money went" note="Per month, against the usual month and the same months a year before.">
+<Panel
+	title="Where the money went"
+	note="Per month, against the usual month and the same months a year before."
+>
 	<ul class="divide-y divide-line">
 		{#each report.categories as category (category.name)}
 			{@const usual = against(category.monthly, category.usual)}
@@ -42,7 +51,10 @@ most was spent at. Each opens its transactions over the same range.
 					class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-control px-1 py-2 hover:bg-sunken"
 				>
 					<span class="flex min-w-0 items-center gap-2 text-body text-ink">
-						<span class="size-2 shrink-0 rounded-[2px]" style:background={colors.get(category.name) ?? 'var(--data-other)'}></span>
+						<span
+							class="size-2 shrink-0 rounded-[2px]"
+							style:background={colors.get(category.name) ?? 'var(--data-other)'}
+						></span>
 						<span class="truncate">{category.name}</span>
 					</span>
 					<Amount value={category.spent} places={0} class="text-right text-body text-ink" />
@@ -54,9 +66,14 @@ most was spent at. Each opens its transactions over the same range.
 						></span>
 					</span>
 					<span class="flex justify-end gap-3 text-caption whitespace-nowrap text-ink-muted">
-						<span><Amount value={category.monthly} places={0} class="text-ink-secondary" /> a month</span>
-						{#if usual !== null}<span class={tone(usual)}>{signedPercent(usual, 0)} usual</span>{/if}
-						{#if before !== null}<span class={cn('hidden sm:inline', tone(before))}>{signedPercent(before, 0)} a year before</span>{/if}
+						<span
+							><Amount value={category.monthly} places={0} class="text-ink-secondary" /> a month</span
+						>
+						{#if usual !== null}<span class={tone(usual)}>{signedPercent(usual, 0)} usual</span
+							>{/if}
+						{#if before !== null}<span class={cn('hidden sm:inline', tone(before))}
+								>{signedPercent(before, 0)} a year before</span
+							>{/if}
 					</span>
 				</a>
 			</li>
@@ -76,9 +93,14 @@ most was spent at. Each opens its transactions over the same range.
 			<ul class="mt-2 divide-y divide-line">
 				{#each report.merchants as merchant (merchant.name)}
 					<li>
-						<a href={transactions({ merchant: merchant.name })} class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken">
+						<a
+							href={transactions({ merchant: merchant.name })}
+							class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
+						>
 							<span class="min-w-0 flex-1 truncate text-body text-ink">{merchant.name}</span>
-							<span class="hidden text-caption text-ink-muted sm:inline">{merchant.category}, {merchant.count}×</span>
+							<span class="hidden text-caption text-ink-muted sm:inline"
+								>{merchant.category}, {merchant.count}×</span
+							>
 							<Amount value={merchant.spent} places={0} class="text-body text-ink" />
 						</a>
 					</li>
@@ -86,7 +108,10 @@ most was spent at. Each opens its transactions over the same range.
 			</ul>
 			{#if report.other_merchants.count}
 				<p class="mt-2 text-caption text-ink-muted">
-					And {report.other_merchants.count} more, <Amount value={report.other_merchants.spent} places={0} /> together.
+					And {report.other_merchants.count} more, <Amount
+						value={report.other_merchants.spent}
+						places={0}
+					/> together.
 				</p>
 			{/if}
 		{/if}

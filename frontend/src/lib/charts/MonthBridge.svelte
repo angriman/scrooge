@@ -96,49 +96,49 @@ next to a net worth of hundreds of thousands; their figures are written over the
 </script>
 
 <div bind:clientWidth={width}>
-<svg
-	width={width}
-	height={HEIGHT}
-	class="block overflow-visible"
-	role="img"
-	aria-label="From {short(before)} on {from}: income {shortSigned(income)}, spending {shortSigned(
-		negate(spent)
-	)}, markets and other {shortSigned(other)}, to {short(after)} on {to}"
->
-	<line x1="0" x2={width} y1={floor} y2={floor} class="stroke-chart-grid" />
-	{#each steps as step, index (step.name + index)}
-		{@const x = index * (BAR + gap)}
-		{@const y0 = step.from === null ? floor : scale(step.from)}
-		{@const y1 = scale(step.to)}
-		{@const top = Math.min(y0, y1)}
-		<rect
-			{x}
-			y={top}
-			width={BAR}
-			height={Math.max(1, Math.abs(y1 - y0))}
-			rx="2"
-			fill={fills[step.tone]}
-		/>
-		{#if index < steps.length - 1}
-			<line
-				x1={x + BAR}
-				x2={x + BAR + gap}
-				y1={y1}
-				y2={y1}
-				class="stroke-ink-muted"
-				stroke-dasharray="2 2"
+	<svg
+		{width}
+		height={HEIGHT}
+		class="block overflow-visible"
+		role="img"
+		aria-label="From {short(before)} on {from}: income {shortSigned(income)}, spending {shortSigned(
+			negate(spent)
+		)}, markets and other {shortSigned(other)}, to {short(after)} on {to}"
+	>
+		<line x1="0" x2={width} y1={floor} y2={floor} class="stroke-chart-grid" />
+		{#each steps as step, index (step.name + index)}
+			{@const x = index * (BAR + gap)}
+			{@const y0 = step.from === null ? floor : scale(step.from)}
+			{@const y1 = scale(step.to)}
+			{@const top = Math.min(y0, y1)}
+			<rect
+				{x}
+				y={top}
+				width={BAR}
+				height={Math.max(1, Math.abs(y1 - y0))}
+				rx="2"
+				fill={fills[step.tone]}
 			/>
-		{/if}
-		<text
-			x={x + BAR / 2}
-			y={top - 5}
-			text-anchor="middle"
-			class="fill-ink text-small tabular-nums"
-			style:fill={step.tone === 'end' ? undefined : fills[step.tone]}>{step.label}</text
-		>
-		<text x={x + BAR / 2} y={HEIGHT - 6} text-anchor="middle" class="fill-ink-muted text-caption"
-			>{step.name}</text
-		>
-	{/each}
-</svg>
+			{#if index < steps.length - 1}
+				<line
+					x1={x + BAR}
+					x2={x + BAR + gap}
+					{y1}
+					y2={y1}
+					class="stroke-ink-muted"
+					stroke-dasharray="2 2"
+				/>
+			{/if}
+			<text
+				x={x + BAR / 2}
+				y={top - 5}
+				text-anchor="middle"
+				class="fill-ink text-small tabular-nums"
+				style:fill={step.tone === 'end' ? undefined : fills[step.tone]}>{step.label}</text
+			>
+			<text x={x + BAR / 2} y={HEIGHT - 6} text-anchor="middle" class="fill-ink-muted text-caption"
+				>{step.name}</text
+			>
+		{/each}
+	</svg>
 </div>

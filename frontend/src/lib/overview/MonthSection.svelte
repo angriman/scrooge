@@ -72,11 +72,15 @@ read as complete.
 						data-sveltekit-reset="false"
 						class="grid size-8 place-items-center rounded-control text-ink-secondary hover:bg-raised hover:text-ink"
 					>
-						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight class="size-4" />{/if}
+						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight
+								class="size-4"
+							/>{/if}
 					</a>
 				{:else}
 					<span class="grid size-8 place-items-center text-ink-muted/40" aria-hidden="true">
-						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight class="size-4" />{/if}
+						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight
+								class="size-4"
+							/>{/if}
 					</span>
 				{/if}
 			{/each}
@@ -121,13 +125,17 @@ read as complete.
 			<dl class="mt-3 flex flex-wrap gap-x-8 gap-y-2 border-t border-line pt-3">
 				<div>
 					<dt class="text-caption text-ink-muted">Saved</dt>
-					<dd class="text-title"><Amount value={recap.saved} currency={recap.currency} places={0} /></dd>
+					<dd class="text-title">
+						<Amount value={recap.saved} currency={recap.currency} places={0} />
+					</dd>
 				</div>
 				<div>
 					<dt class="text-caption text-ink-muted">Savings rate</dt>
 					<dd class="text-title">{recap.rate === null ? '–' : percent(recap.rate, 0)}</dd>
 					{#if recap.rate_salary !== null}
-						<dd class="text-caption text-ink-secondary">{percent(recap.rate_salary, 0)} of salary</dd>
+						<dd class="text-caption text-ink-secondary">
+							{percent(recap.rate_salary, 0)} of salary
+						</dd>
 					{/if}
 				</div>
 				<div>
@@ -136,7 +144,9 @@ read as complete.
 						{recap.rate_year === null ? '–' : percent(recap.rate_year, 0)}
 					</dd>
 					{#if recap.rate_salary_year !== null}
-						<dd class="text-caption text-ink-secondary">{percent(recap.rate_salary_year, 0)} of salary over 12 months</dd>
+						<dd class="text-caption text-ink-secondary">
+							{percent(recap.rate_salary_year, 0)} of salary over 12 months
+						</dd>
 					{/if}
 				</div>
 			</dl>
@@ -144,12 +154,15 @@ read as complete.
 
 		<Panel title="Spending" note="Against a usual month">
 			{#snippet actions()}
-				<span class="text-title"><Amount value={recap.spent} currency={recap.currency} places={0} /></span>
+				<span class="text-title"
+					><Amount value={recap.spent} currency={recap.currency} places={0} /></span
+				>
 			{/snippet}
 			{#if listed.length}
 				<ul class="grid grid-cols-[minmax(0,auto)_1fr_auto_4.5rem] items-center gap-x-3 gap-y-2.5">
 					{#each listed as category (category.name)}
-						{@const against = category.against_usual === null ? null : approximate(category.against_usual)}
+						{@const against =
+							category.against_usual === null ? null : approximate(category.against_usual)}
 						<li class="contents">
 							<span class="truncate text-body text-ink">{category.name}</span>
 							<span class="block h-1.5 rounded-mark bg-sunken" aria-hidden="true">
@@ -170,10 +183,9 @@ read as complete.
 								)}
 							>
 								{#if category.against_usual === null}new{:else if against !== null && Math.abs(against) < AS_USUAL}as
-									usual{:else if against !== null && against >= 100}{times(category)}{:else}{signedPercent(
-										category.against_usual,
-										0
-									)}{/if}
+									usual{:else if against !== null && against >= 100}{times(
+										category
+									)}{:else}{signedPercent(category.against_usual, 0)}{/if}
 							</span>
 						</li>
 					{/each}

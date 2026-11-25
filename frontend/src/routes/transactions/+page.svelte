@@ -142,12 +142,21 @@
 		<div class="mt-5">
 			<Context
 				{context}
-				merchant={(name) => withQuery(page.url, { merchant: name, category: null, account: null, currency: context.currency })}
+				merchant={(name) =>
+					withQuery(page.url, {
+						merchant: name,
+						category: null,
+						account: null,
+						currency: context.currency
+					})}
 			/>
 		</div>
 	{/if}
 
-	<div class="mt-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2" aria-live="polite">
+	<div
+		class="mt-5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2"
+		aria-live="polite"
+	>
 		<p class="text-body text-ink-secondary">
 			<span class="text-title font-medium text-ink">
 				{listed.count === 1 ? '1 transaction' : `${money(String(listed.count), 0)} transactions`}

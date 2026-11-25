@@ -75,18 +75,18 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 					{/if}
 				</div>
 				{#if choice}<div class="flex flex-col gap-1.5 pl-5.5 md:pl-0">
-					<CategorySelect
-						bind:value={choice.category}
-						{leaves}
-						label="Category for {group.name || 'rows without a description'}"
-					/>
-					{#if rules && group.name}
-						<label class="flex items-center gap-2 text-small text-ink-secondary">
-							<input type="checkbox" bind:checked={choice.rule} class="size-4 accent-brand" />
-							Remember for {group.name}
-						</label>
-					{/if}
-				</div>{/if}
+						<CategorySelect
+							bind:value={choice.category}
+							{leaves}
+							label="Category for {group.name || 'rows without a description'}"
+						/>
+						{#if rules && group.name}
+							<label class="flex items-center gap-2 text-small text-ink-secondary">
+								<input type="checkbox" bind:checked={choice.rule} class="size-4 accent-brand" />
+								Remember for {group.name}
+							</label>
+						{/if}
+					</div>{/if}
 			</li>
 		{/each}
 	</ul>

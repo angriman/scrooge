@@ -7,6 +7,9 @@ Every change comes as a pull request against `main`, and `make check` must pass:
 `mypy --strict`, and pytest with branch coverage. Never lower a threshold, loosen a rule, or
 skip a test to get there.
 
+A change to the frontend (`frontend/`, SvelteKit) must pass `make web-check` too, which
+checks its formatting with Prettier: run `npm run format` in `frontend/` before committing.
+
 Never commit real data. Statements, databases and `users/` stay out of git. A fixture in
 `tests/fixtures/` is redacted: invented names, account numbers **and amounts**.
 

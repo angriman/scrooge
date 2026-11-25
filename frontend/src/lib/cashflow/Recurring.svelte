@@ -39,7 +39,9 @@ name finds them alone.
 			<span class="flex min-w-0 items-center gap-2 text-body text-ink">
 				<span class="truncate">{payment.name}</span>
 				{#if !stopped && isNew(payment, recurring.through)}
-					<span class="shrink-0 rounded-control bg-brand-soft px-1.5 text-caption text-brand">New</span>
+					<span class="shrink-0 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
+						>New</span
+					>
 				{/if}
 			</span>
 			<span class="text-right text-body text-ink">
@@ -69,7 +71,12 @@ name finds them alone.
 	{#if recurring.active.length}
 		<p class="mb-2 text-body text-ink-secondary">
 			{#if recurring.monthly !== null}
-				<Amount value={recurring.monthly} places={0} currency={recurring.currency} class="text-title font-medium text-ink" />
+				<Amount
+					value={recurring.monthly}
+					places={0}
+					currency={recurring.currency}
+					class="text-title font-medium text-ink"
+				/>
 				a month together
 			{:else}
 				What they cost a month together needs the missing rate.

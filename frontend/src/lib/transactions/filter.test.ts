@@ -28,9 +28,18 @@ describe('the filter of the transactions page', () => {
 	});
 
 	it('has a context only when it cuts to exactly one category, merchant or account', () => {
-		expect(dimension(at('?category=Home&text=rent&from=2026'))).toEqual({ name: 'category', value: 'Home' });
-		expect(dimension(at('?merchant=Coop%20Bern&owner=Anna'))).toEqual({ name: 'merchant', value: 'Coop Bern' });
-		expect(dimension(at('?account=Migros&kind=expense'))).toEqual({ name: 'account', value: 'Migros' });
+		expect(dimension(at('?category=Home&text=rent&from=2026'))).toEqual({
+			name: 'category',
+			value: 'Home'
+		});
+		expect(dimension(at('?merchant=Coop%20Bern&owner=Anna'))).toEqual({
+			name: 'merchant',
+			value: 'Coop Bern'
+		});
+		expect(dimension(at('?account=Migros&kind=expense'))).toEqual({
+			name: 'account',
+			value: 'Migros'
+		});
 		expect(dimension(at('?category=Home&account=Migros'))).toBeNull();
 		expect(dimension(at('?text=rent&category='))).toBeNull();
 	});

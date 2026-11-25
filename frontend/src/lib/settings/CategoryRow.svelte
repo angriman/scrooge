@@ -26,17 +26,8 @@ rows no rule matches stays as it is.
 		onremove: () => Promise<string | null>;
 	}
 
-	let {
-		category,
-		into,
-		groups,
-		unmatched,
-		editable,
-		onrename,
-		onmerge,
-		onmove,
-		onremove
-	}: Props = $props();
+	let { category, into, groups, unmatched, editable, onrename, onmerge, onmove, onremove }: Props =
+		$props();
 
 	let doing = $state<'rename' | 'merge' | 'move' | null>(null);
 	let name = $state('');
@@ -128,7 +119,9 @@ rows no rule matches stays as it is.
 			<span class="min-w-0 flex-1 text-body text-ink">
 				{category.name}
 				{#if !category.built_in}
-					<span class="ml-1 rounded-control bg-brand-soft px-1.5 text-caption text-brand">Added</span>
+					<span class="ml-1 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
+						>Added</span
+					>
 				{/if}
 				{#if category.name === unmatched}
 					<span class="ml-1 text-caption text-ink-muted" title="scrooge.yaml: unmatched">

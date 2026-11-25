@@ -41,21 +41,25 @@ waits.
 	} satisfies Record<NoticeKind, unknown>;
 
 	const lines = $derived(
-		noticeLines(attention, { onePerson, readOnly }, {
-			importing: (owner) => `${resolve('/import')}?owner=${encodeURIComponent(owner)}`,
-			// The checks are on the Accounts page, for the same person and currency.
-			checks: (() => {
-				const query = pick(here(), ['owner', 'currency']).toString();
-				return `${resolve('/accounts')}${query ? `?${query}` : ''}#checks`;
-			})(),
-			// The rows, in the currency of the page: the person is the line's own.
-			transactions: (fields) => {
-				const query = new URLSearchParams(fields);
-				const currency = here().searchParams.get('currency');
-				if (currency) query.set('currency', currency);
-				return `${resolve('/transactions')}?${query}`;
+		noticeLines(
+			attention,
+			{ onePerson, readOnly },
+			{
+				importing: (owner) => `${resolve('/import')}?owner=${encodeURIComponent(owner)}`,
+				// The checks are on the Accounts page, for the same person and currency.
+				checks: (() => {
+					const query = pick(here(), ['owner', 'currency']).toString();
+					return `${resolve('/accounts')}${query ? `?${query}` : ''}#checks`;
+				})(),
+				// The rows, in the currency of the page: the person is the line's own.
+				transactions: (fields) => {
+					const query = new URLSearchParams(fields);
+					const currency = here().searchParams.get('currency');
+					if (currency) query.set('currency', currency);
+					return `${resolve('/transactions')}?${query}`;
+				}
 			}
-		})
+		)
 	);
 	let open = $state(false);
 	const fold = $derived(open ? { shown: lines, more: 0 } : folded(lines));

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { CashFlowReport } from '#lib/types.js';
 import { toneOf, whatMoved, type Moved } from './whatMoved.js';
 
-const category = (name: string, monthly: string, usual: string | null): CashFlowReport['categories'][number] => ({
+const category = (
+	name: string,
+	monthly: string,
+	usual: string | null
+): CashFlowReport['categories'][number] => ({
 	name,
 	count: 1,
 	spent: monthly,
@@ -55,7 +59,10 @@ describe('what moved over the range', () => {
 	});
 
 	it('finds a category usually spent on and not at all in the range', () => {
-		const moved = whatMoved([category('Food', '420.00', '400.00'), category('Home', '0.00', '1500.00')]);
+		const moved = whatMoved([
+			category('Food', '420.00', '400.00'),
+			category('Home', '0.00', '1500.00')
+		]);
 		expect(moved[0]).toMatchObject({ name: 'Home', change: '-1500.00', percent: '-100' });
 	});
 

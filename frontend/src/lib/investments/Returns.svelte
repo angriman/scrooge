@@ -55,7 +55,8 @@ worth in each benchmark, and the same figures account by account.
 	const shown = $derived(performance.series[pointed ?? performance.series.length - 1]);
 	// Over a long range the API sends a point a week.
 	const weekly = $derived(
-		performance.series.length > 2 && daysBetween(performance.series[1].day, performance.series[2].day) > 1
+		performance.series.length > 2 &&
+			daysBetween(performance.series[1].day, performance.series[2].day) > 1
 	);
 
 	function point(event: PointerEvent) {
@@ -95,7 +96,9 @@ worth in each benchmark, and the same figures account by account.
 			{/if}
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.mwr !== null}
-					Money-weighted <span class={cn('font-medium', tone(totals.mwr))}>{signedPercent(totals.mwr)}</span>
+					Money-weighted <span class={cn('font-medium', tone(totals.mwr))}
+						>{signedPercent(totals.mwr)}</span
+					>
 					{mwrPer(totals)}, on the money as it was put in.
 				{:else}
 					The money-weighted return has no rate to give over these days.
@@ -128,9 +131,13 @@ worth in each benchmark, and the same figures account by account.
 	<p class="mt-4 max-w-prose text-small text-ink-muted">
 		Of the change of <Amount value={change} {currency} places={0} class="text-ink-secondary" />
 		from {day(performance.series[0].day)} to {day(performance.last!)},
-		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money put in
-		or taken out and <Amount value={totals.gain} {currency} places={0} class="text-ink-secondary" /> what
-		the investments made, the moves of exchange rates included.
+		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money put
+		in or taken out and <Amount
+			value={totals.gain}
+			{currency}
+			places={0}
+			class="text-ink-secondary"
+		/> what the investments made, the moves of exchange rates included.
 	</p>
 </section>
 
@@ -147,15 +154,37 @@ worth in each benchmark, and the same figures account by account.
 				onpointerleave={() => (pointed = null)}
 			>
 				{#each [drawn.high, (drawn.high + drawn.low) / 2, drawn.low] as tick (tick)}
-					<line x1={frame.left} x2={width - frame.right} y1={drawn.y(tick)} y2={drawn.y(tick)} class="stroke-chart-grid" />
-					<text x={frame.left - 6} y={drawn.y(tick) + 4} text-anchor="end" class="fill-ink-muted text-caption">
+					<line
+						x1={frame.left}
+						x2={width - frame.right}
+						y1={drawn.y(tick)}
+						y2={drawn.y(tick)}
+						class="stroke-chart-grid"
+					/>
+					<text
+						x={frame.left - 6}
+						y={drawn.y(tick) + 4}
+						text-anchor="end"
+						class="fill-ink-muted text-caption"
+					>
 						{short(String(Math.round(tick)))}
 					</text>
 				{/each}
 				<path d={drawn.area} class="fill-brand-soft" />
-				<path d={drawn.invested} class="fill-none stroke-ink-muted" stroke-width="1.5" stroke-dasharray="4 3" />
+				<path
+					d={drawn.invested}
+					class="fill-none stroke-ink-muted"
+					stroke-width="1.5"
+					stroke-dasharray="4 3"
+				/>
 				{#each drawn.benchmarks as line, index (performance.benchmarks[index].symbol)}
-					<path d={line} class="fill-none" style:stroke={benchmarkColor(index)} stroke-width="1.5" stroke-dasharray="6 3" />
+					<path
+						d={line}
+						class="fill-none"
+						style:stroke={benchmarkColor(index)}
+						stroke-width="1.5"
+						stroke-dasharray="6 3"
+					/>
 				{/each}
 				<path d={drawn.value} class="fill-none stroke-brand" stroke-width="2" />
 				{#if pointed !== null}
@@ -167,21 +196,32 @@ worth in each benchmark, and the same figures account by account.
 						class="stroke-ink-muted"
 					/>
 				{/if}
-				<text x={frame.left} y={HEIGHT - 6} class="fill-ink-muted text-caption">{day(performance.series[0].day)}</text>
-				<text x={width - frame.right} y={HEIGHT - 6} text-anchor="end" class="fill-ink-muted text-caption">
+				<text x={frame.left} y={HEIGHT - 6} class="fill-ink-muted text-caption"
+					>{day(performance.series[0].day)}</text
+				>
+				<text
+					x={width - frame.right}
+					y={HEIGHT - 6}
+					text-anchor="end"
+					class="fill-ink-muted text-caption"
+				>
 					{day(performance.last!)}
 				</text>
 			</svg>
 		{/if}
 		{#if shown}
-			<p class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary" aria-live="polite">
+			<p
+				class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-small text-ink-secondary"
+				aria-live="polite"
+			>
 				<span class="font-medium text-ink">{day(shown.day)}</span>
 				<span class="flex items-center gap-1.5">
 					<span class="h-0.5 w-3 bg-brand" aria-hidden="true"></span>Worth
 					<Amount value={shown.value} {currency} places={0} class="text-ink" />
 				</span>
 				<span class="flex items-center gap-1.5">
-					<span class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted" aria-hidden="true"></span>Put in
+					<span class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted" aria-hidden="true"
+					></span>Put in
 					<Amount value={shown.invested} {currency} places={0} class="text-ink" />
 				</span>
 				{#each performance.benchmarks as benchmark, index (benchmark.symbol)}
@@ -197,8 +237,8 @@ worth in each benchmark, and the same figures account by account.
 			</p>
 		{/if}
 		<p class="mt-1 text-caption text-ink-muted">
-			Put in is what the accounts were worth at the start and the money put in since, less what was taken
-			out.{instead(performance.benchmarks)}{weekly ? ' One point a week.' : ''}
+			Put in is what the accounts were worth at the start and the money put in since, less what was
+			taken out.{instead(performance.benchmarks)}{weekly ? ' One point a week.' : ''}
 		</p>
 	</div>
 </Panel>
@@ -243,8 +283,11 @@ worth in each benchmark, and the same figures account by account.
 					<Amount value={row.end} {currency} places={0} class="text-small text-ink-secondary" />
 				</span>
 				<span class="hidden text-right sm:block"><Amount value={row.end} places={0} /></span>
-				<span class="hidden text-right text-ink-secondary sm:block">{signed(row.net_flows, 0)}</span>
-				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.gain))}>{signed(row.gain, 0)}</span>
+				<span class="hidden text-right text-ink-secondary sm:block">{signed(row.net_flows, 0)}</span
+				>
+				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.gain))}
+					>{signed(row.gain, 0)}</span
+				>
 				<span class={cn('hidden text-right tabular-nums sm:block', tone(row.twr))}>
 					{row.twr === null ? '–' : signedPercent(row.twr)}
 				</span>

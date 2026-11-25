@@ -78,7 +78,12 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		'h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover';
 </script>
 
-{#snippet list(names: readonly { value: string; label: string }[], current: string | undefined, name: string, close: () => void)}
+{#snippet list(
+	names: readonly { value: string; label: string }[],
+	current: string | undefined,
+	name: string,
+	close: () => void
+)}
 	{#each names as item (item.value)}
 		<button
 			type="button"
@@ -98,7 +103,10 @@ for each other field. Every change goes in the address, so a filter can be kept 
 <div class="space-y-3">
 	<label class="relative block">
 		<span class="sr-only">Search transactions</span>
-		<Search class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
+		<Search
+			class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-ink-muted"
+			aria-hidden="true"
+		/>
 		<input
 			id="search"
 			type="search"
@@ -151,11 +159,21 @@ for each other field. Every change goes in the address, so a filter can be kept 
 					<div class="grid grid-cols-2 gap-2">
 						<label class="text-caption text-ink-secondary">
 							From
-							<input type="date" bind:value={from} max={to || undefined} class={cn(field, 'mt-1')} />
+							<input
+								type="date"
+								bind:value={from}
+								max={to || undefined}
+								class={cn(field, 'mt-1')}
+							/>
 						</label>
 						<label class="text-caption text-ink-secondary">
 							To
-							<input type="date" bind:value={to} min={from || undefined} class={cn(field, 'mt-1')} />
+							<input
+								type="date"
+								bind:value={to}
+								min={from || undefined}
+								class={cn(field, 'mt-1')}
+							/>
 						</label>
 					</div>
 					<label class="flex items-center gap-2 py-1 text-small text-ink">
@@ -173,9 +191,18 @@ for each other field. Every change goes in the address, so a filter can be kept 
 		</FilterChip>
 
 		{#if accounts.length > 1}
-			<FilterChip label="Account" value={values.account || null} onclear={() => onchange({ account: null })}>
+			<FilterChip
+				label="Account"
+				value={values.account || null}
+				onclear={() => onchange({ account: null })}
+			>
 				{#snippet children(close)}
-					{@render list(accounts.map((name) => ({ value: name, label: name })), values.account, 'account', close)}
+					{@render list(
+						accounts.map((name) => ({ value: name, label: name })),
+						values.account,
+						'account',
+						close
+					)}
 				{/snippet}
 			</FilterChip>
 		{/if}
@@ -190,16 +217,29 @@ for each other field. Every change goes in the address, so a filter can be kept 
 			{/snippet}
 		</FilterChip>
 
-		<FilterChip label="Category" value={values.category || null} onclear={() => onchange({ category: null })}>
+		<FilterChip
+			label="Category"
+			value={values.category || null}
+			onclear={() => onchange({ category: null })}
+		>
 			{#snippet children(close)}
 				{#each categories as group (group.heading)}
 					<p class="px-2 pt-2 pb-1 text-caption text-ink-muted">{group.heading}</p>
-					{@render list(group.names.map((name) => ({ value: name, label: name })), values.category, 'category', close)}
+					{@render list(
+						group.names.map((name) => ({ value: name, label: name })),
+						values.category,
+						'category',
+						close
+					)}
 				{/each}
 			{/snippet}
 		</FilterChip>
 
-		<FilterChip label="Merchant" value={values.merchant || null} onclear={() => onchange({ merchant: null })}>
+		<FilterChip
+			label="Merchant"
+			value={values.merchant || null}
+			onclear={() => onchange({ merchant: null })}
+		>
 			{#snippet children(close)}
 				<MerchantPicker
 					current={values.merchant ?? ''}
@@ -218,7 +258,12 @@ for each other field. Every change goes in the address, so a filter can be kept 
 			onclear={() => onchange({ kind: null })}
 		>
 			{#snippet children(close)}
-				{@render list(kinds.map((kind) => ({ value: kind, label: kindName(kind) })), values.kind, 'kind', close)}
+				{@render list(
+					kinds.map((kind) => ({ value: kind, label: kindName(kind) })),
+					values.kind,
+					'kind',
+					close
+				)}
 			{/snippet}
 		</FilterChip>
 
@@ -233,7 +278,10 @@ for each other field. Every change goes in the address, so a filter can be kept 
 					class="space-y-2 p-1"
 					onsubmit={(event) => {
 						event.preventDefault();
-						const [low, high] = [least.trim().replaceAll('’', "'"), most.trim().replaceAll('’', "'")];
+						const [low, high] = [
+							least.trim().replaceAll('’', "'"),
+							most.trim().replaceAll('’', "'")
+						];
 						unreadable = !readable(low) || !readable(high);
 						if (unreadable) return;
 						onchange({ min: low || null, max: high || null });
@@ -244,11 +292,21 @@ for each other field. Every change goes in the address, so a filter can be kept 
 					<div class="grid grid-cols-2 gap-2">
 						<label class="text-caption text-ink-secondary">
 							At least
-							<input inputmode="decimal" bind:value={least} placeholder="0" class={cn(field, 'mt-1 tabular-nums')} />
+							<input
+								inputmode="decimal"
+								bind:value={least}
+								placeholder="0"
+								class={cn(field, 'mt-1 tabular-nums')}
+							/>
 						</label>
 						<label class="text-caption text-ink-secondary">
 							Up to
-							<input inputmode="decimal" bind:value={most} placeholder="Any" class={cn(field, 'mt-1 tabular-nums')} />
+							<input
+								inputmode="decimal"
+								bind:value={most}
+								placeholder="Any"
+								class={cn(field, 'mt-1 tabular-nums')}
+							/>
 						</label>
 					</div>
 					{#if unreadable}

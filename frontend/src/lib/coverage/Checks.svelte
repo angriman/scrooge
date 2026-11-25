@@ -9,8 +9,11 @@ worked out here for the same accounts and day. Folded away unless asked for (`#c
 	import type { Check } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
 
-	let { checks, open = false, single }: { checks: Check[]; open?: boolean; single: boolean } =
-		$props();
+	let {
+		checks,
+		open = false,
+		single
+	}: { checks: Check[]; open?: boolean; single: boolean } = $props();
 
 	const differs = (check: Check) =>
 		check.difference !== null && approximate(check.difference) !== 0;
@@ -53,12 +56,12 @@ worked out here for the same accounts and day. Folded away unless asked for (`#c
 						<td class="py-2">{check.accounts}</td>
 						<td class="py-2 text-ink-secondary">{check.label}</td>
 						<td class="py-2 text-right whitespace-nowrap">
-							{money(check.printed)} <span class="text-caption text-ink-muted">{check.currency}</span>
+							{money(check.printed)}
+							<span class="text-caption text-ink-muted">{check.currency}</span>
 						</td>
 						<td class="py-2 text-right whitespace-nowrap">
-							{#if check.derived === null}<span class="text-ink-muted">not counted</span>{:else}{money(
-									check.derived
-								)}{/if}
+							{#if check.derived === null}<span class="text-ink-muted">not counted</span
+								>{:else}{money(check.derived)}{/if}
 						</td>
 						<td
 							class={cn(

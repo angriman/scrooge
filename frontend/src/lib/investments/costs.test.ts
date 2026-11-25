@@ -61,9 +61,7 @@ describe('what investing costs', () => {
 		expect(costsOf({ category: 'fees', year: 2026 }, 'Lukas').toString()).toBe(
 			'owner=Lukas&category=fees&accounts=broker&from=2026&to=2026'
 		);
-		expect(costsOf({ category: 'fees' }, null).toString()).toBe(
-			'category=fees&accounts=broker'
-		);
+		expect(costsOf({ category: 'fees' }, null).toString()).toBe('category=fees&accounts=broker');
 	});
 
 	it('opens the tax withheld of a year wherever it was withheld', () => {

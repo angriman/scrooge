@@ -32,7 +32,11 @@ export function fold(text: string): string {
  * starts with what is typed first, then those with a word that starts with its first word,
  * then the others, each in the order given (the largest first). Nothing typed: the first
  * `most`. */
-export function narrow<T extends Offered>(merchants: readonly T[], typed: string, most = LISTED): T[] {
+export function narrow<T extends Offered>(
+	merchants: readonly T[],
+	typed: string,
+	most = LISTED
+): T[] {
 	const wanted = fold(typed);
 	if (!wanted) return merchants.slice(0, most);
 	const words = wanted.split(' ');

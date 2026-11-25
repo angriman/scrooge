@@ -64,7 +64,9 @@ the costs could not be loaded, the panel says why in their place.
 					<th scope="col" class="pb-2 text-right font-normal">Commissions</th>
 					<th scope="col" class="pb-2 text-right font-normal">Tax withheld</th>
 					<th scope="col" class="pb-2 text-right font-normal">Total</th>
-					<th scope="col" class="hidden pb-2 text-right font-normal sm:table-cell">Of what was paid</th>
+					<th scope="col" class="hidden pb-2 text-right font-normal sm:table-cell"
+						>Of what was paid</th
+					>
 				</tr>
 			</thead>
 			<tbody>
@@ -92,7 +94,9 @@ the costs could not be loaded, the panel says why in their place.
 				<tfoot>
 					<tr class="border-t border-line-strong font-medium">
 						<th scope="row" class="py-2 text-left text-ink">All years</th>
-						<td class="py-2 text-right">{@render figure(costs.totals.commissions, { category: COMMISSIONS })}</td>
+						<td class="py-2 text-right"
+							>{@render figure(costs.totals.commissions, { category: COMMISSIONS })}</td
+						>
 						<td class="py-2 text-right">{@render figure(costs.totals.tax, { category: TAX })}</td>
 						<td class="py-2 text-right text-ink">
 							<Amount value={costs.totals.total} places={0} />

@@ -70,11 +70,7 @@ describe('the files of a drop', () => {
 
 describe('what is hidden', () => {
 	it('is a name with a dot first, or __MACOSX', () => {
-		expect([hidden('.DS_Store'), hidden('__MACOSX'), hidden('a.csv')]).toEqual([
-			true,
-			true,
-			false
-		]);
+		expect([hidden('.DS_Store'), hidden('__MACOSX'), hidden('a.csv')]).toEqual([true, true, false]);
 	});
 
 	it('is a file chosen with its folder with something hidden on its path', () => {

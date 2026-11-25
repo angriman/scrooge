@@ -47,7 +47,9 @@
 	}
 	const behind = $derived(listed.accounts.filter((account) => account.behind).length);
 	const held = $derived(heldTogether(listed.accounts));
-	const title = $derived(single ? 'Accounts' : owner ? `${owner}’s accounts` : 'Household accounts');
+	const title = $derived(
+		single ? 'Accounts' : owner ? `${owner}’s accounts` : 'Household accounts'
+	);
 </script>
 
 <svelte:head>
@@ -98,8 +100,8 @@
 			{listed.accounts.length === 1 ? '1 account' : `${listed.accounts.length} accounts`}, {#if listed.covered}all
 				in up to {day(listed.covered)}{:else}nothing committed yet{/if}{#if behind},
 				<span class="text-caution">{behind} behind</span>{/if}{#if staged},
-				<span class="text-brand">{staged} with statements staged</span>{/if}{#if !behind && !staged},
-				none behind and nothing staged{/if}.
+				<span class="text-brand">{staged} with statements staged</span
+				>{/if}{#if !behind && !staged}, none behind and nothing staged{/if}.
 		</p>
 		{#if held.total !== null && held.unknown}
 			<p class="mt-1 text-small text-ink-muted">
