@@ -29,6 +29,10 @@
 {%- for error in errors %}
 <p class="error" role="alert">{{ error }}</p>
 {%- endfor %}
+{%- for line in behind %}
+<p class="nudge" role="status">{% if not owner %}{{ line.owner }}&#39;s {% endif %}{{ line.account }} statements end on {{ line.committed }}, over a month before the others: a statement is probably missing.
+  {% if importing %}<a href="{{ url_for('import').include_query_params(owner=line.owner) }}">Import</a>{% else %}<a href="{{ url_for('months').include_query_params(owner=line.owner) }}">See the months</a>{% endif %}</p>
+{%- endfor %}
 {%- if shown and shown.day %}
 <div class="tiles worth">
   <section class="tile lead">

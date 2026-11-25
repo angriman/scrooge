@@ -135,6 +135,12 @@ input[list]:user-invalid {
   padding-left: 0.6rem;
 }
 
+/* An account behind, on the first page: a statement of it is probably missing. */
+.nudge {
+  border-left: 3px solid #c4421a;
+  padding-left: 0.6rem;
+}
+
 .summary {
   margin: 1rem 0;
 }
