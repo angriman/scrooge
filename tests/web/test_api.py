@@ -44,6 +44,8 @@ def test_the_session_names_the_people_and_the_currencies(client: TestClient) -> 
     assert [person["name"] for person in sent["people"]] == sorted([OWNER, PARTNER])
     assert sent["currency"] == "CHF"
     assert "EUR" in sent["currencies"]
+    assert sent["language"] == "en"
+    assert sent["languages"] == ["en", "it"]
     assert sent["read_only"] is False
     assert sent["signing"] is False
     assert sent["token"]
@@ -534,3 +536,42 @@ def test_an_empty_database_has_no_cash_flow(tmp_path: Path) -> None:
 def test_rates_and_shares_of_the_cash_flow_are_in_percent(client: TestClient) -> None:
     shown = client.get("/api/cashflow").json()["report"]
     assert shown["categories"][0]["share"] == "100"
+
+
+def test_choosing_a_language_remembers_it_in_a_cookie_and_translates_categories(
+    database: Path,
+) -> None:
+    client = TestClient(webapp.create_app(database, currency="CHF"), base_url=SITE)
+    token = client.get("/api/session").json()["token"]
+    assert client.post("/api/language", json={"language": "it"}).status_code == 403
+    assert (
+        client.post(
+            "/api/language", json={"language": "fr"}, headers={"x-token": token}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post("/api/language", content="not-json", headers={"x-token": token}).status_code
+        == 400
+    )
+
+    chosen = client.post("/api/language", json={"language": "it"}, headers={"x-token": token})
+    assert chosen.status_code == 200
+    assert chosen.json()["language"] == "it"
+    assert client.get("/api/session").json()["language"] == "it"
+
+    shown = client.get("/api/cashflow").json()["report"]
+    expected_food = categories.LABELS_IT[categories.GROUP_FOOD]
+    assert [category["name"] for category in shown["categories"]] == [expected_food]
+    assert (
+        client.get("/api/cashflow", params={"lang": "en"}).json()["report"]["categories"][0]["name"]
+        == categories.LABELS_EN[categories.GROUP_FOOD]
+    )
+
+
+def test_choosing_a_language_is_allowed_in_read_only_mode(database: Path) -> None:
+    client = TestClient(webapp.create_app(database, currency="CHF", read_only=True), base_url=SITE)
+    token = client.get("/api/session").json()["token"]
+    chosen = client.post("/api/language", json={"language": "it"}, headers={"x-token": token})
+    assert chosen.status_code == 200
+    assert client.get("/api/session").json()["language"] == "it"

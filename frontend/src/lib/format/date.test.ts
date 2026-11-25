@@ -56,4 +56,12 @@ describe('a day in a list of days', () => {
 		expect(weekday('2026-09-15', 2026)).toBe('Tue 15 Sep');
 		expect(weekday('2025-12-31', 2026)).toBe('Wed 31 Dec 2025');
 	});
+
+	it('formats dates in Italian when asked', () => {
+		expect(day('2026-09-30', 'it')).toBe('30 Set 2026');
+		expect(dayOfYear('2026-05-01', 'it')).toBe('1 Mag');
+		expect(month('2026-08-14', 'it')).toBe('Ago 2026');
+		expect(monthName('2026-10', 'it')).toBe('Ottobre 2026');
+		expect(weekday('2026-09-15', 2026, 'it')).toBe('Mar 15 Set');
+	});
 });

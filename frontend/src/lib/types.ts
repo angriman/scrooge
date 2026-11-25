@@ -1,3 +1,5 @@
+import type { Language } from '#lib/i18n/index.svelte.js';
+
 // What /api sends (src/scrooge/web/wire.py): amounts and shares are text, so as not to lose
 // a cent; days are ISO text; what is not known is null.
 
@@ -19,6 +21,8 @@ export interface Session {
 	people: Person[];
 	currencies: string[];
 	currency: string;
+	languages: Language[];
+	language: Language;
 	read_only: boolean;
 	signing: boolean;
 	/** Whether a category chosen can be remembered as a rule for the next import. */

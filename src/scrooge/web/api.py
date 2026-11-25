@@ -64,6 +64,14 @@ from scrooge.web import forms, wire
 from scrooge.web import uploads as uploads_
 
 _DIGEST = 12  # how much of a logo's digest its address carries, to change when the image does
+LANGUAGE_COOKIE = "scrooge_language"
+
+
+def language_of(request: Request) -> str:
+    """The UI language the request asks for: query `lang`, then cookie, else English."""
+    asked = request.query_params.get("lang") or request.cookies.get(LANGUAGE_COOKIE) or ""
+    asked = asked.strip().lower()
+    return asked if asked in categories.LABELS else categories.LANGUAGE
 
 
 def logos(request: Request, conn: sqlite3.Connection) -> dict[str, str]:
@@ -100,6 +108,8 @@ def _session(request: Request) -> Response:
             ],
             "currencies": list(networth.CURRENCIES),
             "currency": state.currency,
+            "languages": list(categories.LANGUAGES),
+            "language": language_of(request),
             "read_only": state.read_only,
             "signing": state.access is not None,
             # Whether a category chosen can be remembered as a rule for the next import.
@@ -164,7 +174,7 @@ def _month(request: Request) -> Response:
             shown = recap.run(conn, owner=asked.owner, currency=asked.currency, month=asked.month)
         except networth.MissingRateError as exc:
             return JSONResponse({"month": None, "errors": [wire.sentence(exc)]})
-        label = store.category_labels(conn)
+        label = store.category_labels(conn, language=language_of(request))
     month = None if shown is None else wire.month(shown, label)
     return JSONResponse({"month": month, "errors": []})
 
@@ -190,7 +200,7 @@ def _attention(request: Request) -> Response:
             checks = ()
         unmatched: str = request.app.state.unmatched
         unsorted = attention.uncategorised(conn, owner, unmatched)
-        label = store.category_labels(conn)
+        label = store.category_labels(conn, language=language_of(request))
         changed = (
             attention.changes(conn, owner=owner, currency=asked.currency)
             if request.query_params.get("recurring") == "1"
@@ -309,7 +319,7 @@ def _transactions(request: Request) -> Response:
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
         every = query.recurring(query.run(conn, query.Filter(owner=wanted.owner)).rows)
-        found = query.choices(conn, wanted.owner)
+        found = query.choices(conn, wanted.owner, language=language_of(request))
         ranks = store.category_ranks(conn)
     offset = _count(params, "offset", 0, len(result.rows))
     limit = _count(params, "limit", _PAGE, _MOST)
@@ -339,17 +349,39 @@ def _transactions(request: Request) -> Response:
     )
 
 
-def _writable(request: Request, token: str) -> None:
-    """Refuse a change sent from another site, without the token of these pages, or to a copy
-    that is only shown here."""
+def _origin_and_token(request: Request, token: str) -> None:
+    """Refuse a request sent from another site or without the token of these pages."""
     state = request.app.state
     origin = request.headers.get("origin", "null")
     if origin != "null" and urlsplit(origin).hostname not in state.hosts:
         raise HTTPException(403)
     if not secrets.compare_digest(token.encode(), state.token.encode()):
         raise HTTPException(403)
-    if state.read_only:
+
+
+def _writable(request: Request, token: str) -> None:
+    """Refuse a change sent from another site, without the token of these pages, or to a copy
+    that is only shown here."""
+    _origin_and_token(request, token)
+    if request.app.state.read_only:
         raise HTTPException(403)
+
+
+async def _choose_language(request: Request) -> Response:
+    """Remember the UI language chosen in a browser cookie (`{"language": "it"}`)."""
+    _origin_and_token(request, request.headers.get("x-token", ""))
+    try:
+        sent = await request.json()
+    except ValueError:
+        sent = None
+    if not isinstance(sent, dict):
+        return _refused(('Send {"language": "en" | "it"} as JSON.',))
+    chosen = str(sent.get("language", "")).strip().lower()
+    if chosen not in categories.LABELS:
+        return _refused((f"Unknown language: {chosen!r}.",))
+    response = JSONResponse({"language": chosen, "errors": []})
+    response.set_cookie(LANGUAGE_COOKIE, chosen, path="/", samesite="lax")
+    return response
 
 
 async def _sent(request: Request) -> dict[str, object] | None:
@@ -416,7 +448,7 @@ def _staged(request: Request) -> Response:
         return _refused((f"{owner} is nobody the config names.",))
     with db.reading(state.database) as conn:
         staged = months.draft(conn, owner)
-        found = query.choices(conn, owner)
+        found = query.choices(conn, owner, language=language_of(request))
     return JSONResponse(
         {
             "owners": owners,
@@ -565,7 +597,7 @@ def rule_places(state: State) -> suggestions.Places | None:
 
 
 def _offered(
-    conn: sqlite3.Connection, state: State, owner: str, ids: list[str]
+    conn: sqlite3.Connection, state: State, owner: str, ids: list[str], language: str
 ) -> tuple[list[wire.JSON], str | None]:
     """The rules offered for the rows `ids` changed by hand, and why none could be, if so."""
     places = rule_places(state)
@@ -575,7 +607,7 @@ def _offered(
         found = suggestions.suggest(conn, places, owner, ids)
     except (ConfigError, yaml.YAMLError) as exc:
         return [], f"No rule can be offered: {wire.sentence(exc)}"
-    label = query.choices(conn, owner).label
+    label = query.choices(conn, owner, language=language).label
     return [wire.suggestion(offered, label) for offered in found], None
 
 
@@ -615,9 +647,11 @@ async def _categorize_staged(request: Request) -> Response:
         finally:
             conn.close()
 
+    language = language_of(request)
+
     def offer(ids: list[str]) -> tuple[list[wire.JSON], str | None]:
         with db.reading(state.database) as conn:
-            return _offered(conn, state, owner, ids)
+            return _offered(conn, state, owner, ids, language)
 
     try:
         changed, committed, by_hand = await run_in_threadpool(apply)
@@ -652,10 +686,12 @@ async def _add_rule(request: Request) -> Response:
         return _refused(("Send whose row it is and the id of the row, as JSON.",))
     owner, row = str(sent["owner"]), str(sent.get("id", ""))
 
+    language = language_of(request)
+
     def add() -> wire.JSON:
         with db.reading(state.database) as conn:
             added = suggestions.add(conn, places, owner, row)
-            return wire.suggestion(added, query.choices(conn, owner).label)
+            return wire.suggestion(added, query.choices(conn, owner, language=language).label)
 
     try:
         rule = await run_in_threadpool(add)
@@ -816,7 +852,7 @@ def _cashflow(request: Request) -> Response:
             ),
             None,
         )
-        label = store.category_labels(conn)
+        label = store.category_labels(conn, language=language_of(request))
     return JSONResponse(
         {
             "report": None if shown is None else wire.cashflow_report(shown, label),
@@ -943,7 +979,7 @@ def _transactions_context(request: Request) -> Response:
                 ),
                 None,
             )
-        label = store.category_labels(conn)
+        label = store.category_labels(conn, language=language_of(request))
     return JSONResponse({**wire.transactions_context(shown, held, label), "errors": errors})
 
 
@@ -1024,6 +1060,7 @@ def _pensions(request: Request) -> Response:
 
 routes = [
     Route("/session", _session, name="api_session"),
+    Route("/language", _choose_language, methods=["POST"], name="api_language"),
     Route("/overview", _overview, name="api_overview"),
     Route("/networth", _networth, name="api_networth"),
     Route("/networth/months", _networth_months, name="api_networth_months"),

@@ -16,11 +16,25 @@
 	import { cn } from '#lib/ui/cn.js';
 	import { here, pick, show } from '#lib/view.js';
 	import type { LayoutProps } from './$types';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+	import { post } from '#lib/api.js';
+	import { getLanguage, setLanguage, t, type Language } from '#lib/i18n/index.svelte.js';
 	import { asked, stepTo } from '#lib/moved.js';
 	import { renamed } from '#lib/renamed.js';
 
 	let { data, children }: LayoutProps = $props();
+
+	$effect(() => {
+		setLanguage(data.session.language);
+	});
+
+	async function chooseLanguage(chosen: string) {
+		const language = chosen.toLowerCase() as Language;
+		if (language === getLanguage()) return;
+		await post('/api/language', { language }, data.session.token);
+		setLanguage(language);
+		await invalidateAll();
+	}
 
 	// A step inside the app to a renamed page's old address goes to the new one before anything
 	// loads, with the hash (`#checks`), which the old address's load cannot read. A link or form
@@ -42,7 +56,7 @@
 	// Up to when the statements of whose figures are shown are all in.
 	const covered = $derived(coveredUpTo(data.session.people, owner));
 	const people = $derived([
-		{ value: EVERYONE, label: 'Household' },
+		{ value: EVERYONE, label: t('nav.household') },
 		...data.session.people.map((person) => ({ value: person.name, label: person.name }))
 	]);
 
@@ -58,11 +72,16 @@
 		current: page.url.pathname.replace(/\/$/, '') === resolve(path).replace(/\/$/, '')
 	});
 	const pages = $derived([
-		{ label: 'Overview', icon: House, ...ours('/') },
-		{ label: 'Cash flow', icon: ArrowLeftRight, ...ours('/cashflow') },
-		{ label: 'Investments', icon: ChartPie, ...ours('/investments') },
-		{ label: 'Accounts', icon: Files, ...ours('/accounts') },
-		{ label: 'Transactions', icon: ReceiptText, ...ours('/transactions') }
+		{ key: 'overview', label: t('nav.overview'), icon: House, ...ours('/') },
+		{ key: 'cashflow', label: t('nav.cashflow'), icon: ArrowLeftRight, ...ours('/cashflow') },
+		{ key: 'investments', label: t('nav.investments'), icon: ChartPie, ...ours('/investments') },
+		{ key: 'accounts', label: t('nav.accounts'), icon: Files, ...ours('/accounts') },
+		{
+			key: 'transactions',
+			label: t('nav.transactions'),
+			icon: ReceiptText,
+			...ours('/transactions')
+		}
 	]);
 </script>
 
@@ -81,10 +100,10 @@
 			</a>
 
 			<nav
-				aria-label="Pages"
+				aria-label={t('nav.pages')}
 				class="order-last -mx-1 flex w-full [scrollbar-width:none] overflow-x-auto md:order-none md:w-auto"
 			>
-				{#each pages as item (item.label)}
+				{#each pages as item (item.key)}
 					<a
 						href={item.href}
 						aria-current={item.current ? 'page' : undefined}
@@ -105,12 +124,12 @@
 				<div class="flex-1 text-right">
 					<a
 						href={ours('/accounts').href}
-						aria-label={`Statements complete up to ${day(covered)}`}
-						title="Every monthly account's statements are in up to this day"
+						aria-label={t('nav.statementsCompleteLabel', { date: day(covered) })}
+						title={t('nav.statementsCompleteTitle')}
 						class="text-caption whitespace-nowrap text-ink-muted hover:text-ink-secondary"
 					>
-						<span class="hidden md:inline">Complete up to {day(covered)}</span>
-						<span class="md:hidden">Up to {dayOfYear(covered)}</span>
+						<span class="hidden md:inline">{t('nav.completeUpTo', { date: day(covered) })}</span>
+						<span class="md:hidden">{t('nav.upTo', { date: dayOfYear(covered) })}</span>
 					</a>
 				</div>
 			{/if}
@@ -118,22 +137,28 @@
 			<div class="ml-auto flex items-center gap-2">
 				{#if data.session.people.length > 1}
 					<Segmented
-						label="Whose figures"
+						label={t('nav.whoseFigures')}
 						value={owner}
 						options={people}
 						onchange={(chosen) => show(here(), { owner: chosen || null })}
 					/>
 				{/if}
 				<Choice
-					label="Currency"
+					label={t('nav.currency')}
 					value={currency}
 					options={data.session.currencies}
 					onchange={(chosen) => show(here(), { currency: chosen })}
 				/>
+				<Choice
+					label={t('nav.language')}
+					value={getLanguage().toUpperCase()}
+					options={data.session.languages.map((lang) => lang.toUpperCase())}
+					onchange={chooseLanguage}
+				/>
 				<a
 					href={resolve('/settings') + along}
-					aria-label="Settings: categories and rules"
-					title="Categories and rules"
+					aria-label={t('nav.settingsLabel')}
+					title={t('nav.settingsTitle')}
 					aria-current={page.url.pathname.startsWith(resolve('/settings')) ? 'page' : undefined}
 					class="inline-flex size-8 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink aria-[current=page]:text-brand"
 				>
@@ -142,11 +167,11 @@
 				{#if !data.session.read_only}
 					<a
 						href={ours('/import').href}
-						aria-label="Import statements"
+						aria-label={t('nav.importLabel')}
 						class="inline-flex h-8 items-center gap-1.5 rounded-control bg-brand px-2.5 text-small font-medium text-on-brand hover:bg-brand-hover sm:px-3"
 					>
 						<Upload class="size-4" aria-hidden="true" />
-						<span class="hidden sm:inline">Import</span>
+						<span class="hidden sm:inline">{t('nav.import')}</span>
 					</a>
 				{/if}
 			</div>
