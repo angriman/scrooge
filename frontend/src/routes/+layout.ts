@@ -1,4 +1,5 @@
 import { get } from '#lib/api.js';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { Session } from '#lib/types.js';
 import type { LayoutLoad } from './$types';
 
@@ -6,6 +7,8 @@ import type { LayoutLoad } from './$types';
 export const ssr = false;
 export const prerender = false;
 
-export const load: LayoutLoad = async ({ fetch }) => ({
-	session: await get<Session>(fetch, '/api/session')
-});
+export const load: LayoutLoad = async ({ fetch }) => {
+	const session = await get<Session>(fetch, '/api/session');
+	setLanguage(session.language);
+	return { session };
+};

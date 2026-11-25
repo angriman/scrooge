@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { send } from '#lib/api.js';
 	import { day } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import Notices from '#lib/overview/Notices.svelte';
 	import Checks from '#lib/coverage/Checks.svelte';
 	import Coverage from '#lib/coverage/Coverage.svelte';
@@ -33,8 +34,13 @@
 	// Taking a statement back stages it again; either way it then waits on the import page.
 	async function remove(statement: Statement) {
 		const asked = statement.committed
-			? `Take back ${statement.filename}? It is staged again, and not counted until it is committed again.`
-			: `Remove ${statement.filename}? Its ${statement.transactions} rows go with it.`;
+			? t('accounts.confirmUncommit', { filename: statement.filename })
+			: t(
+					statement.transactions === 1
+						? 'accounts.confirmDiscardOne'
+						: 'accounts.confirmDiscardMany',
+					{ filename: statement.filename, count: statement.transactions }
+				);
 		if (!confirm(asked)) return;
 		const action = statement.committed ? 'uncommit' : 'discard';
 		const done = await send<{ owner: string }>(
@@ -65,12 +71,16 @@
 	const behind = $derived(opened.filter((account) => account.behind).length);
 	const held = $derived(heldTogether(listed.accounts));
 	const title = $derived(
-		single ? 'Accounts' : owner ? `${owner}’s accounts` : 'Household accounts'
+		single
+			? t('accounts.title')
+			: owner
+				? t('accounts.ownerTitle', { owner })
+				: t('accounts.householdTitle')
 	);
 </script>
 
 <svelte:head>
-	<title>Accounts · scrooge</title>
+	<title>{t('accounts.pageTitle')}</title>
 </svelte:head>
 
 <Notices
@@ -91,15 +101,15 @@
 
 {#if !listed.accounts.length}
 	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">Import your first statements</h1>
+		<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
 		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			Each account shows here with how far its statements go.
+			{t('accounts.emptyBody')}
 		</p>
 		<a
 			href={resolve('/import')}
 			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
 		>
-			Import statements
+			{t('overview.emptyCta')}
 		</a>
 	</section>
 {:else}
@@ -110,21 +120,26 @@
 			{#if held.total !== null}
 				<Amount value={held.total} currency={listed.currency} />
 			{:else}
-				<span class="text-figure text-ink-secondary">No balance known</span>
+				<span class="text-figure text-ink-secondary">{t('accounts.noBalance')}</span>
 			{/if}
 		</p>
 		<p class="mt-1 text-small text-ink-muted">
-			{opened.length === 1 ? '1 account' : `${opened.length} accounts`}, {#if listed.covered}all in
-				up to {day(listed.covered)}{:else}nothing committed yet{/if}{#if behind},
-				<span class="text-caution">{behind} behind</span>{/if}{#if staged},
-				<span class="text-brand">{staged} with statements staged</span
-				>{/if}{#if !behind && !staged}, none behind and nothing staged{/if}.
+			{opened.length === 1
+				? t('accounts.countOne')
+				: t('accounts.countMany', { count: opened.length })}, {#if listed.covered}{t(
+					'accounts.allInUpTo',
+					{ date: day(listed.covered) }
+				)}{:else}{t('accounts.nothingCommitted')}{/if}{#if behind},
+				<span class="text-caution">{t('accounts.behindCount', { count: behind })}</span
+				>{/if}{#if staged},
+				<span class="text-brand">{t('accounts.stagedCount', { count: staged })}</span
+				>{/if}{#if !behind && !staged}, {t('accounts.noneBehind')}{/if}.
 		</p>
 		{#if held.total !== null && held.unknown}
 			<p class="mt-1 text-small text-ink-muted">
 				{held.unknown === 1
-					? '1 account is not in it: its balance is not known.'
-					: `${held.unknown} accounts are not in it: their balances are not known.`}
+					? t('accounts.unknownOne')
+					: t('accounts.unknownMany', { count: held.unknown })}
 			</p>
 		{/if}
 	</section>
@@ -152,7 +167,9 @@
 			onremove={data.session.read_only ? undefined : remove}
 			onclose={data.session.read_only ? undefined : close}
 			onreopen={data.session.read_only ? undefined : reopen}
-			title={closed.length === 1 ? '1 closed account' : `${closed.length} closed accounts`}
+			title={closed.length === 1
+				? t('accounts.closedOne')
+				: t('accounts.closedMany', { count: closed.length })}
 		/>
 	{/if}
 

@@ -2,6 +2,7 @@
 
 import { month } from '#lib/format/date.js';
 import { approximate, money } from '#lib/format/number.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { AccountHolds, Amount } from '#lib/types.js';
 
 /** A line of what an account holds: cash in one currency, or its securities together. */
@@ -18,27 +19,33 @@ export interface Held {
 
 // What each kind of cash is called on its line: what a card owes or a pension fund states is
 // not money to spend.
-const KINDS: Record<string, string> = {
-	Cash: 'Cash',
-	Card: 'Card balance',
-	'Pillar 3a': 'Uninvested cash',
-	'Pillar 2': 'Pension fund balance'
+const KIND_KEYS: Record<string, MessageKey> = {
+	Cash: 'accounts.kindCash',
+	Card: 'accounts.kindCard',
+	'Pillar 3a': 'accounts.kindPillar3a',
+	'Pillar 2': 'accounts.kindPillar2'
 };
 
 /** The lines of `holds` in the page's `currency`: one per kind and currency of cash, named by
  * its kind (a card's balance, a pension fund's), then one for the securities when it holds
  * any. An account with cash in one currency alone has that one line. */
 export function heldLines(holds: AccountHolds, currency: string): Held[] {
-	const lines: Held[] = holds.cash.map((cash) => ({
-		label: `${KINDS[cash.asset] ?? 'Cash'}${cash.currency === currency ? '' : ` in ${cash.currency}`}`,
-		amount: cash.amount,
-		currency: cash.currency,
-		converted: cash.currency === currency ? null : cash.converted,
-		securities: false
-	}));
+	const lines: Held[] = holds.cash.map((cash) => {
+		const kind = t(KIND_KEYS[cash.asset] ?? 'accounts.kindCash');
+		return {
+			label:
+				cash.currency === currency
+					? kind
+					: t('accounts.cashInCurrency', { kind, currency: cash.currency }),
+			amount: cash.amount,
+			currency: cash.currency,
+			converted: cash.currency === currency ? null : cash.converted,
+			securities: false
+		};
+	});
 	if (holds.securities !== null) {
 		lines.push({
-			label: 'Securities',
+			label: t('accounts.securities'),
 			amount: holds.securities,
 			currency,
 			converted: null,
@@ -81,9 +88,13 @@ export function trend(
 	if (months.length < 2) return '';
 	const [first, last] = [months[0], months[months.length - 1]];
 	const [was, is] = [approximate(first.balance), approximate(last.balance)];
-	const since = `the end of ${month(first.day)}`;
-	if (is === was) return `unchanged since ${since}`;
-	return `${is > was ? 'up' : 'down'} from ${money(first.balance, 0)} ${currency} at ${since}`;
+	const m = month(first.day);
+	if (is === was) return t('accounts.trendUnchanged', { month: m });
+	return t(is > was ? 'accounts.trendUp' : 'accounts.trendDown', {
+		amount: money(first.balance, 0),
+		currency,
+		month: m
+	});
 }
 
 /** The query of Investments' holdings of `owner`, in the `currency` the address names (none:

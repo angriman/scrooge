@@ -385,6 +385,7 @@ export interface Total {
 
 /** What the rows of one top-level category add up to, in one currency. */
 export interface CategoryTotal extends Total {
+	key?: string;
 	name: string;
 }
 
@@ -618,7 +619,7 @@ export interface CashFlow {
 	last: string | null;
 	by: 'week' | 'month' | 'quarter' | 'year';
 	/** The ranges offered, as `from` and `to` take them. */
-	ranges: { label: string; from: string; to: string }[];
+	ranges: { key?: string; label: string; from: string; to: string }[];
 	errors: string[];
 }
 
@@ -667,7 +668,7 @@ export interface PayoutsReport {
 export interface InvestmentIncome {
 	income: PayoutsReport;
 	logos: Record<string, string>;
-	ranges: { label: string; from: string; to: string }[];
+	ranges: { key?: string; label: string; from: string; to: string }[];
 	errors: string[];
 }
 

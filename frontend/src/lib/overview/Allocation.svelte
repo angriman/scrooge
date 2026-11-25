@@ -7,8 +7,9 @@ of securities alone.
 -->
 <script lang="ts">
 	import { PieChart, type ChartState } from 'layerchart';
-	import { assetColor } from '#lib/design/data.js';
+	import { assetColor, assetName } from '#lib/design/data.js';
 	import { approximate, money, percent, sum } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Part, Series } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Change from '#lib/ui/Change.svelte';
@@ -35,7 +36,7 @@ of securities alone.
 	const colorOf = assetColor;
 	// Cash below zero is a debt (a margin loan): it is called what it is.
 	const named = (part: Part) =>
-		part.name === 'Cash' && part.value.startsWith('-') ? 'Cash owed' : part.name;
+		part.name === 'Cash' && part.value.startsWith('-') ? t('asset.CashOwed') : assetName(part.name);
 	const heldTotal = $derived(sum(held.map((part) => part.value)));
 	const movedOf = (name: string) => {
 		const part = series?.parts.find((each) => each.name === name);
@@ -46,7 +47,7 @@ of securities alone.
 	const pointed = $derived(context?.tooltip.data ?? null);
 </script>
 
-<Panel title="Allocation" note="Of net worth, by type">
+<Panel title={t('overview.allocationTitle')} note={t('overview.allocationNote')}>
 	<div class="grid grid-cols-1 gap-5">
 		<div class="relative mx-auto size-44">
 			<PieChart
@@ -65,12 +66,12 @@ of securities alone.
 			</PieChart>
 			<div class="pointer-events-none absolute inset-0 grid place-content-center text-center">
 				{#if pointed}
-					<span class="text-caption text-ink-secondary">{pointed.name}</span>
+					<span class="text-caption text-ink-secondary">{named(pointed)}</span>
 					<span class="text-title font-medium text-ink"
 						>{pointed.share === null ? '' : percent(pointed.share)}</span
 					>
 				{:else}
-					<span class="text-caption text-ink-secondary">Owned</span>
+					<span class="text-caption text-ink-secondary">{t('overview.owned')}</span>
 					<span class="text-title font-medium text-ink">{money(heldTotal, 0)}</span>
 					<span class="text-caption text-ink-muted">{currency}</span>
 				{/if}
@@ -80,9 +81,15 @@ of securities alone.
 		<table class="w-full text-body">
 			<thead class="text-caption text-ink-muted">
 				<tr>
-					<th class="pb-2 text-left font-normal"><span class="sr-only">Type</span></th>
-					<th class="pb-2 text-right font-normal"><span class="sr-only">Value</span></th>
-					<th class="hidden pb-2 pl-4 text-left font-normal sm:table-cell">Of net worth</th>
+					<th class="pb-2 text-left font-normal"
+						><span class="sr-only">{t('overview.typeSr')}</span></th
+					>
+					<th class="pb-2 text-right font-normal"
+						><span class="sr-only">{t('overview.valueSr')}</span></th
+					>
+					<th class="hidden pb-2 pl-4 text-left font-normal sm:table-cell"
+						>{t('overview.ofNetWorth')}</th
+					>
 					<th class="pb-2 text-right font-normal">{label}</th>
 				</tr>
 			</thead>

@@ -2,6 +2,8 @@
 // keeps its colour on every page and in every chart: Stocks are the same colour on the
 // overview's chart and on the investments page's map.
 
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
+
 export type Slot = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 /** The asset types of `networth.ASSETS`. A card is only ever owed: it wears the colour of a
@@ -54,6 +56,43 @@ export function assetColor(name: string): string {
 /** The colour of what is liquid and of what is frozen. */
 export function liquidityColor(name: string): string {
 	return color(LIQUIDITY_SLOTS[name]);
+}
+
+const ASSET_KEYS: Readonly<Record<string, MessageKey>> = {
+	Cash: 'asset.Cash',
+	ETFs: 'asset.ETFs',
+	Stocks: 'asset.Stocks',
+	Bills: 'asset.Bills',
+	Funds: 'asset.Funds',
+	'Pillar 2': 'asset.Pillar2',
+	'Pillar 3a': 'asset.Pillar3a',
+	Card: 'asset.Card'
+};
+
+const LIQUIDITY_KEYS: Readonly<Record<string, MessageKey>> = {
+	Liquid: 'liquidity.Liquid',
+	Frozen: 'liquidity.Frozen'
+};
+
+const INCOME_GROUP_KEYS: Readonly<Record<string, MessageKey>> = {
+	Work: 'incomeGroup.Work',
+	Investments: 'incomeGroup.Investments',
+	Other: 'incomeGroup.Other'
+};
+
+/** Display label of an asset type from `networth.ASSETS`. */
+export function assetName(name: string): string {
+	return name in ASSET_KEYS ? t(ASSET_KEYS[name]) : name;
+}
+
+/** Display label of a liquidity bucket from `networth.LIQUIDITY`. */
+export function liquidityName(name: string): string {
+	return name in LIQUIDITY_KEYS ? t(LIQUIDITY_KEYS[name]) : name;
+}
+
+/** Display label of an income group from `income.GROUPS`. */
+export function incomeGroupName(name: string): string {
+	return name in INCOME_GROUP_KEYS ? t(INCOME_GROUP_KEYS[name]) : name;
 }
 
 /** The colour of each of `names` in the order they come: the first eight get a slot of their

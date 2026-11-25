@@ -8,6 +8,7 @@ next to a net worth of hundreds of thousands; their figures are written over the
 -->
 <script lang="ts">
 	import { approximate, negate, short, shortSigned } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Amount } from '#lib/types.js';
 
 	interface Props {
@@ -43,7 +44,7 @@ next to a net worth of hundreds of thousands; their figures are written over the
 			COUNT === 6
 				? [
 						{
-							name: width < 480 ? 'New' : 'New accounts',
+							name: width < 480 ? t('bridge.newShort') : t('bridge.newAccounts'),
 							from: afterSpending,
 							to: afterArrivals,
 							label: shortSigned(arrived),
@@ -53,9 +54,15 @@ next to a net worth of hundreds of thousands; their figures are written over the
 				: [];
 		return [
 			{ name: from, from: null, to: start, label: short(before), tone: 'end' },
-			{ name: 'Income', from: start, to: afterIncome, label: shortSigned(income), tone: 'gain' },
 			{
-				name: 'Spending',
+				name: t('bridge.income'),
+				from: start,
+				to: afterIncome,
+				label: shortSigned(income),
+				tone: 'gain'
+			},
+			{
+				name: t('bridge.spending'),
 				from: afterIncome,
 				to: afterSpending,
 				label: shortSigned(negate(spent)),
@@ -64,7 +71,7 @@ next to a net worth of hundreds of thousands; their figures are written over the
 			...arrivals,
 			{
 				// Its full name where there is room; the panel's note says what else it holds.
-				name: width < 420 ? 'Markets' : 'Markets and other',
+				name: width < 420 ? t('bridge.marketsShort') : t('bridge.marketsAndOther'),
 				from: afterArrivals,
 				to: end,
 				label: shortSigned(other),
@@ -101,9 +108,15 @@ next to a net worth of hundreds of thousands; their figures are written over the
 		height={HEIGHT}
 		class="block overflow-visible"
 		role="img"
-		aria-label="From {short(before)} on {from}: income {shortSigned(income)}, spending {shortSigned(
-			negate(spent)
-		)}, markets and other {shortSigned(other)}, to {short(after)} on {to}"
+		aria-label={t('bridge.ariaLabel', {
+			before: short(before),
+			from,
+			income: shortSigned(income),
+			spending: shortSigned(negate(spent)),
+			other: shortSigned(other),
+			after: short(after),
+			to
+		})}
 	>
 		<line x1="0" x2={width} y1={floor} y2={floor} class="stroke-chart-grid" />
 		{#each steps as step, index (step.name + index)}

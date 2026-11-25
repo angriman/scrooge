@@ -1,4 +1,5 @@
 import { difference } from '#lib/format/number.js';
+import { t } from '#lib/i18n/index.svelte.js';
 import type { Recurring, RecurringPayment } from '#lib/types.js';
 
 /** Whether there is anything to list, active or stopped: the panel is left out otherwise. */
@@ -35,5 +36,5 @@ export function monthsBefore(day: string, months: number): string {
 
 /** `a month` or `a year`, as the pace reads after an amount. */
 export function everyName(every: RecurringPayment['every']): string {
-	return every === 'monthly' ? 'a month' : 'a year';
+	return every === 'monthly' ? t('recurring.aMonth') : t('recurring.aYear');
 }

@@ -17,6 +17,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	import NetWorthChart, { type Day } from '#lib/charts/NetWorthChart.svelte';
 	import { addDays, day } from '#lib/format/date.js';
 	import { money, short, sum } from '#lib/format/number.js';
+	import { joinList, t } from '#lib/i18n/index.svelte.js';
 	import type { NetWorthMonths, Series } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
@@ -28,14 +29,15 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		arrivedBetween,
 		change as moveOf,
 		daysBack,
-		RANGES,
 		rangeLabel,
+		rangeOptions,
 		type Range
 	} from './range.js';
 
 	interface Props {
 		series: Series;
 		colors: ReadonlyMap<string, string>;
+		nameOf?: (name: string) => string;
 		/** What the headline is of: `Net worth`, `Anna’s net worth`. */
 		title: string;
 		currency: string;
@@ -58,6 +60,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	let {
 		series,
 		colors,
+		nameOf = (name: string) => name,
 		title,
 		currency,
 		through,
@@ -94,16 +97,20 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	});
 	const leftOut = $derived(change && change.arrived !== '0' ? change.arrived : null);
 
-	const listed = (names: string[]) =>
-		names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 	// What the headline adds up: the fewer names, whether those left out or those kept.
 	const shownTitle = $derived(
 		hidden.size === 0
 			? title
 			: hidden.size <= parts.length
-				? `${title} without ${listed([...hidden])}`
-				: listed(parts.map((part) => part.name))
+				? t('overview.without', { title, excluded: joinList([...hidden].map(nameOf)) })
+				: joinList(parts.map((part) => nameOf(part.name)))
 	);
+
+	const views = $derived([
+		{ value: 'chart' as const, label: t('overview.chart') },
+		{ value: 'table' as const, label: t('overview.table') }
+	]);
+	const ranges = $derived(rangeOptions());
 
 	/** Leave `name` out of the chart, or bring it back; leaving out the last one brings all back. */
 	function toggle(name: string) {
@@ -131,9 +138,11 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		</p>
 		<p class="mt-1 text-small text-ink-muted [grid-area:when]">
 			{#if hovered}
-				On {day(hovered.day)}
+				{t('overview.onDay', { date: day(hovered.day) })}
 			{:else}
-				As of {day(lastDay)}{#if through}, with statements up to {day(through)}{/if}
+				{t('overview.asOf', { date: day(lastDay) })}{#if through}{t('overview.statementsUpTo', {
+						date: day(through)
+					})}{/if}
 			{/if}
 		</p>
 		<p class="mt-4 text-small text-ink-secondary [grid-area:span] sm:mt-0 sm:text-right">
@@ -147,8 +156,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 			/>
 			{#if leftOut}
 				<p class="mt-1 text-small text-ink-muted">
-					Leaves out {money(leftOut, 0)}
-					{currency} that accounts held when first counted
+					{t('overview.leavesOutArrived', { amount: money(leftOut, 0), currency })}
 				</p>
 			{/if}
 		</div>
@@ -156,14 +164,20 @@ headline and the legend. The chart can give way to a table of the month-ends.
 
 	<div class="mt-4 flex flex-wrap items-center justify-between gap-3 px-5">
 		{#if view === 'chart' && series.parts.length}
-			<ul class="flex flex-wrap items-center gap-x-1 gap-y-1" aria-label="Parts shown on the chart">
+			<ul
+				class="flex flex-wrap items-center gap-x-1 gap-y-1"
+				aria-label={t('overview.partsShownAria')}
+			>
 				{#each series.parts as part (part.name)}
 					{@const shown = !hidden.has(part.name)}
+					{@const label = nameOf(part.name)}
 					<li>
 						<button
 							type="button"
 							aria-pressed={shown}
-							title={shown ? `Leave ${part.name} out` : `Show ${part.name}`}
+							title={shown
+								? t('overview.leaveOut', { name: label })
+								: t('overview.showPart', { name: label })}
 							onclick={() => toggle(part.name)}
 							class={cn(
 								'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-raised',
@@ -175,7 +189,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 								class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
 							/>
 							<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
-								{part.name}
+								{label}
 							</span>
 							<span class="text-ink tabular-nums">{short(part.values[at])}</span>
 						</button>
@@ -188,7 +202,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 							onclick={() => (hidden = new Set())}
 							class="rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
 						>
-							Show all
+							{t('overview.showAll')}
 						</button>
 					</li>
 				{/if}
@@ -198,9 +212,9 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		{/if}
 		<div class="flex flex-wrap gap-2">
 			<Segmented
-				label="Show"
+				label={t('overview.showAria')}
 				value={view}
-				options={VIEWS}
+				options={views}
 				onchange={(chosen) => {
 					hidden = new Set();
 					hovered = null;
@@ -209,7 +223,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 			/>
 			{#if view === 'chart' && breakdowns.length > 1}
 				<Segmented
-					label="Cut the chart by"
+					label={t('overview.cutChartByAria')}
 					value={by}
 					options={breakdowns}
 					onchange={(chosen) => {
@@ -218,7 +232,12 @@ headline and the legend. The chart can give way to a table of the month-ends.
 					}}
 				/>
 			{/if}
-			<Segmented label="Range" value={range} options={RANGES} onchange={onrange} />
+			<Segmented
+				label={t('overview.rangeAria')}
+				value={range}
+				options={ranges}
+				onchange={onrange}
+			/>
 		</div>
 	</div>
 
@@ -228,6 +247,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		<NetWorthChart
 			{series}
 			{colors}
+			{nameOf}
 			{back}
 			{hidden}
 			bind:hovered

@@ -28,4 +28,14 @@ export function t(key: MessageKey, vars?: Record<string, string | number>): stri
 	);
 }
 
+/** Join names for prose: `A and B`, `A, B and C` (`A e B`, `A, B e C` in Italian). */
+export function joinList(names: readonly string[]): string {
+	if (names.length < 2) return names[0] ?? '';
+	if (names.length === 2) return t('common.listPair', { first: names[0], second: names[1] });
+	return t('common.listPair', {
+		first: names.slice(0, -1).join(', '),
+		second: names[names.length - 1]
+	});
+}
+
 export type { MessageKey, Messages };

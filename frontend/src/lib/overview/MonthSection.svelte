@@ -21,6 +21,7 @@ read as complete.
 		signedPercent,
 		sum
 	} from '#lib/format/number.js';
+	import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 	import type { MonthCategory, MonthRecap } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -42,10 +43,12 @@ read as complete.
 	);
 	const widest = $derived(Math.max(1, ...listed.map((category) => approximate(category.spent))));
 
-	const step = (month: string | null, label: string) =>
-		month ? { href: withQuery(here(), { month }), label: `${label}: ${monthName(month)}` } : null;
-	const earlier = $derived(step(recap.earlier, 'Earlier month'));
-	const later = $derived(step(recap.later, 'Later month'));
+	const step = (month: string | null, key: MessageKey) =>
+		month
+			? { href: withQuery(here(), { month }), label: t(key, { month: monthName(month) }) }
+			: null;
+	const earlier = $derived(step(recap.earlier, 'monthSection.earlierMonth'));
+	const later = $derived(step(recap.later, 'monthSection.laterMonth'));
 
 	const missingNames = $derived(recap.missing.map((account) => account.account));
 	/** `2.5×` the usual month, for what was more than double it: a percent that large says less. */
@@ -88,24 +91,21 @@ read as complete.
 		<p class="flex items-center gap-1.5 text-small text-ink-secondary">
 			{#if !recap.over}
 				<CircleDashed class="size-4 text-ink-muted" aria-hidden="true" />
-				So far, up to {dayOfYear(recap.last)}
+				{t('monthSection.soFar', { date: dayOfYear(recap.last) })}
 			{:else if recap.missing.length}
 				<CircleAlert class="size-4 text-caution" aria-hidden="true" />
 				{missingNames.length === 1
-					? `The ${missingNames[0]} statement is not in yet`
-					: `${missingNames.length} statements are not in yet`}
+					? t('monthSection.oneMissing', { account: missingNames[0] })
+					: t('monthSection.manyMissing', { count: missingNames.length })}
 			{:else}
 				<CircleCheck class="size-4 text-gain" aria-hidden="true" />
-				All statements are in
+				{t('monthSection.allIn')}
 			{/if}
 		</p>
 	</header>
 
 	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-		<Panel
-			title="How net worth moved"
-			note="What was saved, and what markets and everything else added"
-		>
+		<Panel title={t('monthSection.movedTitle')} note={t('monthSection.movedNote')}>
 			{#if recap.before !== null && recap.other !== null}
 				<MonthBridge
 					before={recap.before}
@@ -119,40 +119,40 @@ read as complete.
 				/>
 			{:else}
 				<p class="py-6 text-body text-ink-secondary">
-					The history starts within this month, so how net worth moved over it is not known.
+					{t('monthSection.historyStarts')}
 				</p>
 			{/if}
 			<dl class="mt-3 flex flex-wrap gap-x-8 gap-y-2 border-t border-line pt-3">
 				<div>
-					<dt class="text-caption text-ink-muted">Saved</dt>
+					<dt class="text-caption text-ink-muted">{t('monthSection.saved')}</dt>
 					<dd class="text-title">
 						<Amount value={recap.saved} currency={recap.currency} places={0} />
 					</dd>
 				</div>
 				<div>
-					<dt class="text-caption text-ink-muted">Savings rate</dt>
+					<dt class="text-caption text-ink-muted">{t('monthSection.savingsRate')}</dt>
 					<dd class="text-title">{recap.rate === null ? '–' : percent(recap.rate, 0)}</dd>
 					{#if recap.rate_salary !== null}
 						<dd class="text-caption text-ink-secondary">
-							{percent(recap.rate_salary, 0)} of salary
+							{t('monthSection.ofSalary', { rate: percent(recap.rate_salary, 0) })}
 						</dd>
 					{/if}
 				</div>
 				<div>
-					<dt class="text-caption text-ink-muted">12-month rate</dt>
+					<dt class="text-caption text-ink-muted">{t('monthSection.twelveMonthRate')}</dt>
 					<dd class="text-title">
 						{recap.rate_year === null ? '–' : percent(recap.rate_year, 0)}
 					</dd>
 					{#if recap.rate_salary_year !== null}
 						<dd class="text-caption text-ink-secondary">
-							{percent(recap.rate_salary_year, 0)} of salary over 12 months
+							{t('monthSection.ofSalaryYear', { rate: percent(recap.rate_salary_year, 0) })}
 						</dd>
 					{/if}
 				</div>
 			</dl>
 		</Panel>
 
-		<Panel title="Spending" note="Against a usual month">
+		<Panel title={t('monthSection.spendingTitle')} note={t('monthSection.spendingNote')}>
 			{#snippet actions()}
 				<span class="text-title"
 					><Amount value={recap.spent} currency={recap.currency} places={0} /></span
@@ -182,8 +182,11 @@ read as complete.
 											: 'text-gain'
 								)}
 							>
-								{#if category.against_usual === null}new{:else if against !== null && Math.abs(against) < AS_USUAL}as
-									usual{:else if against !== null && against >= 100}{times(
+								{#if category.against_usual === null}{t(
+										'monthSection.new'
+									)}{:else if against !== null && Math.abs(against) < AS_USUAL}{t(
+										'monthSection.asUsual'
+									)}{:else if against !== null && against >= 100}{times(
 										category
 									)}{:else}{signedPercent(category.against_usual, 0)}{/if}
 							</span>
@@ -191,7 +194,7 @@ read as complete.
 					{/each}
 					{#if rest !== null}
 						<li class="contents text-ink-secondary">
-							<span class="text-body">Other categories</span>
+							<span class="text-body">{t('monthSection.otherCategories')}</span>
 							<span></span>
 							<span class="text-right"><Amount value={rest} places={0} /></span>
 							<span></span>
@@ -199,7 +202,7 @@ read as complete.
 					{/if}
 				</ul>
 			{:else}
-				<p class="py-6 text-body text-ink-secondary">Nothing was spent this month.</p>
+				<p class="py-6 text-body text-ink-secondary">{t('monthSection.nothingSpent')}</p>
 			{/if}
 		</Panel>
 	</div>

@@ -1,4 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
+import { t } from '#lib/i18n/index.svelte.js';
 
 /** GET `path` of the API as JSON. Not signed in, the browser goes to the password page and
  * comes back; a field the API cannot read is an error page with its sentences. */
@@ -42,7 +43,7 @@ export async function send<T>(path: string, body: unknown, token: string): Promi
 			body: form ? body : JSON.stringify(body)
 		});
 	} catch {
-		const errors = ['The app could not be reached: check that it is running, and try again.'];
+		const errors = [t('api.unreachable')];
 		return { ok: false, status: 0, sent: { errors } as T & { errors: string[] } };
 	}
 	if (response.status === 401) {
@@ -51,8 +52,8 @@ export async function send<T>(path: string, body: unknown, token: string): Promi
 	const sent = await response.json().catch(() => ({
 		errors: [
 			response.status === 403
-				? 'This page is older than the app: reload it and try again.'
-				: `The app answered ${response.status}: try again.`
+				? t('api.stalePage')
+				: t('api.unexpectedStatus', { status: response.status })
 		]
 	}));
 	return { ok: response.ok, status: response.status, sent };
@@ -63,9 +64,7 @@ export async function send<T>(path: string, body: unknown, token: string): Promi
 export async function post<T>(path: string, body: unknown, token: string): Promise<T> {
 	const answer = await send<T>(path, body, token);
 	if (!answer.ok) {
-		throw new Error(
-			answer.sent.errors?.join(' ') || 'The change was refused. Reload the page and try again.'
-		);
+		throw new Error(answer.sent.errors?.join(' ') || t('api.changeRefused'));
 	}
 	return answer.sent;
 }

@@ -416,6 +416,7 @@ def test_transactions_are_sent_newest_first_with_what_they_add_up_to(client: Tes
     assert sent["count"] == len(sent["rows"])
     assert sum(t["count"] for t in sent["totals"]) == sent["count"]
     assert sum(c["count"] for c in sent["by_category"]) == sent["count"]
+    assert all("key" in c for c in sent["by_category"])
     assert sent["choices"]["leaves"]
     assert "expense" in sent["kinds"]
     assert {"recurring", "changeable", "category_parent"} <= set(sent["rows"][0])
@@ -507,6 +508,7 @@ def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: Te
         [],
     )
     assert [r["label"] for r in sent["ranges"]] == ["Year to date", "Last 12 months"]
+    assert [r["key"] for r in sent["ranges"]] == ["ytd", "12m"]
     shown = sent["report"]
     assert shown["currency"] == "CHF"
     assert [period["name"] for period in shown["periods"]][-1] == "2026-09"

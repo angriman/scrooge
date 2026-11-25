@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { daysBack, moved, rangeLabel } from './range.js';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
+import { daysBack, moved, rangeLabel, rangeOptions } from './range.js';
 
 describe('ranges', () => {
 	it('start a month, a year or the year to date before the last day', () => {
@@ -13,6 +14,17 @@ describe('ranges', () => {
 	it('are named for what their change covers', () => {
 		expect(rangeLabel('1m', '2026-08-31')).toBe('Past month');
 		expect(rangeLabel('all', '2026-08-31')).toBe('Since 31 Aug 2026');
+	});
+
+	it('localizes range labels and pills in Italian', () => {
+		setLanguage('it');
+		try {
+			expect(rangeOptions().find((o) => o.value === 'all')?.label).toBe('Tutto');
+			expect(rangeLabel('1y', null)).toBe('Ultimo anno');
+			expect(rangeLabel('all', '2026-08-31')).toBe('Dal 31 Ago 2026');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });
 

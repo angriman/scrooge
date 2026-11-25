@@ -6,6 +6,7 @@ nothing. A broker's currencies are closed and opened together.
 -->
 <script lang="ts">
 	import { day as shown } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { StatementsAccount } from '#lib/types.js';
 
 	interface Props {
@@ -49,13 +50,15 @@ nothing. A broker's currencies are closed and opened together.
 <div class="mb-3">
 	{#if account.closed}
 		<p class="flex flex-wrap items-center gap-3 text-small text-ink-muted">
-			Closed on {shown(account.closed)}.
-			<button type="button" disabled={busy} onclick={reopen} class={button}>Reopen</button>
+			{t('accounts.closedOn', { date: shown(account.closed) })}
+			<button type="button" disabled={busy} onclick={reopen} class={button}
+				>{t('accounts.reopen')}</button
+			>
 		</p>
 	{:else if closing}
 		<form onsubmit={submit} class="flex flex-wrap items-end gap-3">
 			<label class="flex flex-col gap-1 text-caption text-ink-secondary">
-				Closed on
+				{t('accounts.closedOnLabel')}
 				<input
 					type="date"
 					bind:value={when}
@@ -64,14 +67,14 @@ nothing. A broker's currencies are closed and opened together.
 				/>
 			</label>
 			<button type="submit" disabled={busy} class={button}>
-				{busy ? 'Closing…' : 'Close account'}
+				{t(busy ? 'accounts.closing' : 'accounts.closeAccount')}
 			</button>
 			<button type="button" disabled={busy} onclick={() => (closing = false)} class={button}>
-				Cancel
+				{t('accounts.cancel')}
 			</button>
 		</form>
 	{:else}
-		<button type="button" onclick={start} class={button}>Close account</button>
+		<button type="button" onclick={start} class={button}>{t('accounts.closeAccount')}</button>
 	{/if}
 	{#if problem}<p class="mt-2 text-small text-loss" role="alert">{problem}</p>{/if}
 </div>

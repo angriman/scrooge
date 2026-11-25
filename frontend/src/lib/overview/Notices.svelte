@@ -16,6 +16,7 @@ waits.
 	import Tags from '@lucide/svelte/icons/tags';
 	import TrendingUp from '@lucide/svelte/icons/trending-up';
 	import { resolve } from '$app/paths';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { folded, noticeLines, type NoticeKind } from '#lib/overview/notices.js';
 	import type { Attention } from '#lib/types.js';
 	import Notice from '#lib/ui/Notice.svelte';
@@ -75,7 +76,7 @@ waits.
 			class="justify-self-start px-1 text-small font-medium text-brand hover:text-brand-hover"
 			onclick={() => (open = true)}
 		>
-			{fold.more} more
+			{t('notices.more', { count: fold.more })}
 		</button>
 	{/if}
 {/snippet}
@@ -87,13 +88,15 @@ waits.
 			class="flex cursor-pointer list-none items-center gap-3 rounded-panel border border-caution/30 bg-caution-soft px-4 py-2.5 text-body text-ink"
 		>
 			<CircleAlert class="size-4 shrink-0 text-caution" aria-hidden="true" />
-			<span class="flex-1">{lines.length} things need a look</span>
+			<span class="flex-1">{t('notices.thingsNeedALook', { count: lines.length })}</span>
 			<ChevronDown class="size-4 text-ink-secondary group-open:rotate-180" aria-hidden="true" />
 		</summary>
 		<div class="mt-2 grid gap-2">{@render notices()}</div>
 	</details>
 	<section class="mb-4 hidden gap-2 sm:grid" role="status" aria-labelledby="needs-a-look">
-		<h2 id="needs-a-look" class="text-small font-medium text-ink-secondary">Needs a look</h2>
+		<h2 id="needs-a-look" class="text-small font-medium text-ink-secondary">
+			{t('notices.needsALook')}
+		</h2>
 		{@render notices()}
 	</section>
 {:else if lines.length === 1}

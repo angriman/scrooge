@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { MonthEndFigure, NetWorthMonths } from '#lib/types.js';
 import {
 	anyArrived,
@@ -185,5 +186,23 @@ describe('what came into view in the month-end table', () => {
 		expect(anyArrived(cents('0.80', '-0.40'), 'EUR')).toBe(false);
 		expect(table(cents('0.00', '0.40'), 'EUR').note).toBe(CHANGE_NOTE);
 		expect(anyArrived(cents('-0.20', '0.60'), 'EUR')).toBe(true);
+	});
+
+	it('localizes columns and notes in Italian', () => {
+		setLanguage('it');
+		try {
+			const localized = table(sent, 'USD');
+			expect(localized.columns[0].map((column) => column.label)).toEqual([
+				'Patrimonio netto',
+				'Variazione',
+				'Variazione %',
+				'Liquido',
+				'Vincolato'
+			]);
+			expect(localized.rows[0].label).toBe('Ottobre 2026');
+			expect(localized.note).toContain('prima importazione');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

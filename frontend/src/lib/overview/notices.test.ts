@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { Attention, RecurringChange } from '#lib/types.js';
 import { changeText, folded, noticeLines, type NoticeLinks } from './notices.js';
 
@@ -164,5 +165,36 @@ describe('what needs a look', () => {
 
 	it('lists no payments when they were not asked for', () => {
 		expect(noticeLines({ ...nothing, recurring: null }, onePerson, links)).toEqual([]);
+	});
+
+	it('localizes notice sentences and actions in Italian', () => {
+		setLanguage('it');
+		try {
+			const lines = noticeLines(
+				{
+					...nothing,
+					staged: [{ owner: 'Anna', count: 2 }],
+					behind: [
+						{
+							owner: 'Lukas',
+							account: 'Swisscard',
+							label: 'Swisscard',
+							committed: '2026-09-30'
+						}
+					],
+					recurring: [payment({})]
+				},
+				household,
+				links
+			);
+			expect(lines.map((line) => line.text)).toEqual([
+				'2 estratti di Anna sono in attesa e non ancora conteggiati.',
+				'Gli estratti di Swisscard di Lukas terminano il 30 Set 2026, oltre un mese prima degli altri.',
+				'Streamio di Lukas costa 2.00 CHF in più al mese dal 3 Set.'
+			]);
+			expect(lines[0].action?.label).toBe('Conferma');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

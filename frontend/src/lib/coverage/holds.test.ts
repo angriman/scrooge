@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import { heldLines, securitiesQuery, sparkline, trend } from './holds.js';
 
 describe('heldLines', () => {
@@ -85,5 +86,27 @@ describe('trend', () => {
 
 	it('says nothing without a line', () => {
 		expect(trend(months('100'), 'CHF')).toBe('');
+	});
+
+	it('localizes held lines and trends into Italian', () => {
+		setLanguage('it');
+		try {
+			const holds = {
+				cash: [{ asset: 'Card', currency: 'EUR', amount: '-1.00', converted: '-1.00' }],
+				securities: '400.00',
+				months: []
+			};
+			expect(heldLines(holds, 'CHF').map((line) => line.label)).toEqual([
+				'Saldo carta in EUR',
+				'Titoli'
+			]);
+			expect(trend(months('41000.40', '42000'), 'CHF')).toBe(
+				'in aumento da 41’000 CHF a fine Gen 2026'
+			);
+			expect(trend(months('500', '400'), 'USD')).toBe('in calo da 500 USD a fine Gen 2026');
+			expect(trend(months('0.26', '0.26'), 'EUR')).toBe('invariato da fine Gen 2026');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

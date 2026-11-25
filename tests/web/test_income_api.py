@@ -83,6 +83,7 @@ def test_the_last_twelve_months_are_sent_unless_a_range_is_asked(client: TestCli
     assert accounts == [("IBKR USD", None), ("Migros", None)]
     assert list(sent["logos"]) == ["ACME"]
     assert [r["label"] for r in sent["ranges"]] == ["Year to date", "Last 12 months", "2025", "All"]
+    assert [r["key"] for r in sent["ranges"]] == ["ytd", "12m", "2025", "all"]
 
 
 def test_a_range_is_compared_with_the_year_before_and_the_last_twelve_months_sent(

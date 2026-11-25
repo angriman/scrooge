@@ -10,12 +10,20 @@ it: the other stays, with a sentence saying why.
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { signed, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { direction } from '#lib/investments/performance.js';
 	import type { InvestmentIncome, InvestmentPerformance } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
-	import { incomeShown, PAID, refusal, RETURNED, returnShown, type Loaded } from './investments.js';
+	import {
+		incomeShown,
+		paidLabel,
+		refusal,
+		returnedLabel,
+		returnShown,
+		type Loaded
+	} from './investments.js';
 	import type { Range } from './range.js';
 
 	type Maybe<T> = Loaded<T> | Promise<Loaded<T>>;
@@ -64,23 +72,23 @@ it: the other stays, with a sentence saying why.
 	{/each}
 {/snippet}
 
-<Panel title="Investments">
+<Panel title={t('overview.investmentsTitle')}>
 	<div class="grid gap-4">
-		<section aria-label={RETURNED}>
+		<section aria-label={returnedLabel()}>
 			{#await returned}
-				{@render heading('Time-weighted return', returnsHref, 'Performance')}
+				{@render heading(t('overview.twr'), returnsHref, t('overview.performanceLink'))}
 				{@render waiting()}
 			{:then loaded}
 				{@const shown = returnShown(loaded, range)}
 				{@render heading(
-					shown.span ? `Time-weighted return, ${shown.span}` : 'Time-weighted return',
+					shown.span ? t('overview.twrSpan', { span: shown.span }) : t('overview.twr'),
 					returnsHref,
-					'Performance'
+					t('overview.performanceLink')
 				)}
 				{#if shown.state === 'none'}
-					<p class="mt-1 text-body text-ink-muted">No investment account yet.</p>
+					<p class="mt-1 text-body text-ink-muted">{t('overview.noInvestmentAccount')}</p>
 				{:else if shown.state === 'uninvested'}
-					<p class="mt-1 text-body text-ink-muted">Not known: nothing was invested.</p>
+					<p class="mt-1 text-body text-ink-muted">{t('overview.nothingInvested')}</p>
 				{:else if shown.state === 'measured'}
 					<p class={cn('mt-1 text-figure font-medium tabular-nums', tone(shown.twr, 1))}>
 						{signedPercent(shown.twr!)}
@@ -88,7 +96,7 @@ it: the other stays, with a sentence saying why.
 				{/if}
 				{#if shown.gain !== null}
 					<p class="mt-1 text-small text-ink-secondary">
-						Gain
+						{t('overview.gain')}
 						<span class={cn('font-medium tabular-nums', tone(shown.gain, 0))}>
 							{signed(shown.gain, 0)}
 						</span>
@@ -97,13 +105,13 @@ it: the other stays, with a sentence saying why.
 				{/if}
 				{@render problems(shown.errors)}
 			{:catch failure}
-				{@render heading('Time-weighted return', returnsHref, 'Performance')}
-				{@render problems([refusal(failure, RETURNED)])}
+				{@render heading(t('overview.twr'), returnsHref, t('overview.performanceLink'))}
+				{@render problems([refusal(failure, returnedLabel())])}
 			{/await}
 		</section>
 
-		<section class="border-t border-line pt-4" aria-label={PAID}>
-			{@render heading('Paid in the last 12 months', incomeHref, 'Income')}
+		<section class="border-t border-line pt-4" aria-label={paidLabel()}>
+			{@render heading(t('overview.paidInLast12Months'), incomeHref, t('overview.incomeLink'))}
 			{#await paid}
 				{@render waiting()}
 			{:then loaded}
@@ -114,13 +122,14 @@ it: the other stays, with a sentence saying why.
 						<Amount value={net} {currency} places={0} />
 					</p>
 					<p class="mt-1 text-small text-ink-secondary">
-						Dividends and interest{#if tax}, after
-							<Amount value={tax} {currency} places={0} /> tax withheld{/if}
+						{t('overview.dividendsAndInterest')}{#if tax}{t('overview.afterTaxBefore')}
+							<Amount value={tax} {currency} places={0} />
+							{t('overview.afterTaxAfter')}{/if}
 					</p>
 				{/if}
 				{@render problems(shown.errors)}
 			{:catch failure}
-				{@render problems([refusal(failure, PAID)])}
+				{@render problems([refusal(failure, paidLabel())])}
 			{/await}
 		</section>
 	</div>
