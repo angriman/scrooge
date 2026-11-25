@@ -1,5 +1,5 @@
 import { get } from '#lib/api.js';
-import { loaded, PAID, RETURNED, type Loaded } from '#lib/overview/investments.js';
+import { loaded, paidLabel, returnedLabel, type Loaded } from '#lib/overview/investments.js';
 import { DEFAULT_RANGE, RANGES, type Range } from '#lib/overview/range.js';
 import type {
 	Attention,
@@ -37,13 +37,13 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		let asked = returns.get(over);
 		if (!asked) {
 			const query = new URLSearchParams([...whose, ['range', over]]);
-			asked = loaded(get<InvestmentPerformance>(fetch, '/api/performance', query), RETURNED);
+			asked = loaded(get<InvestmentPerformance>(fetch, '/api/performance', query), returnedLabel());
 			returns.set(over, asked);
 		}
 		return asked;
 	};
 	returnsOver(range);
-	const paid = loaded(get<InvestmentIncome>(fetch, '/api/income', whose), PAID);
+	const paid = loaded(get<InvestmentIncome>(fetch, '/api/income', whose), paidLabel());
 	// The allocation sets each type against the range: the chart's own series, when cut by type.
 	const [shown, assets, cut, month, attention] = await Promise.all([
 		get<Overview>(fetch, '/api/overview', whose),

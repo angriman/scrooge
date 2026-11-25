@@ -6,6 +6,7 @@
 import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { day } from '#lib/format/date.js';
 import { approximate } from '#lib/format/number.js';
+import { t } from '#lib/i18n/index.svelte.js';
 import { withheld } from '#lib/investments/income.js';
 import { DEFAULT_RANGE as RETURNS_RANGE, over } from '#lib/investments/performance.js';
 import type {
@@ -27,14 +28,14 @@ export interface Loaded<T> {
 export const RETURNED = 'What the investments returned';
 export const PAID = 'What the investments paid';
 
-const UNREACHABLE = 'The app could not be reached: check that it is running, and try again.';
-const SIGNED_OUT = 'The app asks to sign in again.';
+export const returnedLabel = () => t('overview.returnedSubject');
+export const paidLabel = () => t('overview.paidSubject');
 
 /** Why `what` is not known, after `failure`: the app's own sentences when it refused. */
 export function refusal(failure: unknown, what: string): string {
-	if (isRedirect(failure)) return `${what} is not known: ${SIGNED_OUT}`;
-	const why = isHttpError(failure) ? failure.body.message : UNREACHABLE;
-	return `${what} is not known: ${why}`;
+	if (isRedirect(failure)) return t('overview.notKnownWhy', { what, why: t('api.signedOut') });
+	const why = isHttpError(failure) ? failure.body.message : t('api.unreachable');
+	return t('overview.notKnownWhy', { what, why });
 }
 
 /** `asked`, kept from failing: what the app could not answer is `what` and the reason it gave.
@@ -56,7 +57,7 @@ export async function loaded<T extends { errors: string[] }>(
  * it counts from when money was first put in later (`since 3 Mar 2026`). Empty without days. */
 export function returnSpan(range: Range, report: PerformanceReport): string {
 	const since = report.totals?.twr_since;
-	if (since) return `since ${day(since)}`;
+	if (since) return t('investments.sinceDay', { date: day(since) });
 	return report.first && report.last ? over(range, report.first, report.last) : '';
 }
 

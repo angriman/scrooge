@@ -1,6 +1,7 @@
 import { everyName } from '#lib/cashflow/recurring.js';
 import { day, dayOfYear } from '#lib/format/date.js';
 import { money } from '#lib/format/number.js';
+import { t } from '#lib/i18n/index.svelte.js';
 import type { Attention, RecurringChange } from '#lib/types.js';
 
 /** What a line is about: its icon goes by it. */
@@ -34,23 +35,22 @@ export interface NoticeLinks {
 /** Lines shown at most; beyond them all but one fold behind "N more". */
 export const MOST = 5;
 
-const counted = (count: number, one: string, many: string) =>
-	count === 1 ? `1 ${one}` : `${count} ${many}`;
-
 /** What changed about a recurring payment, as a sentence. */
 export function changeText(payment: RecurringChange, currency: string, onePerson: boolean): string {
-	const name = `${onePerson ? '' : `${payment.owner}’s `}${payment.name}`;
+	const name = onePerson
+		? payment.name
+		: t('notices.ownerPossessive', { owner: payment.owner, item: payment.name });
 	const since = dayOfYear(payment.since);
 	const every = everyName(payment.every);
-	const paid = payment.change === null ? null : `${money(payment.change)} ${currency}`;
+	const amount = payment.change === null ? null : `${money(payment.change)} ${currency}`;
 	if (payment.kind === 'up') {
-		return paid === null
-			? `${name} costs more since ${since}.`
-			: `${name} costs ${paid} more ${every} since ${since}.`;
+		return amount === null
+			? t('notices.upUnknown', { name, since })
+			: t('notices.upPaid', { name, amount, every, since });
 	}
-	return paid === null
-		? `${name} is a new payment since ${since}.`
-		: `${name} is a new payment: ${paid} ${every} since ${since}.`;
+	return amount === null
+		? t('notices.newUnknown', { name, since })
+		: t('notices.newPaid', { name, amount, every, since });
 }
 
 /** Everything that waits, in the order it is best dealt with: statements to commit, accounts
@@ -61,55 +61,78 @@ export function noticeLines(
 	links: NoticeLinks
 ): NoticeLine[] {
 	const onePerson = options.onePerson;
-	const whose = (owner: string) => (onePerson ? '' : ` of ${owner}`);
-	const are = (count: number) => (count === 1 ? 'is' : 'are');
 	const lines: NoticeLine[] = [];
 	for (const waiting of attention.staged) {
-		const statements = counted(waiting.count, 'statement', 'statements');
+		const text = onePerson
+			? t(waiting.count === 1 ? 'notices.stagedOne' : 'notices.stagedMany', {
+					count: waiting.count
+				})
+			: t(waiting.count === 1 ? 'notices.stagedOwnerOne' : 'notices.stagedOwnerMany', {
+					count: waiting.count,
+					owner: waiting.owner
+				});
 		lines.push({
 			key: `staged|${waiting.owner}`,
 			kind: 'staged',
 			tone: 'waiting',
-			text: `${statements}${whose(waiting.owner)} ${are(waiting.count)} staged and not yet counted.`,
-			action: { label: 'Commit them', href: links.importing(waiting.owner) }
+			text,
+			action: { label: t('notices.commitThem'), href: links.importing(waiting.owner) }
 		});
 	}
 	for (const account of attention.behind) {
-		const ends = account.committed ? day(account.committed) : 'no day yet';
-		const name = `${onePerson ? '' : `${account.owner}’s `}${account.account}`;
+		const date = account.committed ? day(account.committed) : t('notices.noDayYet');
+		const text = onePerson
+			? t('notices.behind', { account: account.account, date })
+			: t('notices.behindOwner', { owner: account.owner, account: account.account, date });
 		lines.push({
 			key: `behind|${account.owner}|${account.account}`,
 			kind: 'behind',
 			tone: 'caution',
-			text: `${name} statements end on ${ends}, over a month before the others.`,
-			action: { label: 'Import', href: links.importing(account.owner) }
+			text,
+			action: { label: t('notices.import'), href: links.importing(account.owner) }
 		});
 	}
 	if (attention.differ) {
-		const differ =
-			attention.differ === 1 ? '1 balance differs' : `${attention.differ} balances differ`;
 		lines.push({
 			key: 'differ',
 			kind: 'differ',
 			tone: 'caution',
-			text: `${differ} from what the statements say.`,
-			action: { label: 'Review them', href: links.checks }
+			text: t(attention.differ === 1 ? 'notices.differOne' : 'notices.differMany', {
+				count: attention.differ
+			}),
+			action: { label: t('notices.reviewThem'), href: links.checks }
 		});
 	}
 	const unmatched = attention.unmatched;
-	for (const waiting of unmatched === null ? [] : attention.uncategorised) {
-		const rows = counted(waiting.count, 'row', 'rows');
-		lines.push({
-			key: `uncategorised|${waiting.owner}`,
-			kind: 'uncategorised',
-			tone: 'waiting',
-			text: `${rows}${whose(waiting.owner)} ${are(waiting.count)} still in ${unmatched}.`,
-			action: {
-				// A copy only shows the rows: their category is changed where the database is.
-				label: options.readOnly ? 'See them' : 'Categorise',
-				href: links.transactions({ category: unmatched ?? '', owner: waiting.owner })
-			}
-		});
+	if (unmatched !== null) {
+		for (const waiting of attention.uncategorised) {
+			const text = onePerson
+				? t(waiting.count === 1 ? 'notices.uncategorisedOne' : 'notices.uncategorisedMany', {
+						count: waiting.count,
+						category: unmatched
+					})
+				: t(
+						waiting.count === 1
+							? 'notices.uncategorisedOwnerOne'
+							: 'notices.uncategorisedOwnerMany',
+						{
+							count: waiting.count,
+							owner: waiting.owner,
+							category: unmatched
+						}
+					);
+			lines.push({
+				key: `uncategorised|${waiting.owner}`,
+				kind: 'uncategorised',
+				tone: 'waiting',
+				text,
+				action: {
+					// A copy only shows the rows: their category is changed where the database is.
+					label: t(options.readOnly ? 'notices.seeThem' : 'notices.categorise'),
+					href: links.transactions({ category: unmatched, owner: waiting.owner })
+				}
+			});
+		}
 	}
 	for (const payment of attention.recurring ?? []) {
 		lines.push({
@@ -120,7 +143,7 @@ export function noticeLines(
 			// A name other payees of the account share would list their rows too: no link then.
 			action: payment.alone
 				? {
-						label: 'See payments',
+						label: t('notices.seePayments'),
 						href: links.transactions({
 							merchant: payment.name,
 							account: payment.account,

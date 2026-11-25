@@ -1,5 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type {
 	InvestmentIncome,
 	InvestmentPerformance,
@@ -195,5 +196,22 @@ describe('taxWithheld', () => {
 	it('is positive, or null when nothing was withheld', () => {
 		expect(taxWithheld({ dividends: '100', interest: '0', tax: '-15.00' })).toBe('15.00');
 		expect(taxWithheld({ dividends: '100', interest: '0', tax: '0.00' })).toBeNull();
+	});
+
+	it('localizes spans and refusals in Italian', () => {
+		setLanguage('it');
+		try {
+			expect(returnSpan('1y', report())).toBe('nell’ultimo anno');
+			const refused = (() => {
+				try {
+					error(500, 'Internal Error');
+				} catch (failure) {
+					return failure;
+				}
+			})();
+			expect(refusal(refused, 'Il rendimento')).toBe('Il rendimento non è noto: Internal Error');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

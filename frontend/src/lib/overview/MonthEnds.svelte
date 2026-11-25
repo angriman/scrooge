@@ -8,9 +8,10 @@ scrolls sideways, the months staying in sight.
 -->
 <script lang="ts">
 	import { day } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { NetWorthMonths } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
-	import { FROZEN_NOTE, noteOf, table, type Way } from './monthEnds.js';
+	import { frozenNote, noteOf, table, type Way } from './monthEnds.js';
 
 	interface Props {
 		months: Promise<NetWorthMonths>;
@@ -32,7 +33,7 @@ scrolls sideways, the months staying in sight.
 <div class={className}>
 	{#await months}
 		<p class="py-16 text-center text-small text-ink-muted" role="status">
-			Working out the month-ends…
+			{t('monthEnds.loading')}
 		</p>
 	{:then sent}
 		{@const shown = table(sent, currency)}
@@ -49,7 +50,7 @@ scrolls sideways, the months staying in sight.
 								scope="col"
 								class="sticky left-0 z-10 border-b border-line bg-panel py-1.5 pr-4 pl-3 text-left align-bottom font-normal"
 							>
-								Month
+								{t('monthEnds.month')}
 							</th>
 							{#each shown.currencies as code, g (code)}
 								<th
@@ -88,8 +89,11 @@ scrolls sideways, the months staying in sight.
 									<span class="sm:hidden">{row.short}</span>
 									<span class="hidden sm:inline">{row.label}</span>
 									{#if row.partial}
-										<span class="ml-1 text-caption text-ink-muted" title="Up to {day(row.day)}">
-											to date
+										<span
+											class="ml-1 text-caption text-ink-muted"
+											title={t('monthEnds.upTo', { date: day(row.day) })}
+										>
+											{t('monthEnds.toDate')}
 										</span>
 									{/if}
 								</th>
@@ -111,13 +115,13 @@ scrolls sideways, the months staying in sight.
 					</tbody>
 				</table>
 			</div>
-			<p class="px-3 pt-2 text-caption text-ink-muted">{shown.note} {FROZEN_NOTE}</p>
+			<p class="px-3 pt-2 text-caption text-ink-muted">{shown.note} {frozenNote()}</p>
 		{:else if !sent.errors.length}
-			<p class="py-16 text-center text-small text-ink-muted">No month to show yet.</p>
+			<p class="py-16 text-center text-small text-ink-muted">{t('monthEnds.empty')}</p>
 		{/if}
 	{:catch}
 		<p class="py-16 text-center text-small text-ink-muted" role="status">
-			The month-ends could not be loaded: reload the page to try again.
+			{t('monthEnds.failed')}
 		</p>
 	{/await}
 </div>

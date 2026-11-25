@@ -7,6 +7,7 @@ its arrow says it again for whoever does not see the colour.
 	import ArrowDownRight from '@lucide/svelte/icons/arrow-down-right';
 	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import { shortSigned, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Amount } from '#lib/types.js';
 	import { cn } from './cn.js';
 
@@ -29,9 +30,9 @@ its arrow says it again for whoever does not see the colour.
 
 <span class={cn('inline-flex items-baseline gap-1.5 whitespace-nowrap tabular-nums', className)}>
 	{#if amount === null}
-		<span class="text-ink-muted">not known</span>
+		<span class="text-ink-muted">{t('common.notKnown')}</span>
 	{:else if way === 'flat'}
-		<span class="text-ink-muted">no change</span>
+		<span class="text-ink-muted">{t('common.noChange')}</span>
 	{:else}
 		<span
 			class={cn(

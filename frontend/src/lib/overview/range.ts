@@ -4,6 +4,7 @@
 
 import { day, daysBetween } from '#lib/format/date.js';
 import { difference, percentOf, sum } from '#lib/format/number.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Amount, Arrived, Day } from '#lib/types.js';
 
 export const RANGES = [
@@ -17,6 +18,20 @@ export const RANGES = [
 
 export type Range = (typeof RANGES)[number]['value'];
 export const DEFAULT_RANGE: Range = '1y';
+
+const RANGE_KEY: Record<Range, MessageKey> = {
+	'1m': 'range.1m',
+	'3m': 'range.3m',
+	ytd: 'range.ytd',
+	'1y': 'range.1y',
+	'3y': 'range.3y',
+	all: 'range.all'
+};
+
+/** The range choices in the current language. */
+export function rangeOptions(): { value: Range; label: string }[] {
+	return RANGES.map((option) => ({ value: option.value, label: t(RANGE_KEY[option.value]) }));
+}
 
 const BACK: Record<Exclude<Range, 'ytd' | 'all'>, number> = {
 	'1m': 30,
@@ -36,17 +51,17 @@ export function daysBack(range: Range, last: Day): number | null {
 export function rangeLabel(range: Range, first: Day | null): string {
 	switch (range) {
 		case '1m':
-			return 'Past month';
+			return t('range.pastMonth');
 		case '3m':
-			return 'Past 3 months';
+			return t('range.past3Months');
 		case 'ytd':
-			return 'Year to date';
+			return t('range.yearToDate');
 		case '1y':
-			return 'Past year';
+			return t('range.pastYear');
 		case '3y':
-			return 'Past 3 years';
+			return t('range.past3Years');
 		case 'all':
-			return first ? `Since ${day(first)}` : 'Since the start';
+			return first ? t('range.sinceDay', { date: day(first) }) : t('range.sinceStart');
 	}
 }
 

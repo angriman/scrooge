@@ -9,6 +9,7 @@ reader is already looking, in the headline and the legend.
 	import { AreaChart, Spline, type ChartState } from 'layerchart';
 	import { approximate, short } from '#lib/format/number.js';
 	import { addDays, dayOf, monthOf, toDate } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Series } from '#lib/types.js';
 
 	/** One day of the chart: its index in the series, and when it is. */
@@ -22,6 +23,7 @@ reader is already looking, in the headline and the legend.
 		series: Series;
 		/** The colour of each part, by name; a series without parts is drawn in `color`. */
 		colors: ReadonlyMap<string, string>;
+		nameOf?: (name: string) => string;
 		color?: string;
 		/** How many days before the last are shown; all of them when null. */
 		back: number | null;
@@ -35,6 +37,7 @@ reader is already looking, in the headline and the legend.
 	let {
 		series,
 		colors,
+		nameOf = (name: string) => name,
 		color = 'var(--brand)',
 		back,
 		hidden = new Set(),
@@ -70,13 +73,20 @@ reader is already looking, in the headline and the legend.
 		parts.length
 			? parts.map((part) => ({
 					key: part.name,
-					label: part.name,
+					label: nameOf(part.name),
 					value: (row: Day) => part.values[row.index],
 					color: colors.get(part.name) ?? 'var(--data-other)'
 				}))
 			: series.parts.length
 				? []
-				: [{ key: 'total', label: 'Net worth', value: (row: Day) => total[row.index], color }]
+				: [
+						{
+							key: 'total',
+							label: t('chart.netWorth'),
+							value: (row: Day) => total[row.index],
+							color
+						}
+					]
 	);
 
 	// A change of range moves the chart to its new days instead of redrawing it, unless the

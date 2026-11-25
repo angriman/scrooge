@@ -4,6 +4,7 @@
 
 import { month, monthName } from '#lib/format/date.js';
 import { MINUS, money, percent, signed, signedPercent } from '#lib/format/number.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { MonthEndFigure, NetWorthMonths } from '#lib/types.js';
 
 export interface Column {
@@ -42,11 +43,25 @@ export const ARRIVED_NOTE =
 export const FROZEN_NOTE =
 	'Frozen is Pillar 2, Pillar 3a and the accounts scrooge.yaml names frozen; the rest is liquid.';
 
+const COLUMN_LABEL_KEYS: Record<Column['key'], MessageKey> = {
+	total: 'monthEnds.colTotal',
+	change: 'monthEnds.colChange',
+	percent: 'monthEnds.colPercent',
+	liquid: 'monthEnds.colLiquid',
+	frozen: 'monthEnds.colFrozen',
+	arrived: 'monthEnds.colArrived'
+};
+
+/** What counts as frozen, in the active language. */
+export function frozenNote(): string {
+	return t('monthEnds.frozenNote');
+}
+
 /** What a column's heading says when pointed at, if anything. */
 export function noteOf(key: Column['key']): string | undefined {
-	if (key === 'change' || key === 'percent') return CHANGE_NOTE;
-	if (key === 'arrived') return ARRIVED_NOTE;
-	if (key === 'liquid' || key === 'frozen') return FROZEN_NOTE;
+	if (key === 'change' || key === 'percent') return t('monthEnds.changeNote');
+	if (key === 'arrived') return t('monthEnds.arrivedNote');
+	if (key === 'liquid' || key === 'frozen') return t('monthEnds.frozenNote');
 	return undefined;
 }
 
@@ -131,13 +146,19 @@ export function table(
 ): { currencies: string[]; columns: Column[][]; rows: Row[]; note: string } {
 	const currencies = inOrder(sent.currencies, shown);
 	const arrived = anyArrived(sent, shown);
+	const localize = (column: Column): Column => ({
+		key: column.key,
+		label: t(COLUMN_LABEL_KEYS[column.key])
+	});
 	const columns = currencies.map((currency): Column[] =>
-		currency === shown ? [...COLUMNS, ...(arrived ? [ARRIVED] : []), ...SPLIT] : [...COLUMNS]
+		(currency === shown ? [...COLUMNS, ...(arrived ? [ARRIVED] : []), ...SPLIT] : [...COLUMNS]).map(
+			localize
+		)
 	);
 	return {
 		currencies,
 		columns,
-		note: arrived ? ARRIVED_NOTE : CHANGE_NOTE,
+		note: arrived ? t('monthEnds.arrivedNote') : t('monthEnds.changeNote'),
 		rows: sent.months.map((end) => ({
 			month: end.month,
 			label: monthName(end.month),

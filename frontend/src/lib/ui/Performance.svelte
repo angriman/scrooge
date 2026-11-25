@@ -8,6 +8,7 @@ the percent beside it. What span it is over is the caller's to say, above it.
 	import ArrowDownRight from '@lucide/svelte/icons/arrow-down-right';
 	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import { money, signed, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Amount } from '#lib/types.js';
 	import { cn } from './cn.js';
 
@@ -27,7 +28,7 @@ the percent beside it. What span it is over is the caller's to say, above it.
 </script>
 
 {#if written === null}
-	<p class={cn('text-title text-ink-muted', className)}>Not known: the history is shorter</p>
+	<p class={cn('text-title text-ink-muted', className)}>{t('common.notKnownShorterHistory')}</p>
 {:else}
 	<p class={cn('flex flex-wrap items-baseline gap-x-3 gap-y-1', className)}>
 		<span

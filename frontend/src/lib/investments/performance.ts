@@ -5,6 +5,7 @@
 
 import { addDays, day, daysBetween } from '#lib/format/date.js';
 import { approximate, money, signedPercent } from '#lib/format/number.js';
+import { t } from '#lib/i18n/index.svelte.js';
 import { daysBack, RANGES, type Range } from '#lib/overview/range.js';
 import type {
 	Amount,
@@ -30,20 +31,22 @@ export function rangeOf(asked: string | null): Range {
  * 2026` when the history starts after the range would. */
 export function over(range: Range, first: Day, last: Day): string {
 	const back = daysBack(range, last);
-	if (back === null || addDays(last, 1 - back) !== first) return `since ${day(first)}`;
+	if (back === null || addDays(last, 1 - back) !== first) {
+		return t('investments.sinceDay', { date: day(first) });
+	}
 	switch (range) {
 		case '1m':
-			return 'over the past month';
+			return t('investments.overPastMonth');
 		case '3m':
-			return 'over the past 3 months';
+			return t('investments.overPast3Months');
 		case 'ytd':
-			return 'this year';
+			return t('investments.thisYear');
 		case '1y':
-			return 'over the past year';
+			return t('investments.overPastYear');
 		case '3y':
-			return 'over the past 3 years';
+			return t('investments.overPast3Years');
 	}
-	return `since ${day(first)}`;
+	return t('investments.sinceDay', { date: day(first) });
 }
 
 /** What is said under an account's name: whose it is, when both people's are listed; the

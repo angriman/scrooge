@@ -12,7 +12,8 @@ securities), then its statements, newest first, each with the file it came from.
 	import { page } from '$app/state';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Download from '@lucide/svelte/icons/download';
-	import { addDays, day, daysBetween, monthOf, toDate } from '#lib/format/date.js';
+	import { addDays, day, dayOfYear, daysBetween, monthOf, toDate } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { StatementsAccount } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
@@ -42,12 +43,12 @@ securities), then its statements, newest first, each with the file it came from.
 	let { accounts, currency, today, people, onremove, onclose, onreopen, title }: Props = $props();
 	const titleId = $props.id();
 
-	const RANGES = [
-		{ value: '1y', label: '1Y' },
-		{ value: '3y', label: '3Y' },
-		{ value: 'all', label: 'All' }
-	] as const;
-	let range = $state<(typeof RANGES)[number]['value']>('1y');
+	const ranges = $derived([
+		{ value: '1y' as const, label: t('range.1y') },
+		{ value: '3y' as const, label: t('range.3y') },
+		{ value: 'all' as const, label: t('range.all') }
+	]);
+	let range = $state<'1y' | '3y' | 'all'>('1y');
 
 	const earliest = $derived(
 		accounts
@@ -104,30 +105,33 @@ securities), then its statements, newest first, each with the file it came from.
 		`${resolve('/investments')}?${securitiesQuery(owner, page.url.searchParams.get('currency'))}`;
 	const span = (first: string, last: string) =>
 		first.slice(0, 4) === last.slice(0, 4) && first !== last
-			? `${day(first).replace(/ \d{4}$/, '')} to ${day(last)}`
+			? t('accounts.spanTo', { start: dayOfYear(first), end: day(last) })
 			: first === last
 				? day(first)
-				: `${day(first)} to ${day(last)}`;
+				: t('accounts.spanTo', { start: day(first), end: day(last) });
 </script>
 
 <section class="mt-10" aria-labelledby={titleId}>
 	<header class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
 		<h2 id={titleId} class="text-heading font-medium text-ink">
-			{title ?? (accounts.length === 1 ? '1 account' : `${accounts.length} accounts`)}
+			{title ??
+				(accounts.length === 1
+					? t('accounts.countOne')
+					: t('accounts.countMany', { count: accounts.length }))}
 		</h2>
 		<div class="flex flex-wrap items-center gap-4">
 			<span class="flex items-center gap-3 text-caption text-ink-muted" aria-hidden="true">
 				<span class="flex items-center gap-1.5"
-					><span class="h-2 w-4 rounded-mark bg-data-7"></span>committed</span
+					><span class="h-2 w-4 rounded-mark bg-data-7"></span>{t('accounts.legendCommitted')}</span
 				>
 				<span class="flex items-center gap-1.5"
-					><span class="staged h-2 w-4 rounded-mark"></span>staged</span
+					><span class="staged h-2 w-4 rounded-mark"></span>{t('accounts.legendStaged')}</span
 				>
 			</span>
 			<Segmented
-				label="Line of time"
+				label={t('accounts.timelineAria')}
 				value={range}
-				options={RANGES}
+				options={ranges}
 				onchange={(chosen) => (range = chosen)}
 			/>
 		</div>
@@ -160,13 +164,16 @@ securities), then its statements, newest first, each with the file it came from.
 									)}
 								>
 									{#if account.behind}
-										Behind: ends on {account.committed ? day(account.committed) : 'no day'}
+										{t('accounts.behindEnd', {
+											date: account.committed ? day(account.committed) : t('accounts.noDay')
+										})}
 									{:else if account.committed}
-										Up to {day(account.committed)}{#if account.staged}, staged to {day(
-												account.staged
+										{t('nav.upTo', { date: day(account.committed) })}{#if account.staged}{t(
+												'accounts.stagedTo',
+												{ date: day(account.staged) }
 											)}{/if}
 									{:else}
-										Staged only
+										{t('accounts.stagedOnly')}
 									{/if}
 								</span>
 							</span>
@@ -205,7 +212,7 @@ securities), then its statements, newest first, each with the file it came from.
 										<Sparkline months={account.holds.months} {currency} class="order-first" />
 									{/if}
 								{:else}
-									<span class="text-small text-ink-muted">Not known</span>
+									<span class="text-small text-ink-muted">{t('accounts.notKnown')}</span>
 								{/if}
 							</span>
 							<ChevronDown
@@ -220,7 +227,9 @@ securities), then its statements, newest first, each with the file it came from.
 									{@const lines = heldLines(account.holds, currency)}
 									{#if lines.length}
 										<table class="mb-4 w-full max-w-md text-body">
-											<caption class="mb-1 text-left text-small text-ink-secondary">Holds</caption>
+											<caption class="mb-1 text-left text-small text-ink-secondary"
+												>{t('accounts.holdsCaption')}</caption
+											>
 											<tbody>
 												{#each lines as line (line.label)}
 													<tr class="border-b border-line last:border-b-0">
@@ -260,9 +269,7 @@ securities), then its statements, newest first, each with the file it came from.
 								<p class="mb-3 text-small text-ink-muted">
 									{account.label}{#if account.parts.length > 1}<span class="block"
 											>{bookedAs(account.parts)}</span
-										>{/if}{#if !account.monthly}<span class="block"
-											>Reports less often than monthly, so it counts as behind only after a longer
-											wait.</span
+										>{/if}{#if !account.monthly}<span class="block">{t('accounts.notMonthly')}</span
 										>{/if}
 								</p>
 								{#if onclose && onreopen}
@@ -287,12 +294,18 @@ securities), then its statements, newest first, each with the file it came from.
 											</span>
 											<span class="flex items-center gap-2 text-small whitespace-nowrap">
 												<span class={statement.committed ? 'text-ink-secondary' : 'text-caution'}>
-													{statement.committed ? 'Committed' : 'Staged'}
+													{t(
+														statement.committed
+															? 'accounts.statusCommitted'
+															: 'accounts.statusStaged'
+													)}
 												</span>
 												<span class="text-ink-muted">
-													{statement.transactions}
-													{statement.transactions === 1 ? 'row' : 'rows'}{#if !statement.checked},
-														nothing to check{/if}
+													{statement.transactions === 1
+														? t('accounts.rowsOne')
+														: t('accounts.rowsMany', {
+																count: statement.transactions
+															})}{#if !statement.checked}{t('accounts.nothingToCheck')}{/if}
 												</span>
 											</span>
 											<span class="hidden items-center gap-3 text-small sm:flex">
@@ -301,21 +314,24 @@ securities), then its statements, newest first, each with the file it came from.
 														href={statement.original}
 														data-sveltekit-reload
 														class="inline-flex items-center gap-1 text-brand hover:text-brand-hover"
-														aria-label="Download {statement.filename}"
+														aria-label={t('accounts.downloadAria', {
+															filename: statement.filename
+														})}
 													>
-														<Download class="size-3.5" aria-hidden="true" />File
+														<Download class="size-3.5" aria-hidden="true" />{t('accounts.file')}
 													</a>
 												{/if}
 												{#if onremove}
 													<button
 														type="button"
 														onclick={() => onremove(statement)}
-														aria-label="{statement.committed
-															? 'Take back'
-															: 'Remove'} {statement.filename}"
+														aria-label={t(
+															statement.committed ? 'accounts.takeBackAria' : 'accounts.removeAria',
+															{ filename: statement.filename }
+														)}
 														class="text-brand hover:text-brand-hover"
 													>
-														{statement.committed ? 'Take back' : 'Remove'}
+														{t(statement.committed ? 'accounts.takeBack' : 'accounts.remove')}
 													</button>
 												{/if}
 											</span>

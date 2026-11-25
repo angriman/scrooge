@@ -4,8 +4,15 @@
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { page } from '$app/state';
 	import { coveredUpTo } from '#lib/coverage/covered.js';
-	import { assetColor, inOrder, liquidityColor } from '#lib/design/data.js';
+	import {
+		assetColor,
+		assetName,
+		inOrder,
+		liquidityColor,
+		liquidityName
+	} from '#lib/design/data.js';
 	import { addDays } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import Allocation from '#lib/overview/Allocation.svelte';
 	import Investments from '#lib/overview/Investments.svelte';
 	import { incomeQuery, returnsQuery } from '#lib/overview/investments.js';
@@ -28,7 +35,11 @@
 	// One person alone: nothing on the page is about whose it is.
 	const single = $derived(data.session.people.length < 2);
 	const title = $derived(
-		single ? 'Net worth' : owner ? `${owner}’s net worth` : 'Household net worth'
+		single
+			? t('overview.title')
+			: owner
+				? t('overview.ownerTitle', { owner })
+				: t('overview.householdTitle')
 	);
 
 	// The range only changes the address: the page has every day already.
@@ -67,11 +78,18 @@
 	const incomeHref = $derived(investments(incomeQuery(here())));
 
 	const breakdowns = $derived([
-		{ value: 'asset', label: 'By type' },
-		...(data.people ? [{ value: 'owner', label: 'By person' }] : []),
-		{ value: 'liquidity', label: 'By liquidity' },
-		{ value: 'total', label: 'Total' }
+		{ value: 'asset', label: t('overview.byAsset') },
+		...(data.people ? [{ value: 'owner', label: t('overview.byOwner') }] : []),
+		{ value: 'liquidity', label: t('overview.byLiquidity') },
+		{ value: 'total', label: t('overview.total') }
 	]);
+	const nameOf = $derived(
+		data.by === 'owner'
+			? (name: string) => name
+			: data.by === 'liquidity'
+				? liquidityName
+				: assetName
+	);
 	const colors = $derived.by(() => {
 		if (data.by === 'owner') return inOrder(data.session.people.map((person) => person.name));
 		const of = data.by === 'liquidity' ? liquidityColor : assetColor;
@@ -80,7 +98,7 @@
 </script>
 
 <svelte:head>
-	<title>Overview · scrooge</title>
+	<title>{t('overview.pageTitle')}</title>
 </svelte:head>
 
 <Notices
@@ -101,15 +119,15 @@
 
 {#if !figures || !figures.day || !series}
 	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">Import your first statements</h1>
+		<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
 		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			Net worth, holdings and cash flow show here once a statement is committed.
+			{t('overview.emptyBody')}
 		</p>
 		<a
 			href={resolve('/import')}
 			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
 		>
-			Import statements
+			{t('overview.emptyCta')}
 		</a>
 	</section>
 {:else}
@@ -118,6 +136,7 @@
 			<NetWorthCard
 				{series}
 				{colors}
+				{nameOf}
 				{title}
 				{currency}
 				through={statementsUpTo(figures.through, figures.day, covered)}

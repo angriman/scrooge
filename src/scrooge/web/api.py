@@ -334,6 +334,7 @@ def _transactions(request: Request) -> Response:
             ],
             "by_category": [
                 {
+                    "key": c.name,
                     "name": found.label(c.name),
                     "currency": c.currency,
                     "count": c.count,
@@ -816,10 +817,17 @@ def _ranges(through: date, start: int) -> list[dict[str, str]]:
     twelve = analysis.add_months(through, -11)
     years = range(through.year - 1, max(start, through.year - 2) - 1, -1)
     return [
-        {"label": "Year to date", "from": str(through.year), "to": ""},
-        {"label": "Last 12 months", "from": f"{twelve:%Y-%m}", "to": ""},
-        *({"label": str(year), "from": str(year), "to": str(year)} for year in years),
-        *([{"label": "All", "from": str(start), "to": ""}] if start < through.year else []),
+        {"key": "ytd", "label": "Year to date", "from": str(through.year), "to": ""},
+        {"key": "12m", "label": "Last 12 months", "from": f"{twelve:%Y-%m}", "to": ""},
+        *(
+            {"key": str(year), "label": str(year), "from": str(year), "to": str(year)}
+            for year in years
+        ),
+        *(
+            [{"key": "all", "label": "All", "from": str(start), "to": ""}]
+            if start < through.year
+            else []
+        ),
     ]
 
 
