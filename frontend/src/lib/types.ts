@@ -812,6 +812,8 @@ export interface Rule {
 	version: string;
 	/** Why it cannot be changed here; null when it can. */
 	fixed: string | null;
+	/** False when time ran out before it was counted: `matches` is null then. */
+	counted: boolean;
 }
 
 export interface SettingsRules {
