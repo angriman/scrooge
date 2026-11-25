@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from scrooge import analysis, query
+from scrooge import analysis, categories, query
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
 from scrooge.categories import DIVIDENDS, INTEREST, WITHHOLDING_TAX
@@ -126,8 +126,9 @@ class _Sums:
 
 def is_payout(row: Counted) -> bool:
     """Whether `row` is a payout or tax withheld from one: interest charged (on a debit
-    balance, a margin loan) is what the account cost, and is not."""
-    return row.leaf in CATEGORIES and not (row.leaf == INTEREST and row.amount_nano < 0)
+    balance, a margin loan) is what the account cost, and is not (`categories.charged`; the
+    cash flow already counts it under a leaf of its own)."""
+    return row.leaf in CATEGORIES and not categories.charged(row.leaf, row.amount_nano)
 
 
 def run(

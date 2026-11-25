@@ -149,9 +149,9 @@ def test_income_is_grouped_by_where_it_comes_from(conn: sqlite3.Connection) -> N
     assert by_month["2026-01"] == groups("5000")
     assert by_month["2026-03"] == groups("5000", "90")  # 100 USD at 0.90 that day
     assert by_month["2026-06"] == groups("5000", "10")
-    # Trading net (300 less 120), interest net of what was charged; the bill, the refund
-    # and what the other person paid back are not there.
-    assert by_month["2026-07"] == groups("5000", "176", "15")
+    # Trading net (300 less 120); the interest charged is an expense (plan decision 52), and
+    # the bill, the refund and what the other person paid back are not there.
+    assert by_month["2026-07"] == groups("5000", "180", "15")
 
 
 def test_the_sources_add_up_the_range_leaf_by_leaf(conn: sqlite3.Connection) -> None:
@@ -159,7 +159,7 @@ def test_the_sources_add_up_the_range_leaf_by_leaf(conn: sqlite3.Connection) -> 
         Source(income.WORK, categories.SALARY, 8, Decimal(40000)),
         Source(income.INVESTMENTS, categories.TRADING, 2, Decimal(180)),
         Source(income.INVESTMENTS, categories.DIVIDENDS, 1, Decimal(90)),
-        Source(income.INVESTMENTS, categories.INTEREST, 2, Decimal(6)),
+        Source(income.INVESTMENTS, categories.INTEREST, 1, Decimal(10)),
         Source(income.OTHER, categories.CASHBACK, 1, Decimal(15)),
     )
 
@@ -169,7 +169,7 @@ def test_each_row_is_converted_at_the_rate_of_its_own_day(conn: sqlite3.Connecti
     assert [p.groups for p in year.periods] == [groups("60000", "80")]  # at 0.80 in 2025
     july = his(conn, first=date(2026, 7, 1), last=date(2026, 7, 31), currency="EUR")
     # Francs into euros at 0.95, rounded to the cent once added up.
-    assert july.periods[0].groups == groups("5263.16", "185.26", "15.79")
+    assert july.periods[0].groups == groups("5263.16", "189.47", "15.79")
     assert july.currency == "EUR"
 
 
@@ -181,7 +181,7 @@ def test_the_employers_share_is_of_the_twelve_months_ending_with_each_period(
     assert share["2025-01"] is None
     assert share["2025-11"] is None
     assert share["2025-12"] == Decimal(60000) / 60080  # the 2025 dividend
-    assert share["2026-07"] == share["2026-08"] == Decimal(60000) / 60291
+    assert share["2026-07"] == share["2026-08"] == Decimal(60000) / 60295
 
 
 def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
@@ -192,7 +192,7 @@ def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
     assert share == {
         "2026-Q1": Decimal(60000) / 60090,  # the 2026 dividend replaced 2025's
         "2026-Q2": Decimal(60000) / 60100,
-        "2026-Q3": Decimal(60000) / 60291,  # up to 31 August, the last day committed
+        "2026-Q3": Decimal(60000) / 60295,  # up to 31 August, the last day committed
         "2026-Q4": None,  # no day of it is committed
     }
     assert quarters.through == END
@@ -200,7 +200,7 @@ def test_a_period_after_the_statements_takes_the_twelve_months_up_to_them(
 
 def test_both_people_without_what_they_pay_each_other(conn: sqlite3.Connection) -> None:
     both = his(conn, owner=None, first=date(2026, 7, 1), last=date(2026, 7, 31))
-    assert both.periods[0].groups == groups("9000", "176", "15")
+    assert both.periods[0].groups == groups("9000", "180", "15")
     # Her income is known from January only: twelve months of it are not there yet.
     assert both.periods[0].employer is None
     hers = his(conn, owner=PARTNER, first=date(2026, 7, 1), last=date(2026, 7, 31))

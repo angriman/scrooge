@@ -108,6 +108,11 @@ CASHBACK = "cashback"
 REFUNDS = "refunds"
 GIFTS_RECEIVED = "gifts_received"
 
+# Not a category a row is given: a row of INTEREST below nothing (on a debit balance, a margin
+# loan) is what the account cost, and is counted, found and shown as this leaf of Banking
+# (`charged`, plan decision 52). The stored row keeps its category.
+INTEREST_CHARGED = "interest_charged"
+
 # The transfers.
 REVOLUT_TOP_UP = "revolut_top_up"
 IBKR_TOP_UP = "ibkr_top_up"
@@ -207,6 +212,7 @@ LABELS_EN: dict[str, str] = {
     PAPERWORK: "Paperwork",
     WITHHOLDING_TAX: "Withholding tax",
     FEES: "Fees",
+    INTEREST_CHARGED: "Interest charged",
     TRADING: "Trading",
     INVESTMENTS: "Investments",
     SALARY: "Salary",
@@ -270,6 +276,7 @@ LABELS_IT: dict[str, str] = {
     PAPERWORK: "Documenti e burocrazia",
     WITHHOLDING_TAX: "Ritenute",
     FEES: "Commissioni",
+    INTEREST_CHARGED: "Interessi passivi",
     TRADING: "Trading",
     INVESTMENTS: "Investimenti",
     SALARY: "Stipendio",
@@ -292,6 +299,12 @@ _BY_LABEL: dict[str, str] = {
     label: key for table in (LABELS_IT, LABELS_EN) for key, label in table.items()
 }
 _BY_ENGLISH: dict[str, str] = {label: key for key, label in LABELS_EN.items()}
+
+
+def charged(category: str | None, amount_nano: int) -> bool:
+    """Whether a row of `category` and `amount_nano` is interest charged (`INTEREST_CHARGED`):
+    an expense of Banking, not income, and no payout."""
+    return category == INTEREST and amount_nano < 0
 
 
 def slug(name: str) -> str:

@@ -232,9 +232,10 @@ def test_a_category_is_named_by_its_key_its_english_label_or_its_italian_name() 
 @pytest.mark.parametrize("language", sorted(categories.LABELS))
 def test_every_key_has_a_label_in_every_language(language: str) -> None:
     table = categories.LABELS[language]
-    assert set(table) == categories.ALL | categories.GROUPS
+    shown = categories.ALL | categories.GROUPS | {categories.INTEREST_CHARGED}
+    assert set(table) == shown
     assert all(label.strip() for label in table.values())
-    for key in categories.ALL | categories.GROUPS:
+    for key in shown:
         assert categories.key(table[key]) == key  # no label of one key means another
 
 

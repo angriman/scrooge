@@ -1559,7 +1559,7 @@ def _transactions(request: Request) -> Response:
             result = query.Result((), (), (), ())
         people = query.people(conn)
         choices = query.choices(conn, wanted.owner)
-        category = wanted.category and store.category_key(conn, wanted.category)
+        category = wanted.category and query.category_key(conn, wanted.category)
     newest_first = result.rows[::-1]
     pages = max(1, -(-len(newest_first) // _PAGE))
     asked = request.query_params.get("page", "")
