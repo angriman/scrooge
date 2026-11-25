@@ -1,6 +1,10 @@
 """The import of the app's own pages, through `/api/import`: from the files to what is
 committed."""
 
+import hashlib
+import io
+import zipfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -219,3 +223,33 @@ def test_more_files_than_one_import_takes_are_refused_and_say_so(
         "Nothing was imported: Too many files. Maximum number of files is 2."
     ]
     assert site.count("statement_files") == 0
+
+
+def test_a_zip_sent_is_opened_and_each_of_its_files_staged(site: Site) -> None:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in ("Migros.csv", "Revolut Savings.tsv", "notes.txt"):
+            archive.writestr(f"September/{name}", (site.folder / name).read_bytes())
+        archive.writestr("September/inner.zip", b"PK")
+    files = [("file", ("statements.zip", buffer.getvalue())), ("file", ("bad.zip", b"no zip"))]
+    response = site.client.post(
+        "/api/import", data={"owner": "Lukas"}, files=files, headers=_headers(site)
+    )
+    assert response.status_code == 200
+    outcomes = [(f["name"], f["staged"]) for f in response.json()["imported"]["files"]]
+    assert outcomes == [
+        ("bad.zip", False),
+        ("statements.zip/Migros.csv", True),
+        ("statements.zip/Revolut Savings.tsv", True),
+        ("statements.zip/inner.zip", False),
+        ("statements.zip/notes.txt", False),
+    ]
+    assert [f["filename"] for f in _draft(site)["files"]] == [
+        "statements.zip/Migros.csv",
+        "statements.zip/Revolut Savings.tsv",
+    ]
+    kept = {path.name for path in (site.database.parent / "originals").iterdir()}
+    assert kept == {
+        hashlib.sha256((site.folder / name).read_bytes()).hexdigest() + Path(name).suffix
+        for name in ("Migros.csv", "Revolut Savings.tsv")
+    }
