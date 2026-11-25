@@ -18,6 +18,7 @@ securities), then its statements, newest first, each with the file it came from.
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import { heldLines, securitiesQuery } from './holds.js';
+	import CloseAccount from './CloseAccount.svelte';
 	import { bookedAs } from './parts.js';
 	import Sparkline from './Sparkline.svelte';
 
@@ -30,11 +31,15 @@ securities), then its statements, newest first, each with the file it came from.
 		people: boolean;
 		/** Take back a committed statement or remove a staged one; none over a copy. */
 		onremove?: (statement: StatementsAccount['statements'][number]) => void;
+		/** Close an account on a day, or open it again, each with the reason it was refused (null
+		 * when done); none over a copy. */
+		onclose?: (account: StatementsAccount, day: string) => Promise<string | null>;
+		onreopen?: (account: StatementsAccount) => Promise<string | null>;
 		/** What the list is called; how many accounts it has unless given. */
 		title?: string;
 	}
 
-	let { accounts, currency, today, people, onremove, title }: Props = $props();
+	let { accounts, currency, today, people, onremove, onclose, onreopen, title }: Props = $props();
 	const titleId = $props.id();
 
 	const RANGES = [
@@ -260,6 +265,13 @@ securities), then its statements, newest first, each with the file it came from.
 											wait.</span
 										>{/if}
 								</p>
+								{#if onclose && onreopen}
+									<CloseAccount
+										{account}
+										onclose={(when) => onclose(account, when)}
+										onreopen={() => onreopen(account)}
+									/>
+								{/if}
 								<ul class="grid gap-1">
 									{#each account.statements as statement (statement.id)}
 										<li

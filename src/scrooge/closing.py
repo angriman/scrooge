@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import sqlite3
 from bisect import bisect_right
+from collections.abc import Sequence
 from datetime import date
 
-from scrooge import networth, staging
+from scrooge import networth, staging, together
 from scrooge.storage import db, holdings, store
 
 
@@ -29,36 +30,73 @@ class ClosingError(staging.StagingError):
 def close(conn: sqlite3.Connection, *, owner: str, account: str, day: date) -> None:
     """Close `account` of `owner` on `day`, refused unless it held nothing at the end of it and
     nothing is booked, stated or typed for it after; closing a closed account moves the day."""
+    close_all(conn, owner=owner, accounts=[account], day=day)
+
+
+def close_all(conn: sqlite3.Connection, *, owner: str, accounts: Sequence[str], day: date) -> None:
+    """`close` for each of `accounts` in one transaction: all are closed, or none is."""
     with db.transaction(conn):
-        owner_id, found = _account(conn, owner, account)
-        if store.has_staged(conn, found.id):
-            msg = f"{account} of {owner} has statements staged: commit or discard them first"
-            raise ClosingError(msg)
-        store.set_closed(conn, found.id, day)
-        staging.refuse_after_closing(conn, owner_id, "close it on a later day")
-        held = _held_on(conn, owner, owner_id, found.id, day)
-        if held:
-            typed = (
-                ", or type the zero its fund shows ('scrooge balance')"
-                if found.kind == "manual"
-                else ""
-            )
-            msg = (
-                f"{account} of {owner} held {held[0]} at the end of {day}: close it on a day it "
-                f"held nothing{typed}"
-            )
-            raise ClosingError(msg)
+        for account in accounts:
+            _close(conn, owner, account, day)
+
+
+def _close(conn: sqlite3.Connection, owner: str, account: str, day: date) -> None:
+    owner_id, found = _account(conn, owner, account)
+    if store.has_staged(conn, found.id):
+        msg = f"{account} of {owner} has statements staged: commit or discard them first"
+        raise ClosingError(msg)
+    store.set_closed(conn, found.id, day)
+    staging.refuse_after_closing(conn, owner_id, "close it on a later day")
+    held = _held_on(conn, owner, owner_id, found.id, day)
+    if held:
+        typed = (
+            ", or type the zero its fund shows ('scrooge balance')"
+            if found.kind == "manual"
+            else ""
+        )
+        msg = (
+            f"{account} of {owner} held {held[0]} at the end of {day}: close it on a day it "
+            f"held nothing{typed}"
+        )
+        raise ClosingError(msg)
 
 
 def reopen(conn: sqlite3.Connection, *, owner: str, account: str) -> date:
     """Open a closed account again; returns the day it had been closed."""
     with db.transaction(conn):
-        _, found = _account(conn, owner, account)
-        if found.closed is None:
-            msg = f"{account} of {owner} is not closed"
+        return _reopen(conn, owner, account)
+
+
+def reopen_all(conn: sqlite3.Connection, *, owner: str, accounts: Sequence[str]) -> None:
+    """Open each of `accounts` that is closed again, in one transaction; refused when none is."""
+    with db.transaction(conn):
+        shut = [a for a in accounts if _account(conn, owner, a)[1].closed is not None]
+        if not shut:
+            msg = f"{accounts[0]} of {owner} is not closed"
             raise ClosingError(msg)
-        store.set_closed(conn, found.id, None)
-        return found.closed
+        for account in shut:
+            _reopen(conn, owner, account)
+
+
+def _reopen(conn: sqlite3.Connection, owner: str, account: str) -> date:
+    _, found = _account(conn, owner, account)
+    if found.closed is None:
+        msg = f"{account} of {owner} is not closed"
+        raise ClosingError(msg)
+    store.set_closed(conn, found.id, None)
+    return found.closed
+
+
+def booked_as(conn: sqlite3.Connection, owner: str, account: str) -> tuple[str, ...]:
+    """The accounts the books keep what the accounts page lists as `account`: a broker's
+    currencies together (`together`), the account itself alone otherwise."""
+    found = [
+        part
+        for row in together.rows(conn, owner)
+        if row.line.account == account
+        for part in row.parts
+    ]
+    return tuple(dict.fromkeys(found)) or (account,)
 
 
 def _account(conn: sqlite3.Connection, owner: str, name: str) -> tuple[int, store.Account]:

@@ -12,6 +12,7 @@ pages' header is theirs, and a frontend of its own keeps its own choice.
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 import sqlite3
 from collections.abc import Callable
@@ -30,6 +31,7 @@ from scrooge import (
     attention,
     categories,
     classification,
+    closing,
     context,
     costs,
     holding_returns,
@@ -656,6 +658,52 @@ async def _remove(request: Request, action: Callable[..., object]) -> Response:
     return JSONResponse({"owner": owner, "errors": []})
 
 
+async def _closing(request: Request, day: bool) -> Response:
+    """Close an account (`day`: on the day sent, `{"owner", "account", "day"}`) or open it again
+    (`{"owner", "account"}`), each of its currencies when it is a broker's, which the accounts
+    page lists as one account (`closing.booked_as`). Closing is refused unless the account held
+    nothing on the day (`closing`): the reason is sent as it is."""
+    sent = await _sent(request)
+    owner, account = (None, None) if sent is None else (sent.get("owner"), sent.get("account"))
+    when = None
+    if day and sent is not None:
+        with contextlib.suppress(ValueError):  # no day, or not one: refused below
+            when = date.fromisoformat(str(sent.get("day")))
+    if not isinstance(owner, str) or not isinstance(account, str) or (day and when is None):
+        sends = (
+            "the owner, the account and the day (YYYY-MM-DD)"
+            if day
+            else "the owner and the account"
+        )
+        return _refused((f"Send {sends} as JSON.",))
+    state = request.app.state
+
+    def act() -> None:
+        conn = db.connect(state.database)
+        try:
+            parts = closing.booked_as(conn, owner, account)
+            if when is None:
+                closing.reopen_all(conn, owner=owner, accounts=parts)
+            else:
+                closing.close_all(conn, owner=owner, accounts=parts, day=when)
+        finally:
+            conn.close()
+
+    try:
+        await run_in_threadpool(act)
+    except staging.StagingError as exc:
+        return JSONResponse({"errors": [wire.sentence(exc)]}, 409)
+    return JSONResponse({"owner": owner, "account": account, "errors": []})
+
+
+async def _close(request: Request) -> Response:
+    return await _closing(request, True)
+
+
+async def _reopen(request: Request) -> Response:
+    return await _closing(request, False)
+
+
 def _ranges(through: date, start: int) -> list[dict[str, str]]:
     """The ranges offered, as `from` and `to` take them: the year up to the last day committed,
     the twelve months before it, each earlier year of the statements (two at most) and all of
@@ -928,6 +976,8 @@ routes = [
     Route("/import/maturities", _look_up, methods=["POST"], name="api_look_up"),
     Route("/import/categories", _categorize_staged, methods=["POST"], name="api_categorize_staged"),
     Route("/import/category", _add_category, methods=["POST"], name="api_add_category"),
+    Route("/accounts/close", _close, methods=["POST"], name="api_close"),
+    Route("/accounts/reopen", _reopen, methods=["POST"], name="api_reopen"),
     Route("/statements/{number:int}/discard", _discard, methods=["POST"], name="api_discard"),
     Route("/statements/{number:int}/uncommit", _uncommit, methods=["POST"], name="api_uncommit"),
     Route("/pensions", _pensions, name="api_pensions"),
