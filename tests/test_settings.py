@@ -182,7 +182,7 @@ def test_a_rule_edited_keeps_the_comments_of_its_file(places: settings.Places) -
     )
     assert _shared(places).read_text(encoding="utf-8") == SHARED.replace(
         "{match: 'KONSUM', category: Groceries}  # food",
-        '{match: "KONSUM|COOP", category: "Eating out", direction: out}  # food',
+        "{match: 'KONSUM|COOP', category: Eating out, direction: out}  # food",
     )
 
 
@@ -312,7 +312,7 @@ def test_rules_on_lines_of_their_own_are_changed_only_when_it_is_safe(
     )
     assert path.read_text(encoding="utf-8") == (
         "rules:\n"
-        '  - {match: "KONSUM", category: "Groceries", direction: out}\n'
+        "  - {match: KONSUM, category: Groceries, direction: out}\n"
         "  -\n    match: POSTA\n    category: Groceries\n"
         "  - {match: '.', category: Gifts}\n"
     )
@@ -355,7 +355,7 @@ def test_a_category_renamed_follows_on_rows_rules_and_file(
     assert categories.Extra("Mutuo casa", "expenses", "Mutuo casa") in added
     assert places.categories_file.read_text(encoding="utf-8").startswith("# Added by hand.\n")
     assert _own(places).read_text(encoding="utf-8") == OWN.replace(
-        "category: Prestiti", 'category: "Mutuo casa"'
+        "category: Prestiti", "category: Mutuo casa"
     )
     assert len(list((places.database.parent / "backups").iterdir())) == 1
 
@@ -398,7 +398,7 @@ def test_a_category_merged_gives_its_rows_and_rules_the_other(
     assert rows == 1
     assert ("POSTA", "Other shopping") in _categories_of(conn)
     assert "Shipping" not in [e.name for e in categories.load(places.categories_file)]
-    assert 'category: "Other shopping"}' in _shared(places).read_text(encoding="utf-8")
+    assert "category: Other shopping}" in _shared(places).read_text(encoding="utf-8")
     assert "# --- Shops" in _shared(places).read_text(encoding="utf-8")
     assert "Shipping" not in [c.name for c in settings.listed_categories(conn, None)]
 

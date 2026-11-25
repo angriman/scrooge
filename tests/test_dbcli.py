@@ -1841,6 +1841,32 @@ def test_the_only_setup_in_users_is_found(tmp_path: Path, monkeypatch: pytest.Mo
     assert (home / "originals").is_dir()
 
 
+def test_every_command_finds_the_files_of_the_config_from_the_folder_it_runs_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The settings page changes the rules file `import` reads, wherever the config is."""
+    home = _setup(tmp_path, "lukas")
+    write_rules(home)
+    (home / "instruments.yaml").write_text(INSTRUMENTS_YAML + MATURED, encoding="utf-8")
+    shutil.copy(FIXTURES / FILES["Migros.csv"], home / "statements" / "Migros.csv")
+    config = home / "scrooge.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "rules: [users/lukas/rules.yaml]\ninstruments: users/lukas/instruments.yaml\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    code, output = _main("import", "users/lukas/statements", "--config", str(config))
+    assert code == dbcli.OK, output
+    served: list[Starlette] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+    assert _main("serve", "--config", str(config))[0] == dbcli.OK
+    state = served[-1].state
+    assert state.rules.shared == state.imports.rules[0] == Path("users/lukas/rules.yaml")
+    assert state.imports.categories_file.resolve() == home / "categories.yaml"
+    assert state.database.resolve() == home / "scrooge.db"
+
+
 def test_with_several_setups_one_is_chosen_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
