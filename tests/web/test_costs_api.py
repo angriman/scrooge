@@ -11,6 +11,7 @@ from scrooge.storage import db, store
 from scrooge.web import app as webapp
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close
 from tests.test_costs import (
+    ANNA_FUND,
     ANNA_TASTY,
     ANNA_USD,
     END,
@@ -38,6 +39,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
         END,
         ("ibkr", ANNA_USD),
         ("tastytrade", ANNA_TASTY),
+        ("finpension", ANNA_FUND),
     )
     store.set_rate(conn, date(2025, 3, 14), "USD", Decimal("0.80"), source="fetched:yahoo")
     store.set_rate(conn, date(2026, 3, 16), "USD", Decimal("0.90"), source="fetched:yahoo")
@@ -85,6 +87,7 @@ def test_each_year_and_account_is_sent_and_a_currency_without_a_rate_said(
         "owner": OWNER,
         "account": "IBKR USD",
         "name": "IBKR USD",
+        "broker": True,
         "commissions": "3.40",
         "tax": "13.50",
         "total": "16.90",
@@ -97,8 +100,20 @@ def test_for_everyone_two_accounts_of_a_name_are_named_after_their_owners(
     shown = client.get("/api/costs").json()["costs"]
     names = [(each["name"], each["owner"]) for each in shown["accounts"]]
     assert (f"IBKR USD ({PARTNER})", PARTNER) in names
+    # A bank's account is no broker's: its link opens its tax withheld alone.
+    assert [each["broker"] for each in shown["accounts"] if each["account"] == "Migros"] == [False]
     hers = client.get("/api/costs", params={"owner": PARTNER}).json()["costs"]
     assert hers["totals"]["tax_share"] is None
+
+
+def test_transactions_can_be_cut_to_broker_accounts(client: TestClient) -> None:
+    params = {"owner": OWNER, "category": "Commissioni", "accounts": "broker"}
+    sent = client.get("/api/transactions", params=params).json()
+    assert sent["errors"] == []
+    assert {row["account"] for row in sent["rows"]} == {"IBKR USD", "IBKR GBP", "Finpension"}
+    refused = client.get("/api/transactions", params={"accounts": "savings"})
+    assert refused.status_code == 400
+    assert refused.json()["errors"] == ["'savings' is not broker, bank or card accounts."]
 
 
 def test_a_field_that_cannot_be_read_is_refused(client: TestClient) -> None:

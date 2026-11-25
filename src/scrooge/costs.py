@@ -2,7 +2,7 @@
 from what investments paid. The costs under the income view of the investments page.
 
 **Commissions** are the rows of the category `Commissioni` on the accounts a broker's statements
-feed (`broker_cash`, `broker_securities`): what a trade cost at IBKR or Tastytrade, a regulatory
+feed (`query.ACCOUNTS["broker"]`): what a trade cost at IBKR or Tastytrade, a regulatory
 fee, the administrative fee of the pension fund at Finpension. A bank's fees have the same
 category but are no cost of investing, and are left out; so is the fee Revolut's savings fund
 takes from its interest, booked on the bank account. **Tax withheld** is every row of the
@@ -38,7 +38,7 @@ from scrooge.cashflow import Counted
 from scrooge.networth import DEFAULT_CURRENCY, MissingRateError, convert, rates_on
 
 COMMISSIONS, TAX = "Commissioni", payouts.TAX
-_BROKERS = ("broker_cash", "broker_securities")  # the kinds of account a broker feeds
+_BROKERS = query.ACCOUNTS["broker"]  # the kinds of account a broker feeds
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +80,7 @@ class Account:
     account: str  # as stored
     name: str  # the account's, with its owner's after it when two people have one of its name
     cost: Cost
+    broker: bool  # a broker's: its commissions count; else only its tax withheld does
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +150,7 @@ def run(
         tuple(years),
         _cost(found.between(start, end)),
         sum((year.paid for year in years), Decimal(0)),
-        _accounts(found.between(start, end)),
+        _accounts(found.between(start, end), brokers),
         _missing(why, paid.missing),
     )
 
@@ -162,7 +163,7 @@ def _cost(rows: Iterable[Converted]) -> Cost:
     return Cost(sums[COMMISSIONS].quantize(CENT), sums[TAX].quantize(CENT))
 
 
-def _accounts(rows: Iterable[Converted]) -> tuple[Account, ...]:
+def _accounts(rows: Iterable[Converted], brokers: set[tuple[str, str]]) -> tuple[Account, ...]:
     """The rows grouped by account, what cost the most first."""
     grouped: dict[tuple[str, str], list[Converted]] = {}
     for each in rows:
@@ -176,7 +177,7 @@ def _accounts(rows: Iterable[Converted]) -> tuple[Account, ...]:
         if cost == NOTHING:
             continue
         name = f"{account} ({whose})" if len(owners[account]) > 1 else account
-        found.append(Account(whose, account, name, cost))
+        found.append(Account(whose, account, name, cost, (whose, account) in brokers))
     found.sort(key=lambda each: (-each.cost.total, each.name))
     return tuple(found)
 

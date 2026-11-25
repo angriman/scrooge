@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from scrooge import costs
+from scrooge import costs, query
 from scrooge.costs import Account, Cost
 from scrooge.models import Kind, Transaction
 from scrooge.storage import db, store
@@ -54,6 +54,11 @@ ANNA_TASTY = [
     row("-2", date(2026, 4, 1), "1", **COMMISSION, **TASTY),
     row("2", date(2026, 4, 2), "2", **COMMISSION, **TASTY),
 ]
+# More refunded than charged: the account is listed, its cost below zero.
+ANNA_FUND = [
+    row("-1", date(2026, 3, 1), "1", **COMMISSION, account="Finpension 3a"),
+    row("3", date(2026, 6, 1), "2", **COMMISSION, account="Finpension 3a"),
+]
 
 
 @pytest.fixture(scope="module")
@@ -69,6 +74,7 @@ def conn() -> Iterator[sqlite3.Connection]:
         END,
         ("ibkr", ANNA_USD),
         ("tastytrade", ANNA_TASTY),
+        ("finpension", ANNA_FUND),
     )
     for day, currency, rate in (
         (date(2025, 1, 1), "EUR", "0.95"),
@@ -117,9 +123,10 @@ def test_each_year_has_its_commissions_and_tax_each_row_at_its_day_s_rate(
 
 def test_each_account_what_cost_the_most_first(conn: sqlite3.Connection) -> None:
     assert costs.run(conn, owner=OWNER, currency="CHF").accounts == (
-        Account(OWNER, "IBKR USD", "IBKR USD", cost("3.40", "13.50")),
-        Account(OWNER, "Finpension", "Finpension", cost("10.00", "0")),
-        Account(OWNER, "Migros", "Migros", cost("0", "1.75")),
+        Account(OWNER, "IBKR USD", "IBKR USD", cost("3.40", "13.50"), broker=True),
+        Account(OWNER, "Finpension", "Finpension", cost("10.00", "0"), broker=True),
+        # A bank's: only its tax withheld counts, not its fee.
+        Account(OWNER, "Migros", "Migros", cost("0", "1.75"), broker=False),
     )
 
 
@@ -127,17 +134,21 @@ def test_both_people_together_name_their_accounts_of_a_name_after_each(
     conn: sqlite3.Connection,
 ) -> None:
     shown = costs.run(conn, currency="CHF")
-    assert [year.cost for year in shown.years] == [cost("1.60", "0"), cost("15.00", "15.25")]
+    assert [year.cost for year in shown.years] == [cost("1.60", "0"), cost("13.00", "15.25")]
     assert [(each.name, each.owner, each.cost) for each in shown.accounts] == [
         (f"IBKR USD ({OWNER})", OWNER, cost("3.40", "13.50")),
         ("Finpension", OWNER, cost("10.00", "0")),
         (f"IBKR USD ({PARTNER})", PARTNER, cost("3.20", "0")),
         ("Migros", OWNER, cost("0", "1.75")),
+        ("Finpension 3a", PARTNER, cost("-2.00", "0")),
     ]
     # Her figures alone: her statements start in 2026, and nothing was paid her.
     hers = costs.run(conn, owner=PARTNER, currency="CHF")
     assert [year.year for year in hers.years] == [2026]
-    assert hers.accounts == (Account(PARTNER, "IBKR USD", "IBKR USD", cost("3.20", "0")),)
+    assert hers.accounts == (
+        Account(PARTNER, "IBKR USD", "IBKR USD", cost("3.20", "0"), broker=True),
+        Account(PARTNER, "Finpension 3a", "Finpension 3a", cost("-2.00", "0"), broker=True),
+    )
     assert hers.tax_share is None
 
 
@@ -164,3 +175,18 @@ def test_nothing_committed_costs_nothing() -> None:
         (),
         "EUR",
     )
+
+
+def test_the_rows_behind_the_commissions_are_those_of_broker_accounts(
+    conn: sqlite3.Connection,
+) -> None:
+    """What the panel's link to a year's commissions lists: the bank's fee is not there."""
+    wanted = query.Filter(
+        owner=OWNER, category="Commissioni", account_kinds=query.ACCOUNTS["broker"]
+    )
+    found = query.run(conn, wanted).rows
+    assert {row.account for row in found} == {"IBKR USD", "IBKR GBP", "Finpension"}
+    every = query.run(conn, query.Filter(owner=OWNER, category="Commissioni")).rows
+    assert {row.account for row in every} - {row.account for row in found} == {"Migros"}
+    banks = query.Filter(owner=OWNER, account_kinds=query.ACCOUNTS["bank"])
+    assert {row.account for row in query.run(conn, banks).rows} == {"Migros"}

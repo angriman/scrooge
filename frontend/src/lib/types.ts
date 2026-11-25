@@ -870,8 +870,9 @@ export interface CostsReport {
 	/** Oldest first; `whole` is false for the year counted so far, up to `last`. */
 	years: CostYear[];
 	totals: Cost & { paid: Amount; tax_share: Amount | null };
-	/** What cost the most first; `name` has the owner after it when two people have one of it. */
-	accounts: (Cost & { owner: string; account: string; name: string })[];
+	/** What cost the most first; `name` has the owner after it when two people have one of it.
+	 * `broker`: a broker's account, whose commissions count; of any other only the tax does. */
+	accounts: (Cost & { owner: string; account: string; name: string; broker: boolean })[];
 }
 
 export type CostYear = Cost & {

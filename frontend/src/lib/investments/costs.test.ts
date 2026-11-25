@@ -1,6 +1,7 @@
+import { error } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
 import type { CostYear } from '#lib/types.js';
-import { costsAnything, costsOf, newestFirst, parts } from './costs.js';
+import { costsAnything, costsOf, newestFirst, parts, whyNot } from './costs.js';
 
 const YEAR: CostYear = {
 	year: 2025,
@@ -34,22 +35,53 @@ describe('what investing costs', () => {
 		expect(parts({ commissions: '0.00', tax: '1.75' })).toBe('tax withheld 2');
 	});
 
+	it('says an account was refunded more commissions than it was charged', () => {
+		expect(parts({ commissions: '-2.00', tax: '0.00' })).toBe('commissions refunded 2');
+	});
+
 	it('says whether anything cost something', () => {
 		expect(costsAnything({ years: [YEAR, SO_FAR] })).toBe(true);
 		expect(costsAnything({ years: [{ ...YEAR, total: '0.00' }] })).toBe(false);
 		expect(costsAnything({ years: [] })).toBe(false);
 	});
 
-	it('opens the rows of a category in a year, for the person shown', () => {
-		expect(costsOf({ category: 'Ritenute', year: 2026 }, 'Lukas').toString()).toBe(
-			'owner=Lukas&category=Ritenute&from=2026&to=2026'
-		);
-		expect(costsOf({ category: 'Commissioni' }, null).toString()).toBe('category=Commissioni');
+	it('says why the costs could not be loaded', () => {
+		let failed: unknown;
+		try {
+			error(400, "No owner named 'Nobody'.");
+		} catch (thrown) {
+			failed = thrown;
+		}
+		expect(whyNot(failed)).toBe("No owner named 'Nobody'.");
+		expect(whyNot(new TypeError('Failed to fetch'))).toBe('Failed to fetch.');
+		expect(whyNot('?')).toBe('');
 	});
 
-	it('opens the commissions and tax of an account, of its owner', () => {
-		expect(costsOf({ account: 'IBKR USD', owner: 'Anna' }, null).toString()).toBe(
+	it('opens the commissions of a year on broker accounts alone, for the person shown', () => {
+		expect(costsOf({ category: 'Commissioni', year: 2026 }, 'Lukas').toString()).toBe(
+			'owner=Lukas&category=Commissioni&accounts=broker&from=2026&to=2026'
+		);
+		expect(costsOf({ category: 'Commissioni' }, null).toString()).toBe(
+			'category=Commissioni&accounts=broker'
+		);
+	});
+
+	it('opens the tax withheld of a year wherever it was withheld', () => {
+		expect(costsOf({ category: 'Ritenute', year: 2026 }, null).toString()).toBe(
+			'category=Ritenute&from=2026&to=2026'
+		);
+	});
+
+	it('opens the commissions and tax of a broker account, of its owner', () => {
+		expect(costsOf({ account: 'IBKR USD', owner: 'Anna', broker: true }, null).toString()).toBe(
 			'owner=Anna&account=IBKR+USD&kind=commission%2Ctax'
+		);
+	});
+
+	it('opens only the tax withheld of another account: its fees are no cost of investing', () => {
+		// A bank account listed for 1.75 of tax withheld, whose fee of 5 the panel does not count.
+		expect(costsOf({ account: 'Migros', owner: 'Lukas', broker: false }, 'Lukas').toString()).toBe(
+			'owner=Lukas&account=Migros&category=Ritenute'
 		);
 	});
 });

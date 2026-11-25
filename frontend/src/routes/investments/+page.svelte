@@ -27,7 +27,7 @@
 	const errors = $derived([
 		...new Set([
 			...(data.held?.errors ?? data.income?.errors ?? data.performance?.errors ?? []),
-			...(data.costs?.errors ?? [])
+			...(data.costs?.sent?.errors ?? [])
 		])
 	]);
 	const owner = $derived(page.url.searchParams.get('owner'));
@@ -158,7 +158,9 @@
 			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
 			{owner}
 		/>
-		{#if data.costs}<Costs costs={data.costs.costs} {owner} />{/if}
+		{#if data.costs}
+			<Costs costs={data.costs.sent?.costs ?? null} unavailable={data.costs.unavailable} {owner} />
+		{/if}
 	{/if}
 {:else if !held || !held.day}
 	{#if !errors.length}

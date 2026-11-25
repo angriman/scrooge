@@ -938,7 +938,13 @@ def costs_report(shown: costs.Costs) -> JSON:
             "tax_share": _percent(shown.tax_share),
         },
         "accounts": [
-            {"owner": each.owner, "account": each.account, "name": each.name, **_cost(each.cost)}
+            {
+                "owner": each.owner,
+                "account": each.account,
+                "name": each.name,
+                "broker": each.broker,
+                **_cost(each.cost),
+            }
             for each in shown.accounts
         ],
     }
