@@ -24,7 +24,8 @@ from scrooge.storage import db, store
 from scrooge.storage.money import PrecisionError
 from scrooge.validation import ReconciliationError
 
-UPLOADS = 200  # files taken by one import: a year of monthly statements of every source
+# Files taken by one import: a folder of a few years of monthly statements of every source.
+UPLOADS = 500
 HELD = timedelta(hours=1)  # how long the files of an import stopped on bills are kept
 # What stops an import: nothing is stored, and the page says why.
 REFUSED = (

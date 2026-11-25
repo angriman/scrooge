@@ -457,12 +457,16 @@ async def _upload(request: Request) -> Response:
     a file that fails stores nothing of itself and stops no other."""
     _writable(request, request.headers.get("x-token", ""))
     owners = _importable(request)
-    async with request.form(max_files=uploads_.UPLOADS) as form:
-        owner = str(form.get("owner", ""))
-        sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
-        uploads = [
-            (uploads_.name(part.filename), await part.read()) for part in sent if part.filename
-        ]
+    try:
+        async with request.form(max_files=uploads_.UPLOADS) as form:
+            owner = str(form.get("owner", ""))
+            sent = [part for part in form.getlist("file") if isinstance(part, UploadFile)]
+            uploads = [
+                (uploads_.name(part.filename), await part.read()) for part in sent if part.filename
+            ]
+    except HTTPException as exc:
+        # A form the parser refuses, most often more files than one import takes.
+        return _refused((f"Nothing was imported: {exc.detail}",))
     if owner not in owners:
         return _refused((f"{owner or 'Nobody'} is nobody the config names.",))
     if not uploads:
