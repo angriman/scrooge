@@ -192,6 +192,8 @@ export interface Position {
 	cost_native: Amount | null;
 	gain_native: Amount | null;
 	gain_percent: Amount | null;
+	/** What it returned, in the currency asked for. */
+	returns: HoldingReturns | null;
 }
 
 /** One instrument, every account together, with its positions. */
@@ -206,7 +208,31 @@ export interface HeldInstrument {
 	cost: Amount | null;
 	gain: Amount | null;
 	return_percent: Amount | null;
+	/** What it returned, every account together, in the currency asked for. */
+	returns: HoldingReturns | null;
 	positions: Position[];
+}
+
+/** What a holding returned over a range (src/scrooge/holding_returns.py `Period`): all null
+ * when it was not held through all of it. `all` is since bought. */
+export interface PeriodReturn {
+	range: '1m' | 'ytd' | '1y' | 'all';
+	/** The first day counted. */
+	first: Day | null;
+	/** Time-weighted, dividends included. */
+	percent: Amount | null;
+	amount: Amount | null;
+}
+
+/** What a holding or a position returned (src/scrooge/holding_returns.py `Returns`). */
+export interface HoldingReturns {
+	periods: PeriodReturn[];
+	/** What sales brought less what their lots cost; null: not known. */
+	realised: Amount | null;
+	unrealised: Amount | null;
+	dividends: Amount;
+	/** Withheld from them: negative. */
+	tax: Amount;
 }
 
 export interface SpreadSlice {

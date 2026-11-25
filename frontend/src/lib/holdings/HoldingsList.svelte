@@ -1,15 +1,16 @@
 <!--
 @component
 Every instrument held, every account together: its value and share of securities, and what it
-gained since it was bought. Sorted by value, by gain or by return. A row opens to its positions,
-account by account, with the quantity, the price it is valued at (and when that price is from,
-when it is not the last day), what it cost and what it gained, in the instrument's currency.
+gained since it was bought. Sorted by value, by gain, by return or by the return over the past
+year. A row opens to its positions, account by account, with the quantity, the price it is
+valued at (and when that price is from, when it is not the last day), what it cost and what it
+gained, in the instrument's currency; then what it returned over each range (`HoldingReturns`).
 -->
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import { assetColor } from '#lib/design/data.js';
 	import { day } from '#lib/format/date.js';
-	import { approximate, exact, money, percent } from '#lib/format/number.js';
+	import { exact, money, percent } from '#lib/format/number.js';
 	import type { HeldInstrument, Position } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Change from '#lib/ui/Change.svelte';
@@ -17,6 +18,8 @@ when it is not the last day), what it cost and what it gained, in the instrument
 	import Share from '#lib/ui/Share.svelte';
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
+	import HoldingReturns from './HoldingReturns.svelte';
+	import { SORTS, sortHoldings, yearOf, type Sort } from './returns.js';
 
 	interface Props {
 		holdings: HeldInstrument[];
@@ -32,25 +35,10 @@ when it is not the last day), what it cost and what it gained, in the instrument
 
 	let { holdings, logos, currency, lastDay, people, open = $bindable(null) }: Props = $props();
 
-	const SORTS = [
-		{ value: 'value', label: 'Value' },
-		{ value: 'gain', label: 'Gain' },
-		{ value: 'return', label: 'Return' }
-	] as const;
-	let sort = $state<(typeof SORTS)[number]['value']>('value');
+	let sort = $state<Sort>('value');
 
 	const keyOf = (holding: HeldInstrument) => `${holding.symbol}|${holding.currency}|${holding.asset}`;
-	// What is not known goes last, whatever the order.
-	const rank = (value: string | null) => (value === null ? -Infinity : approximate(value));
-	const sorted = $derived(
-		sort === 'value'
-			? holdings
-			: [...holdings].sort(
-					(a, b) =>
-						rank(sort === 'gain' ? b.gain : b.return_percent) -
-						rank(sort === 'gain' ? a.gain : a.return_percent)
-				)
-	);
+	const sorted = $derived(sortHoldings(holdings, sort));
 	const withLogos = $derived(holdings.some((holding) => logos[holding.symbol]));
 
 	const priced = (position: Position) => {
@@ -111,7 +99,14 @@ when it is not the last day), what it cost and what it gained, in the instrument
 						<Amount value={holding.value} {currency} places={0} />
 					</span>
 					<span class="hidden text-right sm:block">
-						{#if holding.gain === null}
+						{#if sort === 'year'}
+							{@const year = yearOf(holding.returns)}
+							{#if year === null}
+								<span class="text-small text-ink-muted">not held all year</span>
+							{:else}
+								<Change amount={year.amount} percent={year.percent} label="1Y" class="text-small" />
+							{/if}
+						{:else if holding.gain === null}
 							<span class="text-small text-ink-muted">cost not known</span>
 						{:else}
 							<Change amount={holding.gain} percent={holding.return_percent} class="text-small" />
@@ -165,6 +160,7 @@ when it is not the last day), what it cost and what it gained, in the instrument
 								{/each}
 							</tbody>
 						</table>
+						<HoldingReturns {holding} {currency} {people} />
 					</div>
 				{/if}
 			</li>
