@@ -2,6 +2,7 @@ import sqlite3
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from scrooge.errors import ConfigError
 from scrooge.extractors import ocr, swisscard
 from scrooge.router import LABELS
 from scrooge.storage import db, originals
-from tests.conftest import FIXTURES, INSTRUMENTS_YAML, MATURED, write_rules
+from tests.conftest import FIXTURES, INSTRUMENTS_YAML, MATURED, MONTHS, monthly_migros, write_rules
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE
 
 NOW = datetime(2026, 12, 20, 12, 0, tzinfo=UTC)
@@ -298,3 +299,66 @@ def test_an_unmatched_category_that_does_not_exist_is_refused(
 ) -> None:
     with pytest.raises(ConfigError, match="'Nowhere' is no category"):
         importing.read(OWNER, files_of(folder), replace(setup, unmatched="Nowhere"))
+
+
+def stored_months(conn: sqlite3.Connection) -> list[str]:
+    """The statements stored, staged or committed, by their first day."""
+    return [
+        row[0] for row in conn.execute("SELECT filename FROM statement_files ORDER BY period_start")
+    ]
+
+
+def test_statements_of_one_account_are_staged_in_date_order_whatever_their_names(
+    conn: sqlite3.Connection, setup: importing.Setup, tmp_path: Path
+) -> None:
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    files = monthly_migros(drop, MONTHS, Decimal(500))
+    found = importing.read(OWNER, sorted(files, reverse=True), setup)
+    assert found.refused == ()
+    done = importing.stage(conn, tmp_path / "data" / "scrooge.db", found, setup, NOW)
+    assert done.refused == ()
+    assert done.staged is not None
+    assert done.staged.gaps == ()
+    assert [f.name for f in done.files] == sorted(MONTHS)  # shown by name
+    assert len(staging.commit(conn, owner=OWNER, now=NOW)) == len(MONTHS)
+    assert stored_months(conn) == ["Jan.csv", "Feb.csv", "Mar.csv", "Apr.csv"]
+
+
+def test_statements_staged_one_by_one_are_staged_in_date_order_whatever_their_names(
+    conn: sqlite3.Connection, setup: importing.Setup, tmp_path: Path
+) -> None:
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    files = monthly_migros(drop, MONTHS, Decimal(500))
+    # Two exports of another account and the same days: the one transaction is refused, and
+    # each file is staged on its own.
+    revolut = FIXTURES / "revolut" / "chf.tsv"
+    twins = [drop / "Revolut.tsv", drop / "Revolut copy.tsv"]
+    twins[0].write_bytes(revolut.read_bytes())
+    twins[1].write_bytes(revolut.read_bytes() + b"\n")
+    found = importing.read(OWNER, [*twins, *files], setup)
+    done = importing.stage(conn, tmp_path / "data" / "scrooge.db", found, setup, NOW)
+    assert [f.name for f in done.refused] == ["Revolut copy.tsv", "Revolut.tsv"]
+    assert all(by_name(done)[name].staged for name in MONTHS)
+    assert done.staged is not None
+    assert done.staged.gaps == ()
+    assert len(staging.commit(conn, owner=OWNER, now=NOW)) == len(MONTHS)
+    assert stored_months(conn) == ["Jan.csv", "Feb.csv", "Mar.csv", "Apr.csv"]
+
+
+def test_of_statements_staged_one_by_one_the_first_that_breaks_the_chain_is_refused(
+    conn: sqlite3.Connection, setup: importing.Setup, tmp_path: Path
+) -> None:
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    # February does not start where January closed: February is the one refused, whatever
+    # the names, and the months around it are staged.
+    files = monthly_migros(drop, MONTHS, Decimal(500), {"Feb.csv": Decimal(50)})
+    found = importing.read(OWNER, files, setup)
+    done = importing.stage(conn, tmp_path / "data" / "scrooge.db", found, setup, NOW)
+    assert [f.name for f in done.refused] == ["Feb.csv"]
+    assert stored_months(conn) == ["Jan.csv", "Mar.csv", "Apr.csv"]
+    assert done.staged is not None
+    (gap,) = done.staged.gaps
+    assert "2026-01-31" in gap

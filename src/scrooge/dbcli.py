@@ -231,7 +231,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         nargs="+",
         metavar="path",
-        help="statement files, or folders holding them (subfolders are not searched)",
+        help="statement files, or folders holding them (subfolders too; hidden files are skipped)",
     )
     _rules_flags(load)
     load.add_argument(
@@ -291,7 +291,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         nargs="+",
         metavar="path",
-        help="statement files, or folders holding them (subfolders are not searched)",
+        help="statement files, or folders holding them (subfolders too; hidden files are skipped)",
     )
     mark = commands.add_parser("logo", parents=[files], help="keep an instrument's logo")
     mark.add_argument("symbol", help="the instrument's symbol: a ticker, an ISIN or a CUSIP")
@@ -671,7 +671,7 @@ def _run(args: argparse.Namespace, console: _Console, now: datetime) -> int:
             return _publish(conn, path, args.folder or config.get("publish"), args.config, out)
         about_data: dict[str, Callable[[], int]] = {
             "query": lambda: _query(conn, args, out),
-            "keep": lambda: _keep(conn, path, _files(args.paths), out),
+            "keep": lambda: _keep(conn, path, _files(args.paths, path), out),
             "logo": lambda: _logo(conn, args, now, out),
         }
         if args.command in about_data:
@@ -1048,7 +1048,7 @@ def _import(session: _Session, args: argparse.Namespace, config: dict[str, objec
         session.labels,
         _unmatched(config, args.config),
     )
-    found = importing.read(session.owner, _files(args.paths), setup)
+    found = importing.read(session.owner, _files(args.paths, session.path), setup)
     if args.review and found.month.uncategorized:
         everyone = [pattern for patterns in session.people.values() for pattern in patterns]
         personal = (setup.own(session.owner), everyone)
@@ -1185,18 +1185,41 @@ def _known_as(symbol: str, instruments_file: Path) -> str:
     return renamed.ticker if renamed is not None and renamed.ticker else symbol
 
 
-def _files(paths: Sequence[Path]) -> list[Path]:
-    """The files named, and the files directly inside the folders named."""
+def _files(paths: Sequence[Path], database: Path) -> list[Path]:
+    """The files named, and every file inside the folders named and their subfolders, each
+    once. Hidden files and folders are left out (`.DS_Store`, `.git`), so is what a Mac adds
+    to a zip, and so are the database, its originals and its copies."""
     files: list[Path] = []
+    own = [
+        database.resolve(),
+        originals.folder_of(database).resolve(),
+        (database.parent / staging.BACKUPS).resolve(),
+    ]
     for path in paths:
         if path.is_dir():
-            files += [p for p in path.iterdir() if p.is_file() and not p.name.startswith(".")]
+            files += sorted(
+                p
+                for p in path.rglob("*")
+                if p.is_file()
+                and not _hidden(p.relative_to(path))
+                and not any(p.resolve().is_relative_to(kept) for kept in own)
+            )
         elif path.is_file():
             files.append(path)
         else:
             msg = f"{path}: no such file or folder"
             raise ConfigError(msg)
-    return files
+    unique: dict[Path, Path] = {}
+    for file in files:
+        unique.setdefault(file.resolve(), file)
+    return list(unique.values())
+
+
+def _hidden(path: Path) -> bool:
+    return any(part.startswith(".") or part == _MAC_ZIP for part in path.parts)
+
+
+_MAC_ZIP = "__MACOSX"  # the folder of resource forks a zip made on a Mac holds
 
 
 def _commit(session: _Session) -> int:

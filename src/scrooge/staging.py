@@ -153,7 +153,8 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
     last one committed. One that starts before what is committed of an account and reaches
     into it is refused, as is a certificate of a day another committed certificate states.
     """
-    owner, statements, people = batch.owner, batch.statements, batch.people
+    owner, people = batch.owner, batch.people
+    statements = in_date_order(batch.statements)
     over = now.date() - timedelta(days=1)  # the last day that is over
     with db.transaction(conn):
         owner_id = store.ensure_owner(conn, owner)
@@ -243,6 +244,12 @@ def stage(conn: sqlite3.Connection, batch: Batch, now: datetime) -> Staged:
             later=later,
             nothing_new=tuple(sorted([*nothing, *unchanged])),
         )
+
+
+def in_date_order(statements: Iterable[Statement]) -> list[Statement]:
+    """The statements by the days they cover, the earliest first, then by name: each is
+    staged after the ones its opening balance follows from, whatever the files are called."""
+    return sorted(statements, key=lambda s: (*s.extraction.period, s.filename))
 
 
 def _refuse_other_owners(
@@ -437,7 +444,7 @@ def _store_certificates(
     stored: set[int] = set()
     replaced: set[int] = set()
     unchanged: list[str] = []
-    for certificate in certificates:
+    for certificate in sorted(certificates, key=lambda c: (c.stated.as_of, c.filename)):
         stated = certificate.stated
         other = seen.setdefault((certificate.account, stated.as_of), certificate.filename)
         if other != certificate.filename:
@@ -605,13 +612,16 @@ def _rules_kept() -> Iterator[dict[Path, str | None]]:
             raise
 
 
+BACKUPS = "backups"  # the folder of the copies, next to the database
+
+
 def copy_before(conn: sqlite3.Connection, database: Path, now: datetime) -> Path:
     """Save a copy of the database in `backups/` next to it, under a name no copy has yet.
 
     Two commits in one second get two files: dropping the copy of the one that changed
     nothing never takes away the copy the other one kept.
     """
-    folder = database.parent / "backups"
+    folder = database.parent / BACKUPS
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"{database.stem}-{now:%Y%m%dT%H%M%S}"
     taken = 0

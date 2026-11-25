@@ -213,14 +213,16 @@ def stage(
         # Two files of one account and the same days: staged one by one the second would
         # replace the first, and which it is would depend on their names. Both are refused.
         problems.update(staging.twins(found.statements, found.month.transactions))
-        for statement in found.statements:
+        # In date order: a statement that does not follow from the one before is the one
+        # refused, not the earlier one staged after it.
+        for statement in staging.in_date_order(found.statements):
             if statement.filename in problems:
                 continue
             try:
                 results.append(staging.stage(conn, batch([statement], ()), now))
             except _REFUSED as exc:
                 problems[statement.filename] = str(exc)
-        for certificate in found.certificates:
+        for certificate in sorted(found.certificates, key=lambda c: (c.stated.as_of, c.filename)):
             try:
                 results.append(staging.stage(conn, batch((), [certificate]), now))
             except _REFUSED as exc:

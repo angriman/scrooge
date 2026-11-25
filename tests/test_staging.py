@@ -866,7 +866,9 @@ def test_a_certificate_gives_its_account_a_balance_and_no_rows(conn: sqlite3.Con
     # each is a statement of the one day it is dated
     links = "SELECT f.source, a.name FROM statement_accounts s JOIN statement_files f "
     assert rows(
-        conn, links + "ON f.id = s.statement_file_id JOIN accounts a ON a.id = s.account_id"
+        conn,
+        links + "ON f.id = s.statement_file_id JOIN accounts a ON a.id = s.account_id "
+        "ORDER BY f.source",
     ) == [
         ("axa", "Pillar 2 AXA"),
         ("servisa", "Pillar 2 Servisa"),
