@@ -87,6 +87,7 @@ scrooge statements          # the statements stored, staged ones first, with the
 scrooge uncommit <id>       # take a committed statement back: it is staged again
 scrooge discard <id>        # remove a staged statement and everything it staged
 scrooge keep <path>...      # keep the files of statements imported before originals/ existed
+scrooge doctor              # the schema, the database file, the rules, the originals, the prices
 scrooge query --from 2026-09 --to 2026-09 --category Groceries --summary
 ```
 
