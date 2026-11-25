@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import pensions, staging
+from scrooge import categories, pensions, staging
 from scrooge.models import CashBalance, Kind, Transaction
 from scrooge.networth import PENSION, PILLAR2
 from scrooge.pensions import Change
@@ -20,7 +20,7 @@ from tests.test_networth import NOW, account, bought, close, ibkr, price, rate, 
 
 D = Decimal
 UNITS = "CH0000000001"
-PAID_IN = {"kind": Kind.TRANSFER, "category": "Investimenti"}
+PAID_IN = {"kind": Kind.TRANSFER, "category": categories.INVESTMENTS}
 IN_3A = {"account": "Finpension 3a", "currency": "CHF"}
 
 
@@ -57,7 +57,7 @@ def three_a(conn: sqlite3.Connection) -> None:
         bought(UNITS, "10", "-900", date(2025, 9, 11), asset_tab="Funds", **IN_3A),
         spent("1000", date(2026, 1, 15), **PAID_IN, **IN_3A),
         bought(UNITS, "10", "-950", date(2026, 1, 16), asset_tab="Funds", **IN_3A),
-        spent("-5", date(2026, 6, 30), kind=Kind.COMMISSION, category="Commissioni", **IN_3A),
+        spent("-5", date(2026, 6, 30), kind=Kind.COMMISSION, category=categories.FEES, **IN_3A),
     )
     close(conn, finpension(*rows), month=date(2025, 9, 1))
     price(conn, UNITS, date(2025, 12, 31), "100")

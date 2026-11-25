@@ -850,6 +850,7 @@ export interface SettingsCategories {
 	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
 	unmatched: string | null;
 	editable: boolean;
+	errors: string[];
 }
 
 /** What one pension did from the end of `since` to the last day (src/scrooge/pensions.py
