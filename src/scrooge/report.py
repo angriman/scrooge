@@ -50,8 +50,11 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     everyone, who paid too."""
     query.check_names(conn, query.Filter(owner=owner))
     through = analysis.through(conn, owner)
+    earliest = analysis.since(conn, owner)
     if first is None and last is None and through is not None:
         first = analysis.add_months(through, -11)
+    if first is not None and earliest is not None:
+        first = max(first, earliest)
     counted = cashflow.counted(conn, owner)
     prepared = analysis.prepare(conn, counted, currency, through)
     return Report(
@@ -83,20 +86,17 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
             prepared=prepared,
         ),
         cashflow.run(conn, first=first, last=last, owner=owner, grouping=grouping, rows=counted),
-        _shortcuts(conn, owner, through),
+        _shortcuts(earliest, through),
         None
         if owner
         else paidby.run(conn, first=first, last=last, currency=currency, prepared=prepared),
     )
 
 
-def _shortcuts(
-    conn: sqlite3.Connection, owner: str | None, through: date | None
-) -> tuple[Shortcut, ...]:
-    if through is None:
+def _shortcuts(earliest: date | None, through: date | None) -> tuple[Shortcut, ...]:
+    if through is None or earliest is None:
         return ()
-    firsts = [p.first for p in query.people(conn) if p.first and owner in (None, p.name)]
-    start = min(firsts).year
+    start = earliest.year
     years = [str(year) for year in range(through.year, max(start, through.year - 2) - 1, -1)]
     return (
         Shortcut(LAST_TWELVE, "", ""),

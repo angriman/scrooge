@@ -186,3 +186,24 @@ def test_no_range_is_offered_without_a_first_day(
     sent = client.get("/api/income", params={"owner": OWNER}).json()
     assert sent["income"]["through"] == "2026-08-31"
     assert sent["ranges"] == []
+
+
+def test_income_clamps_ranges_to_the_first_statement_month(client: TestClient) -> None:
+    # Anna's statements cover 2026-01..2026-08 (8 months).
+    for params in (
+        {"owner": PARTNER},
+        {"owner": PARTNER, "range": "ytd"},
+        {"owner": PARTNER, "range": "1y"},
+        {"owner": PARTNER, "range": "all"},
+        {"owner": PARTNER, "from": "2025"},
+    ):
+        shown = client.get("/api/income", params=params).json()["income"]
+        assert shown["first"] == "2026-01-01"
+        assert len(shown["months"]) == 8
+        assert shown["months"][0]["month"] == "2026-01"
+        assert shown["months"][-1]["month"] == "2026-08"
+
+    earlier = client.get(
+        "/api/income", params={"owner": PARTNER, "from": "2025", "to": "2025"}
+    ).json()["income"]
+    assert (earlier["months"], earlier["holdings"]) == ([], [])

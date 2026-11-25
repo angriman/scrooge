@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PayingHolding } from '#lib/types.js';
 import {
 	change,
+	firstStatementMonth,
 	highest,
 	isTrailing,
 	kindsOf,
@@ -89,5 +90,20 @@ describe('what investments paid', () => {
 		expect(isTrailing({ first: '2026-01-01', last: through, through })).toBe(false);
 		expect(isTrailing({ first: '2025-09-01', last: '2026-07-31', through })).toBe(false);
 		expect(isTrailing({ first: null, last: null, through: null })).toBe(false);
+
+		// When statements start inside the 12-month window, clamped 12m/YTD matches trailing.
+		const people = [
+			{ name: 'Lukas', first: '2025-01-15' },
+			{ name: 'Anna', first: '2026-01-06' }
+		];
+		expect(firstStatementMonth(people, 'Anna')).toBe('2026-01-01');
+		expect(firstStatementMonth(people, 'Lukas')).toBe('2025-01-01');
+		expect(firstStatementMonth(people, null)).toBe('2025-01-01');
+		expect(firstStatementMonth([{ name: 'Anna', first: null }], null)).toBeNull();
+
+		expect(isTrailing({ first: '2026-01-01', last: through, through }, '2026-01-01')).toBe(true);
+		expect(isTrailing({ first: '2026-03-01', last: through, through }, '2026-01-01')).toBe(false);
+		// Longer history ("all") is not trailing.
+		expect(isTrailing({ first: '2025-01-01', last: through, through }, '2025-01-01')).toBe(false);
 	});
 });

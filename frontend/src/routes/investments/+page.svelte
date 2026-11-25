@@ -13,7 +13,7 @@
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
-	import { DEFAULT_RANGE } from '#lib/investments/income.js';
+	import { DEFAULT_RANGE, firstStatementMonth } from '#lib/investments/income.js';
 	import { choose as choosePreset, chosen as presetOf } from '#lib/period.js';
 	import * as returns from '#lib/investments/performance.js';
 	import Pensions from '#lib/investments/Pensions.svelte';
@@ -160,8 +160,14 @@
 		<Income
 			income={data.income.income}
 			logos={data.income.logos}
-			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
+			range={rangeName(
+				chosen || null,
+				data.income.income.first,
+				data.income.income.last,
+				data.income.income.through
+			)}
 			{owner}
+			firstMonth={firstStatementMonth(data.session.people, owner)}
 		/>
 		{#if data.costs}
 			<Costs costs={data.costs.sent?.costs ?? null} unavailable={data.costs.unavailable} {owner} />
