@@ -1534,6 +1534,44 @@ def test_migrate_dry_run_says_which_migration_fails_and_exits_1(
     assert everything_under(run.folder) == before
 
 
+def test_backup_copies_the_database_as_it_is_and_keeps_what_the_retention_keeps(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    was = older(run, monkeypatch)
+    folder = run.database.parent / "backups"
+    folder.mkdir()
+    commit_copy = folder / "scrooge-20261001T120000.db"  # a copy a commit kept: never removed
+    commit_copy.write_text("x")
+    for hour in (1, 2):
+        (folder / f"scrooge-backup-20261006T0{hour}0000Z.db").write_text("x")
+    database = run.database.read_bytes()
+    assert run("backup") == dbcli.OK
+    made = folder / "scrooge-backup-20261006T120000Z.db"
+    assert run.output == (
+        f"{run.database}: backed up to {made}\n"
+        "  removed scrooge-backup-20261006T010000Z.db\n"
+        "  removed scrooge-backup-20261006T020000Z.db\n"
+    )
+    assert run.database.read_bytes() == database  # not brought up to date either
+    assert schema_of(made) == was
+    assert sorted(path.name for path in folder.iterdir()) == [commit_copy.name, made.name]
+
+    conn = db.connect(run.database)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("INSERT INTO accounts (owner_id, name, kind) VALUES (9, 'X', 'broker_securities')")
+    conn.close()
+    run.now = NOW + timedelta(days=1)
+    assert run("backup") == dbcli.FAILED
+    assert run.output.endswith(
+        "The copy is damaged, so no older copy was removed:\n"
+        "  - a row of accounts refers to a missing row of owners\n"
+    )
+    assert len(list(folder.iterdir())) == 3
+    run.now = NOW
+    assert run("backup") == dbcli.FAILED  # the second already backed up
+    assert run.output == f"error: {made}: there is a backup of that second already\n"
+
+
 def test_serve_refuses_a_copy_that_is_missing_or_is_no_database(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1580,6 +1618,7 @@ WRITERS = [
     ("prices",),
     ("publish", "share"),
     ("migrate",),
+    ("backup",),
 ]
 
 

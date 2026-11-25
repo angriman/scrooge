@@ -1,7 +1,7 @@
 # The app in Docker
 
-A container that runs `scrooge serve` over the one database, and a second one that fetches
-prices every day. Statements are imported and committed from the pages (or with
+A container that runs `scrooge serve` over the one database, a second one that fetches
+prices every day and a third that backs the database up every day. Statements are imported and committed from the pages (or with
 `docker compose exec`, below), and every device with a browser looks at them.
 
 Any machine with Docker and Docker Compose runs it: a Linux server, a NAS (Synology,
@@ -51,19 +51,20 @@ curl -fsSL -o .env https://raw.githubusercontent.com/angriman/scrooge/main/deplo
 |---|---|
 | `users/<name>/scrooge.yaml` | the config |
 | `users/<name>/scrooge.db` | the database |
-| `users/<name>/backups/` | a copy of the database before every commit and before a new schema |
+| `users/<name>/backups/` | the daily backups (`scrooge-backup-…Z.db`), and a copy of the database before every commit and before a new schema |
 | `users/<name>/originals/` | every statement imported, as it came |
 | `users/<name>/rules.yaml`, `rules.<owner>.yaml` | the category rules, both people's and each one's |
 | `users/<name>/categories.yaml` | the categories added to the built-in ones |
 | `users/<name>/instruments.yaml` | the asset tab of what is held, bill maturities, price symbols |
 
-The image holds only the code. Back up `data/`, and that is everything.
+The image holds only the code. Back up `data/`, and that is everything: the `backup` service
+keeps copies of the database on this machine, not elsewhere (see Backups, every day).
 
 A config in `data/scrooge.yaml` itself, with its paths under `/data`, is used instead of the
 setup in `users/` (a setup made before `scrooge init` existed). If its database is not there
 yet, `docker compose run --rm scrooge scrooge init --db /data/scrooge.db` makes an empty one
 (the path the config names). The container reads the one setup there is; with several,
-`SCROOGE_USER=<name>` in the `environment` of both services chooses.
+`SCROOGE_USER=<name>` in the `environment` of every service chooses.
 
 The part of the config that `init --container` writes about the pages:
 
@@ -97,6 +98,7 @@ docker compose exec scrooge scrooge import --owner Name --review users/name/stat
 docker compose exec scrooge scrooge migrate-files          # then with --write
 docker compose exec scrooge scrooge doctor                 # what is wrong; changes nothing
 docker compose exec scrooge scrooge migrate --dry-run      # a new schema, tried on a copy
+docker compose exec scrooge scrooge backup                 # a backup now, as the service does
 ```
 
 A path given to a command is a path inside the container: under `/data`.
@@ -110,6 +112,50 @@ caught up the next time. `docker compose logs prices` shows what it fetched.
 To run it from the machine's own scheduler instead, remove that service from `compose.yaml`
 and schedule `docker compose exec -T scrooge scrooge prices` in the folder of `compose.yaml`
 (cron, a systemd timer, the NAS's task scheduler).
+
+## Backups, every day
+
+The service `backup` runs `scrooge backup` as it starts and then every 24 hours. It copies
+the database with SQLite's backup API, which is consistent while the pages write, into
+`users/<name>/backups/scrooge-backup-YYYYMMDDTHHMMSSZ.db` (the moment in UTC), checks the copy
+as `doctor` does, and removes the older backups it made except:
+
+- the newest of each of the last 7 days that have one,
+- the newest of each of the last 8 weeks that have one,
+- the newest of each of the last 12 months that have one.
+
+That is at most 27 files, about a year back. Only files named like that are ever removed: the
+copies made before a commit or a new schema, and anything else in the folder, stay. When the
+copy is damaged it is kept, nothing is removed and the log says what is wrong:
+`docker compose logs backup`.
+
+They are on the same disk as the database, so a disk that fails takes both. Copy
+`users/<name>/backups/` (or the whole `data/`) to another machine or a cloud drive too, with
+what the machine offers: Hyper Backup or Cloud Sync on a Synology NAS, `rsync` from cron, a
+backup program on the PC. A backup is one whole file: copying it while the service runs is
+safe once its name ends in `Z.db` (it is written under a hidden `.part` name first).
+
+To run it from the machine's own scheduler instead, remove the service from `compose.yaml`
+and schedule `docker compose exec -T scrooge scrooge backup`.
+
+### Restoring one
+
+In the folder of `compose.yaml`, with `<name>` the setup's folder and the backup chosen:
+
+```sh
+docker compose stop                                   # nothing writes the database meanwhile
+mv data/users/<name>/scrooge.db data/users/<name>/scrooge.db.before-restore
+cp data/users/<name>/backups/scrooge-backup-20261005T030000Z.db data/users/<name>/scrooge.db
+docker compose up -d
+docker compose exec scrooge scrooge doctor            # the schema, the file, the rest
+```
+
+Keep the user and group of `.env` on the file (`chown`, or copy as that user): the container
+writes it. A backup made before a new version is at an older schema, which the app brings up
+to date as it starts, like an update (copying it into `backups/` first). What was committed
+after the backup is not there: import those statements again; their originals are still in
+`originals/`. A copy made before a commit (`scrooge-YYYYMMDDTHHMMSS.db`) is restored the same
+way.
 
 ## A new version
 

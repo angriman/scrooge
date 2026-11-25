@@ -6,7 +6,7 @@
 # needs changing. No password here or in the image: its digest is in the config, in the data
 # folder (`scrooge init --container` writes it).
 
-# What both services share: the image, the data and how little they may do.
+# What the services share: the image, the data and how little they may do.
 x-scrooge: &scrooge
   # `latest` is the newest release; a tag (`:v1.2.3`) keeps that version until it changes.
   image: ${SCROOGE_IMAGE:-ghcr.io/angriman/scrooge:latest}
@@ -54,6 +54,21 @@ services:
     # After the pages are up: they bring the database to this version's schema first, and
     # two processes doing it at once trip over each other.
     depends_on:
+      scrooge:
+        condition: service_healthy
+    healthcheck:
+      disable: true # the image's checks the pages, which this one does not serve
+
+  # A copy of the database every day (`scrooge backup`): as it starts, then every 24 hours,
+  # into backups/ next to the database, made with SQLite's backup API while the pages run.
+  # The older copies it made are pruned: it keeps the newest of each of the last 7 days, 8
+  # weeks and 12 months, and never removes another file. The copies stay on this machine's
+  # disk: copy backups/ elsewhere too (README.md, "Backups").
+  backup:
+    <<: *scrooge
+    command: ["sh", "-c", "while :; do scrooge backup; sleep 86400; done"]
+    init: true # stops at once, not after Docker's ten seconds: sh passes no signal on
+    depends_on: # after the pages are up, as `prices`
       scrooge:
         condition: service_healthy
     healthcheck:

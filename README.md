@@ -42,7 +42,7 @@ is refused on its own, and the others are staged. Every command has `--help`.
 | `categories.yaml` | categories added to the built-in taxonomy (`+Name` in `--review`) |
 | `instruments.yaml` | asset tab for Tastytrade tickers, T-bill maturities, price symbols |
 | `statements/` | the statement exports to import |
-| `scrooge.db`, `originals/`, `backups/` | the database, every statement imported as it came, a copy before each commit |
+| `scrooge.db`, `originals/`, `backups/` | the database, every statement imported as it came, a copy before each commit and the daily backups |
 
 A command reads `--config <path>`, else `scrooge.yaml` in the folder it runs in, else the
 setup `--user <name>` (or `SCROOGE_USER`) names, or the only one in `users/`. Relative paths
@@ -89,6 +89,7 @@ scrooge discard <id>        # remove a staged statement and everything it staged
 scrooge keep <path>...      # keep the files of statements imported before originals/ existed
 scrooge doctor              # the schema, the database file, the rules, the originals, the prices
 scrooge migrate --dry-run   # what this version would do to the database, tried on a copy
+scrooge backup              # a backup into backups/, the older ones pruned (7 days, 8 weeks, 12 months)
 scrooge query --from 2026-09 --to 2026-09 --category Groceries --summary
 ```
 
