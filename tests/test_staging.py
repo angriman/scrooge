@@ -646,8 +646,10 @@ def test_a_month_without_a_statement_is_reported_and_blocks_the_commit(
     staging.stage(conn, batch(migros("1000", "-200")), NOW)
     staged = staging.stage(conn, month_of(november, "650", "-50"), NOW)
     assert staged.gaps == (
-        "Migros (CHF): no statement covers the days after 2026-09-30 up to 2026-10-31, "
-        "yet the balance went from 800 to 650",
+        (
+            "Migros (CHF): no statement covers the days after 2026-09-30 up to 2026-10-31, "
+            "yet the balance went from 800 to 650"
+        ),
     )
     with pytest.raises(MissingStatementError, match="no statement covers") as caught:
         staging.commit(conn, owner=OWNER, now=NOW)
@@ -1378,8 +1380,10 @@ def test_a_bill_whose_purchase_is_not_stored_blocks_the_commit(
 ) -> None:
     staged = staging.stage(conn, fixture_batch(folder), NOW)
     assert staged.gaps == (
-        "Tastytrade: 912797YY2 matured or was sold on 2026-09-16, but its purchases are not all "
-        "stored (import the earlier statements): the interest cannot be split from the cost",
+        (
+            "Tastytrade: 912797YY2 matured or was sold on 2026-09-16, but its purchases are not "
+            "all stored (import the earlier statements): the interest cannot be split from the cost"
+        ),
     )
     whole = rows(conn, "SELECT amount_nano FROM transactions WHERE description LIKE 'Maturity%'")
     assert whole == [(10_000_000_000_000,)]

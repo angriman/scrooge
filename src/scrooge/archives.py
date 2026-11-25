@@ -38,7 +38,7 @@ class Entry:
     problem: str = ""
 
 
-class _TooBig(Exception):
+class _TooBigError(Exception):
     """The zip is refused as a whole; the message says why."""
 
 
@@ -76,7 +76,7 @@ def unpack(path: Path, name: str, folder: Path, taken: set[str]) -> list[Entry]:
     given is unique and added to `taken`, the names the import has already."""
     try:
         return _unpacked(path, name, folder, taken)
-    except _TooBig as exc:
+    except _TooBigError as exc:
         return [Entry(path, name, f"{exc}: nothing of it was read")]
     except (zipfile.BadZipFile, EOFError, OSError) as exc:
         return [Entry(path, name, f"not a zip that can be opened ({exc})")]
@@ -90,7 +90,7 @@ def _unpacked(path: Path, name: str, folder: Path, taken: set[str]) -> list[Entr
         infos = archive.infolist()
         if len(infos) > ENTRIES:
             msg = f"it holds more than {ENTRIES} entries"
-            raise _TooBig(msg)
+            raise _TooBigError(msg)
         for number, info in enumerate(infos, start=1):
             if info.is_dir() or hidden(info.filename):
                 continue
@@ -126,10 +126,10 @@ def _read(archive: zipfile.ZipFile, info: zipfile.ZipInfo, shown: str, left: int
             read += chunk
             if len(read) > ENTRY:
                 msg = f"{shown} unpacks to more than {ENTRY // MB} MB"
-                raise _TooBig(msg)
+                raise _TooBigError(msg)
             if len(read) > left:
                 msg = f"it unpacks to more than {TOTAL // MB} MB"
-                raise _TooBig(msg)
+                raise _TooBigError(msg)
     return bytes(read)
 
 

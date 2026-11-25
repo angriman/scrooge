@@ -792,6 +792,28 @@ def categorize_all(
         )
 
 
+def _rule_target(
+    row: store.Waiting, remember: Remember, *, transfer: bool
+) -> tuple[str, str, Path]:
+    name = (row.counterparty or row.description).strip()
+    if not name:
+        msg = "a row without any text cannot become a rule: choose 'just these rows'"
+        raise StagingError(msg)
+    if len(classification.exact_match(name)) > classification.LONGEST:
+        msg = "that text is too long to become a rule: choose 'just these rows'"
+        raise StagingError(msg)
+    text = f"{row.description}\n{row.counterparty}"
+    if transfer and any(pattern.search(text) for pattern in remember.others):
+        msg = (
+            f"a rule cannot make money to or from another person a transfer ({name}): "
+            "choose 'just these rows'"
+        )
+        raise StagingError(msg)
+    named = any(pattern.search(text) for pattern in remember.people)
+    flow = "in" if row.amount_nano > 0 else "out"
+    return name, flow, remember.own if named else remember.shared
+
+
 def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule files' state
     conn: sqlite3.Connection,
     before: dict[Path, bytes | None],
@@ -828,25 +850,9 @@ def _categorize(  # noqa: PLR0913  # categorize_all's arguments, with the rule f
         if kept:
             changed = kind if kind != row.kind else None
             store.set_override(conn, row.id, chosen, changed, db.timestamp(now))
-        if remember is None:
-            continue
-        name = (row.counterparty or row.description).strip()
-        if not name:
-            msg = "a row without any text cannot become a rule: choose 'just these rows'"
-            raise StagingError(msg)
-        if len(classification.exact_match(name)) > classification.LONGEST:
-            msg = "that text is too long to become a rule: choose 'just these rows'"
-            raise StagingError(msg)
-        text = f"{row.description}\n{row.counterparty}"
-        if transfer and any(pattern.search(text) for pattern in remember.others):
-            msg = (
-                f"a rule cannot make money to or from another person a transfer ({name}): "
-                "choose 'just these rows'"
-            )
-            raise StagingError(msg)
-        named = any(pattern.search(text) for pattern in remember.people)
-        flow = "in" if row.amount_nano > 0 else "out"
-        rules[name, flow] = remember.own if named else remember.shared
+        if remember is not None:
+            name, flow, where = _rule_target(row, remember, transfer=transfer)
+            rules[name, flow] = where
     written = store.category_labels(conn).written(category)
     for (name, flow), where in rules.items():
         if where not in before:

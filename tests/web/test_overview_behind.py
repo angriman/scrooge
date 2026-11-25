@@ -60,8 +60,10 @@ def test_an_account_behind_is_named_with_where_to_import_it(path: Path) -> None:
     assert nudges(client) == [(said, {"Import": "/import?owner=Lukas"})]
     # One person's view goes without their name; the other's has nothing behind.
     assert [said for said, _ in nudges(client, owner=OWNER)] == [
-        "Revolut CHF statements end on 2026-06-30, over a month before the others: "
-        "a statement is probably missing. Import"
+        (
+            "Revolut CHF statements end on 2026-06-30, over a month before the others: "
+            "a statement is probably missing. Import"
+        )
     ]
     assert nudges(client, owner=PARTNER) == []
 

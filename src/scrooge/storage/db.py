@@ -199,6 +199,14 @@ def _apply(
     conn.execute("COMMIT")
 
 
+def _check_foreign_keys(conn: sqlite3.Connection, number: int) -> None:
+    broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if broken:
+        table, _, parent, _ = broken[0]
+        msg = f"migration {number} leaves rows of {table} without their {parent}"
+        raise MigrationError(msg)
+
+
 def _rebuild(conn: sqlite3.Connection, number: int, step: Rebuild, now: datetime) -> None:
     """Run `step` as SQLite says a table is built again: foreign keys off, outside the
     transaction, and every reference checked before it commits; then as they were."""
@@ -207,11 +215,7 @@ def _rebuild(conn: sqlite3.Connection, number: int, step: Rebuild, now: datetime
     try:
         conn.execute("BEGIN IMMEDIATE")
         step.migrate(conn)
-        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
-        if broken:
-            table, _, parent, _ = broken[0]
-            msg = f"migration {number} leaves rows of {table} without their {parent}"
-            raise MigrationError(msg)
+        _check_foreign_keys(conn, number)
         conn.execute("INSERT INTO schema_version VALUES (?, ?)", (number, timestamp(now)))
     except BaseException:
         conn.execute("ROLLBACK")

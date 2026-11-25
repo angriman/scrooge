@@ -73,7 +73,7 @@ def test_each_source_has_a_golden_test(source: Source | CertificateSource) -> No
 def test_a_statement_with_nothing_to_reconcile_against_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def extract(text: str, source_file: str) -> Extraction:
+    def extract(_text: str, _source_file: str) -> Extraction:
         return Extraction(month=date(2026, 9, 1), transactions=())
 
     bare = Source(

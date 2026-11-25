@@ -9,7 +9,6 @@ anyone. Nothing is ever changed or removed here: a file a later export replaced 
 from __future__ import annotations
 
 import hashlib
-import os
 import shutil
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -46,7 +45,7 @@ def keep(folder: Path, paths: Iterable[Path], known: Mapping[str, str]) -> list[
         folder.mkdir(parents=True, exist_ok=True)
         part = place.with_name(f".{place.name}.part")  # never half a file under its name
         shutil.copyfile(path, part)
-        os.replace(part, place)
+        part.replace(place)
         kept.append(path)
     return kept
 

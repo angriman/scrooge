@@ -337,8 +337,10 @@ def test_an_account_that_is_only_typed_is_carried_flat_and_says_so(
         D(1300),
     ]
     assert result.notes == (
-        "Old bank of Lukas has no statements: it is carried at what was typed, last for "
-        "2026-09-20.",
+        (
+            "Old bank of Lukas has no statements: it is carried at what was typed, last for "
+            "2026-09-20."
+        ),
     )
 
 
@@ -366,8 +368,10 @@ def test_a_pension_fund_is_a_line_of_its_own_from_the_day_of_its_certificate(
         D("36000.50"),
     ]
     assert result.notes == (
-        "Pillar 2 AXA of Lukas is carried at what its certificates state, the last one for "
-        "2026-09-20.",
+        (
+            "Pillar 2 AXA of Lukas is carried at what its certificates state, the last one for "
+            "2026-09-20."
+        ),
     )
     assert networth.checks(conn) == ()
 
@@ -1012,10 +1016,14 @@ def test_a_name_no_account_has_is_said_and_freezes_nothing(conn: sqlite3.Connect
     deposit_and_pensions(conn)
     named = [networth.FrozenAccount("Rent depot"), networth.FrozenAccount("ACME Bank", PARTNER)]
     assert networth.frozen_notes(conn, named) == [
-        "No account is called Rent depot, which 'frozen' in scrooge.yaml names: write it as "
-        "the pages name the account.",
-        f"{PARTNER} has no account called ACME Bank, which 'frozen' in scrooge.yaml names: "
-        "write it as the pages name the account.",
+        (
+            "No account is called Rent depot, which 'frozen' in scrooge.yaml names: write it as "
+            "the pages name the account."
+        ),
+        (
+            f"{PARTNER} has no account called ACME Bank, which 'frozen' in scrooge.yaml names: "
+            "write it as the pages name the account."
+        ),
     ]
     assert networth.run(conn, currency="CHF", frozen=named) == networth.run(conn, currency="CHF")
 
@@ -1116,8 +1124,10 @@ def test_what_was_held_on_the_last_day_is_valued_at_the_newest_closes(
         D(10 * 60 + 6 * 20) * D("0.9"),
     ]
     assert result.notes == (
-        f"The statements of {OWNER} end on 2026-09-30: from then on, what was held that day "
-        "is valued at the closes and rates stored up to 2026-11-03.",
+        (
+            f"The statements of {OWNER} end on 2026-09-30: from then on, what was held that day "
+            "is valued at the closes and rates stored up to 2026-11-03."
+        ),
     )
 
 

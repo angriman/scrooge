@@ -581,7 +581,7 @@ def _securities(
             points = closes.get(holding.instrument_id, [])
             values = _share_values(holding, [(day, close) for day, _, close in points], days)
             quoted = [(day, Quote(day, close, rank == _TRADE_PRICE)) for day, rank, close in points]
-            quote = _carried(quoted, days[-1:])[0] if quoted else None
+            quote = carried(quoted, days[-1:])[0] if quoted else None
             if any(values) and all(rank == _TRADE_PRICE for _, rank, _ in points):
                 unpriced.add(symbol)
             if not points and any(step.quantity for step in holding.steps):
@@ -646,12 +646,12 @@ def closes_on(conn: sqlite3.Connection, days: Sequence[date]) -> dict[int, list[
     """instrument -> the close it is valued at on each of `days`, as for net worth: the last
     one on or before the day, the first standing in before it."""
     return {
-        instrument: _carried([(day, close) for day, _, close in points], days)
+        instrument: carried([(day, close) for day, _, close in points], days)
         for instrument, points in _closes(conn).items()
     }
 
 
-def _carried(points: Sequence[tuple[date, _T]], days: Sequence[date]) -> list[_T]:
+def carried(points: Sequence[tuple[date, _T]], days: Sequence[date]) -> list[_T]:
     """For each day the value of the last of `points` on or before it; the first one stands
     in for the days before it. There must be a point."""
     when = [day for day, _ in points]
@@ -666,7 +666,7 @@ def _share_values(
     steps = [(step.day, step.quantity) for step in holding.steps]
     when = [day for day, _ in steps]
     values: list[Decimal] = []
-    for day, price in zip(days, _carried(closes, days), strict=True):
+    for day, price in zip(days, carried(closes, days), strict=True):
         index = bisect_right(when, day)
         # Like an account, a holding starts with the first thing known about it: nothing
         # is counted before. Shares held when the account's statements begin are known from
@@ -744,7 +744,7 @@ def rates_on(conn: sqlite3.Connection, days: Sequence[date]) -> dict[str, list[D
         if known is None or rank < known[0]:
             best[currency][day] = (rank, Decimal(rate))
     rates = {
-        currency: _carried([(day, rate) for day, (_, rate) in sorted(points.items())], days)
+        currency: carried([(day, rate) for day, (_, rate) in sorted(points.items())], days)
         for currency, points in best.items()
     }
     rates[BASE] = [Decimal(1)] * len(days)

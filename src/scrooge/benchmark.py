@@ -93,7 +93,7 @@ def follow(  # noqa: PLR0913  # which benchmark, over which days, with what mone
     if closes[-1][0] <= days[0]:
         msg = f"no close of it is stored after {days[0]}; `scrooge prices` fetches it"
         raise BenchmarkError(msg)
-    native = networth._carried(closes, days)  # the close net worth takes
+    native = networth.carried(closes, days)  # the close net worth takes
     prices = networth.convert(native, str(found[1]), currency, networth.rates_on(conn, days))
     held, values = Decimal(0), []
     for at, (price, amount) in enumerate(zip(prices, money, strict=True)):

@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -82,7 +83,7 @@ def arranged(
 
 
 def grouped(
-    lines: Sequence[months.Coverage], ids: Mapping[tuple[str, str, str], Set[int]]
+    lines: Sequence[months.Coverage], ids: Mapping[tuple[str, str, str], AbstractSet[int]]
 ) -> list[tuple[months.Coverage, tuple[months.Coverage, ...]]]:
     """Each account of `lines` as it is listed, and the accounts it is together, by person and
     name; `ids` are the statement files of each by person, account and source

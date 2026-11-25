@@ -269,8 +269,10 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
             json.dumps([kind.value for kind in wanted.kinds]) if wanted.kinds else None,
         ),
         (
-            "(SELECT a.kind FROM transactions t JOIN accounts a ON a.id = t.account_id "
-            "WHERE t.id = committed_transactions.id) IN (SELECT value FROM json_each(?))",
+            (
+                "(SELECT a.kind FROM transactions t JOIN accounts a ON a.id = t.account_id "
+                "WHERE t.id = committed_transactions.id) IN (SELECT value FROM json_each(?))"
+            ),
             json.dumps(list(wanted.account_kinds)) if wanted.account_kinds else None,
         ),
         ("abs(amount_nano) >= ?", None if wanted.at_least is None else to_nano(wanted.at_least)),
@@ -316,8 +318,10 @@ def check_names(conn: sqlite3.Connection, wanted: Filter) -> None:
         (
             "account",
             wanted.account,
-            "SELECT 1 FROM accounts a JOIN owners o ON o.id = a.owner_id "
-            "WHERE a.name = ?1 AND o.name = coalesce(?2, o.name)",
+            (
+                "SELECT 1 FROM accounts a JOIN owners o ON o.id = a.owner_id "
+                "WHERE a.name = ?1 AND o.name = coalesce(?2, o.name)"
+            ),
         ),
         ("category", wanted.category, "SELECT 1 FROM categories WHERE key = ?"),
     )

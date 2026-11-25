@@ -110,7 +110,7 @@ def _test(request: Request) -> Response:
     )
 
 
-class _Unreadable(Exception):
+class _UnreadableError(Exception):
     """What was sent is not what the route takes; the message says what it takes."""
 
 
@@ -120,12 +120,12 @@ async def _change(request: Request, act: Callable[[dict[str, object]], object]) 
     sent = await _sent(request)
     if request.app.state.rules is None:  # nowhere to write it down
         raise HTTPException(404)
+    if sent is None:
+        return _refused(("Send the change as JSON.",))
     try:
-        if sent is None:
-            raise _Unreadable
         done = await run_in_threadpool(act, sent)
-    except _Unreadable as exc:
-        return _refused((str(exc) or "Send the change as JSON.",))
+    except _UnreadableError as exc:
+        return _refused((str(exc),))
     except _REFUSED as exc:
         return JSONResponse({"errors": [wire.sentence(exc)]}, 409)
     except sqlite3.IntegrityError:
@@ -137,7 +137,7 @@ def _text(sent: dict[str, object], name: str) -> str:
     value = sent.get(name, "")
     if not isinstance(value, str):
         msg = f"Send '{name}' as text."
-        raise _Unreadable(msg)
+        raise _UnreadableError(msg)
     return value
 
 
@@ -148,10 +148,10 @@ def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
     path = next((file.path for file in files if file.key == key), None)
     if path is None:
         msg = f"There is no rules file {key or 'named'} here."
-        raise _Unreadable(msg)
+        raise _UnreadableError(msg)
     if not isinstance(position, int) or isinstance(position, bool):
         msg = "Send the place of the rule in its file as a number."
-        raise _Unreadable(msg)
+        raise _UnreadableError(msg)
     return settings.Seen(path, position, _text(sent, "version"))
 
 

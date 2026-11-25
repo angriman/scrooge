@@ -268,7 +268,7 @@ def test_a_choice_that_cannot_be_made_is_said_and_nothing_changes(
     assert "<form" in response.text  # the draft is still there to be worked on
 
 
-def test_a_row_that_is_not_staged_any_more_is_said(client: TestClient, database: Path) -> None:
+def test_a_row_that_is_not_staged_any_more_is_said(client: TestClient) -> None:
     sent = form(client) | {"category:gone": "Gifts"}
     response = client.post("/import/save", data=sent)
     assert response.status_code == 409
