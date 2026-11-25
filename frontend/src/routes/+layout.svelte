@@ -136,7 +136,8 @@
 				</div>
 			{/if}
 
-			<div class="ml-auto flex items-center gap-2">
+			<!-- On a phone the switches wrap to a line of their own rather than widen the page. -->
+			<div class="ml-auto flex flex-wrap items-center justify-end gap-2">
 				{#if data.session.people.length > 1}
 					<Segmented
 						label={t('nav.whoseFigures')}
