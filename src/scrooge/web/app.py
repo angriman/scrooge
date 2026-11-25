@@ -1672,7 +1672,7 @@ def _transactions_csv(request: Request) -> Response:
         return PlainTextResponse("\n".join(parsed.errors) + "\n", status_code=400)
     with db.reading(request.app.state.database) as conn:
         rows = query.run(conn, parsed.wanted).rows
-        label = store.category_labels(conn)
+        label = store.category_labels(conn, language=api.language_of(request))
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(_CSV)

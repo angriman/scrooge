@@ -347,11 +347,14 @@ def _taxonomy(extras: Sequence[categories.Extra]) -> list[tuple[str, str, str | 
 
 
 def listed_categories(
-    conn: sqlite3.Connection, categories_file: Path | None
+    conn: sqlite3.Connection,
+    categories_file: Path | None,
+    *,
+    language: str = categories.LANGUAGE,
 ) -> list[ListedCategory]:
     """The taxonomy, then what `categories.yaml` adds, with the committed rows of each."""
     extras = _extras(categories_file)
-    label = categories.Labels.of(extras)
+    label = categories.Labels.of(extras, language=language)
     rows = Counter((r.category, r.category_parent) for r in query.run(conn, query.Filter()).rows)
     return [
         ListedCategory(

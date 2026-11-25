@@ -1,5 +1,6 @@
 """The settings page's API: the rules and the categories, read and changed."""
 
+import dataclasses
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -266,3 +267,28 @@ def test_a_category_is_moved_under_another(site: Site) -> None:
     assert refused.json()["errors"] == [
         "Salary is income and Groceries is not: they cannot be merged."
     ]
+
+
+def test_settings_api_uses_the_chosen_language(site: Site) -> None:
+    setup = dataclasses.replace(site.setup, unmatched=categories.UNSORTED)
+    rules = webapp.Rules(site.folder / "rules.yaml", PEOPLE)
+    client = site.app(imports=setup, rules=rules)
+    assert (
+        client.post(
+            "/api/language", json={"language": "it"}, headers={"x-token": site.token}
+        ).status_code
+        == 200
+    )
+
+    rules_json = client.get("/api/settings/rules").json()
+    assert rules_json["rules"][0]["category"] == categories.LABELS_IT[categories.GIFTS]
+    headings = [group["heading"] for group in rules_json["leaves"]]
+    assert categories.LABELS_IT[categories.GROUP_FOOD] in headings
+
+    cats_json = client.get("/api/settings/categories").json()
+    listed = {(c["name"], c["side"]): c for c in cats_json["categories"]}
+    groceries_it = categories.LABELS_IT[categories.GROCERIES]
+    assert listed[groceries_it, "uscite"]["parent"] == categories.LABELS_IT[categories.GROUP_FOOD]
+    assert cats_json["unmatched"] == categories.LABELS_IT[categories.UNSORTED]
+    assert (cats_json["unmatched"], "uscite") in listed
+    assert categories.LABELS_IT[categories.GROUP_FOOD] in cats_json["groups"]
