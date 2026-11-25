@@ -8,6 +8,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 	import { hierarchy, treemap } from 'd3-hierarchy';
 	import { assetColor } from '#lib/design/data.js';
 	import { approximate, percent, short, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { HeldInstrument } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
 
@@ -56,9 +57,12 @@ much one of them weighs. A tile chosen opens that holding in the list.
 		<button
 			type="button"
 			onclick={() => onchoose(holding)}
-			title="{holding.name || holding.symbol}: {short(holding.value)} {currency}, {percent(
-				holding.share
-			)} of securities"
+			title={t('holdings.mapTileTitle', {
+				name: holding.name || holding.symbol,
+				value: short(holding.value),
+				currency,
+				share: percent(holding.share)
+			})}
 			class="absolute flex flex-col justify-start overflow-hidden rounded-control border-t-2 text-left transition-[filter] hover:brightness-125 focus-visible:z-10"
 			style:left="{tile.x}px"
 			style:top="{tile.y}px"

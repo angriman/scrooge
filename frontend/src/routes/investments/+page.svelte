@@ -8,7 +8,8 @@
 	import HoldingsList from '#lib/holdings/HoldingsList.svelte';
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
-	import { rangeName } from '#lib/cashflow/names.js';
+	import { rangeName, rangePillLabel } from '#lib/cashflow/names.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
 	import { chosenRange, DEFAULT_RANGE } from '#lib/investments/income.js';
@@ -44,10 +45,10 @@
 	const people = $derived(data.session.people.length > 1 && !owner);
 	const title = $derived(
 		data.session.people.length < 2
-			? 'Securities'
+			? t('investments.securitiesTitle')
 			: owner
-				? `${owner}’s securities`
-				: 'Household securities'
+				? t('investments.ownerSecuritiesTitle', { owner })
+				: t('investments.householdSecuritiesTitle')
 	);
 
 	// What the gain since bought is of, when some costs are not known: it would read as the
@@ -66,11 +67,12 @@
 	// What the investments returned, what is held, or what they paid: each view loads its own
 	// figures. An address without a view, as every link to the page had before, shows the
 	// returns.
-	const VIEWS = [
-		{ value: 'performance', label: 'Performance' },
-		{ value: 'holdings', label: 'Holdings' },
-		{ value: 'income', label: 'Income' }
-	] as const;
+	const views = $derived([
+		{ value: 'performance' as const, label: t('investments.viewPerformance') },
+		{ value: 'holdings' as const, label: t('investments.viewHoldings') },
+		{ value: 'income' as const, label: t('investments.viewIncome') }
+	]);
+	const perfRanges = $derived(returns.rangeOptions());
 	const view = $derived(
 		oneOf(page.url, 'view', ['performance', 'holdings', 'income'], 'performance')
 	);
@@ -94,14 +96,14 @@
 </script>
 
 <svelte:head>
-	<title>Investments · scrooge</title>
+	<title>{t('investments.pageTitle')}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 	<Segmented
-		label="Show"
+		label={t('overview.showAria')}
 		value={view}
-		options={VIEWS}
+		options={views}
 		onchange={(value) =>
 			show(
 				page.url,
@@ -116,18 +118,18 @@
 	/>
 	{#if view === 'performance' && data.performance?.performance.totals}
 		<Segmented
-			label="Range"
+			label={t('overview.rangeAria')}
 			value={range}
-			options={returns.RANGES}
+			options={perfRanges}
 			onchange={(value) =>
 				show(page.url, { range: value === returns.DEFAULT_RANGE ? null : value })}
 		/>
 	{/if}
 	{#if view === 'income' && ranges.length}
 		<Segmented
-			label="Range"
+			label={t('overview.rangeAria')}
 			value={chosen}
-			options={ranges.map((range) => ({ value: range.label, label: range.label }))}
+			options={ranges.map((range) => ({ value: range.label, label: rangePillLabel(range) }))}
 			onchange={(label) => {
 				const range = ranges.find((r) => r.label === label)!;
 				show(
@@ -155,10 +157,9 @@
 	{#if !data.performance.performance.totals}
 		{#if !errors.length}
 			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-				<h1 class="text-heading font-medium text-ink">No investment accounts yet</h1>
+				<h1 class="text-heading font-medium text-ink">{t('investments.noAccountsHeading')}</h1>
 				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-					What your investments returned shows here once a statement of a broker or a stock plan is
-					committed.
+					{t('investments.noAccountsBody')}
 				</p>
 			</section>
 		{/if}
@@ -169,9 +170,9 @@
 	{#if !data.income.income?.through}
 		{#if !errors.length}
 			<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-				<h1 class="text-heading font-medium text-ink">Import your first statements</h1>
+				<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
 				<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-					What your investments paid shows here once a statement is committed.
+					{t('investments.incomeEmptyBody')}
 				</p>
 			</section>
 		{/if}
@@ -189,17 +190,17 @@
 {:else if !held || !held.day}
 	{#if !errors.length}
 		<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-			<h1 class="text-heading font-medium text-ink">Import your first statements</h1>
+			<h1 class="text-heading font-medium text-ink">{t('overview.emptyHeading')}</h1>
 			<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-				What you hold shows here once a statement is committed.
+				{t('investments.holdingsEmptyBody')}
 			</p>
 		</section>
 	{/if}
 {:else if !held.holdings.length}
 	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h1 class="text-heading font-medium text-ink">No securities yet</h1>
+		<h1 class="text-heading font-medium text-ink">{t('investments.noSecuritiesHeading')}</h1>
 		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			Shares, ETFs, funds and bills show here once a statement with them is committed.
+			{t('investments.noSecuritiesBody')}
 		</p>
 	</section>
 	{@render pensionGroup()}
@@ -217,11 +218,19 @@
 				<Amount value={held.total} currency={held.currency} />
 			</p>
 			<p class="mt-1 text-small text-ink-muted [grid-area:when]">
-				{held.holdings.length} holdings in {held.accounts}
-				{held.accounts === 1 ? 'account' : 'accounts'}, as of {day(held.day)}
+				{t(
+					held.accounts === 1
+						? 'investments.holdingsSummaryOneAccount'
+						: 'investments.holdingsSummaryManyAccounts',
+					{
+						holdings: held.holdings.length,
+						accounts: held.accounts,
+						date: day(held.day)
+					}
+				)}
 			</p>
 			<p class="mt-4 text-small text-ink-secondary [grid-area:span] sm:mt-0 sm:text-right">
-				Since bought
+				{t('investments.sinceBought')}
 			</p>
 			<Performance
 				amount={held.cost === '0' && held.unknown_cost ? null : held.gain}
@@ -230,10 +239,10 @@
 			/>
 			{#if held.unknown_cost && costed}
 				<p class="mt-1 text-small text-ink-muted [grid-area:note] sm:text-right">
-					On {costed.count === 1 ? '1 holding' : `${costed.count} holdings`}, {percent(
-						costed.share,
-						0
-					)} of securities: the cost of the others is not known
+					{t(costed.count === 1 ? 'investments.unknownCostOne' : 'investments.unknownCostMany', {
+						count: costed.count,
+						share: percent(costed.share, 0)
+					})}
 				</p>
 			{/if}
 		</div>

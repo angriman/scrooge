@@ -1,8 +1,10 @@
 // The pensions as a group of their own, as the holdings view lists them: each account's change
 // over the period chosen, what it says under its name, and what the group adds up to.
 
+import { assetName } from '#lib/design/data.js';
 import { day } from '#lib/format/date.js';
 import { difference, money, sum } from '#lib/format/number.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Amount, Pension } from '#lib/types.js';
 
 /** The periods a change is over: the twelve months up to the last day, and the year to date. */
@@ -12,6 +14,16 @@ export const PERIODS = [
 ] as const;
 export type Period = (typeof PERIODS)[number]['value'];
 export const DEFAULT_PERIOD: Period = '1y';
+
+const PERIOD_KEYS: Record<Period, MessageKey> = {
+	'1y': 'pensions.12m',
+	ytd: 'pensions.ytd'
+};
+
+/** The period choices in the active language. */
+export function periodOptions(): { value: Period; label: string }[] {
+	return PERIODS.map((period) => ({ value: period.value, label: t(PERIOD_KEYS[period.value]) }));
+}
 
 /** The period in an address, the twelve months when it names none. */
 export function periodOf(asked: string | null): Period {
@@ -29,11 +41,15 @@ export function changeOf(pension: Pension, period: Period): Amount | null {
  * pillar; and for Pillar 2 the day of the figure it is carried at, for Pillar 3a the cash it
  * holds besides its fund units. */
 export function described(pension: Pension, people: boolean): string {
-	const parts = [people ? pension.owner : '', pension.pillar];
+	const parts = [people ? pension.owner : '', assetName(pension.pillar)];
 	if (pension.stated) {
-		parts.push(`${pension.typed ? 'typed for' : 'certificate of'} ${day(pension.stated)}`);
+		parts.push(
+			t(pension.typed ? 'pensions.typedFor' : 'pensions.certificateOf', {
+				date: day(pension.stated)
+			})
+		);
 	} else if (pension.cash !== null) {
-		parts.push(`${money(pension.cash, 0)} of it cash`);
+		parts.push(t('pensions.ofItCash', { amount: money(pension.cash, 0) }));
 	}
 	return parts.filter(Boolean).join(' · ');
 }

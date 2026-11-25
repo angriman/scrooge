@@ -5,8 +5,9 @@ people's) person, each a bar of the whole with its parts. It leads with what one
 how much the largest single holding weighs. The overview has the allocation of net worth.
 -->
 <script lang="ts">
-	import { assetColor, inOrder } from '#lib/design/data.js';
+	import { assetColor, assetName, inOrder } from '#lib/design/data.js';
 	import { approximate, percent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { HeldInstrument, Portfolio } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -24,10 +25,12 @@ how much the largest single holding weighs. The overview has the allocation of n
 
 	const lenses = $derived(
 		[
-			{ title: 'By type', slices: spread.asset, byType: true },
-			{ title: 'By currency', slices: spread.currency, byType: false },
-			{ title: 'By account', slices: spread.account, byType: false },
-			...(people ? [{ title: 'By person', slices: spread.owner, byType: false }] : [])
+			{ id: 'asset', title: t('overview.byAsset'), slices: spread.asset, byType: true },
+			{ id: 'currency', title: t('holdings.byCurrency'), slices: spread.currency, byType: false },
+			{ id: 'account', title: t('holdings.byAccount'), slices: spread.account, byType: false },
+			...(people
+				? [{ id: 'owner', title: t('overview.byOwner'), slices: spread.owner, byType: false }]
+				: [])
 		].filter((lens) => lens.slices.length)
 	);
 	const colorsOf = (lens: (typeof lenses)[number]) =>
@@ -36,18 +39,19 @@ how much the largest single holding weighs. The overview has the allocation of n
 			: inOrder(lens.slices.map((slice) => slice.name));
 </script>
 
-<Panel title="Allocation" note="Of securities">
+<Panel title={t('holdings.spreadTitle')} note={t('holdings.spreadNote')}>
 	{#if largest}
 		<p class="mb-4 text-body text-ink-secondary">
-			The largest holding, <span class="text-ink">{largest.name || largest.symbol}</span>, is
+			{t('holdings.largestBefore')}
+			<span class="text-ink">{largest.name || largest.symbol}</span>{t('holdings.largestMiddle')}
 			<span class={approximate(largest.share) >= 25 ? 'text-caution' : 'text-ink'}
 				>{percent(largest.share)}</span
 			>
-			of securities.
+			{t('holdings.largestAfter')}
 		</p>
 	{/if}
 	<div class="grid gap-5">
-		{#each lenses as lens (lens.title)}
+		{#each lenses as lens (lens.id)}
 			{@const colors = colorsOf(lens)}
 			<div>
 				<h3 class="mb-2 text-small text-ink-secondary">{lens.title}</h3>
@@ -66,7 +70,9 @@ how much the largest single holding weighs. The overview has the allocation of n
 					{#each lens.slices as slice (slice.name)}
 						<li class="contents">
 							<Swatch color={colors.get(slice.name) ?? 'var(--data-other)'} />
-							<span class="truncate text-ink-secondary">{slice.name}</span>
+							<span class="truncate text-ink-secondary"
+								>{lens.byType ? assetName(slice.name) : slice.name}</span
+							>
 							<span class="text-right"><Amount value={slice.value} {currency} places={0} /></span>
 							<span class="text-right text-ink-muted tabular-nums">{percent(slice.share)}</span>
 						</li>

@@ -5,11 +5,13 @@ from, and what went out below it, by category; the savings rate of each period r
 a line. A column pointed at, or chosen with the keyboard, is said in full beneath.
 -->
 <script lang="ts">
+	import { incomeGroupName } from '#lib/design/data.js';
 	import { month as monthName } from '#lib/format/date.js';
 	import { approximate, percent, short } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowPeriod } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
-	import { GROUPS, incomeColor, PAID_BACK } from './names.js';
+	import { GROUPS, incomeColor, PAID_BACK, spendingPartName } from './names.js';
 
 	interface Props {
 		periods: CashFlowPeriod[];
@@ -87,7 +89,7 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 		viewBox="0 0 {width} {HEIGHT}"
 		class="block h-[240px] w-full"
 		role="img"
-		aria-label="Income above the line and spending below it, period by period, with the savings rate"
+		aria-label={t('cashflow.overTimeAria')}
 	>
 		<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption"
 			>{short(String(highest))}</text
@@ -153,21 +155,32 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 			aria-live="polite"
 		>
 			<span class="font-medium text-ink">{label(detail.name)} {detail.name.slice(0, 4)}</span>
-			<span>In <Amount value={detail.income} {currency} places={0} class="text-gain" /></span>
-			<span>Out <Amount value={detail.spent} {currency} places={0} class="text-ink" /></span>
-			<span>Saved <Amount value={detail.saved} {currency} places={0} class="text-ink" /></span>
+			<span
+				>{t('cashflow.inShort')}
+				<Amount value={detail.income} {currency} places={0} class="text-gain" /></span
+			>
+			<span
+				>{t('cashflow.outShort')}
+				<Amount value={detail.spent} {currency} places={0} class="text-ink" /></span
+			>
+			<span
+				>{t('cashflow.savedShort')}
+				<Amount value={detail.saved} {currency} places={0} class="text-ink" /></span
+			>
 			{#if detail.rate !== null}<span
-					>Rate <span class="text-brand">{percent(detail.rate, 0)}</span></span
+					>{t('cashflow.rateShort')} <span class="text-brand">{percent(detail.rate, 0)}</span></span
 				>{/if}
 			{#if detail.rate_salary !== null}<span
-					>On salary <span class="text-brand">{percent(detail.rate_salary, 0)}</span></span
+					>{t('cashflow.onSalaryShort')}
+					<span class="text-brand">{percent(detail.rate_salary, 0)}</span></span
 				>{/if}
 			{#if detail.rate_12 !== null}<span
-					>12-month rate <span class="text-brand">{percent(detail.rate_12, 0)}</span></span
+					>{t('cashflow.twelveMonthRate')}
+					<span class="text-brand">{percent(detail.rate_12, 0)}</span></span
 				>{/if}
 			{#if detail.rate_salary_12 !== null}<span
-					>12-month on salary <span class="text-brand">{percent(detail.rate_salary_12, 0)}</span
-					></span
+					>{t('cashflow.twelveMonthOnSalary')}
+					<span class="text-brand">{percent(detail.rate_salary_12, 0)}</span></span
 				>{/if}
 		</p>
 	{/if}
@@ -175,17 +188,18 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-secondary">
 		{#each GROUPS as group (group)}
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={incomeColor(group)}></span>{group}
+				<span class="size-2 rounded-[2px]" style:background={incomeColor(group)}
+				></span>{incomeGroupName(group)}
 			</li>
 		{/each}
 		{#each parts as name (name)}
 			<li class="flex items-center gap-1.5">
 				<span class="size-2 rounded-[2px] opacity-85" style:background={colors.get(name)}
-				></span>{name}
+				></span>{spendingPartName(name)}
 			</li>
 		{/each}
 		<li class="flex items-center gap-1.5">
-			<span class="h-0.5 w-3 rounded bg-brand"></span>Savings rate
+			<span class="h-0.5 w-3 rounded bg-brand"></span>{t('cashflow.savingsRate')}
 		</li>
 	</ul>
 </div>

@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { CostYear } from '#lib/types.js';
 import { costsAnything, costsOf, newestFirst, parts, whyNot } from './costs.js';
 
@@ -81,5 +82,15 @@ describe('what investing costs', () => {
 		expect(costsOf({ account: 'Migros', owner: 'Lukas', broker: false }, 'Lukas').toString()).toBe(
 			'owner=Lukas&account=Migros&category=withholding_tax'
 		);
+	});
+
+	it('localizes cost parts into Italian', () => {
+		setLanguage('it');
+		try {
+			expect(parts({ commissions: '3.40', tax: '13.50' })).toBe('commissioni 3, ritenute 14');
+			expect(parts({ commissions: '-2.00', tax: '0.00' })).toBe('commissioni rimborsate 2');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

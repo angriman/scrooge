@@ -5,6 +5,7 @@
 
 import { day } from '#lib/format/date.js';
 import { approximate } from '#lib/format/number.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Amount, HeldInstrument, HoldingReturns, PeriodReturn } from '#lib/types.js';
 
 export const SORTS = [
@@ -15,16 +16,28 @@ export const SORTS = [
 ] as const;
 export type Sort = (typeof SORTS)[number]['value'];
 
-const PERIODS: Record<PeriodReturn['range'], string> = {
-	'1m': '1 month',
-	ytd: 'This year',
-	'1y': '1 year',
-	all: 'Since bought'
+const SORT_KEYS: Record<Sort, MessageKey> = {
+	value: 'holdings.sortValue',
+	gain: 'holdings.sortGain',
+	return: 'holdings.sortReturn',
+	year: 'holdings.sortYear'
+};
+
+/** The sort choices in the active language. */
+export function sortOptions(): { value: Sort; label: string }[] {
+	return SORTS.map((sort) => ({ value: sort.value, label: t(SORT_KEYS[sort.value]) }));
+}
+
+const PERIOD_KEYS: Record<PeriodReturn['range'], MessageKey> = {
+	'1m': 'holdings.period1m',
+	ytd: 'holdings.periodYtd',
+	'1y': 'holdings.period1y',
+	all: 'holdings.periodAll'
 };
 
 /** What a range is called in the table. */
 export function periodLabel(range: PeriodReturn['range']): string {
-	return PERIODS[range];
+	return t(PERIOD_KEYS[range]);
 }
 
 /** What it returned over the past year; null when it was not held all year. */
@@ -62,9 +75,11 @@ export interface Column {
 /** The columns: the holding alone when it is in one account; otherwise every account
  * together first (`All`), then each account, named with whose it is when several people's are listed. */
 export function columnsOf(holding: HeldInstrument, people: boolean): Column[] {
-	if (holding.positions.length < 2) return [{ label: 'Return', returns: holding.returns }];
+	if (holding.positions.length < 2) {
+		return [{ label: t('holdings.sortReturn'), returns: holding.returns }];
+	}
 	return [
-		{ label: 'All', returns: holding.returns },
+		{ label: t('holdings.allColumns'), returns: holding.returns },
 		...holding.positions.map((position) => ({
 			label: people ? `${position.account}, ${position.owner}` : position.account,
 			returns: position.returns
@@ -92,7 +107,10 @@ export function periodLines(columns: Column[]): Line[] {
 		const [first] = firsts;
 		return {
 			label: periodLabel(range),
-			note: range === 'all' && firsts.size === 1 && first ? `from ${day(first)}` : '',
+			note:
+				range === 'all' && firsts.size === 1 && first
+					? t('holdings.fromDate', { date: day(first) })
+					: '',
 			cells: found.map((period) => ({
 				percent: period?.percent ?? null,
 				amount: period?.amount ?? null
@@ -107,7 +125,7 @@ export function withheldNote(
 	written: (amount: Amount) => string
 ): string {
 	if (!returns || !/[1-9]/.test(returns.tax)) return '';
-	return `${written(returns.tax.replace(/^-/, ''))} withheld`;
+	return t('holdings.withheldAmount', { amount: written(returns.tax.replace(/^-/, '')) });
 }
 
 /** What realised says: `none sold` when nothing of it was ever sold, else the amount; null
@@ -117,7 +135,7 @@ export function realisedText(
 	written: (amount: Amount) => string
 ): string | null {
 	if (!returns) return null;
-	if (!returns.sold) return 'none sold';
+	if (!returns.sold) return t('holdings.noneSold');
 	return returns.realised === null ? null : written(returns.realised);
 }
 
@@ -127,16 +145,17 @@ export function dashNotes(columns: Column[], lines: Line[]): string[] {
 	const small = columns.filter((column) => column.returns?.too_small);
 	const notes = [];
 	if (small.length) {
-		const why = 'never worth 100 CHF at the start of a day, so too small for a return.';
 		notes.push(
 			small.length === columns.length
-				? why[0].toUpperCase() + why.slice(1)
-				: `${small.map((column) => column.label).join(', ')}: ${why}`
+				? t('holdings.tooSmallAll')
+				: t('holdings.tooSmallAccount', {
+						account: small.map((column) => column.label).join(', ')
+					})
 		);
 	}
 	const unheld = lines.some((line) =>
 		line.cells.some((cell, n) => cell.percent === null && !columns[n].returns?.too_small)
 	);
-	if (unheld) notes.push('– Not held through all of the range.');
+	if (unheld) notes.push(t('holdings.unheldNote'));
 	return notes;
 }

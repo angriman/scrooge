@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { Pension, PensionChange } from '#lib/types.js';
-import { changeOf, described, periodOf, totals } from './pensions.js';
+import { changeOf, described, periodOf, periodOptions, totals } from './pensions.js';
 
 const NOTHING: PensionChange = {
 	since: '2025-09-30',
@@ -82,5 +83,16 @@ describe('the group', () => {
 			paidIn: null,
 			paidInPartly: false
 		});
+	});
+
+	it('localizes pension descriptions and period pills in Italian', () => {
+		setLanguage('it');
+		try {
+			expect(periodOptions().map((o) => o.label)).toEqual(['12 mesi', 'Quest’anno']);
+			expect(described(FUND, true)).toBe('Anna · 2º pilastro · certificato del 30 Giu 2026');
+			expect(described(THREE_A, false)).toBe('Pilastro 3a · di cui 145 in liquidità');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

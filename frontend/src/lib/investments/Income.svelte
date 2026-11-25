@@ -9,6 +9,7 @@ each holding, what paid the most first, opening its transactions.
 	import { resolve } from '$app/paths';
 	import { day } from '#lib/format/date.js';
 	import { approximate, short, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { PayoutsReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -72,7 +73,9 @@ each holding, what paid the most first, opening its transactions.
 <section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="paid">
 	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
 		<div>
-			<p id="paid" class="text-small text-ink-secondary">Paid by investments, {range}</p>
+			<p id="paid" class="text-small text-ink-secondary">
+				{t('investments.paidLead', { range })}
+			</p>
 			<p class="mt-1 text-hero font-medium tracking-tight text-ink">
 				<Amount value={total} {currency} places={0} />
 			</p>
@@ -81,53 +84,50 @@ each holding, what paid the most first, opening its transactions.
 					<span class={cn('font-medium', moved.startsWith('-') ? 'text-loss' : 'text-gain')}>
 						{signedPercent(moved)}
 					</span>
-					on the same months a year before.
+					{t('investments.onYearBeforePct')}
 				{:else}
-					Dividends and interest, before the tax withheld from them.
+					{t('investments.beforeTaxNote')}
 				{/if}
 			</p>
 			{#if trailing}
 				<p class="mt-1 max-w-prose text-small text-ink-secondary">
-					The last 12 months paid <Amount
-						value={paid(trailing)}
-						{currency}
-						places={0}
-						class="text-ink"
-					/>,
-					<Amount value={trailing.net} {currency} places={0} class="text-ink" /> after tax.
+					{t('investments.last12MonthsPaidBefore')}
+					<Amount value={paid(trailing)} {currency} places={0} class="text-ink" />,
+					<Amount value={trailing.net} {currency} places={0} class="text-ink" />
+					{t('investments.last12MonthsAfterTax')}
 				</p>
 			{/if}
 		</div>
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
-				<dt class="text-ink-secondary">Dividends</dt>
+				<dt class="text-ink-secondary">{t('investments.dividends')}</dt>
 				<dd class="text-title text-ink"><Amount value={income.totals.dividends} places={0} /></dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">Interest</dt>
+				<dt class="text-ink-secondary">{t('investments.interest')}</dt>
 				<dd class="text-title text-ink"><Amount value={income.totals.interest} places={0} /></dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">Tax withheld</dt>
+				<dt class="text-ink-secondary">{t('investments.taxWithheld')}</dt>
 				<dd class="text-title text-ink">
 					<Amount value={withheld(income.totals.tax)} places={0} />
 				</dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">Net</dt>
+				<dt class="text-ink-secondary">{t('investments.net')}</dt>
 				<dd class="text-title text-ink"><Amount value={income.totals.net} places={0} /></dd>
 			</div>
 		</dl>
 	</div>
 </section>
 
-<Panel class="mt-6" title="Month by month">
+<Panel class="mt-6" title={t('investments.monthByMonth')}>
 	<div bind:clientWidth={width}>
 		<svg
 			viewBox="0 0 {width} {HEIGHT}"
 			class="block h-[200px] w-full"
 			role="img"
-			aria-label="Dividends and interest paid each month, stacked, before tax"
+			aria-label={t('investments.incomeChartAria')}
 		>
 			<text x={LEFT - 6} y={TOP + 4} text-anchor="end" class="fill-ink-muted text-caption"
 				>{short(String(top))}</text
@@ -185,35 +185,32 @@ each holding, what paid the most first, opening its transactions.
 					>{monthLabel(detail.month)} {detail.month.slice(0, 4)}</span
 				>
 				<span
-					>Dividends <Amount
-						value={detail.dividends}
-						{currency}
-						places={0}
-						class="text-ink"
-					/></span
+					>{t('investments.dividends')}
+					<Amount value={detail.dividends} {currency} places={0} class="text-ink" /></span
 				>
 				<span
-					>Interest <Amount value={detail.interest} {currency} places={0} class="text-ink" /></span
+					>{t('investments.interest')}
+					<Amount value={detail.interest} {currency} places={0} class="text-ink" /></span
 				>
 				<span
-					>Tax withheld <Amount
-						value={withheld(detail.tax)}
-						{currency}
-						places={0}
-						class="text-ink"
-					/></span
+					>{t('investments.taxWithheld')}
+					<Amount value={withheld(detail.tax)} {currency} places={0} class="text-ink" /></span
 				>
 			</p>
 		{/if}
 
 		<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-secondary">
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={DIVIDENDS_COLOR}></span>Dividends
+				<span class="size-2 rounded-[2px]" style:background={DIVIDENDS_COLOR}></span>{t(
+					'investments.dividends'
+				)}
 			</li>
 			<li class="flex items-center gap-1.5">
-				<span class="size-2 rounded-[2px]" style:background={INTEREST_COLOR}></span>Interest
+				<span class="size-2 rounded-[2px]" style:background={INTEREST_COLOR}></span>{t(
+					'investments.interest'
+				)}
 			</li>
-			<li class="text-ink-muted">Before the tax withheld, which Net above takes off</li>
+			<li class="text-ink-muted">{t('investments.incomeLegendNote')}</li>
 		</ul>
 	</div>
 </Panel>
@@ -221,25 +218,27 @@ each holding, what paid the most first, opening its transactions.
 <section class="mt-10" aria-labelledby="paying-title">
 	<header class="mb-4 border-b border-line pb-3">
 		<h2 id="paying-title" class="text-heading font-medium text-ink">
-			{income.holdings.length === 1 ? '1 holding paid' : `${income.holdings.length} holdings paid`}
+			{income.holdings.length === 1
+				? t('investments.oneHoldingPaid')
+				: t('investments.manyHoldingsPaid', { count: income.holdings.length })}
 		</h2>
 		<p class="text-small text-ink-secondary">
-			By what each payment names: a payment that names nothing is under its account.
+			{t('investments.holdingsPaidSubtitle')}
 		</p>
 	</header>
 
 	{#if !income.holdings.length}
-		<p class="text-body text-ink-secondary">Nothing was paid over these months.</p>
+		<p class="text-body text-ink-secondary">{t('investments.incomeEmptyMonths')}</p>
 	{:else}
 		<div
 			class="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_7rem_7rem] gap-x-4 px-4 pb-2 text-caption text-ink-muted sm:grid"
 			aria-hidden="true"
 		>
-			<span>Holding</span>
-			<span class="text-right">Dividends</span>
-			<span class="text-right">Interest</span>
-			<span class="text-right">Tax withheld</span>
-			<span class="text-right">Last paid</span>
+			<span>{t('investments.colHolding')}</span>
+			<span class="text-right">{t('investments.dividends')}</span>
+			<span class="text-right">{t('investments.interest')}</span>
+			<span class="text-right">{t('investments.taxWithheld')}</span>
+			<span class="text-right">{t('investments.colLastPaid')}</span>
 		</div>
 		<ul class="rounded-panel bg-panel">
 			{#each income.holdings as holding (`${holding.key}/${holding.account ?? ''}/${holding.owner ?? ''}`)}
@@ -265,11 +264,13 @@ each holding, what paid the most first, opening its transactions.
 								<span class="block truncate font-medium text-ink">{holding.name}</span>
 								<span class="flex gap-1.5 text-small text-ink-muted">
 									{#if holding.account}
-										<span class="truncate">payments that name nothing</span>
+										<span class="truncate">{t('investments.unnamedPayments')}</span>
 									{:else if holding.name !== holding.key}
 										<span class="truncate">{holding.key}</span>
 									{/if}
-									<span class="shrink-0 sm:hidden">last {day(holding.last)}</span>
+									<span class="shrink-0 sm:hidden"
+										>{t('investments.lastDateShort', { date: day(holding.last) })}</span
+									>
 								</span>
 							</span>
 						</span>

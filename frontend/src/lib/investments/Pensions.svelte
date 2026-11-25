@@ -7,13 +7,14 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 <script lang="ts">
 	import { day } from '#lib/format/date.js';
 	import { signed, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Amount as Figure, PensionsReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import { direction } from './performance.js';
-	import { changeOf, described, PERIODS, totals, type Period } from './pensions.js';
+	import { changeOf, described, periodOptions, totals, type Period } from './pensions.js';
 
 	interface Props {
 		report: PensionsReport;
@@ -27,7 +28,8 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 
 	const currency = $derived(report.currency);
 	const all = $derived(totals(report.pensions, period));
-	const label = $derived(period === '1y' ? 'over 12 months' : 'this year');
+	const label = $derived(t(period === '1y' ? 'pensions.over12m' : 'pensions.thisYear'));
+	const periods = $derived(periodOptions());
 	const withFund = $derived(report.pensions.some((pension) => pension.pillar === 'Pillar 2'));
 
 	const tone = (value: Figure | null) =>
@@ -37,21 +39,26 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 
 <Panel
 	class="mt-10"
-	title="Pensions"
-	note={`Pillar 2 and Pillar 3a, cash included, as of ${day(report.day!)}`}
+	title={t('pensions.title')}
+	note={t('pensions.note', { date: day(report.day!) })}
 >
 	{#snippet actions()}
-		<Segmented label="Change over" value={period} options={PERIODS} onchange={onperiod} />
+		<Segmented
+			label={t('pensions.changeOverAria')}
+			value={period}
+			options={periods}
+			onchange={onperiod}
+		/>
 	{/snippet}
 	<div
 		class={cn('hidden gap-x-4 px-1 pb-2 text-caption text-ink-muted sm:grid', COLUMNS)}
 		aria-hidden="true"
 	>
-		<span>Account</span>
-		<span class="text-right">Now</span>
-		<span class="text-right">Change</span>
-		<span class="text-right">Paid in</span>
-		<span class="text-right">Return</span>
+		<span>{t('investments.colAccount')}</span>
+		<span class="text-right">{t('investments.now')}</span>
+		<span class="text-right">{t('monthEnds.colChange')}</span>
+		<span class="text-right">{t('pensions.colPaidIn')}</span>
+		<span class="text-right">{t('pensions.colReturn')}</span>
 	</div>
 	<ul>
 		{#each report.pensions as pension (`${pension.owner}|${pension.account}`)}
@@ -68,10 +75,12 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 					<span class="block truncate text-small text-ink-muted">{described(pension, people)}</span>
 					<span class="block text-small text-ink-muted sm:hidden">
 						{change === null
-							? 'change not known'
+							? t('pensions.changeNotKnown')
 							: `${signed(change, 0)} ${label}`}{measured.paid_in !== null
-							? ` · paid in ${signed(measured.paid_in, 0)}`
-							: ''}{measured.twr !== null ? ` · return ${signedPercent(measured.twr)}` : ''}
+							? ` · ${t('pensions.paidInInline', { amount: signed(measured.paid_in, 0) })}`
+							: ''}{measured.twr !== null
+							? ` · ${t('pensions.returnInline', { pct: signedPercent(measured.twr) })}`
+							: ''}
 					</span>
 				</span>
 				<span class="text-right"
@@ -100,12 +109,12 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 				)}
 			>
 				<span class="min-w-0">
-					<span class="block font-medium text-ink">All pensions</span>
+					<span class="block font-medium text-ink">{t('pensions.allPensions')}</span>
 					<span class="block text-small text-ink-muted sm:hidden">
 						{all.change === null
-							? 'change not known'
+							? t('pensions.changeNotKnown')
 							: `${signed(all.change, 0)} ${label}`}{all.paidIn !== null
-							? ` · paid in ${signed(all.paidIn, 0)}`
+							? ` · ${t('pensions.paidInInline', { amount: signed(all.paidIn, 0) })}`
 							: ''}
 					</span>
 				</span>
@@ -124,16 +133,13 @@ known, and what the group adds up to. A 3a portfolio is one figure here, its cas
 	</ul>
 	<div class="mt-3 grid gap-1 text-caption text-ink-muted">
 		<p>
-			A 3a portfolio is its fund units at the last close and its cash. Paid in is the money
-			deposited or moved in from another provider; its return is time-weighted, as for the
-			investment accounts.
+			{t('pensions.footnote3a')}
 		</p>
 		{#if withFund}
 			<p>
-				A pension fund is what its certificate states: it does not tell what was paid in from the
-				interest credited, so its change is both and it has no return.{all.paidInPartly
-					? ' * Pillar 3a only.'
-					: ''} Before its first certificate nothing is known of it.
+				{t('pensions.footnoteFund', {
+					partlyNote: all.paidInPartly ? t('pensions.partlyNote') : ''
+				})}
 			</p>
 		{/if}
 	</div>

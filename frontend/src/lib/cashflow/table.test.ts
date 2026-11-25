@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { CashFlowPeriod, Saved } from '#lib/types.js';
 import { periodName, periodRows, totalRow } from './table.js';
 
@@ -63,5 +64,14 @@ describe('the cash flow as a table', () => {
 	it('leaves the rate on salary open when the range had no salary', () => {
 		const total = totalRow(saved('300.00', '0.00', '100.00', '200.00'));
 		expect([total.salary, total.rate, total.rateSalary]).toEqual(['0.00', '50.0%', '–']);
+	});
+
+	it('localizes the total row label in Italian', () => {
+		setLanguage('it');
+		try {
+			expect(totalRow(saved('5000.00', '4000.00', '2600.00', '2400.00')).period).toBe('Totale');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

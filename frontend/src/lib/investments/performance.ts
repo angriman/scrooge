@@ -6,7 +6,7 @@
 import { addDays, day, daysBetween } from '#lib/format/date.js';
 import { approximate, money, signedPercent } from '#lib/format/number.js';
 import { t } from '#lib/i18n/index.svelte.js';
-import { daysBack, RANGES, type Range } from '#lib/overview/range.js';
+import { daysBack, RANGES, rangeOptions, type Range } from '#lib/overview/range.js';
 import type {
 	Amount,
 	BenchmarkReturn,
@@ -16,7 +16,7 @@ import type {
 	MeasuredAccount
 } from '#lib/types.js';
 
-export { RANGES, type Range };
+export { RANGES, rangeOptions, type Range };
 
 /** `performance.DEFAULT_RANGE`: the year to date, unless another range is asked. */
 export const DEFAULT_RANGE: Range = 'ytd';
@@ -56,14 +56,16 @@ export function described(row: MeasuredAccount, people: boolean, since: Day | nu
 	const parts = [
 		people ? row.owner : '',
 		row.accounts.length > 1 ? row.accounts.join(', ') : '',
-		row.twr_since && row.twr_since !== since ? `return from ${day(row.twr_since)}` : ''
+		row.twr_since && row.twr_since !== since
+			? t('investments.returnFrom', { date: day(row.twr_since) })
+			: ''
 	];
 	return parts.filter(Boolean).join(' · ');
 }
 
 /** What the money-weighted return is over: `a year` from a year up, `over the period` below. */
 export function mwrPer(measured: Pick<Measured, 'mwr_a_year'>): string {
-	return measured.mwr_a_year ? 'a year' : 'over the period';
+	return t(measured.mwr_a_year ? 'investments.mwrYear' : 'investments.mwrPeriod');
 }
 
 /** Which way a figure went, as its rounding writes it: a change that rounds to nothing is flat. */
@@ -148,7 +150,7 @@ export function compared(
 	const each = benchmarks.map(
 		(benchmark) => `${benchmark.symbol} ${signedPercent(benchmark.return)}`
 	);
-	return `${each.join(', ')} over the same period`;
+	return t('investments.benchmarksCompared', { list: each.join(', ') });
 }
 
 /** What the chart's caption says of the benchmarks' lines, after what it says of the others;
@@ -156,11 +158,13 @@ export function compared(
 export function instead(benchmarks: readonly BenchmarkReturn[]): string {
 	const symbols = benchmarks.map((benchmark) => benchmark.symbol);
 	if (!symbols.length) return '';
-	const worth = 'what that money would be worth had it gone into';
-	if (symbols.length === 1)
-		return ` In ${symbols[0]} is ${worth} ${symbols[0]} instead, on the same days.`;
-	const listed = `In ${symbols.slice(0, -1).join(', in ')} and in ${symbols.at(-1)}`;
-	return ` ${listed} are ${worth} each instead, on the same days.`;
+	if (symbols.length === 1) return t('investments.benchmarkSingle', { symbol: symbols[0] });
+	const rest = symbols.slice(1).map((symbol) => t('investments.inSymbolPhrase', { symbol }));
+	const items = [symbols[0], ...rest];
+	return t('investments.benchmarkMulti', {
+		first: items.slice(0, -1).join(', '),
+		last: items[items.length - 1]
+	});
 }
 
 /** The day of `xs` nearest `x`: what the pointer is over. */

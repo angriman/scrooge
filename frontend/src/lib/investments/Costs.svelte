@@ -8,6 +8,7 @@ the costs could not be loaded, the panel says why in their place.
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { approximate, percent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CostsReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -45,27 +46,25 @@ the costs could not be loaded, the panel says why in their place.
 
 <Panel
 	class="mt-10"
-	title="Costs"
-	note={costs
-		? `What investing cost each year, in ${costs.currency}: commissions and the tax withheld`
-		: undefined}
+	title={t('costs.title')}
+	note={costs ? t('costs.note', { currency: costs.currency }) : undefined}
 >
 	{#if !costs}
 		<p class="text-body text-ink-secondary" role="status">
-			The costs are not available: {unavailable || 'they could not be loaded.'}
+			{t('costs.unavailablePrefix', { why: unavailable || t('costs.unavailableDefault') })}
 		</p>
 	{:else if !costsAnything(costs)}
-		<p class="text-body text-ink-secondary">Nothing was charged or withheld.</p>
+		<p class="text-body text-ink-secondary">{t('costs.empty')}</p>
 	{:else}
 		<table class="w-full text-small tabular-nums">
 			<thead class="text-caption text-ink-muted">
 				<tr>
-					<th scope="col" class="pb-2 text-left font-normal">Year</th>
-					<th scope="col" class="pb-2 text-right font-normal">Commissions</th>
-					<th scope="col" class="pb-2 text-right font-normal">Tax withheld</th>
-					<th scope="col" class="pb-2 text-right font-normal">Total</th>
+					<th scope="col" class="pb-2 text-left font-normal">{t('costs.colYear')}</th>
+					<th scope="col" class="pb-2 text-right font-normal">{t('costs.colCommissions')}</th>
+					<th scope="col" class="pb-2 text-right font-normal">{t('costs.colTaxWithheld')}</th>
+					<th scope="col" class="pb-2 text-right font-normal">{t('overview.total')}</th>
 					<th scope="col" class="hidden pb-2 text-right font-normal sm:table-cell"
-						>Of what was paid</th
+						>{t('costs.colOfWhatPaid')}</th
 					>
 				</tr>
 			</thead>
@@ -73,7 +72,8 @@ the costs could not be loaded, the panel says why in their place.
 				{#each years as year (year.year)}
 					<tr class="border-t border-line">
 						<th scope="row" class="py-2 text-left font-normal text-ink">
-							{year.year}{#if !year.whole}<span class="ml-1 text-ink-muted">so far</span>{/if}
+							{year.year}{#if !year.whole}<span class="ml-1 text-ink-muted">{t('costs.soFar')}</span
+								>{/if}
 						</th>
 						<td class="py-2 text-right">
 							{@render figure(year.commissions, { category: COMMISSIONS, year: year.year })}
@@ -93,7 +93,7 @@ the costs could not be loaded, the panel says why in their place.
 			{#if years.length > 1}
 				<tfoot>
 					<tr class="border-t border-line-strong font-medium">
-						<th scope="row" class="py-2 text-left text-ink">All years</th>
+						<th scope="row" class="py-2 text-left text-ink">{t('costs.allYears')}</th>
 						<td class="py-2 text-right"
 							>{@render figure(costs.totals.commissions, { category: COMMISSIONS })}</td
 						>
@@ -110,7 +110,7 @@ the costs could not be loaded, the panel says why in their place.
 		</table>
 
 		{#if costs.accounts.length}
-			<h3 class="mt-6 mb-1 text-small font-medium text-ink">By account, every year</h3>
+			<h3 class="mt-6 mb-1 text-small font-medium text-ink">{t('costs.byAccountEveryYear')}</h3>
 			<ul>
 				{#each costs.accounts as each (`${each.owner}/${each.account}`)}
 					<li class="border-t border-line first:border-t-0">
@@ -130,10 +130,7 @@ the costs could not be loaded, the panel says why in their place.
 		{/if}
 
 		<p class="mt-4 max-w-prose text-caption text-ink-muted">
-			Commissions are those charged on broker and pension accounts; a bank’s fees, of the same
-			category, are left out. From a tablet’s width on, the tax withheld is also in percent of the
-			dividends and interest paid that year, before tax. Rows in a currency left out for want of a
-			rate still show in the transactions a figure opens.
+			{t('costs.footnote')}
 		</p>
 	{/if}
 </Panel>

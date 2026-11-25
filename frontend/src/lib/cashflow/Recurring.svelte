@@ -7,6 +7,7 @@ name finds them alone.
 -->
 <script lang="ts">
 	import { dayOfYear, day } from '#lib/format/date.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Recurring, RecurringPayment } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -40,7 +41,7 @@ name finds them alone.
 				<span class="truncate">{payment.name}</span>
 				{#if !stopped && isNew(payment, recurring.through)}
 					<span class="shrink-0 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
-						>New</span
+						>{t('cashflow.recurringNew')}</span
 					>
 				{/if}
 			</span>
@@ -48,13 +49,17 @@ name finds them alone.
 				<Amount value={payment.amount} currency={payment.currency} />
 			</span>
 			<span class="truncate text-caption text-ink-muted">
-				{payment.every === 'monthly' ? 'Monthly' : 'Yearly'} ·
-				{stopped ? `last paid ${day(payment.last)}` : `next ${dayOfYear(payment.next)}`}
+				{t(payment.every === 'monthly' ? 'cashflow.recurringMonthly' : 'cashflow.recurringYearly')} ·
+				{stopped
+					? t('cashflow.lastPaid', { date: day(payment.last) })
+					: t('cashflow.nextDue', { date: dayOfYear(payment.next) })}
 			</span>
 			<span class="text-right text-caption whitespace-nowrap text-ink-muted">
 				{#if change && payment.previous !== null}
 					<span class={change === 'up' ? 'text-caution' : 'text-gain'}>
-						{change === 'up' ? '▲' : '▼'} from <Amount value={payment.previous} />
+						{change === 'up' ? '▲' : '▼'}
+						{t('cashflow.fromPrevious')}
+						<Amount value={payment.previous} />
 					</span>
 				{:else}
 					{everyName(payment.every)}
@@ -64,7 +69,7 @@ name finds them alone.
 	</li>
 {/snippet}
 
-<Panel title="Recurring and subscriptions" note="Paid at a steady pace, as of the last statement.">
+<Panel title={t('cashflow.recurringTitle')} note={t('cashflow.recurringNote')}>
 	{#each recurring.errors as error (error)}
 		<p class="mb-2 text-small text-caution" role="status">{error}</p>
 	{/each}
@@ -77,9 +82,9 @@ name finds them alone.
 					currency={recurring.currency}
 					class="text-title font-medium text-ink"
 				/>
-				a month together
+				{t('cashflow.aMonthTogether')}
 			{:else}
-				What they cost a month together needs the missing rate.
+				{t('cashflow.recurringMissingRate')}
 			{/if}
 		</p>
 		<ul class="divide-y divide-line">
@@ -88,7 +93,7 @@ name finds them alone.
 			{/each}
 		</ul>
 	{:else}
-		<p class="text-body text-ink-secondary">Nothing is paid at a steady pace now.</p>
+		<p class="text-body text-ink-secondary">{t('cashflow.recurringEmpty')}</p>
 	{/if}
 	{#if recurring.ended.length}
 		<button
@@ -97,7 +102,9 @@ name finds them alone.
 			aria-expanded={ended}
 			class="mt-3 text-small text-brand hover:text-brand-hover"
 		>
-			{ended ? 'Hide' : 'Show'} the {recurring.ended.length} that stopped
+			{t(ended ? 'cashflow.hideStopped' : 'cashflow.showStopped', {
+				count: recurring.ended.length
+			})}
 		</button>
 		{#if ended}
 			<ul class="mt-2 divide-y divide-line">

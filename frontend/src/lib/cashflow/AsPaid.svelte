@@ -4,6 +4,7 @@ Income and expenses in each currency, as they were paid: nothing converted. Fold
 checking a figure against the statements.
 -->
 <script lang="ts">
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 
@@ -19,11 +20,10 @@ checking a figure against the statements.
 {#if currencies.length}
 	<details class="rounded-panel bg-panel px-4 py-3">
 		<summary class="cursor-pointer text-body text-ink-secondary hover:text-ink">
-			In each currency, as paid
+			{t('cashflow.asPaidSummary')}
 		</summary>
 		<p class="mt-1 text-small text-ink-muted">
-			What came in and went out in each currency, before anything is converted. Investing is what
-			went into securities, or came back out of them.
+			{t('cashflow.asPaidNote')}
 		</p>
 		<div class="mt-3 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
 			{#each currencies as currency (currency)}
@@ -31,10 +31,10 @@ checking a figure against the statements.
 					<caption class="pb-1 text-left text-title font-medium text-ink">{currency}</caption>
 					<thead class="text-caption text-ink-muted">
 						<tr>
-							<th class="py-1 text-left font-normal">Period</th>
-							<th class="py-1 text-right font-normal">In</th>
-							<th class="py-1 text-right font-normal">Out</th>
-							<th class="py-1 text-right font-normal">Investing</th>
+							<th class="py-1 text-left font-normal">{t('cashflow.colPeriod')}</th>
+							<th class="py-1 text-right font-normal">{t('cashflow.inShort')}</th>
+							<th class="py-1 text-right font-normal">{t('cashflow.outShort')}</th>
+							<th class="py-1 text-right font-normal">{t('cashflow.colInvesting')}</th>
 						</tr>
 					</thead>
 					<tbody>

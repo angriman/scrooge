@@ -9,6 +9,7 @@ worth in each benchmark, and the same figures account by account.
 <script lang="ts">
 	import { day, daysBetween } from '#lib/format/date.js';
 	import { difference, short, signed, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { PerformanceReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -72,9 +73,11 @@ worth in each benchmark, and the same figures account by account.
 <section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="returned">
 	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
 		<div>
-			<p id="returned" class="text-small text-ink-secondary">Time-weighted return, {span}</p>
+			<p id="returned" class="text-small text-ink-secondary">
+				{t('overview.twrSpan', { span })}
+			</p>
 			{#if totals.twr === null}
-				<p class="mt-1 text-title text-ink-muted">Not known: nothing was invested</p>
+				<p class="mt-1 text-title text-ink-muted">{t('investments.notInvested')}</p>
 			{:else}
 				<p
 					class={cn(
@@ -90,65 +93,63 @@ worth in each benchmark, and the same figures account by account.
 			{#if beside}
 				<p class="mt-1 text-body text-ink">{beside}</p>
 				<p class="text-caption text-ink-muted">
-					What holding each returned over the days the return above counts, in {currency}: its price
-					alone, without what it paid out.
+					{t('investments.benchmarkPriceNote', { currency })}
 				</p>
 			{/if}
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.mwr !== null}
-					Money-weighted <span class={cn('font-medium', tone(totals.mwr))}
-						>{signedPercent(totals.mwr)}</span
-					>
-					{mwrPer(totals)}, on the money as it was put in.
+					{t('investments.moneyWeighted')}
+					<span class={cn('font-medium', tone(totals.mwr))}>{signedPercent(totals.mwr)}</span>
+					{t('investments.mwrFlowsNote', { per: mwrPer(totals) })}
 				{:else}
-					The money-weighted return has no rate to give over these days.
+					{t('investments.mwrNone')}
 				{/if}
 				{#if totals.twr_since}
-					The time-weighted return counts from {day(totals.twr_since)}: before it, next to nothing
-					was invested.
+					{t('investments.twrSinceNote', { date: day(totals.twr_since) })}
 				{/if}
 			</p>
 		</div>
 		<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-small sm:grid-cols-4 md:text-right">
 			<div>
-				<dt class="text-ink-secondary">Gain</dt>
+				<dt class="text-ink-secondary">{t('overview.gain')}</dt>
 				<dd class={cn('text-title tabular-nums', tone(totals.gain))}>{signed(totals.gain, 0)}</dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">Put in</dt>
+				<dt class="text-ink-secondary">{t('investments.putIn')}</dt>
 				<dd class="text-title text-ink">{signed(totals.net_flows, 0)}</dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">At the start</dt>
+				<dt class="text-ink-secondary">{t('investments.atTheStart')}</dt>
 				<dd class="text-title text-ink"><Amount value={totals.start} places={0} /></dd>
 			</div>
 			<div>
-				<dt class="text-ink-secondary">Now</dt>
+				<dt class="text-ink-secondary">{t('investments.now')}</dt>
 				<dd class="text-title text-ink"><Amount value={totals.end} {currency} places={0} /></dd>
 			</div>
 		</dl>
 	</div>
 	<p class="mt-4 max-w-prose text-small text-ink-muted">
-		Of the change of <Amount value={change} {currency} places={0} class="text-ink-secondary" />
-		from {day(performance.series[0].day)} to {day(performance.last!)},
-		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" /> was money put
-		in or taken out and <Amount
-			value={totals.gain}
-			{currency}
-			places={0}
-			class="text-ink-secondary"
-		/> what the investments made, the moves of exchange rates included.
+		{t('investments.changeBreakdownBefore')}
+		<Amount value={change} {currency} places={0} class="text-ink-secondary" />
+		{t('investments.changeBreakdownMid1', {
+			from: day(performance.series[0].day),
+			to: day(performance.last!)
+		})}
+		<Amount value={totals.net_flows} {currency} places={0} class="text-ink-secondary" />
+		{t('investments.changeBreakdownMid2')}
+		<Amount value={totals.gain} {currency} places={0} class="text-ink-secondary" />
+		{t('investments.changeBreakdownAfter')}
 	</p>
 </section>
 
-<Panel class="mt-6" title="Worth against money put in">
+<Panel class="mt-6" title={t('investments.chartTitle')}>
 	<div bind:clientWidth={width}>
 		{#if drawn}
 			<svg
 				viewBox="0 0 {width} {HEIGHT}"
 				class="block h-[240px] w-full touch-pan-y"
 				role="img"
-				aria-label="What the investment accounts were worth each day, against the money put in and what it would be worth in each benchmark"
+				aria-label={t('investments.chartAria')}
 				onpointermove={point}
 				onpointerdown={point}
 				onpointerleave={() => (pointed = null)}
@@ -216,12 +217,12 @@ worth in each benchmark, and the same figures account by account.
 			>
 				<span class="font-medium text-ink">{day(shown.day)}</span>
 				<span class="flex items-center gap-1.5">
-					<span class="h-0.5 w-3 bg-brand" aria-hidden="true"></span>Worth
+					<span class="h-0.5 w-3 bg-brand" aria-hidden="true"></span>{t('investments.worthLegend')}
 					<Amount value={shown.value} {currency} places={0} class="text-ink" />
 				</span>
 				<span class="flex items-center gap-1.5">
 					<span class="h-0 w-3 border-t-[1.5px] border-dashed border-ink-muted" aria-hidden="true"
-					></span>Put in
+					></span>{t('investments.putIn')}
 					<Amount value={shown.invested} {currency} places={0} class="text-ink" />
 				</span>
 				{#each performance.benchmarks as benchmark, index (benchmark.symbol)}
@@ -230,15 +231,17 @@ worth in each benchmark, and the same figures account by account.
 							class="h-0 w-3 border-t-[1.5px] border-dashed"
 							style:border-color={benchmarkColor(index)}
 							aria-hidden="true"
-						></span>In {benchmark.symbol}
+						></span>{t('investments.inBenchmarkLegend', { symbol: benchmark.symbol })}
 						<Amount value={shown.benchmarks[index]} {currency} places={0} class="text-ink" />
 					</span>
 				{/each}
 			</p>
 		{/if}
 		<p class="mt-1 text-caption text-ink-muted">
-			Put in is what the accounts were worth at the start and the money put in since, less what was
-			taken out.{instead(performance.benchmarks)}{weekly ? ' One point a week.' : ''}
+			{t('investments.chartNote', {
+				instead: instead(performance.benchmarks),
+				weekly: weekly ? t('investments.weeklyNote') : ''
+			})}
 		</p>
 	</div>
 </Panel>
@@ -246,22 +249,24 @@ worth in each benchmark, and the same figures account by account.
 <section class="mt-10" aria-labelledby="accounts-title">
 	<header class="mb-4 border-b border-line pb-3">
 		<h2 id="accounts-title" class="text-heading font-medium text-ink">
-			{performance.accounts.length === 1 ? '1 account' : `${performance.accounts.length} accounts`}
+			{performance.accounts.length === 1
+				? t('accounts.countOne')
+				: t('accounts.countMany', { count: performance.accounts.length })}
 		</h2>
 		<p class="text-small text-ink-secondary">
-			Brokers and stock plans, with their cash; a broker’s accounts in each currency are one.
+			{t('investments.brokersSubtitle')}
 		</p>
 	</header>
 	<div
 		class="hidden grid-cols-[minmax(0,1fr)_8rem_7rem_7rem_6rem_6rem] gap-x-4 px-4 pb-2 text-caption text-ink-muted sm:grid"
 		aria-hidden="true"
 	>
-		<span>Account</span>
-		<span class="text-right">Now</span>
-		<span class="text-right">Put in</span>
-		<span class="text-right">Gain</span>
-		<span class="text-right">Time-weighted</span>
-		<span class="text-right">Money-weighted</span>
+		<span>{t('investments.colAccount')}</span>
+		<span class="text-right">{t('investments.now')}</span>
+		<span class="text-right">{t('investments.putIn')}</span>
+		<span class="text-right">{t('overview.gain')}</span>
+		<span class="text-right">{t('investments.colTwr')}</span>
+		<span class="text-right">{t('investments.colMwr')}</span>
 	</div>
 	<ul class="rounded-panel bg-panel">
 		{#each performance.accounts as row (`${row.owner}|${row.name}`)}
@@ -273,7 +278,11 @@ worth in each benchmark, and the same figures account by account.
 					<span class="block truncate font-medium text-ink">{row.name}</span>
 					<span class="block truncate text-small text-ink-muted">
 						<span class="hidden sm:inline">{about}</span>
-						<span class="sm:hidden">{about ? `${about} · ` : ''}gain {signed(row.gain, 0)}</span>
+						<span class="sm:hidden"
+							>{about ? `${about} · ` : ''}{t('investments.mobileGain', {
+								amount: signed(row.gain, 0)
+							})}</span
+						>
 					</span>
 				</span>
 				<span class="text-right sm:hidden">

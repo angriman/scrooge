@@ -7,6 +7,7 @@ was kept: each rate keeps the amount it is a part of. Should the rest still not 
 scrolls sideways, the page does not.
 -->
 <script lang="ts">
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowPeriod, Saved } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import { cn } from '#lib/ui/cn.js';
@@ -32,18 +33,20 @@ scrolls sideways, the page does not.
 
 <div class="-mx-4 overflow-x-auto px-4">
 	<table class="w-full text-small">
-		<caption class="sr-only"
-			>Income, spending and what was saved in each period, in {currency}</caption
-		>
+		<caption class="sr-only">{t('cashflow.tableCaption', { currency })}</caption>
 		<thead class="text-caption text-ink-muted">
 			<tr>
-				<th class="pb-2 text-left font-normal">Period</th>
-				<th class={amount('income', 'pb-2 font-normal')}>Came in</th>
-				<th class={amount('salary', 'pb-2 font-normal')} title="Income from work">Salary</th>
-				<th class={amount('spent', 'pb-2 font-normal')}>Went out</th>
-				<th class={amount('saved', 'pb-2 font-normal')}>Saved</th>
-				<th class={cn('pb-2 font-normal', CELL)}>% of income</th>
-				<th class={cn('pb-2 font-normal', CELL)} title="Of the income from work">% of salary</th>
+				<th class="pb-2 text-left font-normal">{t('cashflow.colPeriod')}</th>
+				<th class={amount('income', 'pb-2 font-normal')}>{t('cashflow.cameIn')}</th>
+				<th class={amount('salary', 'pb-2 font-normal')} title={t('cashflow.salaryTitle')}
+					>{t('cashflow.salary')}</th
+				>
+				<th class={amount('spent', 'pb-2 font-normal')}>{t('cashflow.wentOut')}</th>
+				<th class={amount('saved', 'pb-2 font-normal')}>{t('cashflow.saved')}</th>
+				<th class={cn('pb-2 font-normal', CELL)}>{t('cashflow.colPctIncome')}</th>
+				<th class={cn('pb-2 font-normal', CELL)} title={t('cashflow.colPctSalaryTitle')}
+					>{t('cashflow.colPctSalary')}</th
+				>
 			</tr>
 		</thead>
 		<tbody>
@@ -84,4 +87,4 @@ scrolls sideways, the page does not.
 		</tfoot>
 	</table>
 </div>
-<p class="mt-2 text-caption text-ink-muted">Salary is the income from work.</p>
+<p class="mt-2 text-caption text-ink-muted">{t('cashflow.tableNote')}</p>

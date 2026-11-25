@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { Recurring, RecurringPayment } from '#lib/types.js';
 import { anyRecurring, everyName, isNew, monthsBefore, priceChange } from './recurring.js';
 
@@ -63,5 +64,12 @@ describe('the recurring payments of the cash flow', () => {
 	it('names the pace', () => {
 		expect(everyName('monthly')).toBe('a month');
 		expect(everyName('yearly')).toBe('a year');
+		setLanguage('it');
+		try {
+			expect(everyName('monthly')).toBe('al mese');
+			expect(everyName('yearly')).toBe('all’anno');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

@@ -3,6 +3,7 @@
 
 import { isHttpError } from '@sveltejs/kit';
 import { approximate, money, negate } from '#lib/format/number.js';
+import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Cost, CostsReport, CostYear } from '#lib/types.js';
 
 /** The categories the rows of a cost have, by their keys: commissions (`categories.FEES`),
@@ -18,16 +19,19 @@ export function newestFirst(years: readonly CostYear[]): CostYear[] {
 /** What an account's cost is made of, in whole units: `commissions 3, tax withheld 14`, of
  * those it has anything of. More refunded than charged is said so: `commissions refunded 2`. */
 export function parts(cost: Pick<Cost, 'commissions' | 'tax'>): string {
-	return [
-		['commissions', cost.commissions],
-		['tax withheld', cost.tax]
-	]
+	return (
+		[
+			['costs.commissionsLower', cost.commissions],
+			['costs.taxWithheldLower', cost.tax]
+		] as [MessageKey, string][]
+	)
 		.filter(([, amount]) => approximate(amount) !== 0)
-		.map(([name, amount]) =>
-			approximate(amount) < 0
-				? `${name} refunded ${money(negate(amount), 0)}`
-				: `${name} ${money(amount, 0)}`
-		)
+		.map(([key, amount]) => {
+			const name = t(key);
+			return approximate(amount) < 0
+				? t('costs.partRefunded', { name, amount: money(negate(amount), 0) })
+				: t('costs.partCharged', { name, amount: money(amount, 0) });
+		})
 		.join(', ');
 }
 
