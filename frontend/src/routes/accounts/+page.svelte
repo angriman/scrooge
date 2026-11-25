@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { send } from '#lib/api.js';
 	import { day } from '#lib/format/date.js';
@@ -48,6 +48,20 @@
 		}
 		await goto(`${resolve('/import')}?owner=${encodeURIComponent(done.sent.owner)}`);
 	}
+	// A broker's currencies are closed and opened together: the API takes the name listed here.
+	async function change(account: StatementsAccount, action: string, extra: object) {
+		const done = await send(
+			`/api/accounts/${action}`,
+			{ owner: account.owner, account: account.account, ...extra },
+			data.session.token
+		);
+		if (!done.ok) return (done.sent.errors ?? []).join(' ');
+		await invalidateAll();
+		return null;
+	}
+	const close = (account: StatementsAccount, when: string) =>
+		change(account, 'close', { day: when });
+	const reopen = (account: StatementsAccount) => change(account, 'reopen', {});
 	const behind = $derived(opened.filter((account) => account.behind).length);
 	const held = $derived(heldTogether(listed.accounts));
 	const title = $derived(
@@ -125,6 +139,8 @@
 			{today}
 			{people}
 			onremove={data.session.read_only ? undefined : remove}
+			onclose={data.session.read_only ? undefined : close}
+			onreopen={data.session.read_only ? undefined : reopen}
 		/>
 	{/if}
 	{#if closed.length}
@@ -134,6 +150,8 @@
 			{today}
 			{people}
 			onremove={data.session.read_only ? undefined : remove}
+			onclose={data.session.read_only ? undefined : close}
+			onreopen={data.session.read_only ? undefined : reopen}
 			title={closed.length === 1 ? '1 closed account' : `${closed.length} closed accounts`}
 		/>
 	{/if}
