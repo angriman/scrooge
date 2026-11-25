@@ -9,6 +9,7 @@ a note under the table tells the two apart.
 -->
 <script lang="ts">
 	import { signed, signedPercent, money } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { direction } from '#lib/investments/performance.js';
 	import type { Amount, HeldInstrument } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
@@ -32,10 +33,18 @@ a note under the table tells the two apart.
 		return way === 'up' ? 'text-gain' : way === 'down' ? 'text-loss' : 'text-ink-secondary';
 	};
 	const totals = $derived([
-		{ label: 'Realised', note: 'from sales', pick: 'realised' as const },
-		{ label: 'Unrealised', note: 'still held', pick: 'unrealised' as const },
 		{
-			label: holding.asset === 'Bills' ? 'Interest' : 'Dividends',
+			label: t('holdings.realisedLabel'),
+			note: t('holdings.realisedNote'),
+			pick: 'realised' as const
+		},
+		{
+			label: t('holdings.unrealisedLabel'),
+			note: t('holdings.unrealisedNote'),
+			pick: 'unrealised' as const
+		},
+		{
+			label: t(holding.asset === 'Bills' ? 'investments.interest' : 'investments.dividends'),
 			note: '',
 			pick: 'dividends' as const
 		}
@@ -44,7 +53,7 @@ a note under the table tells the two apart.
 
 {#if columns.some((column) => column.returns)}
 	<p id={titleId} class="mt-4 pb-2 text-caption text-ink-muted">
-		What it returned, in {currency}, dividends included
+		{t('holdings.returnedTitle', { currency })}
 	</p>
 	<!-- On a phone the accounts scroll sideways under the ranges, which stay. -->
 	<div class="overflow-x-auto">
@@ -52,7 +61,7 @@ a note under the table tells the two apart.
 			<thead class="text-caption text-ink-muted">
 				<tr>
 					<th class="sticky left-0 bg-panel pb-2 text-left font-normal"
-						><span class="sr-only">Over</span></th
+						><span class="sr-only">{t('holdings.overSr')}</span></th
 					>
 					{#each columns as column (column.label)}
 						<th class="pb-2 pl-3 text-right font-normal whitespace-nowrap">{column.label}</th>
@@ -72,7 +81,7 @@ a note under the table tells the two apart.
 						{#each line.cells as cell, n (n)}
 							<td class="py-2 pl-3 text-right whitespace-nowrap tabular-nums">
 								{#if cell.percent === null || cell.amount === null}
-									<span class="text-ink-muted" title="not held through all of it">–</span>
+									<span class="text-ink-muted" title={t('holdings.notHeldThroughTitle')}>–</span>
 								{:else}
 									<span class={cn('block font-medium', tone(cell.percent, 1))}
 										>{signedPercent(cell.percent)}</span
@@ -101,7 +110,7 @@ a note under the table tells the two apart.
 								{#if total.pick === 'realised' && column.returns && !column.returns.sold}
 									<span class="text-ink-muted">{realisedText(column.returns, signed)}</span>
 								{:else if value === null}
-									<span class="text-ink-muted" title="not known">–</span>
+									<span class="text-ink-muted" title={t('common.notKnown')}>–</span>
 								{:else}
 									<span
 										class={cn('block', total.pick === 'dividends' ? 'text-ink' : tone(value, 2))}

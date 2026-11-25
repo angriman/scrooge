@@ -2,6 +2,7 @@
 
 import { month } from '#lib/format/date.js';
 import { percent } from '#lib/format/number.js';
+import { t } from '#lib/i18n/index.svelte.js';
 import type { Amount, CashFlowPeriod, Saved } from '#lib/types.js';
 
 /** One line of the table: what came in, the salary within it, what went out, what was kept,
@@ -51,5 +52,5 @@ export function periodRows(periods: readonly CashFlowPeriod[]): Row[] {
 
 /** The whole range, for the foot of the table. */
 export function totalRow(totals: Saved): Row {
-	return row('total', 'In all', totals);
+	return row('total', t('cashflow.inAllWord'), totals);
 }

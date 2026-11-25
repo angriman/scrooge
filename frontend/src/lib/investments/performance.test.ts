@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { InvestedDay, MeasuredAccount } from '#lib/types.js';
 import {
 	compared,
@@ -147,5 +148,19 @@ describe('the benchmarks', () => {
 		expect(instead([vt, voo, { symbol: 'ACWI', return: '1' }])).toBe(
 			` In VT, in VOO and in ACWI are ${worth} each instead, on the same days.`
 		);
+	});
+
+	it('localizes performance labels and captions in Italian', () => {
+		setLanguage('it');
+		try {
+			expect(over('ytd', '2026-01-01', '2026-09-30')).toBe('quest’anno');
+			expect(mwrPer({ mwr_a_year: true })).toBe('annuo');
+			expect(compared('10.00', [vt])).toBe('VT +12.3% nello stesso periodo');
+			expect(instead([vt, voo, { symbol: 'ACWI', return: '1' }])).toBe(
+				' Le linee VT, VOO e ACWI mostrano quanto varrebbe lo stesso capitale investito in ciascun indice negli stessi giorni.'
+			);
+		} finally {
+			setLanguage('en');
+		}
 	});
 });

@@ -13,8 +13,9 @@
 	import WhatMoved from '#lib/cashflow/WhatMoved.svelte';
 	import WhoPaid from '#lib/cashflow/WhoPaid.svelte';
 	import { whatMoved } from '#lib/cashflow/whatMoved.js';
-	import { partColors, rangeName } from '#lib/cashflow/names.js';
+	import { partColors, rangeName, rangePillLabel } from '#lib/cashflow/names.js';
 	import { anyRecurring } from '#lib/cashflow/recurring.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import { here, oneOf, show } from '#lib/view.js';
@@ -34,17 +35,17 @@
 			? (flow.ranges[0]?.label ?? '')
 			: (flow.ranges.find((range) => range.from === from && range.to === to)?.label ?? '')
 	);
-	const BY = [
-		{ value: 'month', label: 'Month' },
-		{ value: 'quarter', label: 'Quarter' },
-		{ value: 'year', label: 'Year' }
-	] as const;
+	const byOptions = $derived([
+		{ value: 'month' as const, label: t('cashflow.byMonth') },
+		{ value: 'quarter' as const, label: t('cashflow.byQuarter') },
+		{ value: 'year' as const, label: t('cashflow.byYear') }
+	]);
 	const by = $derived(oneOf(page.url, 'by', ['month', 'quarter', 'year'], 'month'));
-	const VIEWS = [
-		{ value: 'time', label: 'Over time' },
-		{ value: 'flow', label: 'Flow' },
-		{ value: 'table', label: 'Table' }
-	] as const;
+	const views = $derived([
+		{ value: 'time' as const, label: t('cashflow.viewTime') },
+		{ value: 'flow' as const, label: t('cashflow.viewFlow') },
+		{ value: 'table' as const, label: t('overview.table') }
+	]);
 	const view = $derived(oneOf(here(), 'view', ['time', 'flow', 'table'], 'time'));
 
 	// The transactions behind a line: the same person, the same range, and the same currency
@@ -73,17 +74,17 @@
 </script>
 
 <svelte:head>
-	<title>Cash flow · scrooge</title>
+	<title>{t('cashflow.pageTitle')}</title>
 </svelte:head>
 
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-	<h1 class="text-heading font-medium text-ink">Cash flow</h1>
+	<h1 class="text-heading font-medium text-ink">{t('cashflow.title')}</h1>
 	{#if flow.ranges.length}
 		<div class="flex flex-wrap items-center gap-2">
 			<Segmented
-				label="Range"
+				label={t('overview.rangeAria')}
 				value={chosen}
-				options={flow.ranges.map((range) => ({ value: range.label, label: range.label }))}
+				options={flow.ranges.map((range) => ({ value: range.label, label: rangePillLabel(range) }))}
 				onchange={(label) => {
 					const range = flow.ranges.find((r) => r.label === label)!;
 					show(
@@ -95,9 +96,9 @@
 				}}
 			/>
 			<Segmented
-				label="Each column"
+				label={t('cashflow.eachColumnAria')}
 				value={by}
-				options={BY}
+				options={byOptions}
 				onchange={(value) => show(here(), { by: value === 'month' ? null : value })}
 			/>
 		</div>
@@ -116,15 +117,15 @@
 
 {#if !report?.totals}
 	<section class="rounded-lead border border-line bg-panel px-6 py-16 text-center">
-		<h2 class="text-heading font-medium text-ink">Nothing to show for these months</h2>
+		<h2 class="text-heading font-medium text-ink">{t('cashflow.emptyHeading')}</h2>
 		<p class="mx-auto mt-2 max-w-prose text-body text-ink-secondary">
-			Income and spending show here once statements are committed.
+			{t('cashflow.emptyBody')}
 		</p>
 		<a
 			href={resolve('/import')}
 			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
 		>
-			Import statements
+			{t('overview.emptyCta')}
 		</a>
 	</section>
 {:else}
@@ -153,9 +154,9 @@
 	<Panel class="mt-6">
 		{#snippet actions()}
 			<Segmented
-				label="Show"
+				label={t('overview.showAria')}
 				value={view}
-				options={VIEWS}
+				options={views}
 				onchange={(value) =>
 					show(here(), { view: value === 'time' ? null : value }, { shallow: true })}
 			/>

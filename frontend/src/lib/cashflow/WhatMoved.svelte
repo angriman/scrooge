@@ -6,6 +6,7 @@ of the usual month is not coloured. Nothing shows when no category has a usual m
 -->
 <script lang="ts">
 	import { signed, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
@@ -25,7 +26,7 @@ of the usual month is not coloured. Nothing shows when no category has a usual m
 </script>
 
 {#if moved.length}
-	<Panel title="What moved" note="The categories furthest from their usual month, per month.">
+	<Panel title={t('cashflow.whatMovedTitle')} note={t('cashflow.whatMovedNote')}>
 		<ul class="divide-y divide-line">
 			{#each moved as each (each.name)}
 				{@const tone = toneOf(each)}
@@ -52,7 +53,8 @@ of the usual month is not coloured. Nothing shows when no category has a usual m
 								>{/if}
 						</span>
 						<span class="col-span-2 pl-4 text-caption text-ink-muted">
-							<Amount value={each.monthly} places={0} class="text-ink-secondary" /> a month, usually
+							<Amount value={each.monthly} places={0} class="text-ink-secondary" />
+							{t('cashflow.aMonthUsually')}
 							<Amount value={each.usual} places={0} class="text-ink-secondary" />
 						</span>
 					</a>

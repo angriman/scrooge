@@ -7,6 +7,7 @@ other, and each person's share after settling up.
 -->
 <script lang="ts">
 	import { money, percent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { PaidBy, Person } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -75,7 +76,7 @@ other, and each person's share after settling up.
 	</ul>
 {/snippet}
 
-<Panel title="Who paid" note="Each person's share of what the household spent.">
+<Panel title={t('cashflow.whoPaidTitle')} note={t('cashflow.whoPaidNote')}>
 	{@render shares('spent')}
 	<div class="mt-3">{@render bar(whole, said(whole))}</div>
 
@@ -83,13 +84,16 @@ other, and each person's share after settling up.
 		<div class="mt-4 rounded-control bg-sunken px-3 py-2.5">
 			{#each paidBy.moves as move (move.sender + move.receiver)}
 				<p class="text-small text-ink-secondary">
-					{move.sender} sent {move.receiver}
-					<Amount value={move.amount} {currency} places={0} class="text-ink" /> over these months.
+					{t('cashflow.sentTo', { sender: move.sender, receiver: move.receiver })}
+					<Amount value={move.amount} {currency} places={0} class="text-ink" />
+					{t('cashflow.overTheseMonthsEnd')}
 				</p>
 			{/each}
-			<p class="mt-2 mb-1.5 text-caption text-ink-muted">After settling up</p>
+			<p class="mt-2 mb-1.5 text-caption text-ink-muted">{t('cashflow.afterSettlingUp')}</p>
 			{@render shares('settled')}
-			<div class="mt-2">{@render bar(settled, `After settling up: ${said(settled)}`)}</div>
+			<div class="mt-2">
+				{@render bar(settled, t('cashflow.afterSettlingUpAria', { parts: said(settled) }))}
+			</div>
 		</div>
 	{/if}
 

@@ -8,9 +8,10 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 -->
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import { assetColor } from '#lib/design/data.js';
+	import { assetColor, assetName } from '#lib/design/data.js';
 	import { day } from '#lib/format/date.js';
 	import { exact, money, percent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { HeldInstrument, Position } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Change from '#lib/ui/Change.svelte';
@@ -19,7 +20,7 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
 	import HoldingReturns from './HoldingReturns.svelte';
-	import { SORTS, sortHoldings, yearOf, type Sort } from './returns.js';
+	import { sortHoldings, sortOptions, yearOf, type Sort } from './returns.js';
 
 	interface Props {
 		holdings: HeldInstrument[];
@@ -48,21 +49,24 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 	};
 	const priceNote = (position: Position) =>
 		position.price_is_trade
-			? 'last trade price'
+			? t('holdings.lastTradePrice')
 			: position.price_day && position.price_day !== lastDay
-				? `close of ${day(position.price_day)}`
+				? t('holdings.closeOf', { date: day(position.price_day) })
 				: '';
+	const sorts = $derived(sortOptions());
 </script>
 
 <section class="mt-10" aria-labelledby="holdings-title">
 	<header class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
 		<h2 id="holdings-title" class="text-heading font-medium text-ink">
-			{holdings.length === 1 ? '1 holding' : `${holdings.length} holdings`}
+			{holdings.length === 1
+				? t('holdings.countOne')
+				: t('holdings.countMany', { count: holdings.length })}
 		</h2>
 		<Segmented
-			label="Sort by"
+			label={t('holdings.sortByAria')}
 			value={sort}
-			options={SORTS}
+			options={sorts}
 			onchange={(chosen) => (sort = chosen)}
 		/>
 	</header>
@@ -97,10 +101,10 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 							>
 							<span class="flex items-center gap-1.5 text-small text-ink-muted">
 								<Swatch {color} class="size-2 rounded-full" />
-								<span class="text-ink-secondary">{holding.asset}</span>
+								<span class="text-ink-secondary">{assetName(holding.asset)}</span>
 								{#if holding.name}<span class="truncate">{holding.symbol}</span>{/if}
 								{#if holding.positions.length > 1}<span class="shrink-0"
-										>in {holding.positions.length} accounts</span
+										>{t('holdings.inAccounts', { count: holding.positions.length })}</span
 									>{/if}
 							</span>
 						</span>
@@ -116,12 +120,17 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 						{#if sort === 'year'}
 							{@const year = yearOf(holding.returns)}
 							{#if year === null}
-								<span class="text-small text-ink-muted">not held all year</span>
+								<span class="text-small text-ink-muted">{t('holdings.notHeldAllYear')}</span>
 							{:else}
-								<Change amount={year.amount} percent={year.percent} label="1Y" class="text-small" />
+								<Change
+									amount={year.amount}
+									percent={year.percent}
+									label={t('range.1y')}
+									class="text-small"
+								/>
 							{/if}
 						{:else if holding.gain === null}
-							<span class="text-small text-ink-muted">cost not known</span>
+							<span class="text-small text-ink-muted">{t('holdings.costNotKnown')}</span>
 						{:else}
 							<Change amount={holding.gain} percent={holding.return_percent} class="text-small" />
 						{/if}
@@ -139,19 +148,19 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 								<Change
 									amount={holding.gain}
 									percent={holding.return_percent}
-									label="since bought"
+									label={t('holdings.sinceBoughtLower')}
 								/>
 							</p>
 						{/if}
 						<table class="w-full text-small">
 							<thead class="text-caption text-ink-muted">
 								<tr>
-									<th class="pb-2 text-left font-normal">Account</th>
-									<th class="pb-2 text-right font-normal">Quantity</th>
-									<th class="pb-2 text-right font-normal">Price</th>
-									<th class="pb-2 text-right font-normal">Value</th>
-									<th class="pb-2 text-right font-normal">Cost</th>
-									<th class="pb-2 text-right font-normal">Since bought</th>
+									<th class="pb-2 text-left font-normal">{t('investments.colAccount')}</th>
+									<th class="pb-2 text-right font-normal">{t('holdings.colQuantity')}</th>
+									<th class="pb-2 text-right font-normal">{t('holdings.colPrice')}</th>
+									<th class="pb-2 text-right font-normal">{t('holdings.colValue')}</th>
+									<th class="pb-2 text-right font-normal">{t('holdings.colCost')}</th>
+									<th class="pb-2 text-right font-normal">{t('investments.sinceBought')}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -174,7 +183,9 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 											<span class="text-caption text-ink-muted">{holding.currency}</span>
 										</td>
 										<td class="py-2 text-right whitespace-nowrap tabular-nums">
-											{position.cost_native === null ? 'not known' : money(position.cost_native)}
+											{position.cost_native === null
+												? t('common.notKnown')
+												: money(position.cost_native)}
 										</td>
 										<td class="py-2 text-right whitespace-nowrap">
 											<Change amount={position.gain_native} percent={position.gain_percent} />

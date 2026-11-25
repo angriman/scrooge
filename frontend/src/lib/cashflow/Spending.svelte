@@ -6,10 +6,12 @@ most was spent at. Each opens its transactions over the same range.
 -->
 <script lang="ts">
 	import { approximate, difference, percentOf, signedPercent } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
+	import { spendingPartName } from './names.js';
 
 	interface Props {
 		report: CashFlowReport;
@@ -37,10 +39,7 @@ most was spent at. Each opens its transactions over the same range.
 	let merchants = $state(false);
 </script>
 
-<Panel
-	title="Where the money went"
-	note="Per month, against the usual month and the same months a year before."
->
+<Panel title={t('cashflow.spendingTitle')} note={t('cashflow.spendingNote')}>
 	<ul class="divide-y divide-line">
 		{#each report.categories as category (category.name)}
 			{@const usual = against(category.monthly, category.usual)}
@@ -55,7 +54,7 @@ most was spent at. Each opens its transactions over the same range.
 							class="size-2 shrink-0 rounded-[2px]"
 							style:background={colors.get(category.name) ?? 'var(--data-other)'}
 						></span>
-						<span class="truncate">{category.name}</span>
+						<span class="truncate">{spendingPartName(category.name)}</span>
 					</span>
 					<Amount value={category.spent} places={0} class="text-right text-body text-ink" />
 					<span class="h-1.5 self-center rounded-full bg-sunken" aria-hidden="true">
@@ -67,12 +66,14 @@ most was spent at. Each opens its transactions over the same range.
 					</span>
 					<span class="flex justify-end gap-3 text-caption whitespace-nowrap text-ink-muted">
 						<span
-							><Amount value={category.monthly} places={0} class="text-ink-secondary" /> a month</span
+							><Amount value={category.monthly} places={0} class="text-ink-secondary" />
+							{t('cashflow.aMonthSuffix')}</span
 						>
-						{#if usual !== null}<span class={tone(usual)}>{signedPercent(usual, 0)} usual</span
+						{#if usual !== null}<span class={tone(usual)}
+								>{t('cashflow.usualSuffix', { pct: signedPercent(usual, 0) })}</span
 							>{/if}
 						{#if before !== null}<span class={cn('hidden sm:inline', tone(before))}
-								>{signedPercent(before, 0)} a year before</span
+								>{t('cashflow.yearBeforeSuffix', { pct: signedPercent(before, 0) })}</span
 							>{/if}
 					</span>
 				</a>
@@ -87,7 +88,9 @@ most was spent at. Each opens its transactions over the same range.
 			aria-expanded={merchants}
 			class="mt-3 text-small text-brand hover:text-brand-hover"
 		>
-			{merchants ? 'Hide' : 'Show'} the {report.merchants.length} places most was spent at
+			{t(merchants ? 'cashflow.hidePlaces' : 'cashflow.showPlaces', {
+				count: report.merchants.length
+			})}
 		</button>
 		{#if merchants}
 			<ul class="mt-2 divide-y divide-line">
@@ -108,10 +111,9 @@ most was spent at. Each opens its transactions over the same range.
 			</ul>
 			{#if report.other_merchants.count}
 				<p class="mt-2 text-caption text-ink-muted">
-					And {report.other_merchants.count} more, <Amount
-						value={report.other_merchants.spent}
-						places={0}
-					/> together.
+					{t('cashflow.morePlacesBefore', { count: report.other_merchants.count })}
+					<Amount value={report.other_merchants.spent} places={0} />
+					{t('cashflow.morePlacesAfter')}
 				</p>
 			{/if}
 		{/if}

@@ -7,9 +7,11 @@ its amount. When more went out than came in, the difference comes from savings.
 <script lang="ts">
 	import { Chart, Svg } from 'layerchart';
 	import { Sankey } from 'layerchart/graph';
+	import { incomeGroupName } from '#lib/design/data.js';
 	import { approximate, short } from '#lib/format/number.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowReport } from '#lib/types.js';
-	import { GROUPS, incomeColor, OTHERS } from './names.js';
+	import { GROUPS, incomeColor, OTHERS, spendingPartName } from './names.js';
 
 	interface Props {
 		report: CashFlowReport;
@@ -48,17 +50,19 @@ its amount. When more went out than came in, the difference comes from savings.
 		const nodes = [
 			...GROUPS.filter((g) => (earned.get(g) ?? 0) > 0).map((g) => ({
 				id: g,
-				label: g,
+				label: incomeGroupName(g),
 				fill: incomeColor(g)
 			})),
-			...(out > income ? [{ id: DRAWN, label: DRAWN, fill: 'var(--caution)' }] : []),
-			{ id: IN, label: 'Came in', fill: 'var(--ink-muted)' },
+			...(out > income
+				? [{ id: DRAWN, label: t('cashflow.flowDrawn'), fill: 'var(--caution)' }]
+				: []),
+			{ id: IN, label: t('cashflow.flowIn'), fill: 'var(--ink-muted)' },
 			...outs.map((c) => ({
 				id: c.name,
-				label: c.name,
+				label: spendingPartName(c.name),
 				fill: colors.get(c.name) ?? 'var(--data-other)'
 			})),
-			...(saved > 0 ? [{ id: SAVED, label: SAVED, fill: 'var(--brand)' }] : [])
+			...(saved > 0 ? [{ id: SAVED, label: t('cashflow.saved'), fill: 'var(--brand)' }] : [])
 		];
 		const links = [
 			...GROUPS.filter((g) => (earned.get(g) ?? 0) > 0).map((g) => ({
@@ -78,11 +82,7 @@ its amount. When more went out than came in, the difference comes from savings.
 
 <!-- Narrower than its labels need, it scrolls sideways rather than squeeze the bands. -->
 <div class="-mx-4 overflow-x-auto px-4">
-	<div
-		class="h-[340px] w-full min-w-[34rem]"
-		role="img"
-		aria-label="Where the money came from and where it went"
-	>
+	<div class="h-[340px] w-full min-w-[34rem]" role="img" aria-label={t('cashflow.flowAria')}>
 		<Chart data={graph} padding={{ left: 120, right: 140, top: 6, bottom: 6 }}>
 			<Svg>
 				<Sankey nodeId={(d) => d.id} nodeWidth={8} nodePadding={12} nodeAlign="justify">

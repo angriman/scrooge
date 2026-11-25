@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { money } from '#lib/format/number.js';
+import { setLanguage } from '#lib/i18n/index.svelte.js';
 import type { HeldInstrument, HoldingReturns, Position } from '#lib/types.js';
 import {
 	columnsOf,
@@ -7,6 +8,7 @@ import {
 	periodLines,
 	realisedText,
 	sortHoldings,
+	sortOptions,
 	withheldNote,
 	yearOf,
 	yearReturn
@@ -195,5 +197,22 @@ describe('dashNotes', () => {
 		};
 		const columns = [{ label: 'Return', returns: full }];
 		expect(dashNotes(columns, periodLines(columns))).toEqual([]);
+	});
+
+	it('localizes holdings returns labels and notes in Italian', () => {
+		setLanguage('it');
+		try {
+			expect(sortOptions().map((o) => o.label)).toEqual(['Valore', 'Guadagno', 'Rendimento', '1A']);
+			const columns = columnsOf(holding('ACME'), false);
+			expect(columns[0].label).toBe('Rendimento');
+			expect(periodLines(columns)[3]).toMatchObject({
+				label: 'Dall’acquisto',
+				note: 'dal 2 Mar 2026'
+			});
+			expect(withheldNote(returns('1.00'), money)).toBe('1.80 ritenuti');
+			expect(realisedText({ ...returns('1.00'), sold: false }, money)).toBe('nessuna vendita');
+		} finally {
+			setLanguage('en');
+		}
 	});
 });
