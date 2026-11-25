@@ -65,6 +65,6 @@ def test_an_account_kept_in_a_currency_without_rates_says_so(tmp_path: Path) -> 
     conn.close()
     client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
     sent = client.get("/api/statements").json()
-    assert sent["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+    assert sent["errors"] == ["No exchange rate is stored for GBP."]
     gbp = next(a for a in sent["accounts"] if a["account"] == "Revolut GBP")
     assert (gbp["balance"], gbp["holds"], gbp["committed"]) == (None, None, "2026-09-30")

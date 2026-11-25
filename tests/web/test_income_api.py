@@ -125,7 +125,7 @@ def test_rows_without_a_rate_are_left_out_and_said(client: TestClient) -> None:
     # Nothing is in pounds, and no rate is stored for them: what is shown is empty, not gone.
     assert sent["income"]["totals"]["net"] == "0.00"
     assert sent["income"]["through"] == "2026-08-31"
-    assert sent["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+    assert sent["errors"] == ["No exchange rate is stored for GBP."]
 
 
 def test_a_row_in_a_currency_without_a_rate_leaves_the_others_shown(tmp_path: Path) -> None:
@@ -140,7 +140,7 @@ def test_a_row_in_a_currency_without_a_rate_leaves_the_others_shown(tmp_path: Pa
     shown = sent.json()
     assert shown["income"]["totals"]["interest"] == "5.00"
     assert [h["key"] for h in shown["income"]["holdings"]] == ["Migros"]
-    assert shown["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+    assert shown["errors"] == ["No exchange rate is stored for GBP."]
 
 
 def test_a_period_of_another_page_picks_the_months_paid(client: TestClient) -> None:

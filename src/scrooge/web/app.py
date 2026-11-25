@@ -74,7 +74,7 @@ from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
-from scrooge.prices import MaturitySource
+from scrooge.prices import MaturitySource, PriceSource
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
 from scrooge.validation import ReconciliationError
@@ -306,6 +306,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     password: str = "",
     read_only: bool = False,
     maturities: MaturitySource | None = None,
+    price_source: PriceSource | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
     currencies: Sequence[str] = networth.DEFAULT_COLUMNS,
     frozen: Sequence[networth.FrozenAccount] = (),
@@ -424,6 +425,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     # The category of the rows no rule matched, which wait there to be given one; "": none.
     app.state.unmatched = "" if imports is None else imports.unmatched
     app.state.maturities = maturities
+    app.state.price_source = price_source
     app.state.currency = currency
     app.state.currencies = tuple(currencies)
     app.state.frozen = tuple(frozen)

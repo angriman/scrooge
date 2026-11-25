@@ -161,9 +161,7 @@ def test_without_any_close_the_price_of_the_last_trade_is_shown_as_such(
     assert (position.quantity, position.price, position.price_day) == (D(6), D(55), day(20))
     assert position.price_is_trade
     assert position.value == D(330)
-    assert held.notes == (
-        "No close is stored for WIDG: valued at the price of the last trade. Run `scrooge prices`.",
-    )
+    assert held.notes == ("No close is stored for WIDG: valued at the price of the last trade.",)
 
 
 def test_a_trade_after_the_last_close_is_the_price_of_the_day(conn: sqlite3.Connection) -> None:

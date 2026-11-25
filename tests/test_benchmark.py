@@ -119,14 +119,14 @@ def test_a_close_typed_by_hand_wins_and_one_priced_under_another_symbol_is_found
 @pytest.mark.parametrize(
     ("closes", "why"),
     [
-        ((), "no close of it is stored; `scrooge prices` fetches it"),
+        ((), "no close of it is stored"),
         (
             ((day(2), "100"), (day(3), "101")),
-            "no close of it is stored on or before 2026-09-01; `scrooge prices` fetches it",
+            "no close of it is stored on or before 2026-09-01",
         ),
         (
             ((day(1), "100"),),
-            "no close of it is stored after 2026-09-01; `scrooge prices` fetches it",
+            "no close of it is stored after 2026-09-01",
         ),
     ],
 )
@@ -160,9 +160,8 @@ def test_the_investments_are_set_beside_each_benchmark_and_one_without_closes_is
     price(conn, "VT", day(30), "120")
     shown = performance.run(conn, currency="USD", range_="all", benchmarks=("VT", "VOO"))
     assert shown.benchmarks == (Benchmark("VT", D("20.00")),)
-    assert shown.unbenchmarked == (
-        "VOO is left out: no close of it is stored; `scrooge prices` fetches it",
-    )
+    assert shown.unbenchmarked == ("VOO is left out: no close of it is stored",)
+    assert shown.missing_benchmarks == ("VOO",)
     # 10000 buys 100 shares at the close of 30 August, the 5000 put in on the 10th 50 more
     # at that of the 9th; 150 at 120 at the end.
     assert [point.benchmarks for point in shown.points[:2]] == [(D(0),), (D("10000.00"),)]
@@ -177,7 +176,7 @@ def test_a_benchmark_s_return_counts_from_where_the_time_weighted_return_does(
     price(conn, "VT", day(2), "120")
     price(conn, "VT", day(3), "150")
     totals = performance.Measured(D(0), D(0), D(0), None, None, since=day(3))
-    followed, _ = performance._followed(  # where the return is counted from
+    followed, _, _ = performance._followed(  # where the return is counted from
         conn,
         ("VT",),
         days(1, 3),

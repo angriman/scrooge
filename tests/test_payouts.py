@@ -193,7 +193,7 @@ def test_without_a_rate_for_the_currency_asked_nothing_is_converted_and_it_is_sa
 ) -> None:
     shown = his(conn, currency="GBP")
     assert (shown.totals, shown.holdings) == (payouts.NOTHING, ())
-    assert shown.missing == ("no exchange rate is stored for GBP: run `scrooge prices`",)
+    assert shown.missing == ("no exchange rate is stored for GBP",)
 
 
 def test_the_last_twelve_months_are_added_up_whatever_the_range(conn: sqlite3.Connection) -> None:
@@ -249,7 +249,7 @@ def test_rows_in_a_currency_without_a_rate_are_left_out_and_said(lone: sqlite3.C
     # 130 dollars at 0.90 and 5 francs: the 50 pounds are not there.
     assert shown.totals == amounts("117", "5", "-14.40")
     assert "BRIT" not in {holding.key for holding in shown.holdings}
-    assert shown.missing == ("no exchange rate is stored for GBP: run `scrooge prices`",)
+    assert shown.missing == ("no exchange rate is stored for GBP",)
     # In pounds, the pounds are counted and the rest cannot be.
     pounds = his(lone, currency="GBP")
     assert pounds.totals == amounts("50", "0")

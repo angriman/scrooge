@@ -48,6 +48,7 @@ def test_the_session_names_the_people_and_the_currencies(client: TestClient) -> 
     assert sent["languages"] == ["en", "it"]
     assert sent["read_only"] is False
     assert sent["signing"] is False
+    assert sent["prices"] is False
     assert sent["token"]
 
     assert {person["covered"] for person in sent["people"]} == {"2026-09-30"}
@@ -493,10 +494,12 @@ def test_a_copy_refuses_every_change(database: Path) -> None:
     copy = TestClient(webapp.create_app(database, read_only=True), base_url=SITE)
     session = copy.get("/api/session").json()
     assert session["rules"] is False
+    assert session["prices"] is False
     row = _changeable(copy)
     sent = {"owner": row["owner"], "ids": [row["id"]], "category": categories.RENT}
     headers = {"X-Token": session["token"]}
     assert copy.post("/api/transactions/category", json=sent, headers=headers).status_code == 403
+    assert copy.post("/api/prices", headers=headers).status_code == 403
 
 
 def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: TestClient) -> None:

@@ -612,7 +612,7 @@ def _securities(
     if unpriced:
         notes.append(
             f"No close is stored for {', '.join(sorted(unpriced))}: valued at the price of the "
-            "last trade. Run `scrooge prices`."
+            "last trade."
         )
     return series
 
@@ -762,7 +762,7 @@ def convert(
         return list(values)
     for needed in (currency, into):
         if needed not in rates:
-            msg = f"no exchange rate is stored for {needed}: run `scrooge prices`"
+            msg = f"no exchange rate is stored for {needed}"
             raise MissingRateError(msg)
     return [
         value * rate / target

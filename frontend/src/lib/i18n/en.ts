@@ -407,6 +407,10 @@ export const en = {
 	'investments.notInvested': 'Not known: nothing was invested',
 	'investments.benchmarkPriceNote':
 		'What holding each returned over the days the return above counts, in {currency}: its price alone, without what it paid out.',
+	'investments.benchmarksMissingOne': '{benchmarks} will show once its prices are fetched.',
+	'investments.benchmarksMissingMany': '{benchmarks} will show once their prices are fetched.',
+	'investments.fetchPricesNow': 'Fetch prices now',
+	'investments.fetchingPrices': 'Fetching prices…',
 	'investments.moneyWeighted': 'Money-weighted',
 	'investments.mwrFlowsNote': '{per}, on the money as it was put in.',
 	'investments.mwrNone': 'The money-weighted return has no rate to give over these days.',

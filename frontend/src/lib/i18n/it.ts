@@ -414,6 +414,12 @@ export const it: Messages = {
 	'investments.notInvested': 'Non noto: nulla era investito',
 	'investments.benchmarkPriceNote':
 		'Rendimento dei titoli nel periodo sopra indicato, in {currency}: solo variazione di prezzo, esclusi i dividendi.',
+	'investments.benchmarksMissingOne':
+		'{benchmarks} apparirà non appena i suoi prezzi verranno scaricati.',
+	'investments.benchmarksMissingMany':
+		'{benchmarks} appariranno non appena i loro prezzi verranno scaricati.',
+	'investments.fetchPricesNow': 'Scarica i prezzi ora',
+	'investments.fetchingPrices': 'Scaricamento prezzi…',
 	'investments.moneyWeighted': 'Ponderato per il capitale (MWR)',
 	'investments.mwrFlowsNote': '{per}, in base ai conferimenti.',
 	'investments.mwrNone':

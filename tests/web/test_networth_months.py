@@ -96,9 +96,9 @@ def test_when_no_currency_has_rates_each_is_said_and_no_month_is_sent(database: 
     sent = client.get("/api/networth/months").json()
     assert sent["currencies"] == ["JPY", "GBP"]
     assert sent["months"] == []
-    assert [error.split(":")[0] for error in sent["errors"]] == [
-        "No exchange rate is stored for JPY",
-        "No exchange rate is stored for GBP",
+    assert sent["errors"] == [
+        "No exchange rate is stored for JPY.",
+        "No exchange rate is stored for GBP.",
     ]
 
 

@@ -7,10 +7,11 @@ what the accounts were worth day by day against the money put in and against wha
 worth in each benchmark, and the same figures account by account.
 -->
 <script lang="ts">
+	import { errorMessage, send } from '#lib/api.js';
 	import { day, daysBetween } from '#lib/format/date.js';
 	import { difference, short, signed, signedPercent } from '#lib/format/number.js';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import type { PerformanceReport } from '#lib/types.js';
+	import type { PerformanceReport, PricesFetched } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
@@ -20,6 +21,7 @@ worth in each benchmark, and the same figures account by account.
 		described,
 		instead,
 		direction,
+		missingBenchmarksNote,
 		mwrPer,
 		nearest,
 		over,
@@ -32,9 +34,13 @@ worth in each benchmark, and the same figures account by account.
 		range: Range;
 		/** Whether both people's accounts are listed: each is then named with its owner. */
 		people: boolean;
+		/** Session token when prices can be fetched from the server; null in read-only mode. */
+		token?: string | null;
+		/** Called after prices are fetched so the page reloads its figures. */
+		onfetched?: () => Promise<void> | void;
 	}
 
-	let { performance, range, people }: Props = $props();
+	let { performance, range, people, token = null, onfetched }: Props = $props();
 
 	const currency = $derived(performance.currency);
 	const totals = $derived(performance.totals!);
@@ -42,6 +48,32 @@ worth in each benchmark, and the same figures account by account.
 	const way = $derived(direction(totals.twr, 1));
 	const change = $derived(difference(totals.end, totals.start));
 	const beside = $derived(compared(totals.twr, performance.benchmarks));
+	const missingNote = $derived(missingBenchmarksNote(performance.missing_benchmarks));
+
+	let fetching = $state(false);
+	let fetchErrors = $state<string[]>([]);
+	$effect.pre(() => {
+		void range;
+		fetchErrors = [];
+	});
+
+	async function fetchPrices() {
+		if (!token || fetching) return;
+		fetching = true;
+		fetchErrors = [];
+		try {
+			const answer = await send<PricesFetched>('/api/prices', {}, token);
+			const problem = errorMessage(answer);
+			if (problem !== null) {
+				fetchErrors = [problem];
+				return;
+			}
+			fetchErrors = answer.sent.errors ?? [];
+			await onfetched?.();
+		} finally {
+			fetching = false;
+		}
+	}
 
 	let width = $state(640);
 	const HEIGHT = 240;
@@ -95,6 +127,28 @@ worth in each benchmark, and the same figures account by account.
 				<p class="text-caption text-ink-muted">
 					{t('investments.benchmarkPriceNote', { currency })}
 				</p>
+			{/if}
+			{#if missingNote}
+				<p class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-caption text-ink-muted">
+					<span>{missingNote}</span>
+					{#if token}
+						<button
+							type="button"
+							class="font-medium text-brand hover:text-brand-hover disabled:opacity-50"
+							disabled={fetching}
+							onclick={fetchPrices}
+						>
+							{t(fetching ? 'investments.fetchingPrices' : 'investments.fetchPricesNow')}
+						</button>
+					{/if}
+				</p>
+			{/if}
+			{#if fetchErrors.length}
+				<div class="mt-1 grid gap-0.5 text-caption text-loss" role="alert">
+					{#each fetchErrors as problem (problem)}
+						<p>{problem}</p>
+					{/each}
+				</div>
 			{/if}
 			<p class="mt-2 max-w-prose text-body text-ink-secondary">
 				{#if totals.mwr !== null}
