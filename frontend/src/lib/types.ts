@@ -370,7 +370,10 @@ export interface Transaction {
 	kind: string;
 	category: string | null;
 	category_parent: string | null;
-	file: string;
+	/** The statement it came from; null for a row typed by hand. */
+	file: number | null;
+	/** Where its statement's file can be downloaded, when it is kept. */
+	original: string | null;
 	/** How often it comes back, when it does. */
 	recurring: 'monthly' | 'yearly' | null;
 	/** Whether its category can be changed here. */
@@ -421,6 +424,8 @@ export interface StagedRow {
 	/** Whether a category can be chosen for it here: it has none, or one a rule gave. */
 	choosable: boolean;
 	statement: number | null;
+	/** Where its statement's file can be downloaded, when it is kept. */
+	original: string | null;
 }
 
 /** What is staged for one person. */
@@ -436,6 +441,8 @@ export interface Staged {
 		last: string;
 		checked: boolean;
 		transactions: number;
+		/** Where its file can be downloaded, when it is kept. */
+		original: string | null;
 	}[];
 	rows: StagedRow[];
 	/** The rows waiting for a category, by counterparty and direction. */

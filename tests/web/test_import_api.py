@@ -71,6 +71,39 @@ def test_every_file_sent_says_what_became_of_it_and_is_staged(site: Site) -> Non
     assert site.count("committed_transactions") == 0
 
 
+def test_a_statement_and_its_rows_say_where_its_file_is_downloaded_from(site: Site) -> None:
+    _upload(site, "Migros.csv")
+    draft = _draft(site)
+    (file,) = draft["files"]
+    address = f"/statements/{file['id']}/original"
+    assert file["original"].endswith(address)
+    assert {row["original"] for row in draft["rows"]} == {file["original"]}
+    assert site.client.get(file["original"]).content == (site.folder / "Migros.csv").read_bytes()
+    for kept in (site.database.parent / "originals").iterdir():
+        kept.unlink()
+    draft = _draft(site)
+    assert draft["files"][0]["original"] is None
+    assert {row["original"] for row in draft["rows"]} == {None}
+
+
+def test_a_committed_row_says_where_its_statements_file_is_downloaded_from(site: Site) -> None:
+    _upload(site, "Migros.csv")
+    draft = _draft(site)
+    choices = [
+        {"ids": group["ids"], "category": _leaf(draft, bool(group["incoming"])), "rule": False}
+        for group in draft["groups"]
+    ]
+    sent = {"owner": "Lukas", "choices": choices, "commit": True}
+    assert site.client.post("/api/import/categories", json=sent, headers=_headers(site)).is_success
+    rows = site.client.get("/api/transactions").json()["rows"]
+    assert rows
+    assert {row["original"] for row in rows} == {draft["files"][0]["original"]}
+    for kept in (site.database.parent / "originals").iterdir():
+        kept.unlink()
+    rows = site.client.get("/api/transactions").json()["rows"]
+    assert {row["original"] for row in rows} == {None}
+
+
 def test_an_upload_needs_the_token_a_person_and_a_file(site: Site) -> None:
     files = site.uploads("Migros.csv")
     assert site.client.post("/api/import", data={"owner": "Lukas"}, files=files).status_code == 403

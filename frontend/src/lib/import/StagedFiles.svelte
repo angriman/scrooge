@@ -4,6 +4,7 @@ The statements staged for one person: what each is, the days it covers and its r
 a way to remove it. Below them, what stands in the way of committing them, if anything.
 -->
 <script lang="ts">
+	import Download from '@lucide/svelte/icons/download';
 	import Trash from '@lucide/svelte/icons/trash-2';
 	import { day } from '#lib/format/date.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -39,6 +40,17 @@ a way to remove it. Below them, what stands in the way of committing them, if an
 						})}
 					</span>
 				</span>
+				{#if file.original}
+					<a
+						href={file.original}
+						data-sveltekit-reload
+						aria-label={t('accounts.downloadAria', { filename: file.filename })}
+						title={t('accounts.downloadAria', { filename: file.filename })}
+						class="grid size-8 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-brand"
+					>
+						<Download class="size-4" aria-hidden="true" />
+					</a>
+				{/if}
 				<button
 					type="button"
 					onclick={() => onremove(file)}

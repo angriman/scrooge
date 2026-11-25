@@ -13,7 +13,8 @@ const row = (id: string, category: string | null = null): StagedRow => ({
 	category,
 	side: null,
 	choosable: true,
-	statement: 1
+	statement: 1,
+	original: null
 });
 
 const rent = { name: 'Landlord AG', incoming: false, ids: ['a', 'b'] };
