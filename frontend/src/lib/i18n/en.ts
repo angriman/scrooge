@@ -11,6 +11,7 @@ export const en = {
 	'nav.language': 'Language',
 	'nav.settingsLabel': 'Settings: categories and rules',
 	'nav.settingsTitle': 'Categories and rules',
+	'nav.signOut': 'Sign out',
 	'nav.importLabel': 'Import statements',
 	'nav.import': 'Import',
 	'nav.completeUpTo': 'Complete up to {date}',
