@@ -947,7 +947,7 @@ def _ranges(through: date, start: int) -> list[dict[str, str]]:
         {
             "key": "ytd",
             "label": "Year to date",
-            "from": f"{through.year}",
+            "from": str(through.year),
             "to": "",
             "range": "ytd",
         },
