@@ -215,7 +215,10 @@ def _holdings(request: Request) -> Response:
     today = request.app.state.clock().date()
     with db.reading(request.app.state.database) as conn:
         try:
-            held = portfolio.run(conn, owner=asked.owner, currency=asked.currency, today=today)
+            # The 3a accounts are in the pensions (`/api/pensions`), one figure each.
+            held = portfolio.run(
+                conn, owner=asked.owner, currency=asked.currency, today=today, pensions=False
+            )
         except networth.MissingRateError as exc:
             return JSONResponse({"holdings": None, "logos": {}, "errors": [wire.sentence(exc)]})
         found = logos(request, conn)

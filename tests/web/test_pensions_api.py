@@ -99,3 +99,15 @@ def test_pensions_without_a_rate_are_left_out_and_said(client: TestClient) -> No
 def test_a_field_that_cannot_be_read_is_refused(client: TestClient) -> None:
     assert client.get("/api/pensions", params={"owner": "Zoe"}).status_code == 400
     assert client.get("/api/pensions", params={"currency": "XYZ"}).status_code == 400
+
+
+def test_the_securities_of_the_holdings_view_leave_the_3a_units_to_the_pensions(
+    client: TestClient,
+) -> None:
+    held = client.get("/api/holdings", params={"currency": "CHF"}).json()["holdings"]
+    assert (held["day"], held["holdings"], held["total"]) == ("2026-09-30", [], "0")
+    assert "pension_cash" not in held
+    # The pages of their own still list the units, and say where the cash is counted.
+    page = client.get("/holdings").text
+    assert "CH0000000001" in page
+    assert "145.00 CHF, is counted in the Pillar 3a line" in page

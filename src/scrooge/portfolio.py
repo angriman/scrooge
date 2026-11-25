@@ -32,6 +32,11 @@ two accounts do not take their cost along: nothing in the rows links the two sid
 `Portfolio.by_asset`, `total` and `shares` add up the positions only: of `Pillar 3a` the fund
 units, without the cash of the account that the line of net worth also holds.
 
+**Without the pensions** (`pensions=False`, the holdings view of /app): the fund units of a 3a
+account are left out, and with them its cash. The pensions are a group of their own there
+(`pensions`), where a 3a account is one figure, its units and its cash together; the
+securities are what is left, and their totals, spread and gain leave 3a out.
+
 **The ladder of bills** lists the bills held on `Portfolio.day`, but counts the days to their
 maturity from the day asked for (today, on the page) and values them on it: in a straight line
 from cost to face as net worth does, at the last exchange rate stored by then. Nothing is
@@ -366,14 +371,15 @@ def run(
     owner: str | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
     today: date | None = None,
+    pensions: bool = True,
 ) -> Portfolio:
     """What `owner`, or everyone, holds at the end of the last day of `networth.run`.
 
     Only what is worth something that day is listed: what was sold is not, nor what net
     worth cannot value (a note then says why). The ladder of bills is valued on `today`
-    (see the module).
+    (see the module). Without `pensions`, the fund units of 3a accounts are not listed.
     """
-    return positions_of(conn, networth.value(conn, owner), currency, today)
+    return positions_of(conn, networth.value(conn, owner), currency, today, pensions=pensions)
 
 
 def positions_of(
@@ -381,13 +387,21 @@ def positions_of(
     valued: networth.Valued | None,
     currency: str,
     today: date | None = None,
+    *,
+    pensions: bool = True,
 ) -> Portfolio:
     """`run` for what `networth.value` already worked out."""
     if valued is None:
         return Portfolio(currency, None, (), ())
     last = valued.days[-1:]
     rates = networth.rates_on(conn, last)
-    held = [s for s in valued.series if s.instrument_id is not None and s.values[-1]]
+    held = [
+        s
+        for s in valued.series
+        if s.instrument_id is not None
+        and s.values[-1]
+        and (pensions or s.asset != networth.PENSION)
+    ]
     # Added up in the order net worth adds them up, so that the sums are the same.
     groups: dict[tuple[str, str], list[int]] = defaultdict(list)
     for n, series in enumerate(held):
@@ -484,7 +498,7 @@ def positions_of(
         valued.days[-1],
         tuple(positions),
         valued.security_notes,
-        cash if pension else None,
+        cash if pension and pensions else None,
         *_ladder(conn, bills, currency, max(today or last[0], last[0])),
         through=valued.covered,
     )

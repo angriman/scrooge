@@ -9,9 +9,9 @@ from decimal import Decimal
 
 import pytest
 
-from scrooge import categories, pensions, staging
+from scrooge import categories, pensions, portfolio, staging
 from scrooge.models import CashBalance, Kind, Transaction
-from scrooge.networth import PENSION, PILLAR2
+from scrooge.networth import ETFS, PENSION, PILLAR2
 from scrooge.pensions import Change
 from scrooge.pipeline import Statement
 from scrooge.storage import db
@@ -168,3 +168,19 @@ def test_a_pension_in_a_currency_without_a_rate_is_left_out_and_said_to_be(
     rate(conn, "EUR", date(2025, 9, 1), "0.5")  # two euros a franc, every day since
     [pension] = pensions.run(conn, currency="EUR").pensions
     assert (pension.value, pension.cash) == (D("4690.00"), D("290.00"))
+
+
+def test_without_the_pensions_the_securities_leave_the_3a_units_out(
+    conn: sqlite3.Connection,
+) -> None:
+    three_a(conn)
+    close(conn, ibkr(bought("WIDG", "10", "-500", date(2026, 9, 15))), month=date(2026, 9, 1))
+    price(conn, "WIDG", date(2026, 9, 15), "50")
+    rate(conn, "USD", date(2025, 9, 1), "0.8")
+    every = portfolio.run(conn, currency="CHF")
+    assert [p.asset for p in every.positions] == [ETFS, PENSION]
+    assert every.pension_cash == D("145.00")
+    securities = portfolio.run(conn, currency="CHF", pensions=False)
+    assert [p.symbol for p in securities.positions] == ["WIDG"]
+    assert (securities.total, securities.pension_cash) == (D("400.00"), None)
+    assert [s.name for s in securities.spread("asset")] == [ETFS]

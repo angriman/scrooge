@@ -268,7 +268,8 @@ def _position(position: portfolio.Position) -> JSON:
 
 def holdings(held: portfolio.Portfolio) -> JSON:
     """What is held on `day`: the totals, each instrument with its positions account by
-    account, how it is spread (`portfolio.SPREADS`), and the bills by maturity."""
+    account, how it is spread (`portfolio.SPREADS`), and the bills by maturity. The API asks
+    it without the 3a fund units, which the pensions (`pensions_report`) count instead."""
     positions: dict[tuple[str, str, str], list[portfolio.Position]] = {}
     for position in held.positions:
         key = (position.symbol, position.currency, position.asset)
@@ -328,7 +329,6 @@ def holdings(held: portfolio.Portfolio) -> JSON:
             }
             for rung in held.ladder
         ],
-        "pension_cash": number(held.pension_cash),
         "notes": list(held.notes),
     }
 

@@ -246,8 +246,6 @@ export interface Portfolio {
 	spread: Record<'asset' | 'currency' | 'account' | 'owner', SpreadSlice[]>;
 	ladder_day: Day | null;
 	ladder: Rung[];
-	/** The cash of the pension accounts: in Pillar 3a on the overview, not listed here. */
-	pension_cash: Amount | null;
 	notes: string[];
 }
 
