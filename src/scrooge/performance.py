@@ -493,7 +493,7 @@ def _followed(  # noqa: PLR0913  # the benchmarks, and the days and money of the
     conn: sqlite3.Connection,
     symbols: Sequence[str],
     days: Sequence[date],
-    every: _Days,
+    every: Days,
     *,
     totals: Measured,
     currency: str,
@@ -639,10 +639,3 @@ def instrument_ranges(  # noqa: PLR0913  # the shares, what moved, the ranges, h
         else:
             found[range_] = None
     return found
-
-
-# The names these had while they were private, for branches that still use them.
-_Days = Days
-_flows = external_flows
-_floor = floors
-_daily = daily_worth
