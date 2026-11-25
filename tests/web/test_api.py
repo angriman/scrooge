@@ -225,8 +225,8 @@ def test_a_month_sends_what_was_saved_of_income_and_of_salary(tmp_path: Path) ->
     assert [shown[k] for k in ("income", "work", "rate", "rate_salary")] == [
         "6000.00",
         "5000.00",
-        "75.000",
-        "90.000",
+        "75.00",
+        "90.0",
     ]
     assert (shown["rate_year"], shown["rate_salary_year"]) == (None, None)
 
@@ -524,4 +524,4 @@ def test_an_empty_database_has_no_cash_flow(tmp_path: Path) -> None:
 
 def test_rates_and_shares_of_the_cash_flow_are_in_percent(client: TestClient) -> None:
     shown = client.get("/api/cashflow").json()["report"]
-    assert shown["categories"][0]["share"] == "100.000"
+    assert shown["categories"][0]["share"] == "100"

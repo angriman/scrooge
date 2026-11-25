@@ -26,7 +26,6 @@ from scrooge.networth import convert, rates_on
 from scrooge.storage.money import from_nano
 
 CENT = Decimal("0.01")
-SHARE = Decimal("0.001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,8 +139,9 @@ def usual(
 
 
 def share(part: Decimal, total: Decimal) -> Decimal | None:
-    """`part` as a part of `total`, to the thousandth; None when `total` is not above zero."""
-    return (part / total).quantize(SHARE) if total > 0 else None
+    """`part` as a part of `total`, not rounded: it is rounded once, where it is shown. None
+    when `total` is not above zero."""
+    return part / total if total > 0 else None
 
 
 def periods(start: date, end: date, grouping: Grouping) -> list[str]:

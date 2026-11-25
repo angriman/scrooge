@@ -84,7 +84,8 @@ def test_income_by_source(client: TestClient) -> None:
     assert "40,305.00 CHF of income." in text(page)
     ring, periods, sources = tables(before_cash_flow(page))
     assert ring == [
-        ["Work", "40,000.00", "99.2%"],
+        # Shared out so that the ring adds up to 100%: on their own, 99.2, 0.7 and 0.0.
+        ["Work", "40,000.00", "99.3%"],
         ["Investments", "290.00", "0.7%"],
         ["Other", "15.00", "0.0%"],
     ]
@@ -200,8 +201,9 @@ def test_where_the_money_goes(spender: TestClient) -> None:
     assert "14,654.50 CHF spent once Anna paid back 900.00, 1,831.81 a month." in text(page)
     assert "Not in the ring: Paid back -900.00 CHF." in text(page)
     ring, categories, merchants, *_ = tables(page)
+    # The ring adds up to 100%: each rounded on its own, Home would be 93.2% and the sum 100.1.
     assert ring == [
-        ["Home", "14,490.00", "93.2%", "+1%"],
+        ["Home", "14,490.00", "93.1%", "+1%"],
         ["Food", "820.00", "5.3%", "+2%"],
         ["Gifts", "200.00", "1.3%", "\N{EN DASH}"],
         ["Eating out", "40.00", "0.3%", "\N{EN DASH}"],

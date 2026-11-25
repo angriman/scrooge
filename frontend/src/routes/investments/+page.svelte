@@ -44,7 +44,7 @@
 		const known = held.holdings.map((holding) =>
 			holding.positions.filter((position) => position.cost_native !== null)
 		);
-		const share = percentOf(sum(known.flat().map((position) => position.value)), held.total);
+		const share = percentOf(sum(known.flat().map((position) => position.value)), held.total, 0);
 		const count = known.filter((positions) => positions.length).length;
 		return share === null ? null : { count, share };
 	});

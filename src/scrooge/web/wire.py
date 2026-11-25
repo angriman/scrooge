@@ -43,6 +43,8 @@ JSON = dict[str, object]
 _T = TypeVar("_T")
 _F = TypeVar("_F")
 
+_WHOLE = Decimal(1)  # a whole percent
+
 
 def number(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
@@ -181,8 +183,19 @@ def series(worth: networth.NetWorth, by: str) -> JSON:
 
 
 def _percent(fraction: Decimal | None) -> str | None:
-    """A part of a whole sent as a fraction (`0.372`), in percent (`"37.200"`)."""
+    """A part of a whole sent as a fraction (`0.372`), in percent (`"37.2"`), not rounded: the
+    app rounds it once, where it shows it."""
     return number(None if fraction is None else fraction * 100)
+
+
+def whole_percents(fractions: Sequence[Decimal | None]) -> list[str | None]:
+    """Parts of one whole sent as fractions, in whole percents shared out so that they add up
+    as the parts do (to 100 when they are all of it): the app shows them so, and each rounded
+    on its own could make 101. None for each when the whole is not above zero."""
+    known = [fraction for fraction in fractions if fraction is not None]
+    if len(known) < len(fractions):
+        return [None] * len(fractions)
+    return [number(part) for part in portfolio.shared_out([f * 100 for f in known], _WHOLE)]
 
 
 def _month(first: date | None) -> str | None:
@@ -619,17 +632,19 @@ def _paid_by(shown: paidby.PaidBy | None, label: categories.Labels) -> JSON | No
     category split between them, and the net of what they paid each other."""
     if shown is None:
         return None
+    shares = whole_percents([payer.share for payer in shown.people])
+    settled = whole_percents([payer.settled_share for payer in shown.people])
     return {
         "spent": number(shown.spent),
         "people": [
             {
                 "name": payer.name,
                 "spent": number(payer.spent),
-                "share": _percent(payer.share),
+                "share": share,
                 "settled": number(payer.settled),
-                "settled_share": _percent(payer.settled_share),
+                "settled_share": settled_share,
             }
-            for payer in shown.people
+            for payer, share, settled_share in zip(shown.people, shares, settled, strict=True)
         ],
         "categories": [
             {

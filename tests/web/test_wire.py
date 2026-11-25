@@ -2,6 +2,7 @@
 is left out, the reason is said, and nothing else is lost. And a person as the JSON sends them."""
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -50,3 +51,11 @@ def test_a_side_keeps_its_italian_name_on_the_wire() -> None:
         "income",
         "transfer",
     ]
+
+
+def test_parts_of_a_whole_are_sent_in_whole_percents_that_add_up() -> None:
+    # 48.5% and 51.5% each rounded would be 49% and 52%.
+    assert wire.whole_percents([Decimal("0.485"), Decimal("0.515")]) == ["49", "51"]
+    # A part below zero: the others add up to more than 100, all of them to 100.
+    assert wire.whole_percents([Decimal("-0.070575"), Decimal("1.070575")]) == ["-7", "107"]
+    assert wire.whole_percents([None, None]) == [None, None]
