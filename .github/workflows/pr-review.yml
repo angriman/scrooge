@@ -3,8 +3,9 @@
 # Runs after CI completes on a pull request (or manually via workflow_dispatch), processes at
 # most 5 unreviewed same-repo PRs from collaborators ordered bottom-of-stack first:
 #   - failed CI  -> comments asking the author to address failures
-#   - passed CI  -> picks Gemini 4 Carbon (large logic PRs) or Hydrogen (smaller/focused PRs),
-#                   posts review comments or pushes verified small fixes; never auto-merges.
+#   - passed CI  -> picks Gemini 4 Hydrogen High (large/critical logic PRs) or Hydrogen Medium
+#                   (smaller/focused PRs), posts review comments or pushes verified small fixes;
+#                   never auto-merges.
 #
 # Requires repository secret `GEMINI_API_KEY`. Optional `PR_REVIEW_TOKEN` PAT allows pushed fix
 # commits to re-trigger CI automatically.

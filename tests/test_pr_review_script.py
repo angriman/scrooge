@@ -104,13 +104,13 @@ def test_summarize_check_runs_states() -> None:
 
 def test_select_model_adapts_to_pr_size_and_scope() -> None:
     small_docs = [{"path": "docs/notes.md", "additions": 400, "deletions": 20}]
-    assert PR_REVIEW.select_model(small_docs)[0] == PR_REVIEW.HYDROGEN_MODEL
+    assert PR_REVIEW.select_model(small_docs)[0] == PR_REVIEW.SMALL_MODEL
 
     small_logic = [{"path": "src/scrooge/overview.py", "additions": 20, "deletions": 5}]
-    assert PR_REVIEW.select_model(small_logic)[0] == PR_REVIEW.HYDROGEN_MODEL
+    assert PR_REVIEW.select_model(small_logic)[0] == PR_REVIEW.SMALL_MODEL
 
     critical_logic = [{"path": "src/scrooge/validation.py", "additions": 70, "deletions": 20}]
-    assert PR_REVIEW.select_model(critical_logic)[0] == PR_REVIEW.CARBON_MODEL
+    assert PR_REVIEW.select_model(critical_logic)[0] == PR_REVIEW.LARGE_MODEL
 
     large_logic = [{"path": "frontend/src/routes/+page.svelte", "additions": 220, "deletions": 50}]
-    assert PR_REVIEW.select_model(large_logic)[0] == PR_REVIEW.CARBON_MODEL
+    assert PR_REVIEW.select_model(large_logic)[0] == PR_REVIEW.LARGE_MODEL

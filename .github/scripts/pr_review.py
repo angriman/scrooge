@@ -2,8 +2,8 @@
 
 Selects up to N open same-repo PRs from collaborators (ordered bottom-of-stack
 first), asks authors to fix failing CI, or runs `agy -p` with model adaptation
-(Hydrogen for small/focused PRs, Carbon for large logic PRs) to post reviews or
-push verified small fixes without auto-merging.
+(Hydrogen High for large/critical logic PRs, Hydrogen Medium otherwise) to post
+reviews or push verified small fixes without auto-merging.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ from typing import Any
 
 LOG = logging.getLogger("pr_review")
 
-HYDROGEN_MODEL = "gemini-4-hydrogen-medium"
-CARBON_MODEL = "gemini-4-carbon-medium"
+SMALL_MODEL = "gemini-4-hydrogen-medium"
+LARGE_MODEL = "gemini-4-hydrogen-high"
 MARKER_PREFIX = "<!-- scrooge-auto-review:"
 ALLOWED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 FAILED_CONCLUSIONS = frozenset({"failure", "timed_out", "action_required", "startup_failure"})
@@ -171,7 +171,7 @@ def summarize_check_runs(
 
 
 def select_model(files: list[dict[str, object]]) -> tuple[str, str]:
-    """Choose Carbon for large logic PRs and Hydrogen otherwise."""
+    """Choose Hydrogen High for large/critical logic PRs and Hydrogen Medium otherwise."""
     total_lines = 0
     paths: list[str] = []
     for entry in files:
@@ -189,10 +189,10 @@ def select_model(files: list[dict[str, object]]) -> tuple[str, str]:
     touches_critical = any(p in CRITICAL_FILES or p.startswith(CRITICAL_PREFIXES) for p in paths)
 
     if touches_critical and total_lines >= 80:
-        return CARBON_MODEL, f"critical logic ({total_lines} lines across {len(paths)} files)"
+        return LARGE_MODEL, f"critical logic ({total_lines} lines across {len(paths)} files)"
     if touches_logic and (total_lines >= 250 or len(paths) >= 8):
-        return CARBON_MODEL, f"large logic PR ({total_lines} lines across {len(paths)} files)"
-    return HYDROGEN_MODEL, f"focused/small PR ({total_lines} lines across {len(paths)} files)"
+        return LARGE_MODEL, f"large logic PR ({total_lines} lines across {len(paths)} files)"
+    return SMALL_MODEL, f"focused/small PR ({total_lines} lines across {len(paths)} files)"
 
 
 def _exe(name: str) -> str:
