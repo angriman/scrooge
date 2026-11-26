@@ -419,7 +419,9 @@ def test_transactions_are_sent_newest_first_with_what_they_add_up_to(client: Tes
     assert all("key" in c for c in sent["by_category"])
     assert sent["choices"]["leaves"]
     assert "expense" in sent["kinds"]
-    assert {"recurring", "changeable", "category_parent"} <= set(sent["rows"][0])
+    assert {"recurring", "changeable", "category_parent", "merchant", "category_context"} <= set(
+        sent["rows"][0]
+    )
     page = client.get("/api/transactions", params={"offset": "1", "limit": "2"}).json()
     assert (page["offset"], page["rows"]) == (1, sent["rows"][1:3])
     assert page["count"] == sent["count"]

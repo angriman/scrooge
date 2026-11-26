@@ -43,6 +43,7 @@ from scrooge import (
 )
 from scrooge.context import Context
 from scrooge.merchants import Merchants
+from scrooge.models import Kind
 
 JSON = dict[str, object]
 _T = TypeVar("_T")
@@ -438,14 +439,29 @@ def account_holds(held: holds.Holds | None) -> JSON | None:
 
 
 _CHANGEABLE = frozenset({"income", "expense", "transfer"})  # `store.CHANGEABLE`, for a row
+_NO_CATEGORY_CONTEXT = frozenset({Kind.TRANSFER, Kind.FX, Kind.INTERNAL, Kind.SECURITY_TRADE})
+
+
+def _has_category_context(row: query.Row) -> bool:
+    """Whether `row`'s category has spending or income history in `context.py`."""
+    if row.category is None or row.kind in _NO_CATEGORY_CONTEXT or row.category_side == "transfer":
+        return False
+    top = row.category_parent or row.category
+    return top != categories.GROUP_INVESTMENTS or row.category == categories.TRADING
 
 
 def transaction(
-    row: query.Row, every: str | None, label: categories.Labels, original: str | None = None
+    row: query.Row,
+    every: str | None,
+    label: categories.Labels,
+    original: str | None = None,
+    merchant: str | None = None,
 ) -> JSON:
     """One committed row; `every` says how often it comes back ("monthly", "yearly"), when it
     does; `changeable` whether its category can be changed; `original` the address its
-    statement's file is downloaded from, when that file is kept."""
+    statement's file is downloaded from, when that file is kept; `merchant` who was paid as the
+    cash flow counts spending there; `category_context` whether its category has history in
+    `/api/transactions/context`."""
     return {
         "id": row.id,
         "owner": row.owner,
@@ -463,6 +479,8 @@ def transaction(
         "original": original,
         "recurring": every,
         "changeable": row.category is not None and row.kind.value in _CHANGEABLE,
+        "merchant": merchant,
+        "category_context": _has_category_context(row),
     }
 
 

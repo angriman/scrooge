@@ -1,45 +1,54 @@
 <!--
 @component
-Where the money that matches went, and where it came from: a bar for each top-level category
-in one currency, as long as its share of the largest. A bar chosen cuts the list to it.
-Amounts in several currencies are never added: each currency is shown on its own.
+Where the matching transactions went, and where they came from: a bar for each top-level
+category in one currency, as long as its share of the largest. Amounts in several currencies are
+never added: each currency has its own tab, opening on the header's currency when present.
+Choosing a category opens its details in the side panel.
 -->
 <script lang="ts">
-	import { approximate, negate } from '#lib/format/number.js';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { approximate, money, negate, sum } from '#lib/format/number.js';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import { TRANSFERS } from './filter.js';
 	import type { CategoryTotal } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
+	import { cn } from '#lib/ui/cn.js';
+	import { TRANSFERS } from './filter.js';
+	import { orderCurrencies } from './summary.js';
 
 	interface Props {
 		totals: CategoryTotal[];
-		/** The category the list is cut to, if any: its bar is the one marked. */
-		chosen: string | null;
-		onchoose: (category: CategoryTotal) => void;
+		/** How many filtered transactions `totals` covers across all currencies. */
+		count: number;
+		/** The currency currently selected in the page header. */
+		headerCurrency: string;
+		/** The category currently open in the side panel, if any. */
+		selected: string | null;
+		onselect: (category: CategoryTotal, trigger: HTMLElement) => void;
 	}
 
-	let { totals, chosen, onchoose }: Props = $props();
+	let { totals, count, headerCurrency, selected, onselect }: Props = $props();
 
-	// Categories shown on each side until every one is asked for; fewer on a narrow screen,
-	// where the list comes after them.
-	const SHOWN = 8;
-	const NARROW = 4;
-
-	// The currency with the most rows first: the one most of them are in.
-	const currencies = $derived.by(() => {
-		const rows = new Map<string, number>();
-		for (const total of totals)
-			rows.set(total.currency, (rows.get(total.currency) ?? 0) + total.count);
-		return [...rows].sort((a, b) => b[1] - a[1]).map(([currency]) => currency);
-	});
+	const currencies = $derived(orderCurrencies(totals, headerCurrency));
 	let picked = $state<string | null>(null);
-	const currency = $derived(picked && currencies.includes(picked) ? picked : currencies[0]);
+	let lastHeaderCurrency = $state<string | null>(null);
+	$effect.pre(() => {
+		if (headerCurrency !== lastHeaderCurrency) {
+			lastHeaderCurrency = headerCurrency;
+			picked = null;
+		}
+	});
+	const currency = $derived(picked && currencies.includes(picked) ? picked : (currencies[0] ?? ''));
 
-	const mine = $derived(
-		totals.filter((total) => total.currency === currency && total.key !== TRANSFERS)
+	const inCurrency = $derived(totals.filter((total) => total.currency === currency));
+	const mine = $derived(inCurrency.filter((total) => total.key !== TRANSFERS));
+	const transferCount = $derived(
+		inCurrency
+			.filter((total) => total.key === TRANSFERS)
+			.reduce((totalCount, line) => totalCount + line.count, 0)
 	);
+
 	const sides = $derived(
 		[
 			{
@@ -56,55 +65,90 @@ Amounts in several currencies are never added: each currency is shown on its own
 					.filter((total) => !total.total.startsWith('-') && approximate(total.total) > 0)
 					.map((total) => ({ ...total, size: total.total }))
 			}
-		].filter((side) => side.lines.length)
+		]
+			.filter((side) => side.lines.length)
+			.map((side) => ({
+				...side,
+				total: sum(side.lines.map((line) => line.size))
+			}))
 	);
+
 	const largest = $derived(
 		Math.max(1, ...sides.flatMap((side) => side.lines.map((line) => approximate(line.size))))
 	);
-	let all = $state(false);
+
+	const note = $derived.by(() => {
+		if (count === 1) return t('transactions.byCategoryNoteOne');
+		const formatted = money(String(count), 0);
+		if (currencies.length === 1 && currency) {
+			return t('transactions.byCategoryNoteSingleCurrency', { count: formatted, currency });
+		}
+		return t('transactions.byCategoryNoteMany', { count: formatted });
+	});
 </script>
 
-{#if sides.length}
-	<Panel title={t('transactions.byCategoryTitle')}>
-		{#snippet actions()}
-			{#if currencies.length > 1}
-				<Segmented
-					label={t('nav.currency')}
-					value={currency}
-					options={currencies.map((code) => ({ value: code, label: code }))}
-					onchange={(code) => (picked = code)}
-				/>
-			{/if}
-		{/snippet}
-		<div class="space-y-5">
+<Panel title={t('transactions.byCategoryTitle')} {note}>
+	{#snippet actions()}
+		{#if currencies.length > 1}
+			<Segmented
+				label={t('nav.currency')}
+				value={currency}
+				options={currencies.map((code) => ({ value: code, label: code }))}
+				onchange={(code) => (picked = code)}
+			/>
+		{/if}
+	{/snippet}
+
+	{#if sides.length}
+		<div class={cn('grid gap-6', sides.length > 1 && 'md:grid-cols-2')}>
 			{#each sides as side (side.id)}
-				<div>
-					<p class="mb-2 text-small text-ink-secondary">{side.name}</p>
+				<div class="min-w-0">
+					<div class="mb-2 flex items-baseline justify-between gap-3 border-b border-line pb-1.5">
+						<h3 class="text-small font-medium text-ink-secondary">{side.name}</h3>
+						<Amount value={side.total} {currency} places={0} class="text-small text-ink" />
+					</div>
 					<ul class="space-y-0.5">
-						{#each all ? side.lines : side.lines.slice(0, SHOWN) as line, index (line.name)}
-							<li class={!all && index >= NARROW ? 'max-lg:hidden' : undefined}>
+						{#each side.lines as line (line.name)}
+							{@const active = selected === line.name}
+							<li>
 								<button
 									type="button"
-									onclick={() => onchoose(line)}
+									aria-haspopup="dialog"
+									aria-expanded={active}
+									onclick={(event) => {
+										if (line.key !== TRANSFERS) onselect(line, event.currentTarget);
+									}}
 									title={t(
 										line.count === 1
-											? 'transactions.oneTransactionTitle'
-											: 'transactions.manyTransactionsTitle',
+											? 'transactions.categoryDetailsOneTitle'
+											: 'transactions.categoryDetailsManyTitle',
 										{ count: line.count }
 									)}
-									aria-pressed={chosen === line.name}
-									class="block w-full rounded-control px-1.5 py-1.5 text-left hover:bg-sunken"
+									class={cn(
+										'block w-full rounded-control px-2 py-1.5 text-left transition-colors',
+										active ? 'bg-brand-soft' : 'hover:bg-raised'
+									)}
 								>
-									<span class="flex items-baseline justify-between gap-3 text-small">
-										<span class="truncate text-ink">{line.name}</span>
-										<Amount value={line.size} {currency} places={0} class="text-ink" />
+									<span class="flex items-center justify-between gap-3 text-small">
+										<span class="flex min-w-0 items-baseline gap-2">
+											<span class="truncate text-ink">{line.name}</span>
+											<span class="shrink-0 text-caption text-ink-muted tabular-nums"
+												>{line.count}×</span
+											>
+										</span>
+										<span class="flex shrink-0 items-center gap-1.5">
+											<Amount value={line.size} {currency} places={0} class="text-ink" />
+											<ChevronRight
+												class={cn('size-3.5', active ? 'text-brand' : 'text-ink-muted')}
+												aria-hidden="true"
+											/>
+										</span>
 									</span>
 									<span class="mt-1 block h-1.5 rounded-full bg-sunken" aria-hidden="true">
 										<span
 											class={[
 												'block h-full rounded-full',
-												side.id === 'in' ? 'bg-gain' : 'bg-data-1',
-												chosen && chosen !== line.name && 'opacity-40'
+												side.id === 'in' ? 'bg-gain' : 'bg-data-1'
 											]}
 											style:width="{Math.max(1.5, (approximate(line.size) / largest) * 100)}%"
 										></span>
@@ -115,16 +159,17 @@ Amounts in several currencies are never added: each currency is shown on its own
 					</ul>
 				</div>
 			{/each}
-			{#if !all && sides.some((side) => side.lines.length > NARROW)}
-				{@const wide = sides.some((side) => side.lines.length > SHOWN)}
-				<button
-					type="button"
-					onclick={() => (all = true)}
-					class={['text-small text-brand hover:text-brand-hover', !wide && 'lg:hidden']}
-				>
-					{t('transactions.showEveryCategory')}
-				</button>
-			{/if}
 		</div>
-	</Panel>
-{/if}
+	{:else if currency}
+		{@const shownTransfers =
+			transferCount || inCurrency.reduce((totalCount, line) => totalCount + line.count, 0)}
+		<p class="py-4 text-small text-ink-secondary">
+			{shownTransfers === 1
+				? t('transactions.byCategoryTransfersOnlyOne', { currency })
+				: t('transactions.byCategoryTransfersOnlyMany', {
+						count: money(String(shownTransfers), 0),
+						currency
+					})}
+		</p>
+	{/if}
+</Panel>

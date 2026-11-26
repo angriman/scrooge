@@ -101,6 +101,7 @@ class Row:
     category_parent: str | None
     counterparty_owner: str | None
     file: int | None = None  # the statement file it came from; None for a row typed by hand
+    category_side: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,7 +285,7 @@ def run(conn: sqlite3.Connection, wanted: Filter) -> Result:
         "SELECT id, owner, account, date, booking_date, amount_nano, currency, description, "  # noqa: S608  # only the fixed conditions above are interpolated
         "counterparty, kind, category, category_parent, counterparty_owner, "
         "(SELECT t.statement_file_id FROM transactions t "
-        "WHERE t.id = committed_transactions.id) AS file "
+        "WHERE t.id = committed_transactions.id) AS file, category_side "
         f"FROM committed_transactions WHERE {where} ORDER BY {column}, id",
         [value for _, value in used],
     ).fetchall()
@@ -364,6 +365,7 @@ def _row(r: sqlite3.Row) -> Row:
         category_parent=r["category_parent"],
         counterparty_owner=r["counterparty_owner"],
         file=r["file"],
+        category_side=r["category_side"],
     )
 
 
