@@ -16,7 +16,7 @@ import contextlib
 import secrets
 import sqlite3
 from collections.abc import Callable, Iterable
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import urlsplit
 
 import yaml
@@ -31,12 +31,14 @@ from scrooge import (
     analysis,
     attention,
     categories,
+    classification,
     closing,
     context,
     costs,
     holding_detail,
     holding_returns,
     holds,
+    marketdata,
     merchants,
     months,
     networth,
@@ -114,6 +116,8 @@ def _session(request: Request) -> Response:
             "signing": state.access is not None,
             # Whether a category chosen can be remembered as a rule for the next import.
             "rules": state.rules is not None,
+            # Whether missing closes, splits and exchange rates can be fetched from here.
+            "prices": state.price_source is not None and not state.read_only,
             # Whose figures can be typed (`/api/accounts/typed`): the people the config names,
             # none over a copy or without the import page.
             "typing": [] if state.imports is None else list(state.imports.people),
@@ -355,6 +359,8 @@ def _statements(request: Request) -> Response:
             held, checks = {}, ()
         # A broker's currencies are one account here, and judged as one (`together`).
         rows = together.rows(conn, asked.owner, held)
+        typed_by_account = typed.figures(conn, asked.owner)
+        manuals = typed.manual_accounts(conn, asked.owner)
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
@@ -369,14 +375,34 @@ def _statements(request: Request) -> Response:
             one.spans,
             [listed(s) for s in one.statements],
         )
-        return {**shown, "holds": wire.account_holds(one.held), "parts": list(one.parts)}
+        figs = sorted(
+            (f for part in one.parts for f in typed_by_account.get((one.line.owner, part), ())),
+            key=lambda f: (-f.day.toordinal(), f.what, f.account, f.symbol or ""),
+        )
+        return {
+            **shown,
+            "holds": wire.account_holds(one.held),
+            "parts": list(one.parts),
+            "typed": [wire.typed_figure(f) for f in figs],
+            "typable": typed.typable(one.line.source),
+        }
 
     lines = tuple(one.line for one in rows)
     accounts = [row(one, late) for one, late in zip(rows, months.behind(lines), strict=True)]
+    accounts.extend(
+        wire.manual_account(
+            manual,
+            held.get((manual.owner, manual.account)),
+            typed_by_account.get((manual.owner, manual.account), ()),
+        )
+        for manual in manuals
+    )
+    accounts.sort(key=lambda a: (str(a["owner"]), str(a["account"]), str(a["source"] or "")))
     return JSONResponse(
         {
             "currency": asked.currency,
             "covered": wire.day(months.covered(lines)),
+            "total": wire.number(together.total(rows)),
             "accounts": accounts,
             "checks": [wire.check(check) for check in checks],
             "errors": errors,
@@ -1006,16 +1032,20 @@ def _ranges(through: date, start: int) -> list[dict[str, str]]:
 _MONTHS_BACK = {"1m": 0, "3m": 2, "1y": 11, "3y": 35}
 
 
-def _period_start(period: str | None, through: date | None, start: int | None) -> date | None:
+def _period_start(period: str | None, through: date | None, earliest: date | None) -> date | None:
     """The first day of `period` (one of `forms.PERIODS`), by whole months up to the last day
-    committed, `through`; `start` is the year the statements start. None for no period."""
+    committed, `through`, never before `earliest` (the first month committed). None for no
+    period."""
     if period is None or through is None:
         return None
-    if period == "ytd":
-        return date(through.year, 1, 1)
     if period == "all":
-        return date(start, 1, 1) if start is not None else None
-    return analysis.add_months(through, -_MONTHS_BACK[period])
+        return earliest
+    start = (
+        date(through.year, 1, 1)
+        if period == "ytd"
+        else analysis.add_months(through, -_MONTHS_BACK[period])
+    )
+    return start if earliest is None else max(start, earliest)
 
 
 def _cashflow(request: Request) -> Response:
@@ -1031,12 +1061,12 @@ def _cashflow(request: Request) -> Response:
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
         through = analysis.through(conn, asked.owner)
-        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
+        earliest = analysis.since(conn, asked.owner)
         first, last = asked.first, asked.last
         if first is None and last is None:
-            first = _period_start(asked.range, through, min(firsts).year if firsts else None)
-        if first is None and last is None and through is not None:
-            first = date(through.year, 1, 1)
+            first = _period_start(asked.range or "ytd", through, earliest)
+        elif earliest is not None and (last is None or last >= earliest):
+            first = earliest if first is None else max(first, earliest)
         shown = wire.unless_rate_missing(
             errors,
             lambda: report.run(
@@ -1056,7 +1086,7 @@ def _cashflow(request: Request) -> Response:
             "first": wire.day(first),
             "last": wire.day(last),
             "by": asked.grouping.value,
-            "ranges": [] if through is None else _ranges(through, min(firsts).year),
+            "ranges": _ranges(through, earliest.year) if through and earliest else [],
             "errors": errors,
         }
     )
@@ -1075,10 +1105,12 @@ def _income(request: Request) -> Response:
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
         through = analysis.through(conn, asked.owner)
-        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
+        earliest = analysis.since(conn, asked.owner)
         first = asked.first
         if first is None and asked.last is None:
-            first = _period_start(asked.range, through, min(firsts).year if firsts else None)
+            first = _period_start(asked.range, through, earliest)
+        elif earliest is not None and (asked.last is None or asked.last >= earliest):
+            first = earliest if first is None else max(first, earliest)
         shown = payouts.run(
             conn, first=first, last=asked.last, owner=asked.owner, currency=asked.currency
         )
@@ -1087,7 +1119,7 @@ def _income(request: Request) -> Response:
         {
             "income": wire.payouts_report(shown),
             "logos": found,
-            "ranges": _ranges(through, min(firsts).year) if through and firsts else [],
+            "ranges": _ranges(through, earliest.year) if through and earliest else [],
             "errors": [wire.sentence(networth.MissingRateError(why)) for why in shown.missing],
         }
     )
@@ -1096,8 +1128,8 @@ def _income(request: Request) -> Response:
 def _performance(request: Request) -> Response:
     """What the investment accounts of `owner`, or of everyone, returned over `range` (the year
     to date when left out), in `currency`, beside the benchmarks of the config. Accounts with
-    a currency without a rate are left out, each such currency said in `errors`, and so is a
-    benchmark without the closes or the rate it needs."""
+    a currency without a rate are left out, each such currency said in `errors`; benchmarks
+    without the closes or the rate they need are named in `performance.missing_benchmarks`."""
     asked = forms.performance_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
@@ -1115,8 +1147,50 @@ def _performance(request: Request) -> Response:
     errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
     if shown.left_out:
         errors.append(f"Left out for want of a rate: {', '.join(shown.left_out)}.")
-    errors += [wire.sentence(Exception(why)) for why in shown.unbenchmarked]
     return JSONResponse({"performance": wire.performance_report(shown), "errors": errors})
+
+
+async def _fetch_prices(request: Request) -> Response:
+    """Fetch closes, splits and exchange rates not stored yet, up to yesterday, as `scrooge
+    prices` does."""
+    _writable(request, request.headers.get("x-token", ""))
+    state = request.app.state
+    if state.price_source is None:
+        raise HTTPException(404)
+
+    def fetch() -> marketdata.Refreshed:
+        typed_instruments = (
+            classification.load_instruments(state.imports.instruments) if state.imports else {}
+        )
+        symbols = {symbol: entry.price_symbol for symbol, entry in typed_instruments.items()}
+        now = state.clock()
+        through = now.date() - timedelta(days=1)
+        conn = db.connect(state.database)
+        try:
+            return marketdata.refresh(
+                conn,
+                state.price_source,
+                through=through,
+                now=now,
+                symbols=symbols,
+                currencies=networth.CURRENCIES,
+                benchmarks=state.benchmarks,
+            )
+        finally:
+            conn.close()
+
+    try:
+        refreshed = await run_in_threadpool(fetch)
+    except (ConfigError, yaml.YAMLError) as exc:
+        return JSONResponse({"errors": [wire.sentence(exc)]}, 409)
+    return JSONResponse(
+        {
+            "closes": refreshed.closes,
+            "rates": refreshed.rates,
+            "splits": refreshed.splits,
+            "errors": [wire.sentence(Exception(problem)) for problem in refreshed.problems],
+        }
+    )
 
 
 def _costs(request: Request) -> Response:
@@ -1278,6 +1352,7 @@ routes = [
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
     Route("/performance", _performance, name="api_performance"),
+    Route("/prices", _fetch_prices, methods=["POST"], name="api_prices"),
     Route("/costs", _costs, name="api_costs"),
     Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),

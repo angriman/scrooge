@@ -17,7 +17,7 @@
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
-	import { DEFAULT_RANGE } from '#lib/investments/income.js';
+	import { DEFAULT_RANGE, firstStatementMonth } from '#lib/investments/income.js';
 	import { choose as choosePreset, chosen as presetOf } from '#lib/period.js';
 	import * as returns from '#lib/investments/performance.js';
 	import Pensions from '#lib/investments/Pensions.svelte';
@@ -205,7 +205,13 @@
 			/>
 		{/if}
 	{:else}
-		<Returns performance={data.performance.performance} {range} {people} />
+		<Returns
+			performance={data.performance.performance}
+			{range}
+			{people}
+			token={data.session.prices ? data.session.token : null}
+			onfetched={() => invalidateAll()}
+		/>
 	{/if}
 {:else if data.income}
 	{#if !data.income.income?.through}
@@ -216,8 +222,14 @@
 		<Income
 			income={data.income.income}
 			logos={data.income.logos}
-			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
+			range={rangeName(
+				chosen || null,
+				data.income.income.first,
+				data.income.income.last,
+				data.income.income.through
+			)}
 			{owner}
+			firstMonth={firstStatementMonth(data.session.people, owner)}
 		/>
 		{#if data.costs}
 			<Costs costs={data.costs.sent?.costs ?? null} unavailable={data.costs.unavailable} {owner} />
@@ -300,7 +312,7 @@
 				<img
 					src={data.held.logos[panelHolding.symbol]}
 					alt=""
-					class="size-8 shrink-0 rounded-control bg-ink object-contain p-0.5"
+					class="size-8 shrink-0 rounded-control border border-line bg-panel object-contain p-0.5 dark:border-0 dark:bg-ink"
 				/>
 			{/if}
 		{/snippet}
@@ -332,7 +344,6 @@
 			/>
 		{/if}
 	</SidePanel>
-
 	{@render pensionGroup()}
 
 	<div class={cn('mt-10 grid grid-cols-1 gap-4', showBills && 'lg:grid-cols-2')}>

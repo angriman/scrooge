@@ -5,14 +5,16 @@ import dataclasses
 import sqlite3
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from scrooge import categories, patterns, query, rulesfile, settings, staging, yamlfiles
-from scrooge.models import Kind
+from scrooge.models import CashBalance, Kind, TypedHolding
 from scrooge.storage import db, store
+from scrooge.storage import logos as store_logos
 from tests.storage import helpers
 from tests.storage.helpers import OWNER, PARTNER, txn
 
@@ -362,6 +364,126 @@ def test_a_rule_moves_one_place_within_its_file(
         _move(places, position, by, None)
 
 
+@pytest.mark.usefixtures("conn")
+def test_move_rule_to_moves_between_shared_and_personal_files(places: settings.Places) -> None:
+    shared, lukas, anna = places.rule_files[2], places.rule_files[0], places.rule_files[1]
+    assert not anna.exists()
+
+    # Shared -> existing personal file (appended at end, keeping inline comment).
+    settings.move_rule_to(_seen(places, 1, shared), lukas, places.categories_file, first=False)
+    assert lukas.read_text(encoding="utf-8") == (
+        "rules:\n"
+        "  - {match: 'Anna Meier', category: Prestiti}\n"
+        "  - {match: 'KONSUM', category: Groceries}  # food\n"
+    )
+    assert "KONSUM" not in shared.read_text(encoding="utf-8")
+    assert "# --- Shops" in shared.read_text(encoding="utf-8")
+
+    # Shared -> missing personal file (creates rules.anna.yaml).
+    settings.move_rule_to(_seen(places, 2, shared), anna, places.categories_file, first=False)
+    assert anna.read_text(encoding="utf-8") == (
+        "rules:\n  - {match: 'ACME', category: Salary, direction: in}\n"
+    )
+
+    # Personal -> shared (first, ahead of section comments; removing last rule leaves rules:).
+    settings.move_rule_to(_seen(places, 1, anna), shared, places.categories_file, first=True)
+    assert anna.read_text(encoding="utf-8") == "rules:\n"
+    assert shared.read_text(encoding="utf-8").startswith(
+        "# Rules both share.\nrules:\n"
+        "  - {match: 'ACME', category: Salary, direction: in}\n"
+        "  # --- Shops\n"
+    )
+
+
+def test_move_rule_to_moves_commented_block_rule_whole(places: settings.Places) -> None:
+    shared, lukas = _shared(places), _own(places)
+    shared.write_text(
+        "rules:\n  - match: ACME  # employer\n    category: Salary\n    account: Migros\n",
+        encoding="utf-8",
+    )
+    lukas.write_text("rules:\n", encoding="utf-8")
+    settings.move_rule_to(_seen(places, 1, shared), lukas, None, first=False)
+    assert shared.read_text(encoding="utf-8") == "rules:\n"
+    assert lukas.read_text(encoding="utf-8") == (
+        "rules:\n  - match: ACME  # employer\n    category: Salary\n    account: Migros\n"
+    )
+
+
+def test_move_rule_to_rolls_back_both_files_and_unlinks_new_target_on_load_error(
+    places: settings.Places,
+) -> None:
+    shared, anna = _shared(places), places.rule_files[1]
+    broken = "rules:\n  - {match: 'KONSUM', category: Groceries, kind: nonsense}\n"
+    shared.write_text(broken, encoding="utf-8")
+    assert not anna.exists()
+    with pytest.raises(settings.SettingsError, match="left as they were"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None, first=False)
+    assert shared.read_text(encoding="utf-8") == broken
+    assert not anna.exists()
+
+
+def test_move_rule_to_rolls_back_on_yaml_error_from_dangling_alias(
+    places: settings.Places,
+) -> None:
+    shared, anna = _shared(places), places.rule_files[1]
+    anchored = (
+        "rules:\n"
+        "  - {match: 'KONSUM', category: &food Groceries}\n"
+        "  - {match: 'COOP', category: *food}\n"
+    )
+    shared.write_text(anchored, encoding="utf-8")
+    assert not anna.exists()
+    with pytest.raises(settings.SettingsError, match="left as they were"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None, first=False)
+    assert shared.read_text(encoding="utf-8") == anchored
+    assert not anna.exists()
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_move_rule_to_into_file_starting_with_lone_dash_rule(
+    places: settings.Places, first: bool
+) -> None:
+    shared, lukas = _shared(places), _own(places)
+    shared.write_text("rules:\n  - {match: 'KONSUM', category: Groceries}\n", encoding="utf-8")
+    lukas.write_text("rules:\n  -\n    match: 'POSTA'\n    category: Gifts\n", encoding="utf-8")
+    settings.move_rule_to(_seen(places, 1, shared), lukas, None, first=first)
+    assert shared.read_text(encoding="utf-8") == "rules:\n"
+    matches = [entry.match for entry in rulesfile.read(lukas)[1]]
+    assert matches == (["KONSUM", "POSTA"] if first else ["POSTA", "KONSUM"])
+
+
+def test_move_rule_to_refuses_invalid_moves_without_touching_files(
+    places: settings.Places, tmp_path: Path
+) -> None:
+    shared, lukas, anna = places.rule_files[2], places.rule_files[0], places.rule_files[1]
+    # Same-file move (direct and via symlink).
+    with pytest.raises(settings.SettingsError, match="already in"):
+        settings.move_rule_to(_seen(places, 1, shared), shared, None)
+    link = tmp_path / "rules.link.yaml"
+    link.symlink_to(shared)
+    with pytest.raises(settings.SettingsError, match="already in"):
+        settings.move_rule_to(_seen(places, 1, shared), link, None)
+
+    # Stale rule digest.
+    with pytest.raises(settings.SettingsError, match="changed since"):
+        settings.move_rule_to(settings.Seen(shared, 1, "stale"), lukas, None)
+
+    # Lone dash rule.
+    shared.write_text(BLOCKS, encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match="cannot be moved here"):
+        settings.move_rule_to(_seen(places, 3, shared), lukas, None)
+
+    # Malformed destination (invalid YAML and non-mapping root).
+    anna.write_text("rules: [\n", encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match=r"rules\.anna\.yaml"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None)
+    anna.write_text("- a list\n", encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match="expected a mapping"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None)
+    assert shared.read_text(encoding="utf-8") == BLOCKS
+    assert lukas.read_text(encoding="utf-8") == OWN
+
+
 def test_categories_list_the_taxonomy_then_what_is_added(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
@@ -605,3 +727,186 @@ def test_listed_categories_uses_the_requested_language(
     assert listed[categories.GROCERIES].parent == categories.LABELS_IT[categories.GROUP_FOOD]
     assert listed["shipping"].name == "Shipping"
     assert listed["shipping"].parent == categories.LABELS_IT[categories.GROUP_TRANSPORT]
+
+
+def test_listed_people_unites_config_db_grouped_typed_and_closed_accounts(
+    tmp_path: Path,
+) -> None:
+    conn = db.connect(tmp_path / "people.db")
+    db.migrate(conn, NOW)
+    try:
+        # Empty DB and no config patterns -> empty list.
+        assert settings.listed_people(conn, None) == []
+
+        # Lukas has Migros, a multi-currency IBKR statement (grouped by together),
+        # and a closed typed-only manual account.
+        migros_rows = [txn("-40", date=date(2026, 8, 10), source_ref="1")]
+        helpers.close(conn, OWNER, AUGUST, AUGUST[1], ("migros", migros_rows))
+
+        ibkr_txns = [
+            txn(
+                "-100",
+                date=date(2026, 8, 12),
+                account="IBKR CHF",
+                currency="CHF",
+                source_file="ibkr.csv",
+                source_ref="1",
+            ),
+            txn(
+                "-50",
+                date=date(2026, 8, 12),
+                account="IBKR USD",
+                currency="USD",
+                source_file="ibkr.csv",
+                source_ref="2",
+            ),
+        ]
+        ibkr_stmt = helpers.statement(
+            "ibkr",
+            ibkr_txns,
+            [
+                CashBalance("IBKR CHF", "CHF", Decimal(0), Decimal(-100)),
+                CashBalance("IBKR USD", "USD", Decimal(0), Decimal(-50)),
+            ],
+            month=AUGUST[0],
+            end=AUGUST[1],
+        )
+        staging.stage(
+            conn,
+            helpers.batch(ibkr_stmt, owner=OWNER, month=AUGUST[0], end=AUGUST[1]),
+            NOW,
+        )
+        staging.commit(conn, owner=OWNER, now=NOW)
+
+        staging.type_balance(
+            conn,
+            owner=OWNER,
+            account="Savings Jar",
+            day=date(2026, 8, 31),
+            amount=Decimal(0),
+            currency="CHF",
+        )
+        conn.execute("UPDATE accounts SET closed_on = '2026-08-31' WHERE name = 'Savings Jar'")
+        conn.commit()
+
+        # Anna is only in config (no DB rows yet), and Clara is DB-only (absent from config).
+        staging.type_balance(
+            conn,
+            owner="Clara",
+            account="Cash Box",
+            day=date(2026, 8, 31),
+            amount=Decimal(500),
+            currency="EUR",
+        )
+
+        patterns = {OWNER: ["Lukas Keller"], PARTNER: ["Anna Meier", "A. Meier"]}
+        listed = settings.listed_people(conn, patterns)
+        assert [p.name for p in listed] == [OWNER, PARTNER, "Clara"]
+
+        lukas, anna, clara = listed
+        assert lukas.patterns == ("Lukas Keller",)
+        assert lukas.committed == 2
+        assert lukas.staged == 0
+        # Open accounts sorted alphabetically before closed accounts.
+        assert [(a.name, a.source, a.parts, a.closed) for a in lukas.accounts] == [
+            ("IBKR", "ibkr", ("IBKR CHF", "IBKR USD"), None),
+            ("Migros", "migros", ("Migros",), None),
+            ("Savings Jar", None, ("Savings Jar",), date(2026, 8, 31)),
+        ]
+        assert lukas.accounts[0].label != ""
+        assert lukas.accounts[2].label == ""
+
+        assert anna.patterns == ("Anna Meier", "A. Meier")
+        assert anna.accounts == ()
+        assert (anna.committed, anna.staged) == (0, 0)
+
+        assert clara.patterns == ()
+        assert [(a.name, a.source, a.closed) for a in clara.accounts] == [("Cash Box", None, None)]
+    finally:
+        conn.close()
+
+
+def test_listed_logos_deduplicates_excludes_bills_and_benchmarks_and_keeps_logo_only(
+    tmp_path: Path,
+) -> None:
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>'
+    conn = db.connect(tmp_path / "logos.db")
+    db.migrate(conn, NOW)
+    try:
+        assert settings.listed_logos(conn) == []
+
+        for code in ("CHF", "EUR", "USD"):
+            store.ensure_currency(conn, code)
+
+        # Held ETF across two currencies (first row has empty name, second has a name).
+        store.instrument_id(conn, "VWRL", "ETFs", "CHF", name="")
+        store.instrument_id(conn, "VWRL", "ETFs", "EUR", name="Vanguard FTSE All-World")
+        staging.type_holding(
+            conn,
+            owner=OWNER,
+            account="IBKR",
+            day=date(2026, 8, 31),
+            holding=TypedHolding("VWRL", Decimal(10), "CHF", "ETFs"),
+        )
+        staging.type_holding(
+            conn,
+            owner=OWNER,
+            account="IBKR",
+            day=date(2026, 8, 31),
+            holding=TypedHolding("VWRL", Decimal(5), "EUR", "ETFs"),
+        )
+
+        # Held stock and fund.
+        store.instrument_id(conn, "ACME", "Stocks", "USD", name="Acme Corp")
+        staging.type_holding(
+            conn,
+            owner=OWNER,
+            account="IBKR",
+            day=date(2026, 8, 31),
+            holding=TypedHolding("ACME", Decimal(2), "USD", "Stocks"),
+        )
+        fund_id = store.instrument_id(conn, "FPCH", "Funds", "CHF", name="Finpension Equity")
+        acct_id = store.ensure_account(
+            conn,
+            store.ensure_owner(conn, OWNER),
+            name="3a",
+            kind="manual",
+            currency="CHF",
+            source=None,
+        )
+        conn.execute(
+            "INSERT INTO positions (account_id, instrument_id, date, quantity, source) "
+            "VALUES (?, ?, '2026-08-31', '1', 'manual')",
+            (acct_id, fund_id),
+        )
+
+        # Bill and bond must be excluded even when held.
+        bill_id = store.instrument_id(conn, "912797XX1", "Bonds", "USD", name="US T-Bill")
+        bond_row = conn.execute(
+            "INSERT INTO instruments (symbol, name, type, currency) "
+            "VALUES ('CH000123', 'Swiss Bond', 'bond', 'CHF') RETURNING id"
+        ).fetchone()
+        bond_id = int(bond_row[0])
+        conn.execute(
+            "INSERT INTO positions (account_id, instrument_id, date, quantity, source) "
+            "VALUES (?, ?, '2026-08-31', '1000', 'manual'), (?, ?, '2026-08-31', '1000', 'manual')",
+            (acct_id, bill_id, acct_id, bond_id),
+        )
+
+        # Benchmark-only instrument (never held, never traded, no logo) must be excluded.
+        store.instrument_id(conn, "VT", "ETFs", "USD", name="Vanguard Total World")
+
+        # Instrument with a logo stored even with no positions/trades must still appear.
+        store.instrument_id(conn, "SOLD", "Stocks", "CHF", name="Sold Stock")
+        store_logos.add(conn, "SOLD", svg, "sold.svg", NOW)
+        conn.commit()
+
+        listed = settings.listed_logos(conn)
+        assert [(i.symbol, i.name, i.asset, i.currencies) for i in listed] == [
+            ("ACME", "Acme Corp", "Stocks", ("USD",)),
+            ("FPCH", "Finpension Equity", "Funds", ("CHF",)),
+            ("SOLD", "Sold Stock", "Stocks", ("CHF",)),
+            ("VWRL", "Vanguard FTSE All-World", "ETFs", ("CHF", "EUR")),
+        ]
+    finally:
+        conn.close()

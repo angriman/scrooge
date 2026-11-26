@@ -103,6 +103,9 @@ it: the other stays, with a sentence saying why.
 						<span class="text-ink-muted">{shown.currency}</span>
 					</p>
 				{/if}
+				{#if shown.rangeNote}
+					<p class="mt-0.5 text-caption text-ink-muted">{shown.rangeNote}</p>
+				{/if}
 				{@render problems(shown.errors)}
 			{:catch failure}
 				{@render heading(t('overview.twr'), returnsHref, t('overview.performanceLink'))}

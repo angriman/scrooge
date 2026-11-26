@@ -31,13 +31,18 @@ export function fileTitle(file: RulesFile): string {
 /** What a file is for, under its title. */
 export function fileNote(file: RulesFile): string {
 	return file.owner
-		? t('settings.ownRulesNote', { file: file.key, owner: file.owner })
-		: t('settings.sharedRulesNote', { file: file.key });
+		? t('settings.ownRulesNote', { owner: file.owner })
+		: t('settings.sharedRulesNote');
 }
 
-/** Why rules stay in their file. */
-export function stayNote(): string {
-	return t('settings.stayNote');
+/** Other rules files `rule` can be moved to: personal files for a shared rule, or the primary
+ * shared file and any other person's file for a personal rule. Multiple shared files collapse
+ * to the primary one so the picker never repeats "Shared rules". */
+export function moveTargets(rule: Rule, files: readonly RulesFile[]): RulesFile[] {
+	const personal = files.filter((file) => file.owner !== null && file.key !== rule.file);
+	if (rule.owner === null) return personal;
+	const primaryShared = files.find((file) => file.owner === null);
+	return primaryShared ? [primaryShared, ...personal] : personal;
 }
 
 /** A rule's key among all: its file and place. */
@@ -86,6 +91,9 @@ export const moved = (rule: Rule, by: -1 | 1, beside: Rule | undefined) => ({
 	by,
 	beside: beside?.version ?? ''
 });
+
+/** What `/api/settings/rules/file` takes: the rule as shown, and the key of its destination. */
+export const movedTo = (rule: Rule, to: string) => ({ ...seen(rule), to });
 
 /** What `/api/settings/rules/edit` takes. */
 export const edited = (rule: Rule, draft: Draft) => ({ ...seen(rule), ...draft });

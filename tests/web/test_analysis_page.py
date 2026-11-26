@@ -157,7 +157,7 @@ def test_sources_link_to_their_transactions(client: TestClient) -> None:
 def test_what_cannot_be_shown_is_said(client: TestClient) -> None:
     gbp = client.get("/analysis", params={"currency": "GBP"})
     assert gbp.status_code == 200
-    assert "No exchange rate is stored for GBP: run `scrooge prices`." in text(gbp.text)
+    assert "No exchange rate is stored for GBP." in text(gbp.text)
     assert "Where income comes from" not in gbp.text
     later = client.get("/analysis", params={"from": "2030", "by": "decade", "currency": "CHF"})
     assert "&#39;decade&#39; is not week, month, quarter or year." in later.text

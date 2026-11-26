@@ -91,7 +91,7 @@ def test_pensions_without_a_rate_are_left_out_and_said(client: TestClient) -> No
     sent = client.get("/api/pensions", params={"currency": "GBP"}).json()
     assert sent["pensions"]["pensions"] == []
     assert sent["errors"] == [
-        "No exchange rate is stored for GBP: run `scrooge prices`.",
+        "No exchange rate is stored for GBP.",
         f"Left out for want of a rate: Finpension 3a ({OWNER}), Pillar 2 AXA ({PARTNER}).",
     ]
 

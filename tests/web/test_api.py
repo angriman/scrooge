@@ -18,7 +18,7 @@ from tests.test_income import SALARY
 from tests.test_networth import NOW, account, close, deposit_and_pensions, spent
 from tests.test_overview import household
 from tests.web import builders
-from tests.web.test_login import STORED
+from tests.web.test_login import STORED, sign_in
 
 SITE = "http://127.0.0.1:8765"
 NOVEMBER = date(2026, 11, 1)
@@ -48,6 +48,7 @@ def test_the_session_names_the_people_and_the_currencies(client: TestClient) -> 
     assert sent["languages"] == ["en", "it"]
     assert sent["read_only"] is False
     assert sent["signing"] is False
+    assert sent["prices"] is False
     assert sent["token"]
 
     assert {person["covered"] for person in sent["people"]} == {"2026-09-30"}
@@ -241,6 +242,30 @@ def test_a_month_sends_what_was_saved_of_income_and_of_salary(tmp_path: Path) ->
     assert (shown["rate_year"], shown["rate_salary_year"]) == (None, None)
 
 
+def test_a_month_with_next_to_nothing_in_sends_no_savings_rate(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    rows = (
+        spent("15", date(2026, 9, 26), kind=Kind.INCOME, category=categories.INTEREST),
+        spent("-1015", date(2026, 9, 10)),
+    )
+    close(conn, account("migros", "Migros", "CHF", "2000", *rows))
+    conn.close()
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    month = client.get("/api/month").json()["month"]
+    assert [month[k] for k in ("income", "spent", "saved", "rate", "rate_salary")] == [
+        "15.00",
+        "1015.00",
+        "-1000.00",
+        None,
+        None,
+    ]
+    report = client.get("/api/cashflow", params={"currency": "CHF"}).json()["report"]
+    assert (report["totals"]["rate"], report["totals"]["rate_salary"]) == (None, None)
+    assert (report["periods"][0]["rate"], report["periods"][0]["rate_salary"]) == (None, None)
+
+
 def test_a_month_that_cannot_be_read_is_refused(client: TestClient) -> None:
     response = client.get("/api/month", params={"month": "September"})
     assert response.status_code == 400
@@ -278,15 +303,26 @@ def test_without_signing_in_the_api_says_so(database: Path) -> None:
     assert response.json() == {"errors": ["Sign in first."]}
 
 
-SHELL = '<html><body><script>start("/app")</script></body></html>'
+SHELL = f'<html><body><!-- {"x" * 600} --><script>start("/app")</script></body></html>'
+IMMUTABLE_JS = "export const label = " + repr("scrooge-" * 200) + ";\n"
+BIG_JS = "export const chunk = " + repr("overview-" * 8000) + ";\n"
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + bytes(1024)
+WOFF2_BYTES = b"wOF2" + bytes(1024)
+IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 
 
 @pytest.fixture
 def spa(tmp_path: Path) -> Path:
     folder = tmp_path / "spa"
-    (folder / "_app").mkdir(parents=True)
+    (folder / "_app" / "immutable" / "entry").mkdir(parents=True)
+    (folder / "_app" / "immutable" / "chunks").mkdir(parents=True)
+    (folder / "_app" / "immutable" / "assets").mkdir(parents=True)
     (folder / "index.html").write_text(SHELL)
     (folder / "_app" / "start.js").write_text("export {}")
+    (folder / "_app" / "immutable" / "entry" / "app.hash.js").write_text(IMMUTABLE_JS)
+    (folder / "_app" / "immutable" / "chunks" / "big.hash.js").write_text(BIG_JS)
+    (folder / "_app" / "immutable" / "assets" / "icon.hash.png").write_bytes(PNG_BYTES)
+    (folder / "_app" / "immutable" / "assets" / "font.hash.woff2").write_bytes(WOFF2_BYTES)
     (tmp_path / "secret.txt").write_text("not served")
     return folder
 
@@ -326,9 +362,137 @@ def test_before_it_is_built_app_says_how_to_build_it(database: Path, tmp_path: P
     response = client.get("/app/")
     assert response.status_code == 404
     assert "make web" in response.text
+    assert "cache-control" not in response.headers
+    asset = client.get("/app/_app/immutable/entry/app.hash.js")
+    assert asset.status_code == 404
+    assert "cache-control" not in asset.headers
     assert client.get("/").headers["content-security-policy"] == (
         "default-src 'self'; frame-ancestors 'none'"
     )
+
+
+def test_app_shell_is_not_cached_and_immutable_assets_are_cached_forever(
+    database: Path, spa: Path
+) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    for address in ("/app", "/app/", "/app/investments", "/app/index.html"):
+        response = client.get(address)
+        assert response.status_code == 200
+        assert response.text == SHELL
+        assert response.headers["cache-control"] == "no-cache"
+
+    for address in (
+        "/app/_app/immutable/entry/app.hash.js",
+        "/app/_app/immutable/chunks/big.hash.js",
+        "/app/_app/immutable/assets/icon.hash.png",
+        "/app/_app/immutable/assets/font.hash.woff2",
+    ):
+        response = client.get(address)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == IMMUTABLE_CACHE
+
+    non_immutable = client.get("/app/_app/start.js")
+    assert non_immutable.status_code == 200
+    assert "cache-control" not in non_immutable.headers
+
+    # Path traversal out of _app/immutable/ never borrows the immutable header.
+    escaped_shell = client.get("/app/_app/immutable/..%2F..%2Findex.html")
+    assert escaped_shell.text == SHELL
+    assert escaped_shell.headers["cache-control"] == "no-cache"
+
+    escaped_js = client.get("/app/_app/immutable/..%2Fstart.js")
+    assert escaped_js.text == "export {}"
+    assert "cache-control" not in escaped_js.headers
+
+    outside = client.get("/app/..%2Fsecret.txt")
+    assert outside.text == SHELL
+    assert outside.headers["cache-control"] == "no-cache"
+
+
+def test_text_responses_are_gzipped_and_binary_assets_are_not(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    gzip_headers = {"accept-encoding": "gzip"}
+    plain_headers = {"accept-encoding": "identity"}
+
+    for address, expected in (
+        ("/app/_app/immutable/entry/app.hash.js", IMMUTABLE_JS),
+        ("/app/_app/immutable/chunks/big.hash.js", BIG_JS),
+        ("/app", SHELL),
+    ):
+        compressed = client.get(address, headers=gzip_headers)
+        plain = client.get(address, headers=plain_headers)
+        assert compressed.status_code == 200
+        assert compressed.headers["content-encoding"] == "gzip"
+        assert "accept-encoding" in compressed.headers["vary"].lower()
+        assert compressed.text == expected
+        assert "content-encoding" not in plain.headers
+        assert "accept-encoding" in plain.headers["vary"].lower()
+        assert plain.text == expected
+        assert compressed.num_bytes_downloaded < plain.num_bytes_downloaded
+
+    api_gzip = client.get("/api/transactions", headers=gzip_headers)
+    api_plain = client.get("/api/transactions", headers=plain_headers)
+    assert len(api_plain.content) >= 500
+    assert api_gzip.headers["content-encoding"] == "gzip"
+    assert "accept-encoding" in api_gzip.headers["vary"].lower()
+    assert api_gzip.json() == api_plain.json()
+    assert api_gzip.num_bytes_downloaded < api_plain.num_bytes_downloaded
+
+    tiny = client.get("/app/_app/start.js", headers=gzip_headers)
+    assert "content-encoding" not in tiny.headers
+    assert tiny.text == "export {}"
+
+    png = client.get("/app/_app/immutable/assets/icon.hash.png", headers=gzip_headers)
+    assert "content-encoding" not in png.headers
+    assert png.content == PNG_BYTES
+    assert png.headers["cache-control"] == IMMUTABLE_CACHE
+
+    woff2 = client.get("/app/_app/immutable/assets/font.hash.woff2", headers=gzip_headers)
+    assert "content-encoding" not in woff2.headers
+    assert woff2.content == WOFF2_BYTES
+    assert woff2.headers["cache-control"] == IMMUTABLE_CACHE
+
+
+def test_immutable_assets_keep_csp_and_require_sign_in_when_password_set(
+    database: Path, spa: Path
+) -> None:
+    app = webapp.create_app(database, password=STORED, spa=spa)
+    client = TestClient(app, base_url=SITE, follow_redirects=False)
+    digest = base64.b64encode(hashlib.sha256(b'start("/app")').digest()).decode()
+    policy = (
+        f"default-src 'self'; script-src 'self' 'sha256-{digest}'; "
+        "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
+    )
+
+    asset_path = "/app/_app/immutable/entry/app.hash.js"
+    blocked = client.get(asset_path)
+    assert blocked.status_code == 303
+    assert blocked.headers["location"].startswith("/login?next=")
+    assert "cache-control" not in blocked.headers
+    assert blocked.headers["content-security-policy"] == policy
+
+    assert sign_in(client).status_code == 303
+    signed = client.get(asset_path, headers={"accept-encoding": "gzip"})
+    assert signed.status_code == 200
+    assert signed.headers["cache-control"] == IMMUTABLE_CACHE
+    assert signed.headers["content-encoding"] == "gzip"
+    assert signed.headers["content-security-policy"] == policy
+    assert signed.text == IMMUTABLE_JS
+
+
+def test_head_request_on_spa_shell_and_immutable_asset(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    shell_head = client.head("/app", headers={"accept-encoding": "gzip"})
+    assert shell_head.status_code == 200
+    assert shell_head.headers["cache-control"] == "no-cache"
+    assert shell_head.content == b""
+
+    asset_head = client.head(
+        "/app/_app/immutable/entry/app.hash.js", headers={"accept-encoding": "gzip"}
+    )
+    assert asset_head.status_code == 200
+    assert asset_head.headers["cache-control"] == IMMUTABLE_CACHE
+    assert asset_head.content == b""
 
 
 def test_without_a_frontend_there_is_no_app(client: TestClient) -> None:
@@ -496,16 +660,19 @@ def test_a_copy_refuses_every_change(database: Path) -> None:
     copy = TestClient(webapp.create_app(database, read_only=True), base_url=SITE)
     session = copy.get("/api/session").json()
     assert session["rules"] is False
+    assert session["prices"] is False
     row = _changeable(copy)
     sent = {"owner": row["owner"], "ids": [row["id"]], "category": categories.RENT}
     headers = {"X-Token": session["token"]}
     assert copy.post("/api/transactions/category", json=sent, headers=headers).status_code == 403
+    assert copy.post("/api/prices", headers=headers).status_code == 403
 
 
 def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: TestClient) -> None:
     sent = client.get("/api/cashflow").json()
+    # The fixture's statements only cover September 2026, so YTD starts at the first month.
     assert (sent["first"], sent["last"], sent["by"], sent["errors"]) == (
-        "2026-01-01",
+        "2026-09-01",
         None,
         "month",
         [],
@@ -514,9 +681,11 @@ def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: Te
     assert [r["key"] for r in sent["ranges"]] == ["ytd", "12m"]
     shown = sent["report"]
     assert shown["currency"] == "CHF"
-    assert [period["name"] for period in shown["periods"]][-1] == "2026-09"
+    assert [period["name"] for period in shown["periods"]] == ["2026-09"]
+    assert shown["months"] == 1
     assert shown["periods"][-1]["spent_by"] == {"Food": "120.00"}
     assert [category["name"] for category in shown["categories"]] == ["Food"]
+    assert shown["categories"][0]["monthly"] == "120.00"
     assert shown["totals"]["spent"] == "120.00"
     assert {line["currency"] for line in shown["as_paid"]} <= {"CHF", "EUR", "USD"}
     quarters = client.get("/api/cashflow", params={"by": "quarter", "from": "2026-07"}).json()
@@ -528,16 +697,139 @@ def test_a_period_of_another_page_picks_the_months_of_the_cash_flow(client: Test
         found: str | None = client.get("/api/cashflow", params=params).json()["first"]
         return found
 
-    # The last month committed is September 2026: the period ends with it, months whole.
+    # Statements only start in September 2026, so every broader range clamps to that month.
     assert first(range="1m") == "2026-09-01"
-    assert first(range="3m") == "2026-07-01"
-    assert first(range="1y") == "2025-10-01"
-    assert first(range="ytd") == "2026-01-01"
-    # A range asked for by its ends wins over a period.
-    assert first(range="3m", **{"from": "2026-05"}) == "2026-05-01"
+    assert first(range="3m") == "2026-09-01"
+    assert first(range="1y") == "2026-09-01"
+    assert first(range="ytd") == "2026-09-01"
+    assert first(range="3m", **{"from": "2026-05"}) == "2026-09-01"
     sent = client.get("/api/cashflow").json()
     assert [r["range"] for r in sent["ranges"]] == ["ytd", "1y"]
     assert client.get("/api/cashflow", params={"range": "2w"}).status_code == 400
+
+
+def test_cash_flow_clamps_ranges_to_the_first_statement_month(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    # Statements start mid-August and run through September: 2 months in a 9-month YTD range.
+    aug = date(2026, 8, 1)
+    sep = date(2026, 9, 1)
+    close(
+        conn,
+        account(
+            "migros",
+            "Migros",
+            "CHF",
+            "1000",
+            spent("-100", date(2026, 8, 12)),
+            month=aug,
+        ),
+        month=aug,
+    )
+    close(
+        conn,
+        account(
+            "migros",
+            "Migros",
+            "CHF",
+            "900",
+            spent("-200", date(2026, 9, 15)),
+            month=sep,
+        ),
+        month=sep,
+    )
+    conn.close()
+    local = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+
+    for params in ({}, {"range": "ytd"}, {"range": "1y"}):
+        sent = local.get("/api/cashflow", params=params).json()
+        assert sent["first"] == "2026-08-01"
+        shown = sent["report"]
+        assert [p["name"] for p in shown["periods"]] == ["2026-08", "2026-09"]
+        assert shown["months"] == 2
+        # 300 over 2 statement-covered months = 150/month (not divided by 9 or 12).
+        assert shown["categories"][0]["monthly"] == "150.00"
+
+    quarter = local.get("/api/cashflow", params={"range": "1y", "by": "quarter"}).json()
+    assert [p["name"] for p in quarter["report"]["periods"]] == ["2026-Q3"]
+    assert quarter["report"]["months"] == 2
+
+    year = local.get("/api/cashflow", params={"range": "1y", "by": "year"}).json()
+    assert [p["name"] for p in year["report"]["periods"]] == ["2026"]
+    assert year["report"]["months"] == 2
+
+    earlier = local.get("/api/cashflow", params={"from": "2025", "to": "2025"}).json()
+    assert earlier["report"]["totals"] is None
+    assert earlier["report"]["periods"] == []
+    assert earlier["report"]["months"] == 0
+
+
+def test_cash_flow_clamps_earlier_year_and_all_when_history_starts_mid_year(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    jul_2025 = date(2025, 7, 1)
+    sep_2026 = date(2026, 9, 1)
+    close(
+        conn,
+        account(
+            "migros",
+            "Migros",
+            "CHF",
+            "1000",
+            spent("-600", date(2025, 7, 15)),
+            month=jul_2025,
+        ),
+        month=jul_2025,
+    )
+    close(
+        conn,
+        account(
+            "migros",
+            "Migros",
+            "CHF",
+            "400",
+            spent("-300", date(2026, 9, 15)),
+            month=sep_2026,
+        ),
+        month=sep_2026,
+    )
+    conn.close()
+    local = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+
+    # Unclamped periods within the history keep their exact starts.
+    assert local.get("/api/cashflow", params={"range": "1m"}).json()["first"] == "2026-09-01"
+    assert local.get("/api/cashflow", params={"range": "3m"}).json()["first"] == "2026-07-01"
+    assert local.get("/api/cashflow", params={"range": "ytd"}).json()["first"] == "2026-01-01"
+    assert local.get("/api/cashflow", params={"range": "1y"}).json()["first"] == "2025-10-01"
+    assert (
+        local.get("/api/cashflow", params={"range": "3m", "from": "2026-05"}).json()["first"]
+        == "2026-05-01"
+    )
+
+    # "All" and "2025" both start in July 2025 (never January 2025).
+    all_sent = local.get("/api/cashflow", params={"range": "all"}).json()
+    assert all_sent["first"] == "2025-07-01"
+    assert all_sent["report"]["months"] == 15
+    assert all_sent["report"]["periods"][0]["name"] == "2025-07"
+
+    y2025 = local.get("/api/cashflow", params={"from": "2025", "to": "2025"}).json()
+    assert (y2025["first"], y2025["last"]) == ("2025-07-01", "2025-12-31")
+    assert y2025["report"]["months"] == 6
+    assert y2025["report"]["categories"][0]["monthly"] == "100.00"
+
+    # A range ending before the first statement month is never inverted.
+    y2024 = local.get("/api/cashflow", params={"from": "2024", "to": "2024"}).json()
+    assert (y2024["first"], y2024["last"], y2024["report"]["totals"]) == (
+        "2024-01-01",
+        "2024-12-31",
+        None,
+    )
+
+    # An open-ended `to` within the history clamps its start to the first statement month.
+    to_sep = local.get("/api/cashflow", params={"to": "2026-09"}).json()
+    assert (to_sep["first"], to_sep["last"]) == ("2025-07-01", "2026-09-30")
 
 
 def test_a_cash_flow_that_cannot_be_read_is_refused(client: TestClient) -> None:
