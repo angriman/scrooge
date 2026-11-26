@@ -49,10 +49,11 @@ the one it has is taken out. Nothing is fetched: the image comes from this brows
 		await answer('/api/logos/remove', { symbol });
 	}
 
-	const quiet = 'text-small text-ink-secondary hover:text-ink disabled:opacity-60';
+	const quiet =
+		'-mx-2 inline-flex min-h-11 items-center px-2 text-small text-ink-secondary hover:text-ink disabled:opacity-60 sm:m-0 sm:inline sm:min-h-0 sm:p-0';
 </script>
 
-<div class="mt-3 flex flex-wrap items-center gap-3 text-small">
+<div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-small sm:gap-3">
 	<span class="text-ink-muted">{t('holdings.logoLabel')}</span>
 	<input
 		bind:this={input}

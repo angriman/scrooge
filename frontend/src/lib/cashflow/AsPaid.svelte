@@ -19,7 +19,9 @@ checking a figure against the statements.
 
 {#if currencies.length}
 	<details class="rounded-panel bg-panel px-4 py-3">
-		<summary class="cursor-pointer text-body text-ink-secondary hover:text-ink">
+		<summary
+			class="-my-2.5 cursor-pointer py-2.5 text-body text-ink-secondary hover:text-ink sm:my-0 sm:py-0"
+		>
 			{t('cashflow.asPaidSummary')}
 		</summary>
 		<p class="mt-1 text-small text-ink-muted">

@@ -28,7 +28,7 @@ cross that clears it. Choosing it opens what it can be set to.
 
 <span
 	class={cn(
-		'inline-flex h-8 items-center rounded-full border text-small transition-colors',
+		'inline-flex h-11 items-center rounded-full border text-small transition-colors sm:h-8',
 		value
 			? 'border-brand/40 bg-brand-soft text-ink'
 			: 'border-line bg-sunken text-ink-secondary hover:border-line-strong hover:text-ink'
@@ -64,7 +64,7 @@ cross that clears it. Choosing it opens what it can be set to.
 			type="button"
 			onclick={onclear}
 			aria-label={t('transactions.clearFilterAria', { label: label.toLowerCase() })}
-			class="mr-1 grid size-6 place-items-center rounded-full text-ink-secondary hover:bg-sunken hover:text-ink dark:hover:bg-raised"
+			class="mr-0.5 grid size-10 place-items-center rounded-full text-ink-secondary hover:bg-sunken hover:text-ink sm:mr-1 sm:size-6 dark:hover:bg-raised"
 		>
 			<X class="size-3.5" aria-hidden="true" />
 		</button>

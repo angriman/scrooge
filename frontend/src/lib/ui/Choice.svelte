@@ -26,7 +26,7 @@ One choice of many in a menu: a currency. Typing a letter jumps to it.
 	<Select.Trigger
 		aria-label={label}
 		class={cn(
-			'inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-sunken px-2.5 text-small text-ink hover:border-line-strong',
+			'inline-flex h-11 items-center gap-1.5 rounded-control border border-line bg-sunken px-2.5 text-small text-ink hover:border-line-strong sm:h-8',
 			className
 		)}
 	>
@@ -43,7 +43,7 @@ One choice of many in a menu: a currency. Typing a letter jumps to it.
 					<Select.Item
 						value={item.value}
 						label={item.label}
-						class="flex cursor-default items-center justify-between gap-3 rounded-[calc(var(--radius-control)-2px)] px-2 py-1 text-small text-ink outline-none data-highlighted:bg-brand-soft"
+						class="flex min-h-11 cursor-default items-center justify-between gap-3 rounded-[calc(var(--radius-control)-2px)] px-2 py-2.5 text-small text-ink outline-none data-highlighted:bg-brand-soft sm:min-h-0 sm:py-1"
 					>
 						{#snippet children({ selected })}
 							{item.label}

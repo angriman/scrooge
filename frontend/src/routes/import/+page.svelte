@@ -201,7 +201,9 @@
 				: t('import.nothingStagedToCommit')}
 		</span>
 		{#if committed}
-			<a href={transactions} class="text-small font-medium text-brand hover:text-brand-hover"
+			<a
+				href={transactions}
+				class="-my-2.5 inline-flex min-h-11 items-center text-small font-medium text-brand hover:text-brand-hover sm:my-0 sm:min-h-0"
 				>{t('import.seeTransactions')}</a
 			>
 		{/if}
@@ -247,7 +249,9 @@
 			{/if}
 
 			<details class="rounded-panel bg-panel px-4 py-3" open={!staged.groups.length}>
-				<summary class="cursor-pointer text-title font-medium text-ink">
+				<summary
+					class="-my-2.5 cursor-pointer py-2.5 text-title font-medium text-ink sm:my-0 sm:py-0"
+				>
 					{t('import.everyStagedRow')}
 					<span class="text-body font-normal text-ink-muted">{staged.rows.length}</span>
 				</summary>
@@ -272,7 +276,7 @@
 					type="button"
 					onclick={() => save(true)}
 					disabled={saving !== null}
-					class="h-10 w-full rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+					class="h-11 w-full rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-10"
 				>
 					{saving === 'commit'
 						? t('import.committing')
@@ -283,7 +287,7 @@
 						type="button"
 						onclick={() => save(false)}
 						disabled={saving !== null}
-						class="h-9 w-full rounded-control border border-line px-4 text-body text-ink hover:border-line-strong disabled:opacity-60"
+						class="h-11 w-full rounded-control border border-line px-4 text-body text-ink hover:border-line-strong disabled:opacity-60 sm:h-9"
 					>
 						{t(saving === 'save' ? 'import.savingCategories' : 'import.saveCategoriesCta')}
 					</button>

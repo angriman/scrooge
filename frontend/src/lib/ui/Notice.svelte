@@ -37,7 +37,7 @@ deals with it. `waiting` is work to do (statements to commit); `caution` is some
 		<a
 			href={action.href}
 			data-sveltekit-reload={action.reload ? '' : undefined}
-			class="text-small font-medium whitespace-nowrap text-brand hover:text-brand-hover"
+			class="-my-2.5 inline-flex min-h-11 items-center text-small font-medium whitespace-nowrap text-brand hover:text-brand-hover sm:my-0 sm:min-h-0"
 		>
 			{action.label}
 		</a>

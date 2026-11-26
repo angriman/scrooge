@@ -58,7 +58,7 @@ on bills without a maturity offers to look them up and import the same files aga
 			type="button"
 			disabled={looking}
 			onclick={() => onlookup(answer.undated!.held!)}
-			class="mb-3 h-9 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+			class="mb-3 h-11 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-9"
 		>
 			{looking
 				? t('import.lookingUpBills')

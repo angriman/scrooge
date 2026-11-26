@@ -45,7 +45,7 @@ newest of them. Nothing is saved.
 	}
 
 	const field =
-		'h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none';
+		'h-11 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none sm:h-8';
 	const rows = (count: number) =>
 		count === 1 ? t('settings.committedRowOne') : t('settings.committedRowMany', { count });
 </script>
@@ -73,7 +73,7 @@ newest of them. Nothing is saved.
 	<button
 		type="submit"
 		disabled={trying}
-		class="h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60"
+		class="h-11 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60 sm:h-8"
 	>
 		{trying ? t('settings.trying') : t('settings.try')}
 	</button>

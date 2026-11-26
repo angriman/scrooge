@@ -105,7 +105,10 @@
 		<div
 			class="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-6"
 		>
-			<a href={resolve('/')} class="flex items-center gap-2 text-title font-medium text-ink">
+			<a
+				href={resolve('/')}
+				class="-my-2 flex min-h-11 items-center gap-2 text-title font-medium text-ink sm:my-0 sm:min-h-0"
+			>
 				<span class="size-3 rounded-[3px] bg-brand" aria-hidden="true"></span>
 				scrooge
 			</a>
@@ -119,7 +122,7 @@
 						href={item.href}
 						aria-current={item.current ? 'page' : undefined}
 						class={cn(
-							'relative flex items-center gap-1.5 px-2.5 py-2 text-body whitespace-nowrap text-ink-secondary hover:text-ink',
+							'relative flex min-h-11 items-center gap-1.5 px-2.5 py-2.5 text-body whitespace-nowrap text-ink-secondary hover:text-ink md:min-h-0 md:py-2',
 							item.current &&
 								'text-ink after:absolute after:inset-x-2.5 after:-bottom-2 after:h-0.5 after:rounded-full after:bg-brand'
 						)}
@@ -137,7 +140,7 @@
 						href={ours('/accounts').href}
 						aria-label={t('nav.statementsCompleteLabel', { date: day(covered) })}
 						title={t('nav.statementsCompleteTitle')}
-						class="text-caption whitespace-nowrap text-ink-muted hover:text-ink-secondary"
+						class="-my-2 inline-flex min-h-11 items-center text-caption whitespace-nowrap text-ink-muted hover:text-ink-secondary sm:my-0 sm:min-h-0"
 					>
 						<span class="hidden md:inline">{t('nav.completeUpTo', { date: day(covered) })}</span>
 						<span class="md:hidden">{t('nav.upTo', { date: dayOfYear(covered) })}</span>
@@ -173,7 +176,7 @@
 					aria-label={t('nav.settingsLabel')}
 					title={t('nav.settingsTitle')}
 					aria-current={page.url.pathname.startsWith(resolve('/settings')) ? 'page' : undefined}
-					class="inline-flex size-8 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink aria-[current=page]:text-brand"
+					class="inline-flex size-11 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink aria-[current=page]:text-brand sm:size-8"
 				>
 					<Settings class="size-4" aria-hidden="true" />
 				</a>
@@ -181,7 +184,7 @@
 					<a
 						href={ours('/import').href}
 						aria-label={t('nav.importLabel')}
-						class="inline-flex h-8 items-center gap-1.5 rounded-control bg-brand px-2.5 text-small font-medium text-on-brand hover:bg-brand-hover sm:px-3"
+						class="inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover sm:h-8 sm:min-w-0"
 					>
 						<Upload class="size-4" aria-hidden="true" />
 						<span class="hidden sm:inline">{t('nav.import')}</span>
@@ -194,7 +197,7 @@
 							type="submit"
 							aria-label={t('nav.signOut')}
 							title={t('nav.signOut')}
-							class="inline-flex size-8 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink"
+							class="inline-flex size-11 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink sm:size-8"
 						>
 							<LogOut class="size-4" aria-hidden="true" />
 						</button>

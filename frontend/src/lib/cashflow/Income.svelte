@@ -62,7 +62,7 @@ months a year before. A source opens its transactions over the same range.
 						<li>
 							<a
 								href={transactions({ category: source.name })}
-								class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-control px-1 py-2 hover:bg-sunken"
+								class="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-control px-1 py-2 hover:bg-sunken sm:min-h-0"
 							>
 								<span class="min-w-0 truncate text-body text-ink">{source.name}</span>
 								<Amount

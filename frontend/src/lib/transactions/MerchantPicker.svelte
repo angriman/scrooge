@@ -54,7 +54,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 	});
 
 	const item =
-		'flex w-full cursor-default items-baseline gap-3 rounded-control px-2 py-1.5 text-left text-small text-ink outline-none data-selected:bg-brand-soft';
+		'flex min-h-11 w-full cursor-default items-center gap-3 rounded-control px-2 py-2.5 text-left text-small text-ink outline-none data-selected:bg-brand-soft sm:min-h-0 sm:items-baseline sm:py-1.5';
 </script>
 
 <Command.Root
@@ -75,7 +75,7 @@ them, Enter picks one. What is typed can be picked as it is, for a name not list
 			placeholder={t('transactions.merchantsSearchPlaceholder')}
 			autocomplete="off"
 			spellcheck="false"
-			class="h-8 w-full rounded-control border border-line bg-sunken pr-2 pl-8 text-small text-ink placeholder:text-ink-muted focus:border-brand focus:outline-none"
+			class="h-11 w-full rounded-control border border-line bg-sunken pr-2 pl-8 text-small text-ink placeholder:text-ink-muted focus:border-brand focus:outline-none sm:h-8"
 		/>
 	</label>
 	{#if known?.since}

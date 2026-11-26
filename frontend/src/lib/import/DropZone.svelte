@@ -79,8 +79,8 @@ source at once, whole folders or zips; each file is recognised on its own.
 				type="button"
 				onclick={() => input.click()}
 				class={compact
-					? 'h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong'
-					: 'h-9 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover'}
+					? 'h-11 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong sm:h-8'
+					: 'h-11 rounded-control bg-brand px-4 text-body font-medium text-on-brand hover:bg-brand-hover sm:h-9'}
 			>
 				{t('import.chooseFiles')}
 			</button>
@@ -88,8 +88,8 @@ source at once, whole folders or zips; each file is recognised on its own.
 				type="button"
 				onclick={() => folders.click()}
 				class={compact
-					? 'h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong'
-					: 'h-9 rounded-control border border-line px-4 text-body text-ink hover:border-line-strong'}
+					? 'h-11 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong sm:h-8'
+					: 'h-11 rounded-control border border-line px-4 text-body text-ink hover:border-line-strong sm:h-9'}
 			>
 				{t('import.chooseFolder')}
 			</button>

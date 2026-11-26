@@ -92,9 +92,11 @@ and shared rules, or taken out.
 	}
 
 	const field =
-		'h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none';
+		'h-11 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none sm:h-8';
 	const icon =
-		'inline-flex size-7 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent';
+		'inline-flex size-11 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent sm:size-7';
+	const tryButton =
+		'inline-flex h-11 min-w-11 items-center justify-center rounded-control px-2 text-ink-secondary hover:bg-sunken hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent sm:h-7 sm:min-w-7 sm:px-1.5';
 </script>
 
 <li class="py-2">
@@ -130,21 +132,21 @@ and shared rules, or taken out.
 				<button
 					type="button"
 					onclick={() => ontry(draft.match, draft.direction)}
-					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
+					class="h-11 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink sm:h-8"
 				>
 					{t('settings.try')}
 				</button>
 				<button
 					type="button"
 					onclick={() => (mode = null)}
-					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
+					class="h-11 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink sm:h-8"
 				>
 					{t('accounts.cancel')}
 				</button>
 				<button
 					type="submit"
 					disabled={busy || !draft.category}
-					class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+					class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
 				>
 					{busy ? t('settings.saving') : t('settings.save')}
 				</button>
@@ -171,50 +173,52 @@ and shared rules, or taken out.
 				<button
 					type="button"
 					onclick={() => (mode = null)}
-					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
+					class="h-11 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink sm:h-8"
 				>
 					{t('accounts.cancel')}
 				</button>
 				<button
 					type="submit"
 					disabled={busy || !destination}
-					class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+					class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
 				>
 					{busy ? t('settings.saving') : t('settings.move')}
 				</button>
 			</div>
 		</form>
 	{:else}
-		<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-			<span class="w-6 shrink-0 text-right text-caption text-ink-muted tabular-nums"
-				>{rule.position}</span
-			>
-			<div class="min-w-0 flex-1 basis-48">
-				<p class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-body">
-					<code class="min-w-0 truncate font-mono text-small text-ink" title={rule.match}
-						>{rule.match}</code
-					>
-					<span class="text-ink-muted" aria-hidden="true">→</span>
-					<span class="text-ink">{rule.category}</span>
-				</p>
-				<p class="text-caption text-ink-muted">
-					{directionName(rule.direction)}{rule.account
-						? ` ${t('settings.accountOnly', { account: rule.account })}`
-						: ''} ·
-					<span class={rule.matches === null ? 'text-caution' : ''}
-						>{matchesName(rule.matches, rule.counted)}</span
-					>
-				</p>
-				{#if editable && rule.fixed}
-					<p class="text-caption text-caution">
-						{t('settings.changeInFile', { file: rule.fixed })}
+		<div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+			<div class="flex min-w-0 flex-1 items-baseline gap-3">
+				<span class="w-6 shrink-0 text-right text-caption text-ink-muted tabular-nums"
+					>{rule.position}</span
+				>
+				<div class="min-w-0 flex-1">
+					<p class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-body">
+						<code class="min-w-0 truncate font-mono text-small text-ink" title={rule.match}
+							>{rule.match}</code
+						>
+						<span class="text-ink-muted" aria-hidden="true">→</span>
+						<span class="text-ink">{rule.category}</span>
 					</p>
-				{/if}
+					<p class="text-caption text-ink-muted">
+						{directionName(rule.direction)}{rule.account
+							? ` ${t('settings.accountOnly', { account: rule.account })}`
+							: ''} ·
+						<span class={rule.matches === null ? 'text-caution' : ''}
+							>{matchesName(rule.matches, rule.counted)}</span
+						>
+					</p>
+					{#if editable && rule.fixed}
+						<p class="text-caption text-caution">
+							{t('settings.changeInFile', { file: rule.fixed })}
+						</p>
+					{/if}
+				</div>
 			</div>
-			<div class="ml-auto flex shrink-0 flex-wrap items-center gap-1">
+			<div class="flex shrink-0 flex-wrap items-center gap-1 pl-7 sm:pl-0">
 				<button
 					type="button"
-					class="{icon} w-auto px-1.5"
+					class={tryButton}
 					aria-label={t('settings.tryRuleAria', { match: rule.match })}
 					title={t('settings.tryPatternTitle')}
 					onclick={() => ontry(rule.match, rule.direction)}

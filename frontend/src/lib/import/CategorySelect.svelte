@@ -34,7 +34,7 @@ letter jumps to it, and a phone shows its own picker.
 	onchange={() => onchange?.(value)}
 	aria-label={label}
 	class={cn(
-		'h-8 max-w-full min-w-0 rounded-control border bg-raised px-2 text-small focus:border-brand focus:outline-none',
+		'h-11 max-w-full min-w-0 rounded-control border bg-raised px-2 text-small focus:border-brand focus:outline-none sm:h-8',
 		value ? 'border-brand/50 text-ink' : 'border-line text-ink-secondary',
 		className
 	)}

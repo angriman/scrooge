@@ -229,7 +229,7 @@ now. A month pointed at is said in full beneath.
 									<button
 										type="button"
 										onclick={() => onmerchant(payee.name)}
-										class="flex w-full items-baseline gap-3 rounded-control px-1.5 py-1.5 text-left hover:bg-sunken"
+										class="flex min-h-11 w-full items-center gap-3 rounded-control px-1.5 py-2 text-left hover:bg-sunken sm:min-h-0 sm:items-baseline sm:py-1.5"
 									>
 										<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
 										<span class="text-caption text-ink-muted tabular-nums">{payee.count}×</span>
@@ -243,7 +243,7 @@ now. A month pointed at is said in full beneath.
 								{:else}
 									<a
 										href={merchant?.(payee.name)}
-										class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
+										class="flex min-h-11 items-center gap-3 rounded-control px-1 py-2 hover:bg-sunken sm:min-h-0 sm:items-baseline sm:py-1.5"
 									>
 										<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
 										<span class="text-caption text-ink-muted tabular-nums">{payee.count}×</span>

@@ -135,7 +135,7 @@ phone. Controlled by the caller (typically from a URL query parameter via `lib/v
 						<BitsDialog.Close
 							aria-label={t('ui.close')}
 							title={t('ui.close')}
-							class="inline-flex size-8 shrink-0 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink dark:hover:bg-raised"
+							class="-my-1.5 -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink sm:m-0 sm:size-8 dark:hover:bg-raised"
 						>
 							<X class="size-4" aria-hidden="true" />
 						</BitsDialog.Close>

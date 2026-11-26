@@ -90,7 +90,7 @@ the choice as a rule for future imports.
 					bind:value={category}
 					autofocus
 					disabled={saving}
-					class="h-9 w-full rounded-control border border-line bg-raised px-2.5 text-body text-ink focus:border-brand focus:outline-none disabled:opacity-60"
+					class="h-11 w-full rounded-control border border-line bg-raised px-2.5 text-body text-ink focus:border-brand focus:outline-none disabled:opacity-60 sm:h-9"
 				>
 					{#each leaves as group (group.heading)}
 						<optgroup label={group.heading}>
@@ -103,12 +103,14 @@ the choice as a rule for future imports.
 			</label>
 
 			{#if rules && who.trim()}
-				<label class="flex items-start gap-2.5 text-small text-ink">
+				<label
+					class="flex min-h-11 items-center gap-2.5 text-small text-ink sm:min-h-0 sm:items-start"
+				>
 					<input
 						type="checkbox"
 						bind:checked={remember}
 						disabled={saving}
-						class="mt-0.5 size-4 shrink-0 accent-brand"
+						class="size-4 shrink-0 accent-brand sm:mt-0.5"
 					/>
 					<span>{t('transactions.rememberFor', { merchant: who.trim() })}</span>
 				</label>
@@ -123,14 +125,14 @@ the choice as a rule for future imports.
 					type="button"
 					onclick={onclose}
 					disabled={saving}
-					class="h-8 rounded-control px-3 text-small text-ink-secondary hover:text-ink disabled:opacity-60"
+					class="h-11 rounded-control px-3 text-small text-ink-secondary hover:text-ink disabled:opacity-60 sm:h-8"
 				>
 					{t('accounts.cancel')}
 				</button>
 				<button
 					type="submit"
 					disabled={saving || !category}
-					class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+					class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
 				>
 					{t(saving ? 'transactions.savingCategory' : 'transactions.saveCategory')}
 				</button>
