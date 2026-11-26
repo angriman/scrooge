@@ -6,6 +6,7 @@ import {
 	described,
 	direction,
 	instead,
+	missingBenchmarksNote,
 	mwrPer,
 	nearest,
 	over,
@@ -150,6 +151,17 @@ describe('the benchmarks', () => {
 		);
 	});
 
+	it('names missing benchmarks in one quiet note without terminal commands', () => {
+		expect(missingBenchmarksNote([])).toBeNull();
+		expect(missingBenchmarksNote(['VT'])).toBe('VT will show once its prices are fetched.');
+		expect(missingBenchmarksNote(['VT', 'VOO'])).toBe(
+			'VT and VOO will show once their prices are fetched.'
+		);
+		expect(missingBenchmarksNote(['VT', 'VOO', 'ACWI'])).toBe(
+			'VT, VOO and ACWI will show once their prices are fetched.'
+		);
+	});
+
 	it('localizes performance labels and captions in Italian', () => {
 		setLanguage('it');
 		try {
@@ -158,6 +170,16 @@ describe('the benchmarks', () => {
 			expect(compared('10.00', [vt])).toBe('VT +12.3% nello stesso periodo');
 			expect(instead([vt, voo, { symbol: 'ACWI', return: '1' }])).toBe(
 				' Le linee VT, VOO e ACWI mostrano quanto varrebbe lo stesso capitale investito in ciascun indice negli stessi giorni.'
+			);
+			expect(missingBenchmarksNote([])).toBeNull();
+			expect(missingBenchmarksNote(['VT'])).toBe(
+				'VT apparirà non appena i suoi prezzi verranno scaricati.'
+			);
+			expect(missingBenchmarksNote(['VT', 'VOO'])).toBe(
+				'VT e VOO appariranno non appena i loro prezzi verranno scaricati.'
+			);
+			expect(missingBenchmarksNote(['VT', 'VOO', 'ACWI'])).toBe(
+				'VT, VOO e ACWI appariranno non appena i loro prezzi verranno scaricati.'
 			);
 		} finally {
 			setLanguage('en');

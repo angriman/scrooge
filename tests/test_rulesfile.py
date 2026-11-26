@@ -195,3 +195,125 @@ def test_a_key_the_rules_do_not_read_is_kept_as_it_is() -> None:
 def test_a_category_of_before_is_given_by_its_english_name() -> None:
     (entry,) = _entries("rules:\n  - match: KONSUM\n    category: Spesa\n")
     assert entry.category == categories.GROCERIES
+
+
+@pytest.mark.parametrize(
+    ("before", "expected"),
+    [
+        ("", "rules:\n  - {match: 'NEW', category: Groceries}\n"),
+        ("# nothing yet", "# nothing yet\nrules:\n  - {match: 'NEW', category: Groceries}\n"),
+        ("# nothing yet\n", "# nothing yet\nrules:\n  - {match: 'NEW', category: Groceries}\n"),
+        ("rules:\n", "rules:\n  - {match: 'NEW', category: Groceries}\n"),
+        ("rules: null\n", "rules:\n  - {match: 'NEW', category: Groceries}\n"),
+        ("rules: ~\n", "rules:\n  - {match: 'NEW', category: Groceries}\n"),
+        ("rules: []\n", "rules:\n  - {match: 'NEW', category: Groceries}\n"),
+        (
+            "rules: []  # none yet\n",
+            "rules:  # none yet\n  - {match: 'NEW', category: Groceries}\n",
+        ),
+        (
+            "rules: []#tight\n",
+            "rules: #tight\n  - {match: 'NEW', category: Groceries}\n",
+        ),
+        (
+            "rules:\n  []\n",
+            "rules:\n  - {match: 'NEW', category: Groceries}\n  \n",
+        ),
+        (
+            "other: 1\n",
+            "other: 1\nrules:\n  - {match: 'NEW', category: Groceries}\n",
+        ),
+        (
+            "rules:\nother: 1\n",
+            "rules:\n  - {match: 'NEW', category: Groceries}\nother: 1\n",
+        ),
+        (
+            "rules: null\nother: 1\n",
+            "rules:\n  - {match: 'NEW', category: Groceries}\nother: 1\n",
+        ),
+    ],
+)
+def test_inserted_handles_empty_and_missing_rules_shapes(
+    tmp_path: Path, before: str, expected: str
+) -> None:
+    block = "  - {match: 'NEW', category: Groceries}"  # also verifies trailing newline added
+    written = rulesfile.inserted(before, PATH, block)
+    assert written == expected
+    path = tmp_path / "rules.yaml"
+    path.write_text(written, encoding="utf-8")
+    assert [rule.pattern.pattern for rule in load_rules([path])] == ["NEW"]
+
+
+def test_inserted_places_first_before_comments_and_last_after_last_rule(tmp_path: Path) -> None:
+    block = "  - match: NEW  # inline\n    category: Gifts\n    account: Migros\n"
+    at_start = rulesfile.inserted(TEXT, PATH, block, first=True)
+    assert at_start.startswith(
+        "# Rules of the tests.\nrules:\n  - match: NEW  # inline\n    category: Gifts\n"
+        "    account: Migros\n  # --- Shops\n"
+    )
+    with_other = TEXT + "other: 1\n"
+    at_end = rulesfile.inserted(with_other, PATH, block, first=False)
+    assert at_end.endswith(
+        "  - {match: '.', category: Gifts, account: Migros}\n"
+        "  - match: NEW  # inline\n    category: Gifts\n    account: Migros\nother: 1\n"
+    )
+    path = tmp_path / "rules.yaml"
+    path.write_text(at_start, encoding="utf-8")
+    assert load_rules([path])[0].pattern.pattern == "NEW"
+    path.write_text(at_end, encoding="utf-8")
+    assert load_rules([path])[-1].pattern.pattern == "NEW"
+
+
+@pytest.mark.parametrize(
+    ("dest", "block", "expected_matches"),
+    [
+        (
+            "rules:\n- {match: A, category: Groceries}\n",
+            "  - match: B\n\n    category: Gifts\n",
+            ["A", "B"],
+        ),
+        (
+            "rules:\n    - {match: A, category: Groceries}\n",
+            "  - match: B\n    category: Gifts\n",
+            ["A", "B"],
+        ),
+        (
+            "rules:\n  - {match: A, category: Groceries}\n",
+            "    - {match: B, category: Gifts}\n",
+            ["A", "B"],
+        ),
+    ],
+)
+def test_inserted_reindents_block_to_match_destination(
+    tmp_path: Path, dest: str, block: str, expected_matches: list[str]
+) -> None:
+    written = rulesfile.inserted(dest, PATH, block)
+    path = tmp_path / "rules.yaml"
+    path.write_text(written, encoding="utf-8")
+    assert [rule.pattern.pattern for rule in load_rules([path])] == expected_matches
+
+
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ("- a list\n", "expected a mapping"),
+        ("rules: [\n", "rules.yaml"),
+        ("rules: {a: 1}\n", "expected a top-level 'rules' list"),
+        ("rules: [{match: a, category: Groceries}]\n", "one per line"),
+    ],
+)
+def test_inserted_refuses_unwritable_targets(text: str, problem: str) -> None:
+    with pytest.raises(ConfigError, match=problem):
+        rulesfile.inserted(text, PATH, "  - {match: A, category: Groceries}\n")
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_inserted_into_file_whose_first_rule_has_lone_dash(tmp_path: Path, first: bool) -> None:
+    dest = "rules:\n  -\n    match: A\n    category: Groceries\n"
+    block = "    - {match: B, category: Gifts}\n"
+    written = rulesfile.inserted(dest, PATH, block, first=first)
+    path = tmp_path / "rules.yaml"
+    path.write_text(written, encoding="utf-8")
+    expected = ["B", "A"] if first else ["A", "B"]
+    assert [rule.pattern.pattern for rule in load_rules([path])] == expected
+    assert "  - {match: B, category: Gifts}\n" in written

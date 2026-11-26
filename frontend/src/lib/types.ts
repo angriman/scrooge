@@ -27,6 +27,8 @@ export interface Session {
 	signing: boolean;
 	/** Whether a category chosen can be remembered as a rule for the next import. */
 	rules: boolean;
+	/** Whether missing closes, splits and exchange rates can be fetched from here. */
+	prices: boolean;
 	/** Whose figures can be typed (`/api/accounts/typed`); empty over a copy. */
 	typing: string[];
 	token: string;
@@ -209,7 +211,11 @@ export interface HeldInstrument {
 	symbol: string;
 	name: string;
 	asset: string;
+	/** Instrument kind as stored: `etf`, `stock`, `fund`, `bill` or `bond`. */
+	type: string;
 	currency: string;
+	/** When a bill or bond is repaid; null otherwise. */
+	maturity: Day | null;
 	value: Amount;
 	/** Of all securities, in percent to the tenth, shared out so that the holdings add up to
 	 * 100. */
@@ -367,6 +373,9 @@ export interface Statements {
 	currency: string;
 	/** Up to this day every monthly account's statements are in. */
 	covered: Day | null;
+	/** What the accounts with a known balance hold together, rounded once to the cent;
+	 * null when none is known. */
+	total: Amount | null;
 	accounts: StatementsAccount[];
 	checks: Check[];
 	errors: string[];
@@ -543,13 +552,13 @@ export interface Saved {
 	income: Amount;
 	spent: Amount;
 	saved: Amount;
-	/** What was saved in percent of income; null without income. */
+	/** What was saved in percent of income; null when next to nothing came in. */
 	rate: Amount | null;
 	/** The share of income from work, in percent. */
 	from_work: Amount | null;
 	/** The income from work, the salary. */
 	work: Amount;
-	/** What was saved in percent of salary; null without salary. */
+	/** What was saved in percent of salary; null when next to nothing came from work. */
 	rate_salary: Amount | null;
 }
 
@@ -676,6 +685,10 @@ export interface PayingHolding extends Payout {
 	name: string;
 	/** As the instruments (and the logos) have it; null when no instrument has it. */
 	symbol: string | null;
+	/** Instrument kind as stored (`etf`, `stock`, `fund`, `bill`, `bond`); null when none matches. */
+	type: string | null;
+	/** When a bill or bond is repaid; null otherwise. */
+	maturity: Day | null;
 	/** The account, for rows that name nothing; else null. */
 	account: string | null;
 	/** Whose the account is, when two people have an account of its name and it is named
@@ -766,6 +779,16 @@ export interface PerformanceReport {
 	accounts: MeasuredAccount[];
 	/** The benchmarks of the config that have the closes and rates they need. */
 	benchmarks: BenchmarkReturn[];
+	/** Benchmarks of the config without the closes or rate they need over this range. */
+	missing_benchmarks: string[];
+}
+
+/** What `/api/prices` stored, and any symbols or currencies it could not fetch. */
+export interface PricesFetched {
+	closes: number;
+	rates: number;
+	splits: number;
+	errors: string[];
 }
 
 /** `/api/performance`. `errors` names each currency whose accounts were left out for want of a
@@ -959,6 +982,50 @@ export interface SettingsCategories {
 	groups: string[];
 	/** What the config gives rows no rule matches: it is not renamed, merged away or removed. */
 	unmatched: string | null;
+	editable: boolean;
+	errors: string[];
+}
+
+export interface ListedAccount {
+	name: string;
+	source: string | null;
+	label: string | null;
+	parts: string[];
+	closed: Day | null;
+}
+
+export interface ListedPerson {
+	name: string;
+	patterns: string[];
+	committed: number;
+	staged: number;
+	accounts: ListedAccount[];
+}
+
+export interface SettingsPeople {
+	people: ListedPerson[];
+	errors: string[];
+}
+
+export interface SettingsCurrencies {
+	currency: string;
+	currencies: string[];
+	table_currencies: string[];
+	language: Language;
+	languages: Language[];
+	errors: string[];
+}
+
+export interface ListedLogoInstrument {
+	symbol: string;
+	name: string;
+	asset: string;
+	currencies: string[];
+}
+
+export interface SettingsLogos {
+	instruments: ListedLogoInstrument[];
+	logos: Record<string, string>;
 	editable: boolean;
 	errors: string[];
 }

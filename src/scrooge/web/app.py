@@ -38,6 +38,7 @@ from starlette.convertors import Convertor, register_url_convertor
 from starlette.datastructures import URL, State, UploadFile
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import (
@@ -74,7 +75,7 @@ from scrooge.classification import UnknownMaturityError
 from scrooge.errors import ConfigError
 from scrooge.extractors.common import month_end
 from scrooge.models import Kind
-from scrooge.prices import MaturitySource
+from scrooge.prices import MaturitySource, PriceSource
 from scrooge.storage import db, originals, store
 from scrooge.storage import logos as store_logos
 from scrooge.validation import ReconciliationError
@@ -118,6 +119,11 @@ _API = "/api/"  # the JSON of the pages (`web/api.py`): not signed in, it is tol
 # The frontend of its own, built by `make web` from frontend/ (git-ignored): `serve` gives it to
 # `create_app`, at /app.
 SPA = Path(__file__).parent / "spa"
+# Hashed assets under /app/_app/immutable/ get a new name on every build, so browsers may keep
+# them for a year; the shell's inline script hash goes into the CSP on startup, so browsers must
+# revalidate it.
+_IMMUTABLE_HEADERS = {"cache-control": "public, max-age=31536000, immutable"}
+_SHELL_HEADERS = {"cache-control": "no-cache"}
 _INLINE = re.compile(r"<script>(.*?)</script>", re.DOTALL)  # a script written in a page
 _HERE = Path(__file__).parent
 _HEADERS = {
@@ -306,6 +312,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     password: str = "",
     read_only: bool = False,
     maturities: MaturitySource | None = None,
+    price_source: PriceSource | None = None,
     currency: str = networth.DEFAULT_CURRENCY,
     currencies: Sequence[str] = networth.DEFAULT_COLUMNS,
     frozen: Sequence[networth.FrozenAccount] = (),
@@ -411,6 +418,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
             Middleware(TrustedHostMiddleware, allowed_hosts=list(hosts)),
             Middleware(_OwnAssetsOnly, headers=_headers(shell)),
             Middleware(_SignedInOnly, access=access, clock=clock),
+            Middleware(GZipMiddleware, minimum_size=500),
         ],
         exception_handlers={
             query.QueryError: _unknown_name,
@@ -424,6 +432,7 @@ def create_app(  # noqa: PLR0913  # the database, a clock, and one argument per 
     # The category of the rows no rule matched, which wait there to be given one; "": none.
     app.state.unmatched = "" if imports is None else imports.unmatched
     app.state.maturities = maturities
+    app.state.price_source = price_source
     app.state.currency = currency
     app.state.currencies = tuple(currencies)
     app.state.frozen = tuple(frozen)
@@ -477,8 +486,11 @@ def _spa(request: Request) -> Response:
     root = state.spa.resolve()
     found = (root / asked).resolve()
     if asked and found.is_relative_to(root) and found.is_file():
-        return FileResponse(found)
-    return HTMLResponse(state.shell)
+        if found == root / "index.html":
+            return HTMLResponse(state.shell, headers=_SHELL_HEADERS)
+        immutable = found.is_relative_to(root / "_app" / "immutable")
+        return FileResponse(found, headers=_IMMUTABLE_HEADERS if immutable else None)
+    return HTMLResponse(state.shell, headers=_SHELL_HEADERS)
 
 
 @dataclass(frozen=True, slots=True)

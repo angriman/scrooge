@@ -76,9 +76,8 @@
 	let typingBusy = $state(false);
 	let typeButtonRef = $state<HTMLButtonElement | null>(null);
 
-	let problem = $state<string | null>(null);
 	// Taking a statement back stages it again; either way it then waits on the import page.
-	async function remove(statement: Statement) {
+	async function remove(statement: Statement): Promise<string | null> {
 		const asked = statement.committed
 			? t('accounts.confirmUncommit', { filename: statement.filename })
 			: t(
@@ -87,18 +86,16 @@
 						: 'accounts.confirmDiscardMany',
 					{ filename: statement.filename, count: statement.transactions }
 				);
-		if (!confirm(asked)) return;
+		if (!confirm(asked)) return null;
 		const action = statement.committed ? 'uncommit' : 'discard';
 		const done = await send<{ owner: string }>(
 			`/api/statements/${statement.id}/${action}`,
 			{},
 			data.session.token
 		);
-		if (!done.ok) {
-			problem = errorMessage(done);
-			return;
-		}
+		if (!done.ok) return errorMessage(done);
 		await goto(`${resolve('/import')}?owner=${encodeURIComponent(done.sent.owner)}`);
+		return null;
 	}
 	// A broker's currencies are closed and opened together: the API takes the name listed here.
 	async function change(account: StatementsAccount, action: string, extra: object) {
@@ -124,7 +121,7 @@
 	}
 
 	const behind = $derived(opened.filter((account) => account.behind).length);
-	const held = $derived(heldTogether(listed.accounts));
+	const held = $derived(heldTogether(listed.accounts, listed.total));
 	const title = $derived(
 		single
 			? t('accounts.title')
@@ -225,9 +222,6 @@
 		{/if}
 	</section>
 
-	{#if problem}
-		<p class="mt-4 text-body text-loss" role="alert">{problem}</p>
-	{/if}
 	{#if opened.length}
 		<Coverage
 			accounts={opened}

@@ -30,7 +30,7 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 		token: string | null;
 		/** Whether typed figures can be added/removed for this account's owner. */
 		canType: boolean;
-		onremove?: (statement: StatementFile) => void;
+		onremove?: (statement: StatementFile) => Promise<string | null>;
 		onclose?: (day: string) => Promise<string | null>;
 		onreopen?: () => Promise<string | null>;
 		ontyped: () => void | Promise<void>;
@@ -51,6 +51,7 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 
 	let removingTyped = $state<string | null>(null);
 	let typedProblem = $state<string | null>(null);
+	let removeProblem = $state<string | null>(null);
 
 	const lines = $derived(account.holds ? heldLines(account.holds, currency) : []);
 	const securitiesHref = $derived(
@@ -69,7 +70,7 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 				: t('accounts.spanTo', { start: day(first), end: day(last) });
 
 	const typedKey = (item: TypedFigureItem) =>
-		`${item.account}|${item.day}|${item.what}|${item.symbol ?? ''}`;
+		`${item.account}|${item.day}|${item.what}|${item.symbol ?? ''}|${item.currency}`;
 
 	async function removeTyped(item: TypedFigureItem) {
 		if (!token) return;
@@ -203,7 +204,10 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 							{#if onremove}
 								<button
 									type="button"
-									onclick={() => onremove(statement)}
+									onclick={async () => {
+										removeProblem = null;
+										removeProblem = await onremove(statement);
+									}}
 									aria-label={t(
 										statement.committed ? 'accounts.takeBackAria' : 'accounts.removeAria',
 										{ filename: statement.filename }
@@ -218,6 +222,9 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 				</li>
 			{/each}
 		</ul>
+		{#if removeProblem}
+			<p class="mt-2 text-small text-loss" role="alert">{removeProblem}</p>
+		{/if}
 	</section>
 {/if}
 

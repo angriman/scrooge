@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
-import { setLanguage } from '#lib/i18n/index.svelte.js';
+import { setLanguage, t } from '#lib/i18n/index.svelte.js';
 import type { CostYear } from '#lib/types.js';
 import { costsAnything, costsOf, newestFirst, parts, whyNot } from './costs.js';
 
@@ -89,6 +89,20 @@ describe('what investing costs', () => {
 		try {
 			expect(parts({ commissions: '3.40', tax: '13.50' })).toBe('commissioni 3, ritenute 14');
 			expect(parts({ commissions: '-2.00', tax: '0.00' })).toBe('commissioni rimborsate 2');
+		} finally {
+			setLanguage('en');
+		}
+	});
+
+	it('names the tax share column clearly and leaves layout out of the footnote', () => {
+		setLanguage('en');
+		expect(t('costs.colTaxOfWhatPaid')).toBe('Tax, of what was paid');
+		expect(t('costs.footnote')).not.toMatch(/tablet|width/i);
+
+		setLanguage('it');
+		try {
+			expect(t('costs.colTaxOfWhatPaid')).toBe('Ritenute sui proventi');
+			expect(t('costs.footnote')).not.toMatch(/tablet|schermo/i);
 		} finally {
 			setLanguage('en');
 		}

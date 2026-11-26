@@ -335,7 +335,9 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
                 "symbol": h.symbol,
                 "name": h.name,
                 "asset": h.asset,
+                "type": h.type,
                 "currency": h.currency,
+                "maturity": day(h.maturity),
                 "value": number(h.value),
                 "share": share,
                 "cost": number(h.cost),
@@ -794,6 +796,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
                 "key": holding.key,
                 "name": holding.name,
                 "symbol": holding.symbol,
+                "type": holding.type,
+                "maturity": day(holding.maturity),
                 "account": holding.account,
                 "owner": holding.owner,
                 **_paid(holding.paid),
@@ -968,6 +972,36 @@ def listed_category(category: settings.ListedCategory) -> JSON:
     }
 
 
+def listed_person(person: settings.ListedPerson) -> JSON:
+    """One person on the settings page: their name, counterparty patterns, and owned accounts."""
+    return {
+        "name": person.name,
+        "patterns": list(person.patterns),
+        "committed": person.committed,
+        "staged": person.staged,
+        "accounts": [
+            {
+                "name": acct.name,
+                "source": acct.source,
+                "label": acct.label or None,
+                "parts": list(acct.parts),
+                "closed": day(acct.closed),
+            }
+            for acct in person.accounts
+        ],
+    }
+
+
+def listed_logo(instrument: settings.ListedLogo) -> JSON:
+    """One holding instrument on the logos settings subpage."""
+    return {
+        "symbol": instrument.symbol,
+        "name": instrument.name,
+        "asset": instrument.asset,
+        "currencies": list(instrument.currencies),
+    }
+
+
 def _measured(measured: performance.Measured) -> JSON:
     return {
         "start": number(measured.start),
@@ -988,7 +1022,8 @@ def performance_report(shown: performance.Performance) -> JSON:
     than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise.
     `benchmarks` are what holding each returned in percent over the days `twr` counts; each
     day's `benchmarks` are their lines, in the same order: what the money put in would be
-    worth in each (`scrooge.benchmark`)."""
+    worth in each (`scrooge.benchmark`). `missing_benchmarks` names those left out for want of
+    stored closes or rates."""
     return {
         "currency": shown.currency,
         "range": shown.range,
@@ -1016,6 +1051,7 @@ def performance_report(shown: performance.Performance) -> JSON:
         "benchmarks": [
             {"symbol": each.symbol, "return": number(each.returned)} for each in shown.benchmarks
         ],
+        "missing_benchmarks": list(shown.missing_benchmarks),
     }
 
 

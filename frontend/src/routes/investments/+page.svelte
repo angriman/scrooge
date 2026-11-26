@@ -11,6 +11,7 @@
 	import HoldingsList from '#lib/holdings/HoldingsList.svelte';
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
+	import { holdingName } from '#lib/holdings/names.js';
 	import { findHolding, holdingKey, holdingParam } from '#lib/holdings/returns.js';
 	import { rangeName, rangePillLabel } from '#lib/cashflow/names.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -190,7 +191,13 @@
 			/>
 		{/if}
 	{:else}
-		<Returns performance={data.performance.performance} {range} {people} />
+		<Returns
+			performance={data.performance.performance}
+			{range}
+			{people}
+			token={data.session.prices ? data.session.token : null}
+			onfetched={() => invalidateAll()}
+		/>
 	{/if}
 {:else if data.income}
 	{#if !data.income.income?.through}
@@ -275,7 +282,7 @@
 
 	<SidePanel
 		open={Boolean(chosenHolding)}
-		title={panelHolding ? panelHolding.name || panelHolding.symbol : ''}
+		title={panelHolding ? holdingName(panelHolding) : ''}
 		subject={chosenKey}
 		onclose={closeHolding}
 		returnFocus={returnHoldingFocus}
@@ -294,7 +301,8 @@
 				<span class="flex flex-wrap items-center gap-1.5">
 					<Swatch color={assetColor(panelHolding.asset)} class="size-2 rounded-full" />
 					<span class="text-ink-secondary">{assetName(panelHolding.asset)}</span>
-					{#if panelHolding.name}<span>{panelHolding.symbol}</span>{/if}
+					{#if holdingName(panelHolding) !== panelHolding.symbol}<span>{panelHolding.symbol}</span
+						>{/if}
 					{#if panelHolding.positions.length > 1}
 						<span>{t('holdings.inAccounts', { count: panelHolding.positions.length })}</span>
 					{/if}

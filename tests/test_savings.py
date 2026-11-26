@@ -11,7 +11,7 @@ from scrooge import categories, savings
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
 from scrooge.savings import Totals
-from scrooge.storage import db
+from scrooge.storage import db, store
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close, txn
 from tests.test_income import salaries
 from tests.test_spending import monthly
@@ -125,6 +125,98 @@ def test_nothing_to_show() -> None:
     assert Totals(D(0), D(10), D(0)).from_work is None
     # Income that is not from work leaves no rate on salary.
     assert Totals(D(100), D(10), D(0)).rate_salary is None
+
+
+def test_next_to_nothing_in_leaves_no_savings_rate() -> None:
+    # 15 in and 1,015 spent is -1,000 saved, not a -6,667% rate.
+    assert Totals(D(15), D(1015), D(0)).rate is None
+    assert Totals(D("99.99"), D(1000), D(0)).rate is None
+    assert Totals(D(100), D(20), D(0)).rate == D("0.8")
+    # The same floor holds for the rate on salary; from_work still reads the share of income.
+    tiny_work = Totals(D(500), D(200), D(50))
+    assert (tiny_work.rate, tiny_work.rate_salary, tiny_work.from_work) == (
+        D("0.6"),
+        None,
+        D("0.1"),
+    )
+    assert Totals(D(500), D(200), D(100)).rate_salary == D(3)
+
+
+def test_the_floor_follows_the_currency_asked_for() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    day = date(2026, 8, 15)
+    rows = [
+        txn("15", date=day, source_ref="1", kind=Kind.INCOME, category=categories.INTEREST),
+        txn("-1015", date=day, source_ref="2"),
+    ]
+    close(
+        connection,
+        OWNER,
+        (date(2026, 8, 1), date(2026, 8, 31)),
+        date(2026, 8, 31),
+        ("migros", rows),
+    )
+    store.set_rate(connection, date(2026, 8, 1), "EUR", D("0.94"), source="fetched:yahoo")
+    store.set_rate(connection, date(2026, 8, 1), "JPY", D("0.0054"), source="fetched:yahoo")
+    # 15 CHF is over 2,700 JPY, yet still below the 100 CHF floor converted into JPY.
+    for currency in ("CHF", "EUR", "JPY"):
+        shown = savings.run(connection, owner=OWNER, currency=currency)
+        assert shown.totals is not None
+        assert (shown.totals.rate, shown.periods[0].totals.rate) == (None, None)
+
+    # At the floor: 100 CHF counts in both CHF and EUR (106.38 EUR).
+    at_floor = db.connect(":memory:")
+    db.migrate(at_floor, CLOSED_AT)
+    close(
+        at_floor,
+        OWNER,
+        (date(2026, 8, 1), date(2026, 8, 31)),
+        date(2026, 8, 31),
+        (
+            "migros",
+            [
+                txn(
+                    "100", date=day, source_ref="1", kind=Kind.INCOME, category=categories.INTEREST
+                ),
+                txn("-20", date=day, source_ref="2"),
+            ],
+        ),
+    )
+    store.set_rate(at_floor, date(2026, 8, 1), "EUR", D("0.94"), source="fetched:yahoo")
+    eur = savings.run(at_floor, owner=OWNER, currency="EUR")
+    assert eur.totals is not None
+    assert eur.totals.rate is not None
+    assert eur.periods[0].totals.rate is not None
+
+    # Without an FX rate stored for the display currency, fall back to 100 of that currency.
+    usd_only = db.connect(":memory:")
+    db.migrate(usd_only, CLOSED_AT)
+    close(
+        usd_only,
+        OWNER,
+        (date(2026, 8, 1), date(2026, 8, 31)),
+        date(2026, 8, 31),
+        (
+            "migros",
+            [
+                txn(
+                    "99",
+                    date=day,
+                    source_ref="1",
+                    kind=Kind.INCOME,
+                    category=categories.INTEREST,
+                    currency="USD",
+                ),
+                txn("-50", date=day, source_ref="2", currency="USD"),
+            ],
+        ),
+    )
+    usd = savings.run(usd_only, owner=OWNER, currency="USD")
+    assert usd.totals is not None
+    assert usd.totals.rate is None
+    for db_conn in (connection, at_floor, usd_only):
+        db_conn.close()
 
 
 @given(
