@@ -302,7 +302,7 @@
 			{#if cut}
 				<a
 					href={withQuery(here(), Object.fromEntries(FIELDS.map((name) => [name, null])))}
-					class="text-small text-brand hover:text-brand-hover"
+					class="-my-2 inline-flex min-h-11 items-center text-small text-brand hover:text-brand-hover sm:my-0 sm:min-h-0"
 				>
 					{t('transactions.clearFilters')}
 				</a>
@@ -311,7 +311,7 @@
 				<a
 					href={csv}
 					data-sveltekit-reload
-					class="inline-flex items-center gap-1.5 text-small text-ink-secondary hover:text-ink"
+					class="-my-2 inline-flex min-h-11 items-center gap-1.5 text-small text-ink-secondary hover:text-ink sm:my-0 sm:min-h-0"
 				>
 					<Download class="size-4" aria-hidden="true" />
 					{t('transactions.downloadCsv')}
@@ -359,7 +359,7 @@
 						type="button"
 						onclick={showMore}
 						disabled={fetching}
-						class="h-8 rounded-control border border-line bg-panel px-3 text-ink hover:border-line-strong disabled:opacity-60"
+						class="h-11 rounded-control border border-line bg-panel px-3 text-ink hover:border-line-strong disabled:opacity-60 sm:h-8"
 					>
 						{t(fetching ? 'transactions.loadingMore' : 'transactions.showMore')}
 					</button>
@@ -392,7 +392,7 @@
 			<div class="mb-4">
 				<a
 					href={filterHref}
-					class="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-raised px-3 text-small text-ink hover:border-line-strong"
+					class="inline-flex h-11 items-center gap-1.5 rounded-control border border-line bg-raised px-3 text-small text-ink hover:border-line-strong sm:h-8"
 				>
 					<Filter class="size-3.5 text-ink-secondary" aria-hidden="true" />
 					{t(

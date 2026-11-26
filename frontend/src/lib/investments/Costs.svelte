@@ -40,7 +40,11 @@ the costs could not be loaded, the panel says why in their place.
 	{#if approximate(value) === 0}
 		<span class="text-ink-muted">–</span>
 	{:else}
-		<a href={href(what)} class="hover:underline"><Amount {value} places={0} /></a>
+		<a
+			href={href(what)}
+			class="-my-3 inline-flex min-h-11 min-w-10 items-center justify-end hover:underline sm:my-0 sm:inline sm:min-h-0 sm:min-w-0"
+			><Amount {value} places={0} /></a
+		>
 	{/if}
 {/snippet}
 
@@ -71,17 +75,17 @@ the costs could not be loaded, the panel says why in their place.
 			<tbody>
 				{#each years as year (year.year)}
 					<tr class="border-t border-line">
-						<th scope="row" class="py-2 text-left font-normal text-ink">
+						<th scope="row" class="py-3 text-left font-normal text-ink sm:py-2">
 							{year.year}{#if !year.whole}<span class="ml-1 text-ink-muted">{t('costs.soFar')}</span
 								>{/if}
 						</th>
-						<td class="py-2 text-right">
+						<td class="py-3 text-right sm:py-2">
 							{@render figure(year.commissions, { category: COMMISSIONS, year: year.year })}
 						</td>
-						<td class="py-2 text-right">
+						<td class="py-3 text-right sm:py-2">
 							{@render figure(year.tax, { category: TAX, year: year.year })}
 						</td>
-						<td class="py-2 text-right text-ink">
+						<td class="py-3 text-right text-ink sm:py-2">
 							<Amount value={year.total} places={0} />
 						</td>
 						<td class="hidden py-2 text-right text-ink-secondary sm:table-cell">
@@ -93,12 +97,14 @@ the costs could not be loaded, the panel says why in their place.
 			{#if years.length > 1}
 				<tfoot>
 					<tr class="border-t border-line-strong font-medium">
-						<th scope="row" class="py-2 text-left text-ink">{t('costs.allYears')}</th>
-						<td class="py-2 text-right"
+						<th scope="row" class="py-3 text-left text-ink sm:py-2">{t('costs.allYears')}</th>
+						<td class="py-3 text-right sm:py-2"
 							>{@render figure(costs.totals.commissions, { category: COMMISSIONS })}</td
 						>
-						<td class="py-2 text-right">{@render figure(costs.totals.tax, { category: TAX })}</td>
-						<td class="py-2 text-right text-ink">
+						<td class="py-3 text-right sm:py-2"
+							>{@render figure(costs.totals.tax, { category: TAX })}</td
+						>
+						<td class="py-3 text-right text-ink sm:py-2">
 							<Amount value={costs.totals.total} places={0} />
 						</td>
 						<td class="hidden py-2 text-right text-ink-secondary sm:table-cell">

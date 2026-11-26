@@ -77,7 +77,7 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 						<button
 							type="button"
 							onclick={() => (open[key(group)] = true)}
-							class="mt-1 pl-5.5 text-small text-brand hover:text-brand-hover"
+							class="inline-flex min-h-11 items-center pl-5.5 text-small text-brand hover:text-brand-hover sm:mt-1 sm:min-h-0"
 						>
 							{t('import.showAllCount', { count: members.length })}
 						</button>
@@ -92,7 +92,9 @@ of them, and, where rules are kept, to the counterparty's rows of every import t
 							})}
 						/>
 						{#if rules && group.name}
-							<label class="flex items-center gap-2 text-small text-ink-secondary">
+							<label
+								class="flex min-h-11 items-center gap-2 text-small text-ink-secondary sm:min-h-0"
+							>
 								<input type="checkbox" bind:checked={choice.rule} class="size-4 accent-brand" />
 								{t('transactions.rememberFor', { merchant: group.name })}
 							</label>

@@ -125,7 +125,7 @@ Choosing a category opens its details in the side panel.
 										{ count: line.count }
 									)}
 									class={cn(
-										'block w-full rounded-control px-2 py-1.5 text-left transition-colors',
+										'block min-h-11 w-full rounded-control px-2 py-2 text-left transition-colors sm:min-h-0 sm:py-1.5',
 										active ? 'bg-brand-soft' : 'hover:bg-raised'
 									)}
 								>

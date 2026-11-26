@@ -73,7 +73,7 @@ waits.
 	{#if fold.more}
 		<button
 			type="button"
-			class="justify-self-start px-1 text-small font-medium text-brand hover:text-brand-hover"
+			class="inline-flex min-h-11 items-center justify-self-start px-1 text-small font-medium text-brand hover:text-brand-hover sm:min-h-0"
 			onclick={() => (open = true)}
 		>
 			{t('notices.more', { count: fold.more })}
@@ -85,7 +85,7 @@ waits.
 	<!-- On a phone, several take one line until asked for: the figures come first. -->
 	<details class="group mb-4 sm:hidden">
 		<summary
-			class="flex cursor-pointer list-none items-center gap-3 rounded-panel border border-caution/30 bg-caution-soft px-4 py-2.5 text-body text-ink"
+			class="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-panel border border-caution/30 bg-caution-soft px-4 py-2.5 text-body text-ink"
 		>
 			<CircleAlert class="size-4 shrink-0 text-caution" aria-hidden="true" />
 			<span class="flex-1">{t('notices.thingsNeedALook', { count: lines.length })}</span>

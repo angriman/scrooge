@@ -31,7 +31,7 @@ One choice of a few, all in sight: a range, a breakdown. Arrow keys move between
 	{#each options as option (option.value)}
 		<ToggleGroup.Item
 			value={option.value}
-			class="rounded-[calc(var(--radius-control)-2px)] px-2.5 py-1 text-small text-ink-secondary transition-colors hover:text-ink data-[state=on]:bg-raised data-[state=on]:text-ink"
+			class="inline-flex min-h-11 items-center justify-center rounded-[calc(var(--radius-control)-2px)] px-2.5 py-1.5 text-small text-ink-secondary transition-colors hover:text-ink data-[state=on]:bg-raised data-[state=on]:text-ink sm:min-h-0 sm:py-1"
 		>
 			{option.label}
 		</ToggleGroup.Item>

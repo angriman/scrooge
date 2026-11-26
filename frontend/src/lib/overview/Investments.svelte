@@ -50,7 +50,7 @@ it: the other stays, with a sentence saying why.
 		<a
 			{href}
 			class={cn(
-				'inline-flex items-center gap-0.5 whitespace-nowrap',
+				'-my-3 inline-flex min-h-11 items-center gap-0.5 whitespace-nowrap sm:my-0 sm:min-h-0',
 				'text-small font-medium text-brand hover:text-brand-hover'
 			)}
 		>

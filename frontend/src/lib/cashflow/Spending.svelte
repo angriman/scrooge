@@ -86,7 +86,7 @@ most was spent at. Each opens its transactions over the same range.
 			type="button"
 			onclick={() => (merchants = !merchants)}
 			aria-expanded={merchants}
-			class="mt-3 text-small text-brand hover:text-brand-hover"
+			class="mt-1 inline-flex min-h-11 items-center text-small text-brand hover:text-brand-hover sm:mt-3 sm:min-h-0"
 		>
 			{t(merchants ? 'cashflow.hidePlaces' : 'cashflow.showPlaces', {
 				count: report.merchants.length
@@ -98,7 +98,7 @@ most was spent at. Each opens its transactions over the same range.
 					<li>
 						<a
 							href={transactions({ merchant: merchant.name })}
-							class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
+							class="flex min-h-11 items-center gap-3 rounded-control px-1 py-2 hover:bg-sunken sm:min-h-0 sm:items-baseline sm:py-1.5"
 						>
 							<span class="min-w-0 flex-1 truncate text-body text-ink">{merchant.name}</span>
 							<span class="hidden text-caption text-ink-muted sm:inline"

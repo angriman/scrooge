@@ -46,7 +46,7 @@ a way to remove it. Below them, what stands in the way of committing them, if an
 						data-sveltekit-reload
 						aria-label={t('accounts.downloadAria', { filename: file.filename })}
 						title={t('accounts.downloadAria', { filename: file.filename })}
-						class="grid size-8 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-brand"
+						class="grid size-11 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-brand sm:size-8"
 					>
 						<Download class="size-4" aria-hidden="true" />
 					</a>
@@ -57,7 +57,7 @@ a way to remove it. Below them, what stands in the way of committing them, if an
 					disabled={removing !== null}
 					aria-label={t('accounts.removeAria', { filename: file.filename })}
 					title={t('accounts.removeAria', { filename: file.filename })}
-					class="grid size-8 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-loss disabled:opacity-50"
+					class="grid size-11 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-loss disabled:opacity-50 sm:size-8"
 				>
 					<Trash class="size-4" aria-hidden="true" />
 				</button>

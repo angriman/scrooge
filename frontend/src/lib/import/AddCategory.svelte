@@ -31,11 +31,13 @@ in a group of its own, or income. Every import from now on has it.
 	}
 
 	const field =
-		'h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none';
+		'h-11 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none sm:h-8';
 </script>
 
 <details class="group rounded-panel bg-panel px-4 py-3">
-	<summary class="cursor-pointer text-body text-ink-secondary marker:text-ink-muted hover:text-ink">
+	<summary
+		class="-my-2.5 cursor-pointer py-2.5 text-body text-ink-secondary marker:text-ink-muted hover:text-ink sm:my-0 sm:py-0"
+	>
 		{summary}
 	</summary>
 	<form onsubmit={submit} class="mt-3 flex flex-wrap items-end gap-3">
@@ -56,7 +58,7 @@ in a group of its own, or income. Every import from now on has it.
 		<button
 			type="submit"
 			disabled={adding}
-			class="h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60"
+			class="h-11 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60 sm:h-8"
 		>
 			{t(adding ? 'import.adding' : 'import.addCategoryButton')}
 		</button>

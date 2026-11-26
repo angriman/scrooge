@@ -65,7 +65,7 @@ first in its rules file only when added, so future imports classify that merchan
 								onclick={() => onadd(offer)}
 								disabled={adding !== null}
 								aria-label={t('import.addRuleAria', { merchant: offer.merchant })}
-								class="h-8 shrink-0 rounded-control border border-line px-3 text-small font-medium text-ink hover:border-line-strong disabled:opacity-60"
+								class="h-11 shrink-0 rounded-control border border-line px-3 text-small font-medium text-ink hover:border-line-strong disabled:opacity-60 sm:h-8"
 							>
 								{t(adding === offer.id ? 'import.adding' : 'import.addRule')}
 							</button>

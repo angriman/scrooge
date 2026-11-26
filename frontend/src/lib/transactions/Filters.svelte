@@ -73,11 +73,11 @@ for each other field. Every change goes in the address, so a filter can be kept 
 	const accountKinds = $derived(accountKindOptions());
 
 	const option =
-		'flex w-full items-center justify-between gap-3 rounded-control px-2 py-1.5 text-left text-small text-ink hover:bg-brand-soft';
+		'flex min-h-11 w-full items-center justify-between gap-3 rounded-control px-2 py-2.5 text-left text-small text-ink hover:bg-brand-soft sm:min-h-0 sm:py-1.5';
 	const field =
-		'h-8 w-full rounded-control border border-line bg-sunken px-2 text-small text-ink placeholder:text-ink-muted focus:border-brand focus:outline-none';
+		'h-11 w-full rounded-control border border-line bg-sunken px-2 text-small text-ink placeholder:text-ink-muted focus:border-brand focus:outline-none sm:h-8';
 	const apply =
-		'h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover';
+		'h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover sm:h-8';
 </script>
 
 {#snippet list(
@@ -183,7 +183,9 @@ for each other field. Every change goes in the address, so a filter can be kept 
 							/>
 						</label>
 					</div>
-					<label class="flex items-center gap-2 py-1 text-small text-ink">
+					<label
+						class="flex min-h-11 items-center gap-2 py-2 text-small text-ink sm:min-h-0 sm:py-1"
+					>
 						<input
 							type="checkbox"
 							checked={Boolean(values.booking)}

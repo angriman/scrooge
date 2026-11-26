@@ -71,7 +71,7 @@ it held. A figure typed can be removed again the same way, by its day (and symbo
 	}
 
 	const field =
-		'h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none';
+		'h-11 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none sm:h-8';
 	const label = 'flex flex-col gap-1 text-caption text-ink-secondary';
 </script>
 
@@ -162,7 +162,7 @@ it held. A figure typed can be removed again the same way, by its day (and symbo
 			<button
 				type="submit"
 				disabled={busy || !figure || !currency}
-				class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+				class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
 			>
 				{busy ? t('settings.saving') : t('typed.keep')}
 			</button>
@@ -170,7 +170,7 @@ it held. A figure typed can be removed again the same way, by its day (and symbo
 				type="button"
 				disabled={busy || !account || !day || (what === 'position' && !symbol)}
 				onclick={() => submit(true)}
-				class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink disabled:opacity-60"
+				class="h-11 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink disabled:opacity-60 sm:h-8"
 			>
 				{t('typed.remove')}
 			</button>

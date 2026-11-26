@@ -78,13 +78,16 @@ rows no rule matches stays as it is.
 	}
 
 	const field =
-		'h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none';
-	const quiet = 'text-small text-ink-secondary hover:text-ink disabled:opacity-60';
+		'h-11 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none sm:h-8';
+	const cancel =
+		'h-11 rounded-control px-2 text-small text-ink-secondary hover:text-ink disabled:opacity-60 sm:h-8 sm:px-0';
+	const action =
+		'inline-flex min-h-11 min-w-11 items-center justify-center rounded-control px-2 text-small text-ink-secondary hover:text-ink disabled:opacity-60 sm:inline sm:min-h-0 sm:min-w-0 sm:p-0';
 </script>
 
-<li class="py-1.5">
+<li class="py-0 sm:py-1.5">
 	{#if doing}
-		<form onsubmit={submit} class="flex flex-wrap items-center gap-2">
+		<form onsubmit={submit} class="flex flex-wrap items-center gap-2 py-2 sm:py-0">
 			{#if doing === 'rename'}
 				<input
 					bind:value={name}
@@ -120,13 +123,13 @@ rows no rule matches stays as it is.
 					label={t('settings.mergeInto', { name: category.name })}
 				/>
 			{/if}
-			<button type="button" class={quiet} onclick={() => (doing = null)}
+			<button type="button" class={cancel} onclick={() => (doing = null)}
 				>{t('accounts.cancel')}</button
 			>
 			<button
 				type="submit"
 				disabled={busy || (doing !== 'rename' && !target)}
-				class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+				class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
 			>
 				{busy
 					? t('settings.saving')
@@ -138,8 +141,10 @@ rows no rule matches stays as it is.
 			</button>
 		</form>
 	{:else}
-		<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-			<span class="min-w-0 flex-1 text-body text-ink">
+		<div
+			class="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-0 sm:min-h-0 sm:items-baseline sm:gap-y-1"
+		>
+			<span class="min-w-0 flex-1 py-2 text-body text-ink sm:py-0">
 				{category.name}
 				{#if !category.built_in}
 					<span class="ml-1 rounded-control bg-brand-soft px-1.5 text-caption text-brand"
@@ -154,24 +159,24 @@ rows no rule matches stays as it is.
 			</span>
 			<span class="text-caption text-ink-muted tabular-nums">{rowsName(category.rows)}</span>
 			{#if editable}
-				<span class="flex gap-3">
+				<span class="-mr-2 flex flex-wrap items-center gap-x-1 sm:mr-0 sm:gap-x-3">
 					{#if renamable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('rename')}
+						<button type="button" class={action} onclick={() => start('rename')}
 							>{t('settings.rename')}</button
 						>
 					{/if}
 					{#if movable(category)}
-						<button type="button" class={quiet} onclick={() => start('move')}
+						<button type="button" class={action} onclick={() => start('move')}
 							>{t('settings.move')}</button
 						>
 					{/if}
 					{#if into.length && mergeable(category, unmatched)}
-						<button type="button" class={quiet} onclick={() => start('merge')}
+						<button type="button" class={action} onclick={() => start('merge')}
 							>{t('settings.merge')}</button
 						>
 					{/if}
 					{#if removable(category, unmatched)}
-						<button type="button" class={quiet} disabled={busy} onclick={remove}
+						<button type="button" class={action} disabled={busy} onclick={remove}
 							>{t('accounts.remove')}</button
 						>
 					{/if}

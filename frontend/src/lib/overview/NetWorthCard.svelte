@@ -180,7 +180,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 								: t('overview.showPart', { name: label })}
 							onclick={() => toggle(part.name)}
 							class={cn(
-								'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-raised',
+								'flex min-h-11 items-center gap-2 rounded-control px-2 py-2 text-small hover:bg-raised sm:min-h-0 sm:py-1',
 								!shown && 'opacity-45'
 							)}
 						>
@@ -200,7 +200,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 						<button
 							type="button"
 							onclick={() => (hidden = new Set())}
-							class="rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
+							class="inline-flex min-h-11 items-center rounded-control px-2 py-2 text-small text-brand hover:text-brand-hover sm:min-h-0 sm:py-1"
 						>
 							{t('overview.showAll')}
 						</button>

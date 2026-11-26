@@ -243,7 +243,8 @@ securities), then its statements, newest first, each with the file it came from.
 															{#if line.securities}
 																<a
 																	href={securities(account.owner)}
-																	class="text-brand hover:text-brand-hover">{line.label}</a
+																	class="-my-2.5 inline-flex min-h-11 items-center text-brand hover:text-brand-hover sm:my-0 sm:min-h-0"
+																	>{line.label}</a
 																>
 															{:else}
 																{line.label}
@@ -312,13 +313,13 @@ securities), then its statements, newest first, each with the file it came from.
 												</span>
 											</span>
 											<span
-												class="order-last flex items-center justify-end gap-3 text-small sm:order-none"
+												class="order-last flex items-center justify-end gap-4 text-small sm:order-none sm:gap-3"
 											>
 												{#if statement.original}
 													<a
 														href={statement.original}
 														data-sveltekit-reload
-														class="inline-flex items-center gap-1 text-brand hover:text-brand-hover"
+														class="-mx-1.5 -my-2 inline-flex min-h-11 items-center gap-1 px-1.5 text-brand hover:text-brand-hover sm:m-0 sm:min-h-0 sm:p-0"
 														aria-label={t('accounts.downloadAria', {
 															filename: statement.filename
 														})}
@@ -334,7 +335,7 @@ securities), then its statements, newest first, each with the file it came from.
 															statement.committed ? 'accounts.takeBackAria' : 'accounts.removeAria',
 															{ filename: statement.filename }
 														)}
-														class="text-brand hover:text-brand-hover"
+														class="-mx-1.5 -my-2 inline-flex min-h-11 items-center px-1.5 text-brand hover:text-brand-hover sm:m-0 sm:min-h-0 sm:p-0"
 													>
 														{t(statement.committed ? 'accounts.takeBack' : 'accounts.remove')}
 													</button>

@@ -100,7 +100,7 @@ name finds them alone.
 			type="button"
 			onclick={() => (ended = !ended)}
 			aria-expanded={ended}
-			class="mt-3 text-small text-brand hover:text-brand-hover"
+			class="mt-1 inline-flex min-h-11 items-center text-small text-brand hover:text-brand-hover sm:mt-3 sm:min-h-0"
 		>
 			{t(ended ? 'cashflow.hideStopped' : 'cashflow.showStopped', {
 				count: recurring.ended.length

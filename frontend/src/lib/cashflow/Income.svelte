@@ -51,7 +51,7 @@ first. A source opens its transactions over the same range.
 						<li>
 							<a
 								href={transactions({ category: source.name })}
-								class="flex items-baseline gap-3 rounded-control px-1 py-1 text-small hover:bg-sunken"
+								class="flex min-h-11 items-center gap-3 rounded-control px-1 py-2 text-small hover:bg-sunken sm:min-h-0 sm:items-baseline sm:py-1"
 							>
 								<span class="min-w-0 flex-1 truncate text-ink-secondary">{source.name}</span>
 								<span class="text-caption text-ink-muted">{source.count}×</span>

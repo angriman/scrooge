@@ -27,7 +27,7 @@ imported (`importCta`), the button that goes to `/import`.
 	{#if importCta}
 		<a
 			href={resolve('/import')}
-			class="mt-6 inline-flex rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover"
+			class="mt-6 inline-flex min-h-11 items-center rounded-control bg-brand px-4 py-2 text-body font-medium text-on-brand hover:bg-brand-hover sm:min-h-0"
 		>
 			{t('overview.emptyCta')}
 		</a>

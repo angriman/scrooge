@@ -44,7 +44,7 @@ nothing. A broker's currencies are closed and opened together.
 	}
 
 	const button =
-		'h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60';
+		'h-11 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong disabled:opacity-60 sm:h-8';
 </script>
 
 <div class="mb-3">
@@ -63,7 +63,7 @@ nothing. A broker's currencies are closed and opened together.
 					type="date"
 					bind:value={when}
 					required
-					class="h-8 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none"
+					class="h-11 rounded-control border border-line bg-raised px-2 text-small text-ink focus:border-brand focus:outline-none sm:h-8"
 				/>
 			</label>
 			<button type="submit" disabled={busy} class={button}>
