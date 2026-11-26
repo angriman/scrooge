@@ -23,6 +23,7 @@
 	const context = $derived(data.context);
 	const session = $derived(data.session);
 	const owner = $derived(page.url.searchParams.get('owner'));
+	const currency = $derived(page.url.searchParams.get('currency') || session.currency);
 	const people = $derived(session.people.length > 1 && !owner);
 	const values = $derived(
 		Object.fromEntries(FIELDS.map((name) => [name, page.url.searchParams.get(name) ?? '']))
@@ -195,6 +196,7 @@
 			<div class="lg:order-last lg:sticky lg:top-20">
 				<Summary
 					totals={listed.by_category}
+					preferred={currency}
 					chosen={values.category || null}
 					onchoose={(line) =>
 						change(

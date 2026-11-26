@@ -31,6 +31,7 @@ from decimal import Decimal
 from scrooge import holds, months
 
 _CODE = re.compile(r"(.+) [A-Z]{3}")  # an account named by its stem and a currency's code
+_CENT = Decimal("0.01")
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,8 +180,9 @@ def combined(found: Sequence[holds.Holds | None]) -> holds.Holds | None:
     ends: dict[date, Decimal] = {}
     for end in (m for part in parts for m in part.months):
         ends[end.day] = ends.get(end.day, Decimal(0)) + end.balance
+    exact = sum((part.balance if part.exact is None else part.exact for part in parts), Decimal(0))
     return holds.Holds(
-        sum((part.balance for part in parts), Decimal(0)),
+        exact.quantize(_CENT),
         tuple(
             sorted(
                 (holds.Cash(asset, code, *cash[asset, code]) for asset, code in cash),
@@ -189,4 +191,16 @@ def combined(found: Sequence[holds.Holds | None]) -> holds.Holds | None:
         ),
         sum(securities, Decimal(0)) if securities else None,
         tuple(holds.MonthEnd(day, ends[day]) for day in sorted(ends)),
+        exact=exact,
     )
+
+
+def total(rows: Sequence[Row]) -> Decimal | None:
+    """What the accounts of `rows` whose balance is known hold together, rounded once to the cent;
+    None when none is known."""
+    known = [row.held for row in rows if row.held is not None]
+    if not known:
+        return None
+    return sum(
+        (held.balance if held.exact is None else held.exact for held in known), Decimal(0)
+    ).quantize(_CENT)

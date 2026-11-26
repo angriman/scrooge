@@ -8,6 +8,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 	import { approximate, negate } from '#lib/format/number.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { TRANSFERS } from './filter.js';
+	import { activeCurrency, summaryCurrencies } from './summary.js';
 	import type { CategoryTotal } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
@@ -15,12 +16,14 @@ Amounts in several currencies are never added: each currency is shown on its own
 
 	interface Props {
 		totals: CategoryTotal[];
+		/** The header's currency: opened first when the transactions have any in it. */
+		preferred?: string;
 		/** The category the list is cut to, if any: its bar is the one marked. */
 		chosen: string | null;
 		onchoose: (category: CategoryTotal) => void;
 	}
 
-	let { totals, chosen, onchoose }: Props = $props();
+	let { totals, preferred, chosen, onchoose }: Props = $props();
 
 	// Categories shown on each side until every one is asked for; fewer on a narrow screen,
 	// where the list comes after them.
@@ -28,14 +31,16 @@ Amounts in several currencies are never added: each currency is shown on its own
 	const NARROW = 4;
 
 	// The currency with the most rows first: the one most of them are in.
-	const currencies = $derived.by(() => {
-		const rows = new Map<string, number>();
-		for (const total of totals)
-			rows.set(total.currency, (rows.get(total.currency) ?? 0) + total.count);
-		return [...rows].sort((a, b) => b[1] - a[1]).map(([currency]) => currency);
-	});
+	const currencies = $derived(summaryCurrencies(totals));
 	let picked = $state<string | null>(null);
-	const currency = $derived(picked && currencies.includes(picked) ? picked : currencies[0]);
+	let lastPreferred: string | undefined;
+	$effect.pre(() => {
+		if (preferred !== lastPreferred) {
+			lastPreferred = preferred;
+			picked = null;
+		}
+	});
+	const currency = $derived(activeCurrency(currencies, picked, preferred));
 
 	const mine = $derived(
 		totals.filter((total) => total.currency === currency && total.key !== TRANSFERS)
@@ -46,7 +51,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 				id: 'out' as const,
 				name: t('transactions.moneyOut'),
 				lines: mine
-					.filter((total) => total.total.startsWith('-'))
+					.filter((total) => total.total.startsWith('-') && approximate(total.total) < 0)
 					.map((total) => ({ ...total, size: negate(total.total) }))
 			},
 			{
@@ -64,7 +69,7 @@ Amounts in several currencies are never added: each currency is shown on its own
 	let all = $state(false);
 </script>
 
-{#if sides.length}
+{#if currency && sides.length}
 	<Panel title={t('transactions.byCategoryTitle')}>
 		{#snippet actions()}
 			{#if currencies.length > 1}
