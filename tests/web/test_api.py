@@ -241,6 +241,30 @@ def test_a_month_sends_what_was_saved_of_income_and_of_salary(tmp_path: Path) ->
     assert (shown["rate_year"], shown["rate_salary_year"]) == (None, None)
 
 
+def test_a_month_with_next_to_nothing_in_sends_no_savings_rate(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    rows = (
+        spent("15", date(2026, 9, 26), kind=Kind.INCOME, category=categories.INTEREST),
+        spent("-1015", date(2026, 9, 10)),
+    )
+    close(conn, account("migros", "Migros", "CHF", "2000", *rows))
+    conn.close()
+    client = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+    month = client.get("/api/month").json()["month"]
+    assert [month[k] for k in ("income", "spent", "saved", "rate", "rate_salary")] == [
+        "15.00",
+        "1015.00",
+        "-1000.00",
+        None,
+        None,
+    ]
+    report = client.get("/api/cashflow", params={"currency": "CHF"}).json()["report"]
+    assert (report["totals"]["rate"], report["totals"]["rate_salary"]) == (None, None)
+    assert (report["periods"][0]["rate"], report["periods"][0]["rate_salary"]) == (None, None)
+
+
 def test_a_month_that_cannot_be_read_is_refused(client: TestClient) -> None:
     response = client.get("/api/month", params={"month": "September"})
     assert response.status_code == 400

@@ -310,6 +310,7 @@ export const it: Messages = {
 	'cashflow.onYearBefore': 'rispetto agli stessi mesi dell’anno scorso',
 	'cashflow.ofSalaryAfter': 'dello stipendio',
 	'cashflow.shortfallNote': 'I risparmi o disponibilità precedenti hanno coperto la differenza.',
+	'cashflow.littleCameIn': 'Quasi nessuna entrata in questi mesi.',
 	'cashflow.nothingCameIn': 'Nessuna entrata in questi mesi.',
 	'cashflow.cameIn': 'Entrate',
 	'cashflow.wentOut': 'Spese',
