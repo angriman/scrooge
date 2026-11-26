@@ -34,6 +34,8 @@ export const it: Messages = {
 	'common.noChange': 'nessuna variazione',
 	'common.notKnownShorterHistory': 'Non noto: lo storico è più breve',
 
+	'ui.close': 'Chiudi',
+
 	'asset.Cash': 'Liquidità',
 	'asset.CashOwed': 'Scoperto di cassa',
 	'asset.ETFs': 'ETF',
@@ -56,8 +58,7 @@ export const it: Messages = {
 	'bridge.newAccounts': 'Nuovi conti',
 	'bridge.marketsShort': 'Mercati',
 	'bridge.marketsAndOther': 'Mercati e altro',
-	'bridge.ariaLabel':
-		'Da {before} al {from}: entrate {income}, spese {spending}, mercati e altro {other}, a {after} al {to}',
+	'bridge.ariaLabel': 'Da {before} al {from}: {steps}, a {after} al {to}',
 
 	'range.1m': '1M',
 	'range.3m': '3M',
@@ -311,6 +312,7 @@ export const it: Messages = {
 	'cashflow.onYearBefore': 'rispetto agli stessi mesi dell’anno scorso',
 	'cashflow.ofSalaryAfter': 'dello stipendio',
 	'cashflow.shortfallNote': 'I risparmi o disponibilità precedenti hanno coperto la differenza.',
+	'cashflow.littleCameIn': 'Quasi nessuna entrata in questi mesi.',
 	'cashflow.nothingCameIn': 'Nessuna entrata in questi mesi.',
 	'cashflow.cameIn': 'Entrate',
 	'cashflow.wentOut': 'Spese',
@@ -414,6 +416,12 @@ export const it: Messages = {
 	'investments.notInvested': 'Non noto: nulla era investito',
 	'investments.benchmarkPriceNote':
 		'Rendimento dei titoli nel periodo sopra indicato, in {currency}: solo variazione di prezzo, esclusi i dividendi.',
+	'investments.benchmarksMissingOne':
+		'{benchmarks} apparirà non appena i suoi prezzi verranno scaricati.',
+	'investments.benchmarksMissingMany':
+		'{benchmarks} appariranno non appena i loro prezzi verranno scaricati.',
+	'investments.fetchPricesNow': 'Scarica i prezzi ora',
+	'investments.fetchingPrices': 'Scaricamento prezzi…',
 	'investments.moneyWeighted': 'Ponderato per il capitale (MWR)',
 	'investments.mwrFlowsNote': '{per}, in base ai conferimenti.',
 	'investments.mwrNone':
@@ -444,16 +452,16 @@ export const it: Messages = {
 	'investments.mobileGain': 'guadagno {amount}',
 	'investments.paidLead': 'Proventi da investimenti, {range}',
 	'investments.onYearBeforePct': 'rispetto agli stessi mesi dell’anno scorso.',
-	'investments.beforeTaxNote': 'Dividendi e interessi lordi, prima delle ritenute.',
+	'investments.afterTaxNote': 'Dividendi e interessi, al netto delle ritenute.',
 	'investments.last12MonthsPaidBefore': 'Negli ultimi 12 mesi:',
-	'investments.last12MonthsAfterTax': 'al netto delle imposte.',
+	'investments.last12MonthsBeforeTax': 'lordi.',
 	'investments.dividends': 'Dividendi',
 	'investments.interest': 'Interessi',
+	'investments.beforeTax': 'Lordo',
 	'investments.taxWithheld': 'Ritenute',
-	'investments.net': 'Netto',
 	'investments.monthByMonth': 'Mese per mese',
 	'investments.incomeChartAria': 'Dividendi e interessi mensili lordi',
-	'investments.incomeLegendNote': 'Valori lordi prima delle ritenute dedotte nel Netto sopra',
+	'investments.incomeLegendNote': 'Valori lordi prima delle ritenute dedotte dal totale sopra',
 	'investments.oneHoldingPaid': '1 titolo ha distribuito',
 	'investments.manyHoldingsPaid': '{count} titoli hanno distribuito',
 	'investments.holdingsPaidSubtitle':
@@ -476,12 +484,12 @@ export const it: Messages = {
 	'costs.colYear': 'Anno',
 	'costs.colCommissions': 'Commissioni',
 	'costs.colTaxWithheld': 'Ritenute',
-	'costs.colOfWhatPaid': 'Sui proventi',
+	'costs.colTaxOfWhatPaid': 'Ritenute sui proventi',
 	'costs.soFar': 'finora',
 	'costs.allYears': 'Tutti gli anni',
 	'costs.byAccountEveryYear': 'Per conto, tutti gli anni',
 	'costs.footnote':
-		'Le commissioni includono quelle di broker e conti previdenziali; le spese bancarie della stessa categoria sono escluse. Da schermo tablet in su è indicata anche l’aliquota delle ritenute sui proventi lordi dell’anno. I movimenti in valute prive di tasso di cambio sono comunque visibili nei dettagli.',
+		'Le commissioni includono quelle di broker e conti previdenziali; le spese bancarie della stessa categoria sono escluse. È indicata anche l’aliquota delle ritenute sui proventi lordi dell’anno. I movimenti in valute prive di tasso di cambio sono comunque visibili nei dettagli.',
 
 	'pensions.12m': '12 mesi',
 	'pensions.ytd': 'Quest’anno',
@@ -558,6 +566,8 @@ export const it: Messages = {
 	'holdings.byAccount': 'Per conto',
 
 	'bills.title': 'Titoli per scadenza',
+	'bills.name': 'Buono del Tesoro',
+	'bills.nameDue': 'Buono del Tesoro {date}',
 	'bills.matured': 'scaduto',
 	'bills.today': 'oggi',
 	'bills.inDays': 'tra {days} giorni',

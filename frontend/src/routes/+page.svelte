@@ -126,32 +126,25 @@
 	/>
 {:else}
 	<div class="grid grid-cols-1 gap-4">
-		{#key data.by}
-			<NetWorthCard
-				{series}
-				{colors}
-				{nameOf}
-				{title}
-				{currency}
-				through={statementsUpTo(figures.through, figures.day, covered)}
-				{range}
-				onrange={(chosen: Range) => show(here(), { range: chosen }, { shallow: true })}
-				{breakdowns}
-				by={data.by}
-				onby={(by) => show(here(), { by: by === 'asset' ? null : by })}
-				{view}
-				onview={(chosen: View) =>
-					show(here(), { view: chosen === 'chart' ? null : chosen }, { shallow: true })}
-				{months}
-			/>
-		{/key}
+		<NetWorthCard
+			{series}
+			{colors}
+			{nameOf}
+			{title}
+			{currency}
+			through={statementsUpTo(figures.through, figures.day, covered)}
+			{range}
+			onrange={(chosen: Range) => show(here(), { range: chosen }, { shallow: true })}
+			{breakdowns}
+			by={data.by}
+			onby={(by) => show(here(), { by: by === 'asset' ? null : by })}
+			{view}
+			onview={(chosen: View) =>
+				show(here(), { view: chosen === 'chart' ? null : chosen }, { shallow: true })}
+			{months}
+		/>
 
-		<!-- The month next: how net worth moved in it and why, before what it is made of. -->
-		{#if data.month.month}
-			<MonthSection recap={data.month.month} />
-		{/if}
-
-		<div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+		<div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
 			<Allocation
 				assets={figures.assets}
 				held={figures.held}
@@ -162,5 +155,9 @@
 			/>
 			<Investments {returned} paid={data.paid} {range} {returnsHref} {incomeHref} />
 		</div>
+
+		{#if data.month.month}
+			<MonthSection recap={data.month.month} />
+		{/if}
 	</div>
 {/if}

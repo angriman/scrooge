@@ -31,6 +31,8 @@ export const en = {
 	'common.noChange': 'no change',
 	'common.notKnownShorterHistory': 'Not known: the history is shorter',
 
+	'ui.close': 'Close',
+
 	'asset.Cash': 'Cash',
 	'asset.CashOwed': 'Cash owed',
 	'asset.ETFs': 'ETFs',
@@ -53,8 +55,7 @@ export const en = {
 	'bridge.newAccounts': 'New accounts',
 	'bridge.marketsShort': 'Markets',
 	'bridge.marketsAndOther': 'Markets and other',
-	'bridge.ariaLabel':
-		'From {before} on {from}: income {income}, spending {spending}, markets and other {other}, to {after} on {to}',
+	'bridge.ariaLabel': 'From {before} on {from}: {steps}, to {after} on {to}',
 
 	'range.1m': '1M',
 	'range.3m': '3M',
@@ -305,6 +306,7 @@ export const en = {
 	'cashflow.onYearBefore': 'on the same months a year before',
 	'cashflow.ofSalaryAfter': 'of salary',
 	'cashflow.shortfallNote': 'Savings, or money from earlier, made up the difference.',
+	'cashflow.littleCameIn': 'Next to nothing came in over these months.',
 	'cashflow.nothingCameIn': 'Nothing came in over these months.',
 	'cashflow.cameIn': 'Came in',
 	'cashflow.wentOut': 'Went out',
@@ -407,6 +409,10 @@ export const en = {
 	'investments.notInvested': 'Not known: nothing was invested',
 	'investments.benchmarkPriceNote':
 		'What holding each returned over the days the return above counts, in {currency}: its price alone, without what it paid out.',
+	'investments.benchmarksMissingOne': '{benchmarks} will show once its prices are fetched.',
+	'investments.benchmarksMissingMany': '{benchmarks} will show once their prices are fetched.',
+	'investments.fetchPricesNow': 'Fetch prices now',
+	'investments.fetchingPrices': 'Fetching prices…',
 	'investments.moneyWeighted': 'Money-weighted',
 	'investments.mwrFlowsNote': '{per}, on the money as it was put in.',
 	'investments.mwrNone': 'The money-weighted return has no rate to give over these days.',
@@ -436,16 +442,16 @@ export const en = {
 	'investments.mobileGain': 'gain {amount}',
 	'investments.paidLead': 'Paid by investments, {range}',
 	'investments.onYearBeforePct': 'on the same months a year before.',
-	'investments.beforeTaxNote': 'Dividends and interest, before the tax withheld from them.',
+	'investments.afterTaxNote': 'Dividends and interest, after the tax withheld.',
 	'investments.last12MonthsPaidBefore': 'The last 12 months paid',
-	'investments.last12MonthsAfterTax': 'after tax.',
+	'investments.last12MonthsBeforeTax': 'before tax.',
 	'investments.dividends': 'Dividends',
 	'investments.interest': 'Interest',
+	'investments.beforeTax': 'Before tax',
 	'investments.taxWithheld': 'Tax withheld',
-	'investments.net': 'Net',
 	'investments.monthByMonth': 'Month by month',
 	'investments.incomeChartAria': 'Dividends and interest paid each month, stacked, before tax',
-	'investments.incomeLegendNote': 'Before the tax withheld, which Net above takes off',
+	'investments.incomeLegendNote': 'Before the tax withheld, which the total above takes off',
 	'investments.oneHoldingPaid': '1 holding paid',
 	'investments.manyHoldingsPaid': '{count} holdings paid',
 	'investments.holdingsPaidSubtitle':
@@ -468,12 +474,12 @@ export const en = {
 	'costs.colYear': 'Year',
 	'costs.colCommissions': 'Commissions',
 	'costs.colTaxWithheld': 'Tax withheld',
-	'costs.colOfWhatPaid': 'Of what was paid',
+	'costs.colTaxOfWhatPaid': 'Tax, of what was paid',
 	'costs.soFar': 'so far',
 	'costs.allYears': 'All years',
 	'costs.byAccountEveryYear': 'By account, every year',
 	'costs.footnote':
-		'Commissions are those charged on broker and pension accounts; a bank’s fees, of the same category, are left out. From a tablet’s width on, the tax withheld is also in percent of the dividends and interest paid that year, before tax. Rows in a currency left out for want of a rate still show in the transactions a figure opens.',
+		'Commissions are those charged on broker and pension accounts; a bank’s fees, of the same category, are left out. The tax withheld is also in percent of the dividends and interest paid that year, before tax. Rows in a currency left out for want of a rate still show in the transactions a figure opens.',
 
 	'pensions.12m': '12 months',
 	'pensions.ytd': 'This year',
@@ -549,6 +555,8 @@ export const en = {
 	'holdings.byAccount': 'By account',
 
 	'bills.title': 'Bills by maturity',
+	'bills.name': 'T-bill',
+	'bills.nameDue': 'T-bill {date}',
 	'bills.matured': 'matured',
 	'bills.today': 'today',
 	'bills.inDays': 'in {days} days',

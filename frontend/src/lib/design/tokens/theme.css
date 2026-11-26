@@ -95,6 +95,23 @@
 	--color-info: var(--brand);
 }
 
+/* LayerChart's axis and legend labels default to 10px in `@layer components` via `:where(...)`
+ * (zero specificity). Giving them our `--text-caption` token (12px) puts every chart — both
+ * LayerChart and the custom SVGs using `text-caption` — on one shared type step. */
+@layer components {
+	.lc-axis-label,
+	.lc-axis-tick-label,
+	.lc-legend-title,
+	.lc-legend-tick-text {
+		font-size: var(--text-caption);
+	}
+
+	.lc-axis-label,
+	.lc-axis-tick-label {
+		font-weight: 400;
+	}
+}
+
 @layer base {
 	html {
 		background-color: var(--surface-page);

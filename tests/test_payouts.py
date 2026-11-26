@@ -121,11 +121,33 @@ def test_holdings_are_grouped_by_counterparty_what_paid_the_most_first(
             amounts("180", "0", "-13.50"),
             3,
             date(2026, 6, 15),
+            "stock",
+            None,
         ),
-        # A bill's CUSIP and a fund's ISIN are its symbol: the bill has no name of its own.
-        Holding(CUSIP, CUSIP, CUSIP, None, None, amounts("0", "72"), 1, date(2026, 7, 24)),
+        # A bill's CUSIP and a fund's ISIN are its symbol; the bill carries its maturity.
         Holding(
-            ISIN, "ACME Global Fund", ISIN, None, None, amounts("50", "0"), 1, date(2026, 4, 10)
+            CUSIP,
+            CUSIP,
+            CUSIP,
+            None,
+            None,
+            amounts("0", "72"),
+            1,
+            date(2026, 7, 24),
+            "bill",
+            date(2026, 7, 24),
+        ),
+        Holding(
+            ISIN,
+            "ACME Global Fund",
+            ISIN,
+            None,
+            None,
+            amounts("50", "0"),
+            1,
+            date(2026, 4, 10),
+            "fund",
+            None,
         ),
         # Rows that name nothing are the account's.
         Holding(
@@ -173,7 +195,19 @@ def test_both_people_together(conn: sqlite3.Connection) -> None:
     assert shown.year_before is None
     hers = his(conn, owner=PARTNER)
     assert hers.totals == amounts("0", "1")
-    assert hers.first == date(2025, 9, 1)
+    assert hers.first == date(2026, 1, 1)
+    assert [month.name for month in hers.months] == [f"2026-{m:02}" for m in range(1, 9)]
+    assert hers.trailing == hers.totals
+
+
+def test_a_range_is_clamped_to_the_first_statement_month(conn: sqlite3.Connection) -> None:
+    clamped = his(conn, owner=PARTNER, first=date(2025, 1, 1))
+    assert clamped.first == date(2026, 1, 1)
+    assert [month.name for month in clamped.months] == [f"2026-{m:02}" for m in range(1, 9)]
+
+    before = his(conn, owner=PARTNER, first=date(2025, 1, 1), last=date(2025, 12, 31))
+    assert (before.months, before.holdings, before.totals) == ((), (), payouts.NOTHING)
+    assert before.trailing == amounts("0", "1")
 
 
 def test_a_range_that_ends_before_it_starts_has_nothing(conn: sqlite3.Connection) -> None:
@@ -193,7 +227,7 @@ def test_without_a_rate_for_the_currency_asked_nothing_is_converted_and_it_is_sa
 ) -> None:
     shown = his(conn, currency="GBP")
     assert (shown.totals, shown.holdings) == (payouts.NOTHING, ())
-    assert shown.missing == ("no exchange rate is stored for GBP: run `scrooge prices`",)
+    assert shown.missing == ("no exchange rate is stored for GBP",)
 
 
 def test_the_last_twelve_months_are_added_up_whatever_the_range(conn: sqlite3.Connection) -> None:
@@ -249,7 +283,7 @@ def test_rows_in_a_currency_without_a_rate_are_left_out_and_said(lone: sqlite3.C
     # 130 dollars at 0.90 and 5 francs: the 50 pounds are not there.
     assert shown.totals == amounts("117", "5", "-14.40")
     assert "BRIT" not in {holding.key for holding in shown.holdings}
-    assert shown.missing == ("no exchange rate is stored for GBP: run `scrooge prices`",)
+    assert shown.missing == ("no exchange rate is stored for GBP",)
     # In pounds, the pounds are counted and the rest cannot be.
     pounds = his(lone, currency="GBP")
     assert pounds.totals == amounts("50", "0")
@@ -337,3 +371,32 @@ def test_interest_charged_is_no_payout() -> None:
     assert shown.totals == amounts("0", "20")
     [holding] = shown.holdings
     assert (holding.paid, holding.count) == (amounts("0", "20"), 1)
+
+
+def test_duplicate_instrument_symbols_keep_name_and_maturity() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    span = (date(2026, 1, 1), date(2026, 8, 31))
+    rows = [
+        paid("10", date(2026, 3, 15), "1", "ACME", **DIVIDEND, **USD),
+        paid("25", date(2026, 7, 24), "2", CUSIP, **INTEREST, **USD),
+    ]
+    close(connection, OWNER, span, span[1], ("ibkr", rows))
+    # First entry lacks a name/maturity; second supplies it under another currency.
+    store.ensure_currency(connection, "EUR")
+    store.instrument_id(connection, "acme", "Stocks", "EUR")
+    store.instrument_id(connection, "ACME", "Stocks", "USD", name="ACME Corp")
+    store.instrument_id(connection, CUSIP, "Bonds", "EUR")
+    store.instrument_id(connection, CUSIP, "Bonds", "USD", date(2026, 7, 24))
+    store.set_rate(connection, date(2026, 1, 1), "USD", Decimal("1.00"), source="fetched:yahoo")
+    shown = his(connection, currency="CHF")
+    named = payouts.named_instruments(connection)
+    connection.close()
+    assert named["ACME"] == ("ACME", "ACME Corp")
+    by_key = {holding.key: holding for holding in shown.holdings}
+    assert (by_key["ACME"].symbol, by_key["ACME"].name, by_key["ACME"].type) == (
+        "ACME",
+        "ACME Corp",
+        "stock",
+    )
+    assert (by_key[CUSIP].type, by_key[CUSIP].maturity) == ("bill", date(2026, 7, 24))

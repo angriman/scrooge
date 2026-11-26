@@ -148,4 +148,24 @@ describe('theme', () => {
 		stop();
 		expect(media.listenerCount()).toBe(0);
 	});
+
+	it('keeps an explicit preference in memory when storage throws', () => {
+		const root = fakeRoot();
+		const blockedStorage = {
+			getItem: () => {
+				throw new Error('SecurityError');
+			},
+			setItem: () => {
+				throw new Error('SecurityError');
+			}
+		};
+		const media = fakeMatchMedia(false);
+		const stop = initTheme({ storage: blockedStorage, matchMedia: media.matchMedia, root });
+		expect(getThemePreference()).toBe('system');
+
+		setThemePreference('light', { storage: blockedStorage, matchMedia: media.matchMedia, root });
+		expect(getThemePreference()).toBe('light');
+		expect(root.dataset.theme).toBe('alpine');
+		stop();
+	});
 });

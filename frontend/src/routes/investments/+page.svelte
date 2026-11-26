@@ -3,17 +3,21 @@
 	import { tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
+	import { assetColor, assetName } from '#lib/design/data.js';
 	import { day } from '#lib/format/date.js';
 	import { percent, percentOf, sum } from '#lib/format/number.js';
 	import Bills from '#lib/holdings/Bills.svelte';
+	import HoldingDetails from '#lib/holdings/HoldingDetails.svelte';
 	import HoldingsList from '#lib/holdings/HoldingsList.svelte';
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
+	import { holdingName } from '#lib/holdings/names.js';
+	import { findHolding, holdingKey, holdingParam } from '#lib/holdings/returns.js';
 	import { rangeName, rangePillLabel } from '#lib/cashflow/names.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import Costs from '#lib/investments/Costs.svelte';
 	import Income from '#lib/investments/Income.svelte';
-	import { DEFAULT_RANGE } from '#lib/investments/income.js';
+	import { DEFAULT_RANGE, firstStatementMonth } from '#lib/investments/income.js';
 	import { choose as choosePreset, chosen as presetOf } from '#lib/period.js';
 	import * as returns from '#lib/investments/performance.js';
 	import Pensions from '#lib/investments/Pensions.svelte';
@@ -24,7 +28,9 @@
 	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import Performance from '#lib/ui/Performance.svelte';
 	import Segmented from '#lib/ui/Segmented.svelte';
-	import { here, oneOf, show } from '#lib/view.js';
+	import SidePanel from '#lib/ui/SidePanel.svelte';
+	import Swatch from '#lib/ui/Swatch.svelte';
+	import { detailOf, here, oneOf, setDetail, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -83,12 +89,46 @@
 	const ranges = $derived(data.income?.ranges ?? []);
 	const chosen = $derived(presetOf(ranges, page.url, DEFAULT_RANGE));
 
-	let open = $state<string | null>(null);
-	/** Open `holding` in the list, and bring it into view. */
-	async function choose(holding: HeldInstrument) {
-		open = `${holding.symbol}|${holding.currency}|${holding.asset}`;
+	const holdingQuery = $derived(detailOf(here(), 'holding'));
+	const chosenHolding = $derived(held ? findHolding(held.holdings, holdingQuery) : null);
+	const chosenKey = $derived(chosenHolding ? holdingKey(chosenHolding) : null);
+
+	// Remember the last shown holding so focus returns to its row on close and its body stays
+	// populated during the closing animation.
+	let lastKey = $state<string | null>(null);
+	let displayedHolding = $state<HeldInstrument | null>(null);
+	$effect(() => {
+		if (chosenHolding && chosenKey) {
+			lastKey = chosenKey;
+			displayedHolding = chosenHolding;
+		}
+	});
+	const panelHolding = $derived(chosenHolding ?? displayedHolding);
+
+	function chooseFromList(holding: HeldInstrument) {
+		if (!held) return;
+		const key = holdingKey(holding);
+		void setDetail('holding', chosenKey === key ? null : holdingParam(holding, held.holdings));
+	}
+
+	/** Open `holding` in the side panel, and keep its row in view. */
+	async function chooseFromMap(holding: HeldInstrument) {
+		if (!held) return;
+		const key = holdingKey(holding);
+		await setDetail('holding', holdingParam(holding, held.holdings));
 		await tick();
-		document.getElementById(`holding-${open}`)?.scrollIntoView({ block: 'start' });
+		document.getElementById(`holding-${key}`)?.scrollIntoView({ block: 'nearest' });
+	}
+
+	function closeHolding() {
+		void setDetail('holding', null);
+	}
+
+	function returnHoldingFocus(): HTMLElement | null {
+		if (!lastKey) return null;
+		return (
+			document.getElementById(`holding-${lastKey}`)?.querySelector<HTMLElement>('button') ?? null
+		);
 	}
 </script>
 
@@ -103,12 +143,14 @@
 		options={views}
 		onchange={(value) =>
 			show(
-				page.url,
+				here(),
 				value === 'performance'
-					? { view: null, from: null, to: null }
+					? { view: null, from: null, to: null, holding: null }
 					: {
 							view: value,
-							...(value === 'holdings' ? { from: null, to: null } : { pension: null })
+							...(value === 'holdings'
+								? { from: null, to: null }
+								: { pension: null, holding: null })
 						}
 			)}
 	/>
@@ -149,7 +191,13 @@
 			/>
 		{/if}
 	{:else}
-		<Returns performance={data.performance.performance} {range} {people} />
+		<Returns
+			performance={data.performance.performance}
+			{range}
+			{people}
+			token={data.session.prices ? data.session.token : null}
+			onfetched={() => invalidateAll()}
+		/>
 	{/if}
 {:else if data.income}
 	{#if !data.income.income?.through}
@@ -160,8 +208,14 @@
 		<Income
 			income={data.income.income}
 			logos={data.income.logos}
-			range={rangeName(chosen || null, data.income.income.first, data.income.income.last)}
+			range={rangeName(
+				chosen || null,
+				data.income.income.first,
+				data.income.income.last,
+				data.income.income.through
+			)}
 			{owner}
+			firstMonth={firstStatementMonth(data.session.people, owner)}
 		/>
 		{#if data.costs}
 			<Costs costs={data.costs.sent?.costs ?? null} unavailable={data.costs.unavailable} {owner} />
@@ -220,7 +274,7 @@
 			{/if}
 		</div>
 		<div class="mt-5">
-			<HoldingsMap holdings={held.holdings} currency={held.currency} onchoose={choose} />
+			<HoldingsMap holdings={held.holdings} currency={held.currency} onchoose={chooseFromMap} />
 		</div>
 	</section>
 
@@ -228,12 +282,51 @@
 		holdings={held.holdings}
 		logos={data.held?.logos ?? {}}
 		currency={held.currency}
-		lastDay={held.day}
-		{people}
-		bind:open
-		token={data.session.read_only ? null : data.session.token}
-		onlogo={() => invalidateAll()}
+		selected={chosenKey}
+		onchoose={chooseFromList}
 	/>
+
+	<SidePanel
+		open={Boolean(chosenHolding)}
+		title={panelHolding ? holdingName(panelHolding) : ''}
+		subject={chosenKey}
+		onclose={closeHolding}
+		returnFocus={returnHoldingFocus}
+	>
+		{#snippet leading()}
+			{#if panelHolding && data.held?.logos?.[panelHolding.symbol]}
+				<img
+					src={data.held.logos[panelHolding.symbol]}
+					alt=""
+					class="size-8 shrink-0 rounded-control border border-line bg-panel object-contain p-0.5 dark:border-0 dark:bg-ink"
+				/>
+			{/if}
+		{/snippet}
+		{#snippet meta()}
+			{#if panelHolding}
+				<span class="flex flex-wrap items-center gap-1.5">
+					<Swatch color={assetColor(panelHolding.asset)} class="size-2 rounded-full" />
+					<span class="text-ink-secondary">{assetName(panelHolding.asset)}</span>
+					{#if holdingName(panelHolding) !== panelHolding.symbol}<span>{panelHolding.symbol}</span
+						>{/if}
+					{#if panelHolding.positions.length > 1}
+						<span>{t('holdings.inAccounts', { count: panelHolding.positions.length })}</span>
+					{/if}
+				</span>
+			{/if}
+		{/snippet}
+		{#if panelHolding}
+			<HoldingDetails
+				holding={panelHolding}
+				hasLogo={Boolean(data.held?.logos?.[panelHolding.symbol])}
+				currency={held.currency}
+				lastDay={held.day}
+				{people}
+				token={data.session.read_only ? null : data.session.token}
+				onlogo={() => invalidateAll()}
+			/>
+		{/if}
+	</SidePanel>
 
 	{@render pensionGroup()}
 

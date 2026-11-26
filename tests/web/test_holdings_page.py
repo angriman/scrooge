@@ -226,10 +226,7 @@ def test_a_price_that_is_only_that_of_a_trade_is_marked(client: TestClient) -> N
         "+0.00 +0.00%",
     ]
     assert "<small>last trade, 2026-09-16</small>" in page
-    assert (
-        "No close is stored for GADG: valued at the price of the last trade. "
-        "Run `scrooge prices`." in text(page)
-    )
+    assert "No close is stored for GADG: valued at the price of the last trade." in text(page)
 
 
 def test_one_person_s_positions_need_no_column_for_the_person(client: TestClient) -> None:

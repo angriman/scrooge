@@ -147,6 +147,7 @@ class Performance:
     left_out: tuple[str, ...] = ()  # those accounts, named with their owner
     benchmarks: tuple[benchmark.Benchmark, ...] = ()  # what holding each returned instead
     unbenchmarked: tuple[str, ...] = ()  # why a benchmark asked for is left out
+    missing_benchmarks: tuple[str, ...] = ()  # symbols of benchmarks asked for and left out
 
 
 # ---------------------------------------------------------------------------- rates of return
@@ -460,7 +461,7 @@ def run(
     total, put = every.values, every.flows
     floor = floors(currency, rates, days).after(start).values
     totals = _rounded(_measure(every, base + _ONE_DAY, floor))
-    followed, unbenchmarked = _followed(
+    followed, unbenchmarked, missing_benchmarks = _followed(
         conn, benchmarks, [base, *days[start + 1 :]], every, totals=totals, currency=currency
     )
     invested, points = total[0], []
@@ -486,6 +487,7 @@ def run(
         holders=tuple(rows),
         benchmarks=tuple(each.benchmark for each in followed),
         unbenchmarked=tuple(unbenchmarked),
+        missing_benchmarks=tuple(missing_benchmarks),
     )
 
 
@@ -497,12 +499,13 @@ def _followed(  # noqa: PLR0913  # the benchmarks, and the days and money of the
     *,
     totals: Measured,
     currency: str,
-) -> tuple[list[benchmark.Followed], list[str]]:
+) -> tuple[list[benchmark.Followed], list[str], list[str]]:
     """Each benchmark over the range's `days`, its return counted from where the time-weighted
-    return is; and why each one that cannot be is left out."""
+    return is; why each one that cannot be is left out; and those symbols."""
     start = 0 if totals.since is None else (totals.since - days[0]).days - 1
     followed: list[benchmark.Followed] = []
     unbenchmarked: list[str] = []
+    missing_benchmarks: list[str] = []
     for symbol in symbols:
         try:
             followed.append(
@@ -518,7 +521,8 @@ def _followed(  # noqa: PLR0913  # the benchmarks, and the days and money of the
             )
         except (benchmark.BenchmarkError, MissingRateError) as exc:
             unbenchmarked.append(f"{symbol} is left out: {exc}")
-    return followed, unbenchmarked
+            missing_benchmarks.append(symbol)
+    return followed, unbenchmarked, missing_benchmarks
 
 
 def _rounded(measured: Measured) -> Measured:

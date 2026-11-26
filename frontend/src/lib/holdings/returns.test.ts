@@ -5,6 +5,9 @@ import type { HeldInstrument, HoldingReturns, Position } from '#lib/types.js';
 import {
 	columnsOf,
 	dashNotes,
+	findHolding,
+	holdingKey,
+	holdingParam,
 	periodLines,
 	realisedText,
 	sortHoldings,
@@ -55,7 +58,9 @@ function holding(symbol: string, fields: Partial<HeldInstrument> = {}): HeldInst
 		symbol,
 		name: '',
 		asset: 'ETFs',
+		type: 'etf',
 		currency: 'USD',
+		maturity: null,
 		value: '1000.00',
 		share: '50.00',
 		cost: '900.00',
@@ -66,6 +71,35 @@ function holding(symbol: string, fields: Partial<HeldInstrument> = {}): HeldInst
 		...fields
 	};
 }
+
+describe('holdingKey, holdingParam and findHolding', () => {
+	const acmeUsd = holding('ACME', { currency: 'USD', asset: 'ETFs' });
+	const acmeEur = holding('ACME', { currency: 'EUR', asset: 'ETFs' });
+	const widg = holding('WIDG', { currency: 'CHF', asset: 'Stocks' });
+
+	it('builds a full key and uses a bare symbol when unique across holdings', () => {
+		expect(holdingKey(widg)).toBe('WIDG|CHF|Stocks');
+		expect(holdingParam(widg, [acmeUsd, widg])).toBe('WIDG');
+		expect(holdingParam(acmeUsd, [acmeUsd, widg])).toBe('ACME');
+	});
+
+	it('falls back to the full key when two holdings share a symbol', () => {
+		const list = [acmeUsd, acmeEur, widg];
+		expect(holdingParam(acmeUsd, list)).toBe('ACME|USD|ETFs');
+		expect(holdingParam(acmeEur, list)).toBe('ACME|EUR|ETFs');
+		expect(holdingParam(widg, list)).toBe('WIDG');
+	});
+
+	it('resolves by full key first, then by symbol, and returns null when missing', () => {
+		const list = [acmeUsd, acmeEur, widg];
+		expect(findHolding(list, 'ACME|EUR|ETFs')).toBe(acmeEur);
+		expect(findHolding(list, 'WIDG')).toBe(widg);
+		expect(findHolding(list, 'ACME')).toBe(acmeUsd);
+		expect(findHolding(list, 'NOPE')).toBeNull();
+		expect(findHolding(list, '')).toBeNull();
+		expect(findHolding(list, null)).toBeNull();
+	});
+});
 
 describe('sortHoldings', () => {
 	const acme = holding('ACME', { gain: '50.00', returns: returns('30.00') });

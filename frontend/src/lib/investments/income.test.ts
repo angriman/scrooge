@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { PayingHolding } from '#lib/types.js';
 import {
 	change,
+	firstStatementMonth,
 	highest,
 	isTrailing,
 	kindsOf,
 	monthLabel,
+	net,
 	paid,
 	stack,
 	trailingFrom,
@@ -17,6 +19,8 @@ const ACME: PayingHolding = {
 	key: 'ACME',
 	name: 'ACME Corp',
 	symbol: 'ACME',
+	type: 'stock',
+	maturity: null,
 	account: null,
 	owner: null,
 	dividends: '180.00',
@@ -30,6 +34,8 @@ const CASH: PayingHolding = {
 	key: 'IBKR USD',
 	name: 'IBKR USD',
 	symbol: null,
+	type: null,
+	maturity: null,
 	account: 'IBKR USD',
 	owner: null,
 	dividends: '0.00',
@@ -38,16 +44,43 @@ const CASH: PayingHolding = {
 };
 
 describe('what investments paid', () => {
-	it('adds dividends and interest, before tax', () => {
+	it('adds dividends and interest, before and after tax', () => {
 		expect(paid({ dividends: '180.00', interest: '18.50', tax: '-13.50' })).toBe('198.50');
+		expect(net({ dividends: '180.00', interest: '18.50', tax: '-13.50' })).toBe('185.00');
+		expect(net({ dividends: '180.00', interest: '18.50', tax: '0.00' })).toBe('198.50');
+		expect(net({ dividends: '0.00', interest: '0.00', tax: '-5.00' })).toBe('-5.00');
+		expect(net({ dividends: '120', interest: '30', tax: '-20', net: '130' })).toBe('130');
 		expect(withheld('-13.50')).toBe('13.50');
 		expect(withheld('0.00')).toBe('0.00');
 	});
 
-	it('compares with the year before only when something was paid then', () => {
-		const now = { dividends: '150', interest: '0', tax: '0' };
-		expect(change(now, { dividends: '100', interest: '20', tax: '-15' })).toBe('25.0');
+	it('compares with the year before after tax, only when something was left then', () => {
+		const now = { dividends: '150', interest: '0', tax: '-15' };
+		// Net is 135 vs 105 (+28.6%), not gross 150 vs 120 (+25.0%).
+		expect(change(now, { dividends: '100', interest: '20', tax: '-15' })).toBe('28.6');
+		// Same gross with more tax withheld is a drop in net income.
+		expect(
+			change(
+				{ dividends: '100', interest: '0', tax: '-30' },
+				{ dividends: '100', interest: '0', tax: '-15' }
+			)
+		).toBe('-17.6');
+		// Uses API-provided net amounts directly when present.
+		expect(
+			change(
+				{ dividends: '150', interest: '0', tax: '-20', net: '130' },
+				{ dividends: '115', interest: '0', tax: '-15', net: '100' }
+			)
+		).toBe('30.0');
+		expect(
+			change(
+				{ dividends: '0', interest: '0', tax: '-10' },
+				{ dividends: '100', interest: '0', tax: '0' }
+			)
+		).toBe('-110.0');
 		expect(change(now, { dividends: '0', interest: '0', tax: '0' })).toBeNull();
+		expect(change(now, { dividends: '15', interest: '0', tax: '-15' })).toBeNull();
+		expect(change(now, { dividends: '0', interest: '0', tax: '-15' })).toBeNull();
 		expect(change(now, null)).toBeNull();
 	});
 
@@ -89,5 +122,20 @@ describe('what investments paid', () => {
 		expect(isTrailing({ first: '2026-01-01', last: through, through })).toBe(false);
 		expect(isTrailing({ first: '2025-09-01', last: '2026-07-31', through })).toBe(false);
 		expect(isTrailing({ first: null, last: null, through: null })).toBe(false);
+
+		// When statements start inside the 12-month window, clamped 12m/YTD matches trailing.
+		const people = [
+			{ name: 'Lukas', first: '2025-01-15' },
+			{ name: 'Anna', first: '2026-01-06' }
+		];
+		expect(firstStatementMonth(people, 'Anna')).toBe('2026-01-01');
+		expect(firstStatementMonth(people, 'Lukas')).toBe('2025-01-01');
+		expect(firstStatementMonth(people, null)).toBe('2025-01-01');
+		expect(firstStatementMonth([{ name: 'Anna', first: null }], null)).toBeNull();
+
+		expect(isTrailing({ first: '2026-01-01', last: through, through }, '2026-01-01')).toBe(true);
+		expect(isTrailing({ first: '2026-03-01', last: through, through }, '2026-01-01')).toBe(false);
+		// Longer history ("all") is not trailing.
+		expect(isTrailing({ first: '2025-01-01', last: through, through }, '2025-01-01')).toBe(false);
 	});
 });

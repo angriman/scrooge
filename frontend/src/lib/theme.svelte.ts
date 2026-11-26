@@ -133,9 +133,10 @@ export function initTheme(options?: {
 		options && 'matchMedia' in options ? options.matchMedia : defaultMatchMedia();
 	const root = options && 'root' in options ? options.root : defaultRoot();
 
-	preference = readStoredPreference(storage);
+	const initial = readStoredPreference(storage);
+	preference = initial;
 	const mql = matchMediaFn ? matchMediaFn(LIGHT_MEDIA_QUERY) : null;
-	applyTheme(preference, mql?.matches ?? false, root);
+	applyTheme(initial, mql?.matches ?? false, root);
 
 	if (!mql || typeof mql.addEventListener !== 'function') {
 		return () => {};

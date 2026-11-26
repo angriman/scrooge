@@ -70,7 +70,7 @@
 		change(account, 'close', { day: when });
 	const reopen = (account: StatementsAccount) => change(account, 'reopen', {});
 	const behind = $derived(opened.filter((account) => account.behind).length);
-	const held = $derived(heldTogether(listed.accounts));
+	const held = $derived(heldTogether(listed.accounts, listed.total));
 	const title = $derived(
 		single
 			? t('accounts.title')

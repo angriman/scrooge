@@ -11,6 +11,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { HeldInstrument } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
+	import { holdingName, mapLabel } from './names.js';
 
 	interface Props {
 		holdings: HeldInstrument[];
@@ -43,10 +44,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 			}));
 	});
 
-	const label = (holding: HeldInstrument) =>
-		holding.name && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(holding.symbol)
-			? holding.name
-			: holding.symbol;
+	const label = (holding: HeldInstrument) => mapLabel(holding);
 </script>
 
 <div bind:clientWidth={width} class="relative w-full" style:height="{height}px">
@@ -58,7 +56,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 			type="button"
 			onclick={() => onchoose(holding)}
 			title={t('holdings.mapTileTitle', {
-				name: holding.name || holding.symbol,
+				name: holdingName(holding),
 				value: short(holding.value),
 				currency,
 				share: percent(holding.share)

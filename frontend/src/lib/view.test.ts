@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { oneOf, pick, withQuery, type Address } from './view.js';
+import { detailNavigation, detailOf, oneOf, pick, withQuery, type Address } from './view.js';
 
 function at(href: string): Address {
 	const url = new URL(`http://x${href}`);
@@ -30,5 +30,36 @@ describe('the address of a page', () => {
 		);
 		expect(oneOf(at('/app?by=decade'), 'by', ['month', 'quarter', 'year'], 'month')).toBe('month');
 		expect(oneOf(at('/app'), 'by', ['month', 'quarter', 'year'], 'month')).toBe('month');
+	});
+
+	it('reads an open detail param and treats missing or empty values as closed', () => {
+		expect(detailOf(at('/app/investments?view=holdings&holding=ACME'), 'holding')).toBe('ACME');
+		expect(detailOf(at('/app/investments?view=holdings&holding='), 'holding')).toBeNull();
+		expect(detailOf(at('/app/investments?view=holdings'), 'holding')).toBeNull();
+	});
+
+	it('pushes when opening or closing a detail, replaces when switching, and skips no-ops', () => {
+		const closed = at('/app/investments?view=holdings&owner=Anna&currency=CHF');
+		expect(detailNavigation(closed, 'holding', null)).toBeNull();
+		expect(detailNavigation(closed, 'holding', '')).toBeNull();
+		expect(detailNavigation(closed, 'holding', 'ACME')).toEqual({
+			href: '/app/investments?view=holdings&owner=Anna&currency=CHF&holding=ACME',
+			replace: false
+		});
+
+		const open = at('/app/investments?view=holdings&owner=Anna&holding=ACME');
+		expect(detailNavigation(open, 'holding', 'ACME')).toBeNull();
+		expect(detailNavigation(open, 'holding', 'WIDG')).toEqual({
+			href: '/app/investments?view=holdings&owner=Anna&holding=WIDG',
+			replace: true
+		});
+		expect(detailNavigation(open, 'holding', null)).toEqual({
+			href: '/app/investments?view=holdings&owner=Anna',
+			replace: false
+		});
+		expect(detailNavigation(open, 'holding', '')).toEqual({
+			href: '/app/investments?view=holdings&owner=Anna',
+			replace: false
+		});
 	});
 });

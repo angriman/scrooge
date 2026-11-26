@@ -54,7 +54,7 @@ def test_each_year_and_account_is_sent_and_a_currency_without_a_rate_said(
     client: TestClient,
 ) -> None:
     sent = client.get("/api/costs", params={"owner": OWNER}).json()
-    assert sent["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+    assert sent["errors"] == ["No exchange rate is stored for GBP."]
     shown = sent["costs"]
     assert (shown["currency"], shown["through"]) == ("CHF", "2026-08-31")
     assert shown["years"] == [
