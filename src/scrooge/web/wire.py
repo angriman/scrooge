@@ -932,6 +932,36 @@ def listed_category(category: settings.ListedCategory) -> JSON:
     }
 
 
+def listed_person(person: settings.ListedPerson) -> JSON:
+    """One person on the settings page: their name, counterparty patterns, and owned accounts."""
+    return {
+        "name": person.name,
+        "patterns": list(person.patterns),
+        "committed": person.committed,
+        "staged": person.staged,
+        "accounts": [
+            {
+                "name": acct.name,
+                "source": acct.source,
+                "label": acct.label or None,
+                "parts": list(acct.parts),
+                "closed": day(acct.closed),
+            }
+            for acct in person.accounts
+        ],
+    }
+
+
+def listed_logo(instrument: settings.ListedLogo) -> JSON:
+    """One holding instrument on the logos settings subpage."""
+    return {
+        "symbol": instrument.symbol,
+        "name": instrument.name,
+        "asset": instrument.asset,
+        "currencies": list(instrument.currencies),
+    }
+
+
 def _measured(measured: performance.Measured) -> JSON:
     return {
         "start": number(measured.start),
