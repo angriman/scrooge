@@ -5,7 +5,7 @@
 
 import { addDays, day, daysBetween } from '#lib/format/date.js';
 import { approximate, money, signedPercent } from '#lib/format/number.js';
-import { t } from '#lib/i18n/index.svelte.js';
+import { joinList, t } from '#lib/i18n/index.svelte.js';
 import { daysBack, RANGES, rangeOptions, type Range } from '#lib/overview/range.js';
 import type {
 	Amount,
@@ -165,6 +165,16 @@ export function instead(benchmarks: readonly BenchmarkReturn[]): string {
 		first: items.slice(0, -1).join(', '),
 		last: items[items.length - 1]
 	});
+}
+
+/** A single quiet note naming the benchmarks without stored closes or rates for this range.
+ * Null when every benchmark asked for is shown (or none are configured). */
+export function missingBenchmarksNote(missing: readonly string[]): string | null {
+	if (!missing.length) return null;
+	return t(
+		missing.length === 1 ? 'investments.benchmarksMissingOne' : 'investments.benchmarksMissingMany',
+		{ benchmarks: joinList(missing) }
+	);
 }
 
 /** The day of `xs` nearest `x`: what the pointer is over. */

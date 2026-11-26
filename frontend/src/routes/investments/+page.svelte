@@ -149,7 +149,13 @@
 			/>
 		{/if}
 	{:else}
-		<Returns performance={data.performance.performance} {range} {people} />
+		<Returns
+			performance={data.performance.performance}
+			{range}
+			{people}
+			token={data.session.prices ? data.session.token : null}
+			onfetched={() => invalidateAll()}
+		/>
 	{/if}
 {:else if data.income}
 	{#if !data.income.income?.through}

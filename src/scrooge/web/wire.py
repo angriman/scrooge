@@ -982,7 +982,8 @@ def performance_report(shown: performance.Performance) -> JSON:
     than `first`; `mwr` in percent a year when `mwr_a_year`, over the range otherwise.
     `benchmarks` are what holding each returned in percent over the days `twr` counts; each
     day's `benchmarks` are their lines, in the same order: what the money put in would be
-    worth in each (`scrooge.benchmark`)."""
+    worth in each (`scrooge.benchmark`). `missing_benchmarks` names those left out for want of
+    stored closes or rates."""
     return {
         "currency": shown.currency,
         "range": shown.range,
@@ -1010,6 +1011,7 @@ def performance_report(shown: performance.Performance) -> JSON:
         "benchmarks": [
             {"symbol": each.symbol, "return": number(each.returned)} for each in shown.benchmarks
         ],
+        "missing_benchmarks": list(shown.missing_benchmarks),
     }
 
 

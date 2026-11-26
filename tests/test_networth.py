@@ -612,9 +612,7 @@ def test_without_any_close_the_last_trade_price_stands_in_and_a_note_says_so(
         D(330),
         D(330),
     ]
-    assert result.notes == (
-        "No close is stored for WIDG: valued at the price of the last trade. Run `scrooge prices`.",
-    )
+    assert result.notes == ("No close is stored for WIDG: valued at the price of the last trade.",)
 
 
 def test_shares_sold_before_any_close_leave_no_note(conn: sqlite3.Connection) -> None:

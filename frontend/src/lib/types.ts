@@ -27,6 +27,8 @@ export interface Session {
 	signing: boolean;
 	/** Whether a category chosen can be remembered as a rule for the next import. */
 	rules: boolean;
+	/** Whether missing closes, splits and exchange rates can be fetched from here. */
+	prices: boolean;
 	/** Whose figures can be typed (`/api/accounts/typed`); empty over a copy. */
 	typing: string[];
 	token: string;
@@ -758,6 +760,16 @@ export interface PerformanceReport {
 	accounts: MeasuredAccount[];
 	/** The benchmarks of the config that have the closes and rates they need. */
 	benchmarks: BenchmarkReturn[];
+	/** Benchmarks of the config without the closes or rate they need over this range. */
+	missing_benchmarks: string[];
+}
+
+/** What `/api/prices` stored, and any symbols or currencies it could not fetch. */
+export interface PricesFetched {
+	closes: number;
+	rates: number;
+	splits: number;
+	errors: string[];
 }
 
 /** `/api/performance`. `errors` names each currency whose accounts were left out for want of a
