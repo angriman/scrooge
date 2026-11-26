@@ -157,6 +157,7 @@
 					value={getLanguage().toUpperCase()}
 					options={data.session.languages.map((lang) => lang.toUpperCase())}
 					onchange={chooseLanguage}
+					class="hidden sm:inline-flex"
 				/>
 				<a
 					href={resolve('/settings') + along}

@@ -119,7 +119,13 @@ reader is already looking, in the headline and the legend.
 		props={{
 			area: { fillOpacity: 1, line: { strokeWidth: 1.25, class: 'stroke-panel' } },
 			// A few months or less: its ticks are days, which a month's name would repeat.
-			xAxis: { format: days.length <= 100 ? dayOf : monthTickOf, tickLength: 0, ticks: 6 },
+			xAxis: {
+				format: days.length <= 100 ? dayOf : monthTickOf,
+				tickLength: 0,
+				ticks: 6,
+				// With no tick marks (`tickLength: 0`), keep 12px labels clear of the plot edge.
+				tickLabelProps: { dy: 6 }
+			},
 			yAxis: {
 				placement: 'right',
 				format: formatY,

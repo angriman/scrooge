@@ -3,15 +3,18 @@
 import dataclasses
 import sqlite3
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
 
-from scrooge import categories, settings, staging
-from scrooge.storage import db
+from scrooge import categories, networth, settings, staging
+from scrooge.models import TypedHolding
+from scrooge.storage import db, store
 from scrooge.web import app as webapp
+from scrooge.web import auth
 from tests.storage.helpers import OWNER, PARTNER, PEOPLE, txn
 from tests.web.builders import AUGUST_DAYS, Site, close
 
@@ -361,3 +364,100 @@ def test_settings_api_uses_the_chosen_language(site: Site) -> None:
     assert cats_json["unmatched"] == categories.LABELS_IT[categories.UNSORTED]
     assert (cats_json["unmatched"], "expenses") in listed
     assert categories.LABELS_IT[categories.GROUP_FOOD] in cats_json["groups"]
+
+    cur_json = client.get("/api/settings/currencies").json()
+    assert cur_json["language"] == "it"
+
+
+def test_settings_people_currencies_and_logos_endpoints(site: Site) -> None:
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>'
+
+    conn = db.connect(site.database)
+    store.ensure_currency(conn, "USD")
+    store.instrument_id(conn, "ACME", "Stocks", "USD", name="Acme Corp")
+    staging.type_holding(
+        conn,
+        owner=OWNER,
+        account="Broker",
+        day=date(2026, 8, 31),
+        holding=TypedHolding("ACME", Decimal(3), "USD", "Stocks"),
+    )
+    conn.close()
+
+    # People endpoint lists configured people, their patterns, and owned accounts.
+    people = site.client.get("/api/settings/people").json()
+    assert people["errors"] == []
+    assert [p["name"] for p in people["people"]] == [OWNER, PARTNER]
+    lukas = people["people"][0]
+    assert lukas["patterns"] == [p.pattern for p in PEOPLE[OWNER]]
+    assert [(a["name"], a["source"], a["closed"]) for a in lukas["accounts"]] == [
+        ("Broker", None, None),
+        ("Migros", "migros", None),
+    ]
+
+    # Works when state.rules is None (still returns DB owners sorted, without patterns).
+    no_rules = site.app()
+    no_rules_people = no_rules.get("/api/settings/people").json()["people"]
+    assert [p["name"] for p in no_rules_people] == [PARTNER, OWNER]
+    assert all(p["patterns"] == [] for p in no_rules_people)
+
+    # Currencies endpoint exposes configured default, offered currencies, table columns, language.
+    custom = _app(site, currency="CHF", currencies=("EUR", "CHF"))
+    cur = custom.get("/api/settings/currencies").json()
+    assert cur == {
+        "currency": "CHF",
+        "currencies": list(networth.CURRENCIES),
+        "table_currencies": ["EUR", "CHF"],
+        "language": "en",
+        "languages": list(categories.LANGUAGES),
+        "errors": [],
+    }
+
+    # Language switch remains allowed over read_only=True.
+    copy = _app(site, read_only=True)
+    copy_token = copy.get("/api/session").json()["token"]
+    assert (
+        copy.post(
+            "/api/language", json={"language": "it"}, headers={"x-token": copy_token}
+        ).status_code
+        == 200
+    )
+    assert copy.get("/api/settings/currencies").json()["language"] == "it"
+
+    # Logos endpoint lists instruments, updates via /api/logos & /api/logos/remove,
+    # and respects read_only.
+    before = site.client.get("/api/settings/logos").json()
+    assert before == {
+        "instruments": [
+            {"symbol": "ACME", "name": "Acme Corp", "asset": "Stocks", "currencies": ["USD"]}
+        ],
+        "logos": {},
+        "editable": True,
+        "errors": [],
+    }
+    upload = site.client.post(
+        "/api/logos",
+        data={"symbol": "ACME"},
+        files={"file": ("acme.svg", svg, "image/svg+xml")},
+        headers={"x-token": site.token},
+    )
+    assert upload.status_code == 200
+    after_upload = site.client.get("/api/settings/logos").json()
+    assert "ACME" in after_upload["logos"]
+    assert copy.get("/api/settings/logos").json()["editable"] is False
+    assert (
+        copy.post(
+            "/api/logos/remove", json={"symbol": "ACME"}, headers={"x-token": copy_token}
+        ).status_code
+        == 403
+    )
+    removed = site.client.post(
+        "/api/logos/remove", json={"symbol": "ACME"}, headers={"x-token": site.token}
+    )
+    assert removed.status_code == 200
+    assert site.client.get("/api/settings/logos").json()["logos"] == {}
+
+    # Unauthenticated requests to new endpoints return 401 when password is set.
+    locked = _app(site, password=auth.digest("secret"))
+    for path in ("people", "currencies", "logos"):
+        assert locked.get(f"/api/settings/{path}").status_code == 401

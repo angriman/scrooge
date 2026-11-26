@@ -334,7 +334,9 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
                 "symbol": h.symbol,
                 "name": h.name,
                 "asset": h.asset,
+                "type": h.type,
                 "currency": h.currency,
+                "maturity": day(h.maturity),
                 "value": number(h.value),
                 "share": share,
                 "cost": number(h.cost),
@@ -754,6 +756,8 @@ def payouts_report(shown: payouts.Payouts) -> JSON:
                 "key": holding.key,
                 "name": holding.name,
                 "symbol": holding.symbol,
+                "type": holding.type,
+                "maturity": day(holding.maturity),
                 "account": holding.account,
                 "owner": holding.owner,
                 **_paid(holding.paid),
@@ -925,6 +929,36 @@ def listed_category(category: settings.ListedCategory) -> JSON:
         "parent": category.parent,
         "built_in": category.built_in,
         "rows": category.rows,
+    }
+
+
+def listed_person(person: settings.ListedPerson) -> JSON:
+    """One person on the settings page: their name, counterparty patterns, and owned accounts."""
+    return {
+        "name": person.name,
+        "patterns": list(person.patterns),
+        "committed": person.committed,
+        "staged": person.staged,
+        "accounts": [
+            {
+                "name": acct.name,
+                "source": acct.source,
+                "label": acct.label or None,
+                "parts": list(acct.parts),
+                "closed": day(acct.closed),
+            }
+            for acct in person.accounts
+        ],
+    }
+
+
+def listed_logo(instrument: settings.ListedLogo) -> JSON:
+    """One holding instrument on the logos settings subpage."""
+    return {
+        "symbol": instrument.symbol,
+        "name": instrument.name,
+        "asset": instrument.asset,
+        "currencies": list(instrument.currencies),
     }
 
 

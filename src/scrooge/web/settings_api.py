@@ -21,11 +21,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from scrooge import categories, query, settings, staging
+from scrooge import categories, networth, query, settings, staging
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store
 from scrooge.web import wire
-from scrooge.web.api import _origin_and_token, _refused, _sent, language_of
+from scrooge.web.api import _origin_and_token, _refused, _sent, language_of, logos
 
 # What a change refused answers: what was asked cannot be done as it is.
 _REFUSED = (settings.SettingsError, staging.StagingError, ConfigError)
@@ -327,6 +327,51 @@ async def _remove_category(request: Request) -> Response:
     return await _change(request, act)
 
 
+def _listed_people(request: Request) -> Response:
+    """Every person in the config or database, with their counterparty patterns and accounts."""
+    rules = request.app.state.rules
+    patterns = None if rules is None else rules.people
+    with db.reading(request.app.state.database) as conn:
+        listed = settings.listed_people(conn, patterns)
+    return JSONResponse(
+        {
+            "people": [wire.listed_person(person) for person in listed],
+            "errors": [],
+        }
+    )
+
+
+def _currencies(request: Request) -> Response:
+    """The currencies offered, the default, the month-end table columns, and the language."""
+    state = request.app.state
+    return JSONResponse(
+        {
+            "currency": state.currency,
+            "currencies": list(networth.CURRENCIES),
+            "table_currencies": list(state.currencies),
+            "language": language_of(request),
+            "languages": list(categories.LANGUAGES),
+            "errors": [],
+        }
+    )
+
+
+def _listed_logos(request: Request) -> Response:
+    """Every non-bill holding instrument and the logos stored for them."""
+    state = request.app.state
+    with db.reading(state.database) as conn:
+        listed = settings.listed_logos(conn)
+        found = logos(request, conn)
+    return JSONResponse(
+        {
+            "instruments": [wire.listed_logo(item) for item in listed],
+            "logos": found,
+            "editable": not state.read_only,
+            "errors": [],
+        }
+    )
+
+
 routes = [
     Route("/rules", _rules, name="api_settings_rules"),
     Route("/rules/test", _test, name="api_settings_rules_test"),
@@ -340,4 +385,7 @@ routes = [
     Route("/categories/merge", _merge_category, methods=["POST"], name="api_settings_merge"),
     Route("/categories/move", _move_category, methods=["POST"], name="api_settings_move"),
     Route("/categories/remove", _remove_category, methods=["POST"], name="api_settings_remove"),
+    Route("/people", _listed_people, name="api_settings_people"),
+    Route("/currencies", _currencies, name="api_settings_currencies"),
+    Route("/logos", _listed_logos, name="api_settings_logos"),
 ]

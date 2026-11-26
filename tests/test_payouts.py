@@ -121,11 +121,33 @@ def test_holdings_are_grouped_by_counterparty_what_paid_the_most_first(
             amounts("180", "0", "-13.50"),
             3,
             date(2026, 6, 15),
+            "stock",
+            None,
         ),
-        # A bill's CUSIP and a fund's ISIN are its symbol: the bill has no name of its own.
-        Holding(CUSIP, CUSIP, CUSIP, None, None, amounts("0", "72"), 1, date(2026, 7, 24)),
+        # A bill's CUSIP and a fund's ISIN are its symbol; the bill carries its maturity.
         Holding(
-            ISIN, "ACME Global Fund", ISIN, None, None, amounts("50", "0"), 1, date(2026, 4, 10)
+            CUSIP,
+            CUSIP,
+            CUSIP,
+            None,
+            None,
+            amounts("0", "72"),
+            1,
+            date(2026, 7, 24),
+            "bill",
+            date(2026, 7, 24),
+        ),
+        Holding(
+            ISIN,
+            "ACME Global Fund",
+            ISIN,
+            None,
+            None,
+            amounts("50", "0"),
+            1,
+            date(2026, 4, 10),
+            "fund",
+            None,
         ),
         # Rows that name nothing are the account's.
         Holding(
@@ -349,3 +371,32 @@ def test_interest_charged_is_no_payout() -> None:
     assert shown.totals == amounts("0", "20")
     [holding] = shown.holdings
     assert (holding.paid, holding.count) == (amounts("0", "20"), 1)
+
+
+def test_duplicate_instrument_symbols_keep_name_and_maturity() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    span = (date(2026, 1, 1), date(2026, 8, 31))
+    rows = [
+        paid("10", date(2026, 3, 15), "1", "ACME", **DIVIDEND, **USD),
+        paid("25", date(2026, 7, 24), "2", CUSIP, **INTEREST, **USD),
+    ]
+    close(connection, OWNER, span, span[1], ("ibkr", rows))
+    # First entry lacks a name/maturity; second supplies it under another currency.
+    store.ensure_currency(connection, "EUR")
+    store.instrument_id(connection, "acme", "Stocks", "EUR")
+    store.instrument_id(connection, "ACME", "Stocks", "USD", name="ACME Corp")
+    store.instrument_id(connection, CUSIP, "Bonds", "EUR")
+    store.instrument_id(connection, CUSIP, "Bonds", "USD", date(2026, 7, 24))
+    store.set_rate(connection, date(2026, 1, 1), "USD", Decimal("1.00"), source="fetched:yahoo")
+    shown = his(connection, currency="CHF")
+    named = payouts.named_instruments(connection)
+    connection.close()
+    assert named["ACME"] == ("ACME", "ACME Corp")
+    by_key = {holding.key: holding for holding in shown.holdings}
+    assert (by_key["ACME"].symbol, by_key["ACME"].name, by_key["ACME"].type) == (
+        "ACME",
+        "ACME Corp",
+        "stock",
+    )
+    assert (by_key[CUSIP].type, by_key[CUSIP].maturity) == ("bill", date(2026, 7, 24))
