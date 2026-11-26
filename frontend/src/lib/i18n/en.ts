@@ -549,6 +549,8 @@ export const en = {
 	'holdings.byAccount': 'By account',
 
 	'bills.title': 'Bills by maturity',
+	'bills.name': 'T-bill',
+	'bills.nameDue': 'T-bill {date}',
 	'bills.matured': 'matured',
 	'bills.today': 'today',
 	'bills.inDays': 'in {days} days',

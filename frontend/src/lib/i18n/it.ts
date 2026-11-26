@@ -558,6 +558,8 @@ export const it: Messages = {
 	'holdings.byAccount': 'Per conto',
 
 	'bills.title': 'Titoli per scadenza',
+	'bills.name': 'Buono del Tesoro',
+	'bills.nameDue': 'Buono del Tesoro {date}',
 	'bills.matured': 'scaduto',
 	'bills.today': 'oggi',
 	'bills.inDays': 'tra {days} giorni',
