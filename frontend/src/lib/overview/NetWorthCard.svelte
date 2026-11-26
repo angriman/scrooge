@@ -15,6 +15,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 
 <script lang="ts">
 	import NetWorthChart, { type Day } from '#lib/charts/NetWorthChart.svelte';
+	import { netWorthChartLabel } from '#lib/charts/netWorth.js';
 	import { addDays, day } from '#lib/format/date.js';
 	import { money, short, sum } from '#lib/format/number.js';
 	import { joinList, t } from '#lib/i18n/index.svelte.js';
@@ -111,6 +112,18 @@ headline and the legend. The chart can give way to a table of the month-ends.
 				? t('overview.without', { title, excluded: joinList([...hidden].map(nameOf)) })
 				: joinList(parts.map((part) => nameOf(part.name)))
 	);
+	const firstShownDay = $derived(
+		series.first ? addDays(series.first, back === null ? 0 : Math.max(0, last - back)) : null
+	);
+	const chartLabel = $derived(
+		netWorthChartLabel(
+			shownTitle,
+			by,
+			parts.length > 0 && hidden.size <= parts.length,
+			firstShownDay,
+			lastDay
+		)
+	);
 
 	const views = $derived([
 		{ value: 'chart' as const, label: t('overview.chart') },
@@ -199,6 +212,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 			{nameOf}
 			{back}
 			{hidden}
+			label={chartLabel}
 			bind:hovered
 			class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-1"
 		/>

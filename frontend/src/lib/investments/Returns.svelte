@@ -107,9 +107,9 @@ worth in each benchmark, and the same figures account by account.
 <section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="returned">
 	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
 		<div>
-			<p id="returned" class="text-small text-ink-secondary">
+			<h1 id="returned" class="text-small text-ink-secondary">
 				{t('overview.twrSpan', { span })}
-			</p>
+			</h1>
 			{#if totals.twr === null}
 				<p class="mt-1 text-title text-ink-muted">{t('investments.notInvested')}</p>
 			{:else}

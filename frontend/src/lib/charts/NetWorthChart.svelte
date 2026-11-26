@@ -31,6 +31,8 @@ reader is already looking, in the headline and the legend.
 		hidden?: ReadonlySet<string>;
 		/** The day under the pointer, null when there is none. */
 		hovered?: Day | null;
+		/** Screen-reader name for the chart figure. */
+		label?: string;
 		class?: string;
 	}
 
@@ -42,6 +44,7 @@ reader is already looking, in the headline and the legend.
 		back,
 		hidden = new Set(),
 		hovered = $bindable(null),
+		label = t('chart.netWorth'),
 		class: className
 	}: Props = $props();
 
@@ -117,6 +120,7 @@ reader is already looking, in the headline and the legend.
 		grid={{ x: false, y: true }}
 		rule={false}
 		props={{
+			svg: { 'aria-label': label },
 			area: { fillOpacity: 1, line: { strokeWidth: 1.25, class: 'stroke-panel' } },
 			// A few months or less: its ticks are days, which a month's name would repeat.
 			xAxis: {
