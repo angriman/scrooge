@@ -41,7 +41,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 from typing import TypeVar
 
 from scrooge import query
@@ -114,23 +114,45 @@ class NetWorth:
     # after the first day of all. Net worth rises by it without anything having been earned: a
     # change over days that takes it out is what moved.
     arrivals: tuple[Line, ...] = ()
+    # The same lines before rounding to the cent, so `total`, `arrived` and `by` round once from
+    # the exact converted sums instead of adding up already-rounded lines.
+    _exact: tuple[Line, ...] = field(default=(), repr=False, compare=False)
+    _exact_arrivals: tuple[Line, ...] = field(default=(), repr=False, compare=False)
 
     @property
     def total(self) -> tuple[Decimal, ...]:
-        return _added(line.values for line in self.lines) or (Decimal(0),) * len(self.days)
+        source = self._exact or self.lines
+        if not source:
+            return (Decimal(0),) * len(self.days)
+        return tuple(value.quantize(_CENT) for value in _added(line.values for line in source))
 
     @property
     def arrived(self) -> tuple[Decimal, ...]:
         """What came into view each day, everyone and every asset together."""
-        return _added(line.values for line in self.arrivals) or (Decimal(0),) * len(self.days)
+        source = self._exact_arrivals or self.arrivals
+        if not source:
+            return (Decimal(0),) * len(self.days)
+        return tuple(value.quantize(_CENT) for value in _added(line.values for line in source))
 
     def by(self, attribute: str, *, arrivals: bool = False) -> dict[str, tuple[Decimal, ...]]:
         """The lines (their arrivals) added up by "owner", "asset" or "liquidity", in the order
-        they are listed."""
+        they are listed, shared out to the cent so that they add up to `total` (`arrived`)."""
+        source = (
+            (self._exact_arrivals or self.arrivals) if arrivals else (self._exact or self.lines)
+        )
         groups: dict[str, list[tuple[Decimal, ...]]] = {}
-        for line in self.arrivals if arrivals else self.lines:
+        for line in source:
             groups.setdefault(getattr(line, attribute), []).append(line.values)
-        return {name: _added(values) for name, values in groups.items()}
+        if not groups:
+            return {}
+        names = list(groups)
+        added = [_added(values) for values in groups.values()]
+        if not added[0]:
+            return dict.fromkeys(names, ())
+        shared = zip(
+            *(shared_out(day_values) for day_values in zip(*added, strict=True)), strict=True
+        )
+        return dict(zip(names, shared, strict=True))
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +179,19 @@ def before(values: Sequence[Decimal], days: int) -> Decimal | None:
 
 def _added(series: Iterable[Sequence[Decimal]]) -> tuple[Decimal, ...]:
     return tuple(sum(values, Decimal(0)) for values in zip(*series, strict=True))
+
+
+def shared_out(exact: Sequence[Decimal], step: Decimal = _CENT) -> list[Decimal]:
+    """`exact` to the `step` (the cent unless asked), so that the parts add up to their
+    rounded sum: each is rounded down, and the steps that misses go to those that lost the
+    most (the largest remainders)."""
+    whole = sum(exact, Decimal(0)).quantize(step)
+    parts = [value.quantize(step, rounding=ROUND_FLOOR) for value in exact]
+    missing = int((whole - sum(parts, Decimal(0))) / step)
+    lost_most = sorted(range(len(exact)), key=lambda n: parts[n] - exact[n])
+    for n in lost_most[:missing]:
+        parts[n] += step
+    return parts
 
 
 # ----------------------------------------------------------------------------------------
@@ -819,20 +854,31 @@ def worth_of(
         native[index] = series.arrival[1]
         came[key].append(convert(native, series.currency, currency, rates))
 
-    def ordered(groups: Mapping[tuple[str, str, str], list[list[Decimal]]]) -> tuple[Line, ...]:
-        return tuple(
-            Line(owner_name, asset, tuple(value.quantize(_CENT) for value in _added(parts)), reach)
-            for (owner_name, asset, reach), parts in sorted(
-                groups.items(),
-                key=lambda item: (
-                    item[0][0],
-                    ASSETS.index(item[0][1]),
-                    LIQUIDITY.index(item[0][2]),
-                ),
+    def ordered(
+        groups: Mapping[tuple[str, str, str], list[list[Decimal]]],
+    ) -> tuple[tuple[Line, ...], tuple[Line, ...]]:
+        rounded: list[Line] = []
+        exact: list[Line] = []
+        for (owner_name, asset, reach), parts in sorted(
+            groups.items(),
+            key=lambda item: (
+                item[0][0],
+                ASSETS.index(item[0][1]),
+                LIQUIDITY.index(item[0][2]),
+            ),
+        ):
+            values = _added(parts)
+            rounded.append(
+                Line(owner_name, asset, tuple(value.quantize(_CENT) for value in values), reach)
             )
-        )
+            exact.append(Line(owner_name, asset, values, reach))
+        return tuple(rounded), tuple(exact)
 
-    return NetWorth(currency, valued.days, ordered(sums), valued.notes, ordered(came))
+    lines, exact_lines = ordered(sums)
+    arrivals, exact_arrivals = ordered(came)
+    return NetWorth(
+        currency, valued.days, lines, valued.notes, arrivals, exact_lines, exact_arrivals
+    )
 
 
 def frozen_notes(conn: sqlite3.Connection, frozen: Iterable[FrozenAccount]) -> list[str]:

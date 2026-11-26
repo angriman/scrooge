@@ -1306,3 +1306,34 @@ def test_shares_bought_on_the_first_day_do_not_arrive_with_those_held(
     result = networth.run(conn, currency="USD")
     etfs = result.by("asset", arrivals=True)[ETFS]
     assert etfs[(day(1) - result.days[0]).days] == D("550.00")
+
+
+def test_total_and_cuts_round_once_from_exact_sums_regardless_of_frozen(
+    conn: sqlite3.Connection,
+) -> None:
+    # 1112 CHF at 0.94 CHF/EUR = 1182.978723... -> 1182.98 rounded once.
+    # Rounding each (owner, asset) line independently gave 1182.97.
+    close(
+        conn,
+        account("migros", "Migros", "CHF", "1004"),
+        account("revolut", "Revolut CHF", "CHF", "4"),
+        account("swisscard", "Swisscard", "CHF", "-4"),
+    )
+    close(
+        conn,
+        account("migros", "Migros", "CHF", "104"),
+        account("revolut", "Revolut CHF", "CHF", "4"),
+        owner=PARTNER,
+    )
+    rate(conn, "EUR", day(1), "0.94")
+    plain = networth.run(conn, currency="EUR")
+    frozen = networth.run(conn, currency="EUR", frozen=[networth.FrozenAccount("Migros", OWNER)])
+    assert plain.total[-1] == frozen.total[-1] == D("1182.98")
+    assert plain.by("asset") == frozen.by("asset")
+    assert plain.by("owner") == frozen.by("owner")
+    for worth in (plain, frozen):
+        for attr in ("asset", "owner", "liquidity"):
+            parts = worth.by(attr).values()
+            assert tuple(sum(values) for values in zip(*parts, strict=True)) == worth.total
+    empty = networth.NetWorth("EUR", (), (networth.Line(OWNER, CASH, ()),), ())
+    assert empty.by("asset") == {CASH: ()}

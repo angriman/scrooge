@@ -10,13 +10,17 @@ import {
 	fileNote,
 	fileTitle,
 	matchesName,
+	moveTargets,
 	moved,
+	movedTo,
 	ruleKey,
 	testQuery
 } from './rules.js';
 
 const own: RulesFile = { key: 'rules.lukas.yaml', owner: 'Lukas' };
+const anna: RulesFile = { key: 'rules.anna.yaml', owner: 'Anna' };
 const shared: RulesFile = { key: 'rules.yaml', owner: null };
+const extraShared: RulesFile = { key: 'more/rules.yaml', owner: null };
 
 const rule = (file: RulesFile, position: number, match = 'KONSUM'): Rule => ({
 	file: file.key,
@@ -43,11 +47,13 @@ describe('byFile', () => {
 });
 
 describe('names', () => {
-	it('says whose a file is', () => {
+	it('says whose a file is without showing internal YAML filenames', () => {
 		expect(fileTitle(own)).toBe("Lukas's own rules");
 		expect(fileTitle(shared)).toBe('Shared rules');
-		expect(fileNote(own)).toContain('tried before the shared rules');
-		expect(fileNote(shared)).toBe("rules.yaml: for everybody's rows.");
+		expect(fileNote(own)).toBe("For rows of Lukas's accounts, tried before the shared rules.");
+		expect(fileNote(own)).not.toContain('rules.lukas.yaml');
+		expect(fileNote(shared)).toBe("For everybody's rows.");
+		expect(fileNote(shared)).not.toContain('rules.yaml');
 	});
 
 	it('says the direction and the matches in words', () => {
@@ -70,7 +76,10 @@ describe('names', () => {
 		try {
 			expect(fileTitle(own)).toBe('Regole personali di Lukas');
 			expect(fileTitle(shared)).toBe('Regole condivise');
-			expect(fileNote(shared)).toBe('rules.yaml: per i movimenti di tutti.');
+			expect(fileNote(own)).toBe('Per i conti di Lukas, valutate prima delle regole condivise.');
+			expect(fileNote(own)).not.toContain('rules.lukas.yaml');
+			expect(fileNote(shared)).toBe('Per i movimenti di tutti.');
+			expect(fileNote(shared)).not.toContain('rules.yaml');
 			expect(directionName('in')).toBe('in entrata');
 			expect(matchesName(1)).toBe('abbinerebbe 1 movimento');
 			expect(matchesName(5)).toBe('abbinerebbe 5 movimenti');
@@ -108,6 +117,41 @@ describe('moved', () => {
 			beside: 'v1'
 		});
 		expect(moved(rule(shared, 2), 1, undefined).beside).toBe('');
+	});
+});
+
+describe('moveTargets and movedTo', () => {
+	it('picks valid destination files for single-person and owner-filtered lists', () => {
+		const files = [own, shared];
+		expect(moveTargets(rule(shared, 1), files)).toEqual([own]);
+		expect(moveTargets(rule(own, 1), files)).toEqual([shared]);
+	});
+
+	it('picks personal targets for shared rules and shared plus other personal files for own rules', () => {
+		const files = [own, anna, shared];
+		expect(moveTargets(rule(shared, 1), files)).toEqual([own, anna]);
+		expect(moveTargets(rule(own, 1), files)).toEqual([shared, anna]);
+		expect(moveTargets(rule(anna, 1), files)).toEqual([shared, own]);
+	});
+
+	it('deduplicates multiple shared files to the primary shared file', () => {
+		const files = [own, anna, shared, extraShared];
+		expect(moveTargets(rule(shared, 1), files)).toEqual([own, anna]);
+		expect(moveTargets(rule(extraShared, 1), files)).toEqual([own, anna]);
+		expect(moveTargets(rule(own, 1), files)).toEqual([shared, anna]);
+	});
+
+	it('returns no targets when there are no people configured', () => {
+		expect(moveTargets(rule(shared, 1), [shared])).toEqual([]);
+	});
+
+	it('builds the /api/settings/rules/file payload', () => {
+		expect(movedTo(rule(shared, 2), 'rules.lukas.yaml')).toEqual({
+			file: 'rules.yaml',
+			position: 2,
+			version: 'v2',
+			to: 'rules.lukas.yaml'
+		});
 	});
 });
 

@@ -174,6 +174,75 @@ def test_a_rule_is_edited_moved_and_removed(site: Site) -> None:
     assert (site.folder / "rules.lukas.yaml").read_text(encoding="utf-8") == "rules:\n"
 
 
+def test_a_rule_is_moved_between_personal_and_shared_files(site: Site) -> None:
+    # Move a shared rule (KONSUM|FRISCHMARKT) to Anna, creating rules.anna.yaml.
+    anna_file = site.folder / "rules.anna.yaml"
+    assert not anna_file.exists()
+    moved_to_anna = _post(site, "rules/file", _rule(site, 3, to="rules.anna.yaml"))
+    assert moved_to_anna.status_code == 200
+    assert moved_to_anna.json() == {"errors": []}
+    assert "KONSUM|FRISCHMARKT" in anna_file.read_text(encoding="utf-8")
+    listed = site.client.get("/api/settings/rules").json()["rules"]
+    anna_rules = [r for r in listed if r["file"] == "rules.anna.yaml"]
+    assert [(r["position"], r["owner"], r["match"], r["matches"]) for r in anna_rules] == [
+        (1, PARTNER, "KONSUM|FRISCHMARKT", 0)
+    ]
+
+    # Move Lukas's personal rule to shared: inserted first, keeping its inline comment.
+    moved_to_shared = _post(site, "rules/file", _rule(site, 0, to="rules.yaml"))
+    assert moved_to_shared.status_code == 200
+    assert moved_to_shared.json() == {"errors": []}
+    assert (site.folder / "rules.lukas.yaml").read_text(encoding="utf-8") == "rules:\n"
+    shared_text = (site.folder / "rules.yaml").read_text(encoding="utf-8")
+    assert "# birthdays\n" in shared_text
+    listed_after = site.client.get("/api/settings/rules").json()["rules"]
+    shared_rules = [r for r in listed_after if r["file"] == "rules.yaml"]
+    assert (shared_rules[0]["position"], shared_rules[0]["match"], shared_rules[0]["matches"]) == (
+        1,
+        "ANNA MEIER",
+        1,
+    )
+
+
+def test_move_rule_file_refuses_bad_requests_and_read_only(site: Site) -> None:
+    sent = _rule(site, 0)
+    assert _post(site, "rules/file", {**sent}).status_code == 400  # missing "to"
+    assert _post(site, "rules/file", {**sent, "to": "rules.bob.yaml"}).status_code == 400
+    assert _post(site, "rules/file", {**sent, "to": 123}).status_code == 400
+    assert _post(site, "rules/file", {**sent, "to": "rules.lukas.yaml"}).status_code == 409
+    assert (
+        _post(site, "rules/file", {**sent, "version": "stale", "to": "rules.yaml"}).status_code
+        == 409
+    )
+
+    payload = {**sent, "to": "rules.yaml"}
+    assert site.client.post("/api/settings/rules/file", json=payload).status_code == 403
+    assert (
+        site.client.post(
+            "/api/settings/rules/file",
+            json=payload,
+            headers={"x-token": site.token, "origin": "https://example.com"},
+        ).status_code
+        == 403
+    )
+    copy = _app(site, read_only=True)
+    assert _post(site, "rules/file", payload, copy).status_code == 403
+    assert _post(site, "rules/file", payload, site.app()).status_code == 404
+    assert "ANNA MEIER" in (site.folder / "rules.lukas.yaml").read_text(encoding="utf-8")
+
+    # Moving a rule that defines a YAML anchor used by another rule rolls back with 409 (not 500).
+    anchored = (
+        "rules:\n"
+        "  - {match: 'KONSUM', category: &food Groceries}\n"
+        "  - {match: 'COOP', category: *food}\n"
+    )
+    (site.folder / "rules.lukas.yaml").write_text(anchored, encoding="utf-8")
+    refused = _post(site, "rules/file", _rule(site, 0, to="rules.yaml"))
+    assert refused.status_code == 409
+    assert refused.json()["errors"][0].startswith("The rules files were left as they were:")
+    assert (site.folder / "rules.lukas.yaml").read_text(encoding="utf-8") == anchored
+
+
 @pytest.mark.parametrize(
     ("sent", "status", "problem"),
     [
