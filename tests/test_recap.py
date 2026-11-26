@@ -81,6 +81,18 @@ def test_what_was_saved_is_also_a_part_of_the_salary(conn: sqlite3.Connection) -
     assert (shown.rate_year, shown.rate_salary_year) == (None, None)
 
 
+def test_a_month_with_next_to_nothing_in_has_no_savings_rate(conn: sqlite3.Connection) -> None:
+    rows = (
+        spent("15", date(2026, 9, 26), kind=Kind.INCOME, category=categories.INTEREST),
+        spent("-1015", date(2026, 9, 10)),
+    )
+    close(conn, account("migros", "Migros", "CHF", "2000", *rows))
+    shown = recap.run(conn, currency="CHF")
+    assert shown is not None
+    assert (shown.income, shown.spent, shown.saved) == (D("15.00"), D("1015.00"), D("-1000.00"))
+    assert (shown.rate, shown.rate_salary) == (None, None)
+
+
 def test_the_month_shown_is_the_last_every_account_covers(conn: sqlite3.Connection) -> None:
     household(conn)
     # October of the bank account alone: the others still end on 30 September.

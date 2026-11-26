@@ -348,6 +348,9 @@ export interface Statements {
 	currency: string;
 	/** Up to this day every monthly account's statements are in. */
 	covered: Day | null;
+	/** What the accounts with a known balance hold together, rounded once to the cent;
+	 * null when none is known. */
+	total: Amount | null;
 	accounts: StatementsAccount[];
 	checks: Check[];
 	errors: string[];
@@ -524,13 +527,13 @@ export interface Saved {
 	income: Amount;
 	spent: Amount;
 	saved: Amount;
-	/** What was saved in percent of income; null without income. */
+	/** What was saved in percent of income; null when next to nothing came in. */
 	rate: Amount | null;
 	/** The share of income from work, in percent. */
 	from_work: Amount | null;
 	/** The income from work, the salary. */
 	work: Amount;
-	/** What was saved in percent of salary; null without salary. */
+	/** What was saved in percent of salary; null when next to nothing came from work. */
 	rate_salary: Amount | null;
 }
 

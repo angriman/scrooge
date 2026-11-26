@@ -346,6 +346,7 @@ def _statements(request: Request) -> Response:
         {
             "currency": asked.currency,
             "covered": wire.day(months.covered(lines)),
+            "total": wire.number(together.total(rows)),
             "accounts": accounts,
             "checks": [wire.check(check) for check in checks],
             "errors": errors,

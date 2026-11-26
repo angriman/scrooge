@@ -63,8 +63,8 @@ the costs could not be loaded, the panel says why in their place.
 					<th scope="col" class="pb-2 text-right font-normal">{t('costs.colCommissions')}</th>
 					<th scope="col" class="pb-2 text-right font-normal">{t('costs.colTaxWithheld')}</th>
 					<th scope="col" class="pb-2 text-right font-normal">{t('overview.total')}</th>
-					<th scope="col" class="hidden pb-2 text-right font-normal sm:table-cell"
-						>{t('costs.colOfWhatPaid')}</th
+					<th scope="col" class="hidden pb-2 pl-3 text-right font-normal sm:table-cell"
+						>{t('costs.colTaxOfWhatPaid')}</th
 					>
 				</tr>
 			</thead>

@@ -14,10 +14,11 @@
 		edited,
 		fileNote,
 		fileTitle,
+		moveTargets,
 		moved,
+		movedTo,
 		ruleKey,
 		seen,
-		stayNote,
 		type Draft
 	} from '#lib/settings/rules.js';
 	import type { Rule } from '#lib/types.js';
@@ -57,6 +58,7 @@
 	const save = (rule: Rule, draft: Draft) => change('rules/edit', edited(rule, draft));
 	const move = (rule: Rule, by: -1 | 1, beside: Rule | undefined) =>
 		change('rules/move', moved(rule, by, beside));
+	const moveTo = (rule: Rule, to: string) => change('rules/file', movedTo(rule, to));
 	const removeRule = (rule: Rule) => change('rules/remove', seen(rule));
 	const add = (name: string, side: string, group: string) =>
 		change('categories/add', { name, side, group });
@@ -115,7 +117,6 @@
 				title={t('settings.rulesTitle')}
 				note={owner ? t('settings.rulesNoteOwner', { owner }) : t('settings.rulesNoteAll')}
 			>
-				{#if rules.editable}<p class="mb-3 text-small text-ink-secondary">{stayNote()}</p>{/if}
 				{#each rules.errors as error (error)}
 					<p class="mb-2 text-small text-caution" role="status">{error}</p>
 				{/each}
@@ -136,11 +137,13 @@
 										<RuleRow
 											{rule}
 											leaves={rules.leaves}
+											targets={moveTargets(rule, rules.files)}
 											editable={rules.editable}
 											first={index === 0}
 											last={index === group.rules.length - 1}
 											onsave={(draft) => save(rule, draft)}
 											onmove={(by) => move(rule, by, group.rules[index + by])}
+											onmoveto={(to) => moveTo(rule, to)}
 											onremove={() => removeRule(rule)}
 											ontry={tryPattern}
 										/>

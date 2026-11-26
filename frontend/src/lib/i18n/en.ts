@@ -53,8 +53,7 @@ export const en = {
 	'bridge.newAccounts': 'New accounts',
 	'bridge.marketsShort': 'Markets',
 	'bridge.marketsAndOther': 'Markets and other',
-	'bridge.ariaLabel':
-		'From {before} on {from}: income {income}, spending {spending}, markets and other {other}, to {after} on {to}',
+	'bridge.ariaLabel': 'From {before} on {from}: {steps}, to {after} on {to}',
 
 	'range.1m': '1M',
 	'range.3m': '3M',
@@ -305,6 +304,7 @@ export const en = {
 	'cashflow.onYearBefore': 'on the same months a year before',
 	'cashflow.ofSalaryAfter': 'of salary',
 	'cashflow.shortfallNote': 'Savings, or money from earlier, made up the difference.',
+	'cashflow.littleCameIn': 'Next to nothing came in over these months.',
 	'cashflow.nothingCameIn': 'Nothing came in over these months.',
 	'cashflow.cameIn': 'Came in',
 	'cashflow.wentOut': 'Went out',
@@ -468,12 +468,12 @@ export const en = {
 	'costs.colYear': 'Year',
 	'costs.colCommissions': 'Commissions',
 	'costs.colTaxWithheld': 'Tax withheld',
-	'costs.colOfWhatPaid': 'Of what was paid',
+	'costs.colTaxOfWhatPaid': 'Tax, of what was paid',
 	'costs.soFar': 'so far',
 	'costs.allYears': 'All years',
 	'costs.byAccountEveryYear': 'By account, every year',
 	'costs.footnote':
-		'Commissions are those charged on broker and pension accounts; a bank’s fees, of the same category, are left out. From a tablet’s width on, the tax withheld is also in percent of the dividends and interest paid that year, before tax. Rows in a currency left out for want of a rate still show in the transactions a figure opens.',
+		'Commissions are those charged on broker and pension accounts; a bank’s fees, of the same category, are left out. The tax withheld is also in percent of the dividends and interest paid that year, before tax. Rows in a currency left out for want of a rate still show in the transactions a figure opens.',
 
 	'pensions.12m': '12 months',
 	'pensions.ytd': 'This year',
@@ -784,8 +784,6 @@ export const en = {
 		"Those tried on {owner}'s rows, in the order they are tried: the first that matches gives the category.",
 	'settings.rulesNoteAll':
 		'In the order they are tried: the first that matches gives the category.',
-	'settings.stayNote':
-		"A rule moves up or down within its file only: to make a person's rule a shared one, or the other way round, change the files themselves.",
 	'settings.noRulesFiles': 'This app has no rules files to show.',
 	'settings.noRulesYet':
 		'No rules yet: choosing a category on Import or Transactions with “remember” adds them.',
@@ -812,8 +810,8 @@ export const en = {
 	'settings.unmatchedHint': 'for rows no rule matches',
 	'settings.ownRulesTitle': "{owner}'s own rules",
 	'settings.sharedRulesTitle': 'Shared rules',
-	'settings.ownRulesNote': "{file}: for rows of {owner}'s accounts, tried before the shared rules.",
-	'settings.sharedRulesNote': "{file}: for everybody's rows.",
+	'settings.ownRulesNote': "For rows of {owner}'s accounts, tried before the shared rules.",
+	'settings.sharedRulesNote': "For everybody's rows.",
 	'settings.dirIn': 'money in',
 	'settings.dirOut': 'money out',
 	'settings.dirBoth': 'in and out',
@@ -835,6 +833,11 @@ export const en = {
 	'settings.tryPatternTitle': 'Try its pattern',
 	'settings.editRuleAria': 'Edit the rule {match}',
 	'settings.edit': 'Edit',
+	'settings.moveRuleAria': 'Move {match} to another rules list',
+	'settings.moveRuleTitle': 'Move between personal and shared rules',
+	'settings.moveRuleTo': 'Move {match} to',
+	'settings.moveRuleToAria': 'Where to move {match}',
+	'settings.chooseRulePlace': 'Choose where',
 	'settings.moveUpAria': 'Move {match} up',
 	'settings.moveDownAria': 'Move {match} down',
 	'settings.triedEarlierTitle': 'Tried earlier',
