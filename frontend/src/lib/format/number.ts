@@ -74,18 +74,31 @@ export function signed(text: string, places = 2): string {
 	return write(round(read(text), places, 'half-even'), 'always');
 }
 
-/** `850`, `12.3k`, `1.2M`: an amount at a glance, half up; the exact one is beside it. */
-export function short(text: string): string {
+function compact(text: string, trimZero: boolean): string {
 	const value = read(text);
 	const whole = round(value, 0, 'half-up');
 	if (whole.units < 1000n) {
 		return write(whole);
 	}
+	const format = (scaled: Exact, suffix: string) => {
+		const written = write(scaled);
+		return `${trimZero ? written.replace(/\.0$/, '') : written}${suffix}`;
+	};
 	const thousands = round(shifted(value, 3), 1, 'half-up');
 	if (thousands.units < 10_000n) {
-		return `${write(thousands)}k`;
+		return format(thousands, 'k');
 	}
-	return `${write(round(shifted(value, 6), 1, 'half-up'))}M`;
+	return format(round(shifted(value, 6), 1, 'half-up'), 'M');
+}
+
+/** `850`, `12.3k`, `1.2M`: an amount at a glance, half up; the exact one is beside it. */
+export function short(text: string): string {
+	return compact(text, false);
+}
+
+/** `850`, `10k`, `12.5k`, `1M`: a compact axis tick, dropping a trailing `.0`. */
+export function shortTick(text: string): string {
+	return compact(text, true);
 }
 
 /** `+12.3k`, `−850`: a change at a glance. */

@@ -92,6 +92,11 @@ export function monthOf(date: Date, language: Language = getLanguage()): string 
 	return `${MONTHS[language][date.getMonth()]} ${date.getFullYear()}`;
 }
 
+/** `Aug`, `Sep`, and `Jan 2027` on January: a chart's month tick, naming the year once a year. */
+export function monthTickOf(date: Date, language: Language = getLanguage()): string {
+	return date.getMonth() === 0 ? monthOf(date, language) : MONTHS[language][date.getMonth()];
+}
+
 /** `5 Nov`, of a local midnight such as a chart's tick. */
 export function dayOf(date: Date, language: Language = getLanguage()): string {
 	return `${date.getDate()} ${MONTHS[language][date.getMonth()]}`;

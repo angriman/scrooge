@@ -8,6 +8,7 @@ import {
 	month,
 	monthName,
 	monthOf,
+	monthTickOf,
 	toDate,
 	weekday
 } from './date.js';
@@ -33,6 +34,10 @@ describe('days', () => {
 		]);
 		expect(monthOf(date)).toBe('Oct 2026');
 		expect(dayOf(date)).toBe('1 Oct');
+		expect(monthTickOf(toDate('2026-08-01'))).toBe('Aug');
+		expect(monthTickOf(toDate('2026-09-01'))).toBe('Sep');
+		expect(monthTickOf(toDate('2026-12-01'))).toBe('Dec');
+		expect(monthTickOf(toDate('2027-01-01'))).toBe('Jan 2027');
 	});
 
 	it('names a month written as the API writes it', () => {
@@ -61,6 +66,10 @@ describe('a day in a list of days', () => {
 		expect(day('2026-09-30', 'it')).toBe('30 Set 2026');
 		expect(dayOfYear('2026-05-01', 'it')).toBe('1 Mag');
 		expect(month('2026-08-14', 'it')).toBe('Ago 2026');
+		expect(monthTickOf(toDate('2026-08-01'), 'it')).toBe('Ago');
+		expect(monthTickOf(toDate('2026-09-01'), 'it')).toBe('Set');
+		expect(monthTickOf(toDate('2026-12-01'), 'it')).toBe('Dic');
+		expect(monthTickOf(toDate('2027-01-01'), 'it')).toBe('Gen 2027');
 		expect(monthName('2026-10', 'it')).toBe('Ottobre 2026');
 		expect(weekday('2026-09-15', 2026, 'it')).toBe('Mar 15 Set');
 	});
