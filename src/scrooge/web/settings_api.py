@@ -141,18 +141,24 @@ def _text(sent: dict[str, object], name: str) -> str:
     return value
 
 
-def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
-    """The rule a change is about: its file, its place there, and its lines as shown."""
-    key, position = _text(sent, "file"), sent.get("position")
+def _file(request: Request, key: str) -> settings.RulesFile:
+    """The configured rules file named `key`, or an error when none has that key."""
     files = settings.rule_files(_shared(request), _people(request), None)
-    path = next((file.path for file in files if file.key == key), None)
-    if path is None:
+    found = next((file for file in files if file.key == key), None)
+    if found is None:
         msg = f"There is no rules file {key or 'named'} here."
         raise _UnreadableError(msg)
+    return found
+
+
+def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
+    """The rule a change is about: its file, its place there, and its lines as shown."""
+    file = _file(request, _text(sent, "file"))
+    position = sent.get("position")
     if not isinstance(position, int) or isinstance(position, bool):
         msg = "Send the place of the rule in its file as a number."
         raise _UnreadableError(msg)
-    return settings.Seen(path, position, _text(sent, "version"))
+    return settings.Seen(file.path, position, _text(sent, "version"))
 
 
 async def _edit_rule(request: Request) -> Response:
@@ -189,6 +195,24 @@ async def _move_rule(request: Request) -> Response:
         steps = by if isinstance(by, int) and not isinstance(by, bool) else 0
         beside = _text(sent, "beside")
         settings.move_rule(_seen(request, sent), steps, beside, _categories_file(request))
+
+    return await _change(request, act)
+
+
+async def _move_rule_file(request: Request) -> Response:
+    """Move a rule to another rules file: `{"file", "position", "version", "to"}`. Moving to
+    the shared rules puts it first so it comes ahead of catch-all rules; moving to a person's
+    own rules puts it last, after their existing overrides and before the shared ones."""
+
+    def act(sent: dict[str, object]) -> None:
+        seen = _seen(request, sent)
+        target = _file(request, _text(sent, "to"))
+        settings.move_rule_to(
+            seen,
+            target.path,
+            _categories_file(request),
+            first=target.owner is None,
+        )
 
     return await _change(request, act)
 
@@ -309,6 +333,7 @@ routes = [
     Route("/rules/edit", _edit_rule, methods=["POST"], name="api_settings_rules_edit"),
     Route("/rules/remove", _remove_rule, methods=["POST"], name="api_settings_rules_remove"),
     Route("/rules/move", _move_rule, methods=["POST"], name="api_settings_rules_move"),
+    Route("/rules/file", _move_rule_file, methods=["POST"], name="api_settings_rules_file"),
     Route("/categories", _listed_categories, name="api_settings_categories"),
     Route("/categories/add", _add_category, methods=["POST"], name="api_settings_add"),
     Route("/categories/rename", _rename_category, methods=["POST"], name="api_settings_rename"),

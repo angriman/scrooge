@@ -362,6 +362,126 @@ def test_a_rule_moves_one_place_within_its_file(
         _move(places, position, by, None)
 
 
+@pytest.mark.usefixtures("conn")
+def test_move_rule_to_moves_between_shared_and_personal_files(places: settings.Places) -> None:
+    shared, lukas, anna = places.rule_files[2], places.rule_files[0], places.rule_files[1]
+    assert not anna.exists()
+
+    # Shared -> existing personal file (appended at end, keeping inline comment).
+    settings.move_rule_to(_seen(places, 1, shared), lukas, places.categories_file, first=False)
+    assert lukas.read_text(encoding="utf-8") == (
+        "rules:\n"
+        "  - {match: 'Anna Meier', category: Prestiti}\n"
+        "  - {match: 'KONSUM', category: Groceries}  # food\n"
+    )
+    assert "KONSUM" not in shared.read_text(encoding="utf-8")
+    assert "# --- Shops" in shared.read_text(encoding="utf-8")
+
+    # Shared -> missing personal file (creates rules.anna.yaml).
+    settings.move_rule_to(_seen(places, 2, shared), anna, places.categories_file, first=False)
+    assert anna.read_text(encoding="utf-8") == (
+        "rules:\n  - {match: 'ACME', category: Salary, direction: in}\n"
+    )
+
+    # Personal -> shared (first, ahead of section comments; removing last rule leaves rules:).
+    settings.move_rule_to(_seen(places, 1, anna), shared, places.categories_file, first=True)
+    assert anna.read_text(encoding="utf-8") == "rules:\n"
+    assert shared.read_text(encoding="utf-8").startswith(
+        "# Rules both share.\nrules:\n"
+        "  - {match: 'ACME', category: Salary, direction: in}\n"
+        "  # --- Shops\n"
+    )
+
+
+def test_move_rule_to_moves_commented_block_rule_whole(places: settings.Places) -> None:
+    shared, lukas = _shared(places), _own(places)
+    shared.write_text(
+        "rules:\n  - match: ACME  # employer\n    category: Salary\n    account: Migros\n",
+        encoding="utf-8",
+    )
+    lukas.write_text("rules:\n", encoding="utf-8")
+    settings.move_rule_to(_seen(places, 1, shared), lukas, None, first=False)
+    assert shared.read_text(encoding="utf-8") == "rules:\n"
+    assert lukas.read_text(encoding="utf-8") == (
+        "rules:\n  - match: ACME  # employer\n    category: Salary\n    account: Migros\n"
+    )
+
+
+def test_move_rule_to_rolls_back_both_files_and_unlinks_new_target_on_load_error(
+    places: settings.Places,
+) -> None:
+    shared, anna = _shared(places), places.rule_files[1]
+    broken = "rules:\n  - {match: 'KONSUM', category: Groceries, kind: nonsense}\n"
+    shared.write_text(broken, encoding="utf-8")
+    assert not anna.exists()
+    with pytest.raises(settings.SettingsError, match="left as they were"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None, first=False)
+    assert shared.read_text(encoding="utf-8") == broken
+    assert not anna.exists()
+
+
+def test_move_rule_to_rolls_back_on_yaml_error_from_dangling_alias(
+    places: settings.Places,
+) -> None:
+    shared, anna = _shared(places), places.rule_files[1]
+    anchored = (
+        "rules:\n"
+        "  - {match: 'KONSUM', category: &food Groceries}\n"
+        "  - {match: 'COOP', category: *food}\n"
+    )
+    shared.write_text(anchored, encoding="utf-8")
+    assert not anna.exists()
+    with pytest.raises(settings.SettingsError, match="left as they were"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None, first=False)
+    assert shared.read_text(encoding="utf-8") == anchored
+    assert not anna.exists()
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_move_rule_to_into_file_starting_with_lone_dash_rule(
+    places: settings.Places, first: bool
+) -> None:
+    shared, lukas = _shared(places), _own(places)
+    shared.write_text("rules:\n  - {match: 'KONSUM', category: Groceries}\n", encoding="utf-8")
+    lukas.write_text("rules:\n  -\n    match: 'POSTA'\n    category: Gifts\n", encoding="utf-8")
+    settings.move_rule_to(_seen(places, 1, shared), lukas, None, first=first)
+    assert shared.read_text(encoding="utf-8") == "rules:\n"
+    matches = [entry.match for entry in rulesfile.read(lukas)[1]]
+    assert matches == (["KONSUM", "POSTA"] if first else ["POSTA", "KONSUM"])
+
+
+def test_move_rule_to_refuses_invalid_moves_without_touching_files(
+    places: settings.Places, tmp_path: Path
+) -> None:
+    shared, lukas, anna = places.rule_files[2], places.rule_files[0], places.rule_files[1]
+    # Same-file move (direct and via symlink).
+    with pytest.raises(settings.SettingsError, match="already in"):
+        settings.move_rule_to(_seen(places, 1, shared), shared, None)
+    link = tmp_path / "rules.link.yaml"
+    link.symlink_to(shared)
+    with pytest.raises(settings.SettingsError, match="already in"):
+        settings.move_rule_to(_seen(places, 1, shared), link, None)
+
+    # Stale rule digest.
+    with pytest.raises(settings.SettingsError, match="changed since"):
+        settings.move_rule_to(settings.Seen(shared, 1, "stale"), lukas, None)
+
+    # Lone dash rule.
+    shared.write_text(BLOCKS, encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match="cannot be moved here"):
+        settings.move_rule_to(_seen(places, 3, shared), lukas, None)
+
+    # Malformed destination (invalid YAML and non-mapping root).
+    anna.write_text("rules: [\n", encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match=r"rules\.anna\.yaml"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None)
+    anna.write_text("- a list\n", encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match="expected a mapping"):
+        settings.move_rule_to(_seen(places, 1, shared), anna, None)
+    assert shared.read_text(encoding="utf-8") == BLOCKS
+    assert lukas.read_text(encoding="utf-8") == OWN
+
+
 def test_categories_list_the_taxonomy_then_what_is_added(
     conn: sqlite3.Connection, places: settings.Places
 ) -> None:
