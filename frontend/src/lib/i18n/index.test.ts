@@ -18,6 +18,20 @@ describe('i18n', () => {
 		setLanguage('en');
 	});
 
+	test('uses Payouts in English and Proventi in Italian for investments payouts', () => {
+		setLanguage('en');
+		expect(t('overview.incomeLink')).toBe('Payouts');
+		expect(t('investments.viewIncome')).toBe('Payouts');
+		expect(t('investments.pageTitlePayouts')).toBe('Payouts · scrooge');
+
+		setLanguage('it');
+		expect(t('overview.incomeLink')).toBe('Proventi');
+		expect(t('investments.viewIncome')).toBe('Proventi');
+		expect(t('investments.pageTitlePayouts')).toBe('Proventi · scrooge');
+
+		setLanguage('en');
+	});
+
 	test('keeps English and Italian message keys and placeholders in sync', () => {
 		expect(Object.keys(it).sort()).toEqual(Object.keys(en).sort());
 		const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();

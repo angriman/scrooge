@@ -36,6 +36,7 @@ from scrooge import (
     closing,
     context,
     costs,
+    holding_detail,
     holding_returns,
     holds,
     marketdata,
@@ -245,6 +246,36 @@ def _holdings(request: Request) -> Response:
         found = logos(request, conn)
     shown = wire.holdings(held, returned) if held.day else None
     return JSONResponse({"holdings": shown, "logos": found, "errors": []})
+
+
+def _holding_detail(request: Request) -> Response:
+    """One holding's daily value series in `currency` and latest committed transactions."""
+    asked = forms.holding_detail_view(_asked(request))
+    if asked.errors:
+        return _refused(asked.errors)
+    with db.reading(request.app.state.database) as conn:
+        try:
+            detail = holding_detail.run(
+                conn,
+                symbol=asked.symbol,
+                instrument_currency=asked.instrument_currency,
+                asset=asked.asset,
+                owner=asked.owner,
+                currency=asked.currency,
+                limit=asked.limit,
+            )
+        except query.QueryError as exc:
+            return _refused((wire.sentence(exc),))
+        if detail is None:
+            return JSONResponse({"errors": [f"No holding named {asked.symbol!r}."]}, 404)
+        label = store.category_labels(conn, language=language_of(request))
+        kept = _originals(request, conn, (row.file for row in detail.transactions))
+    errors = (
+        []
+        if detail.series_error is None
+        else [wire.sentence(networth.MissingRateError(detail.series_error))]
+    )
+    return JSONResponse({"detail": wire.holding_detail(detail, label, kept), "errors": errors})
 
 
 def _logos_now(request: Request) -> Response:
@@ -1322,6 +1353,7 @@ routes = [
     Route("/month", _month, name="api_month"),
     Route("/attention", _attention, name="api_attention"),
     Route("/holdings", _holdings, name="api_holdings"),
+    Route("/holdings/detail", _holding_detail, name="api_holding_detail"),
     Route("/logos", _set_logo, methods=["POST"], name="api_set_logo"),
     Route("/logos/remove", _remove_logo, methods=["POST"], name="api_remove_logo"),
     Route("/statements", _statements, name="api_statements"),

@@ -128,11 +128,11 @@ export function returnsQuery(url: Address, range: Range): URLSearchParams {
 	return query;
 }
 
-/** The query of the investments page's income: its range is the last twelve months, as the
+/** The query of the investments page's payouts: its range is the last twelve months, as the
  * card's figure. */
 export function incomeQuery(url: Address): URLSearchParams {
 	const query = pick(url, ['owner', 'currency']);
-	query.set('view', 'income');
+	query.set('view', 'payouts');
 	return query;
 }
 

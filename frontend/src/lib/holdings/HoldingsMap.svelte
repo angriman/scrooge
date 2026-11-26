@@ -43,8 +43,6 @@ much one of them weighs. A tile chosen opens that holding in the list.
 				h: leaf.y1 - leaf.y0
 			}));
 	});
-
-	const label = (holding: HeldInstrument) => mapLabel(holding);
 </script>
 
 <div bind:clientWidth={width} class="relative w-full" style:height="{height}px">
@@ -74,7 +72,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 					<span
 						class={cn('block truncate font-medium text-ink', roomy ? 'text-body' : 'text-caption')}
 					>
-						{label(holding)}
+						{mapLabel(holding)}
 					</span>
 					{#if roomy}
 						<span class="block text-small text-ink-secondary tabular-nums"

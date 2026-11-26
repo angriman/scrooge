@@ -11,7 +11,7 @@
 	import HoldingsList from '#lib/holdings/HoldingsList.svelte';
 	import HoldingsMap from '#lib/holdings/HoldingsMap.svelte';
 	import Spread from '#lib/holdings/Spread.svelte';
-	import { holdingName } from '#lib/holdings/names.js';
+	import { holdingDue, holdingName } from '#lib/holdings/names.js';
 	import { findHolding, holdingKey, holdingParam } from '#lib/holdings/returns.js';
 	import { rangeName, rangePillLabel } from '#lib/cashflow/names.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -30,7 +30,8 @@
 	import Segmented from '#lib/ui/Segmented.svelte';
 	import SidePanel from '#lib/ui/SidePanel.svelte';
 	import Swatch from '#lib/ui/Swatch.svelte';
-	import { detailOf, here, oneOf, setDetail, show } from '#lib/view.js';
+	import { cn } from '#lib/ui/cn.js';
+	import { detailOf, here, setDetail, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -75,19 +76,32 @@
 
 	// What the investments returned, what is held, or what they paid: each view loads its own
 	// figures. An address without a view, as every link to the page had before, shows the
-	// returns.
+	// returns; legacy `view=income` links open Payouts.
 	const views = $derived([
 		{ value: 'performance' as const, label: t('investments.viewPerformance') },
 		{ value: 'holdings' as const, label: t('investments.viewHoldings') },
-		{ value: 'income' as const, label: t('investments.viewIncome') }
+		{ value: 'payouts' as const, label: t('investments.viewIncome') }
 	]);
 	const perfRanges = $derived(returns.rangeOptions());
+	const rawView = $derived(page.url.searchParams.get('view'));
 	const view = $derived(
-		oneOf(page.url, 'view', ['performance', 'holdings', 'income'], 'performance')
+		rawView === 'holdings'
+			? ('holdings' as const)
+			: rawView === 'payouts' || rawView === 'income'
+				? ('payouts' as const)
+				: ('performance' as const)
+	);
+	const pageTitle = $derived(
+		view === 'holdings'
+			? t('investments.pageTitleHoldings')
+			: view === 'payouts'
+				? t('investments.pageTitlePayouts')
+				: t('investments.pageTitlePerformance')
 	);
 	const range = $derived(returns.rangeOf(page.url.searchParams.get('range')));
 	const ranges = $derived(data.income?.ranges ?? []);
 	const chosen = $derived(presetOf(ranges, page.url, DEFAULT_RANGE));
+	const showBills = $derived(Boolean(held && held.ladder.length >= 2 && held.ladder_day));
 
 	const holdingQuery = $derived(detailOf(here(), 'holding'));
 	const chosenHolding = $derived(held ? findHolding(held.holdings, holdingQuery) : null);
@@ -133,7 +147,7 @@
 </script>
 
 <svelte:head>
-	<title>{t('investments.pageTitle')}</title>
+	<title>{pageTitle}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -162,7 +176,7 @@
 			onchange={(value) => show(page.url, { range: value })}
 		/>
 	{/if}
-	{#if view === 'income' && ranges.length}
+	{#if view === 'payouts' && ranges.length}
 		<Segmented
 			label={t('overview.rangeAria')}
 			value={chosen}
@@ -304,11 +318,13 @@
 		{/snippet}
 		{#snippet meta()}
 			{#if panelHolding}
+				{@const display = holdingName(panelHolding)}
+				{@const due = holdingDue(panelHolding)}
 				<span class="flex flex-wrap items-center gap-1.5">
 					<Swatch color={assetColor(panelHolding.asset)} class="size-2 rounded-full" />
 					<span class="text-ink-secondary">{assetName(panelHolding.asset)}</span>
-					{#if holdingName(panelHolding) !== panelHolding.symbol}<span>{panelHolding.symbol}</span
-						>{/if}
+					{#if due}<span class="text-ink-secondary">{due}</span>{/if}
+					{#if display !== panelHolding.symbol}<span>{panelHolding.symbol}</span>{/if}
 					{#if panelHolding.positions.length > 1}
 						<span>{t('holdings.inAccounts', { count: panelHolding.positions.length })}</span>
 					{/if}
@@ -322,17 +338,17 @@
 				currency={held.currency}
 				lastDay={held.day}
 				{people}
+				{owner}
 				token={data.session.read_only ? null : data.session.token}
 				onlogo={() => invalidateAll()}
 			/>
 		{/if}
 	</SidePanel>
-
 	{@render pensionGroup()}
 
-	<div class="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class={cn('mt-10 grid grid-cols-1 gap-4', showBills && 'lg:grid-cols-2')}>
 		<Spread spread={held.spread} largest={held.holdings[0]} currency={held.currency} {people} />
-		{#if held.ladder.length && held.ladder_day}
+		{#if showBills && held.ladder_day}
 			<Bills ladder={held.ladder} from={held.ladder_day} {people} />
 		{/if}
 	</div>
