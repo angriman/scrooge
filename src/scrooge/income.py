@@ -15,6 +15,7 @@ twelve months of income are known: for both people together, twelve of each.
 from __future__ import annotations
 
 import sqlite3
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -58,6 +59,9 @@ class Source:
     leaf: str
     count: int
     total: Decimal
+    monthly: Decimal  # earned per month of the range
+    usual: Decimal | None  # the median month of the twelve before the range
+    year_before: Decimal | None  # earned in the same range a year earlier
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +107,6 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     span = found.span(first, last)
     if span is None:
         return Income(currency, (), (), found.through)
-    start, end = span.start, span.end
     periods = []
     for name, days, inside in found.by_period(span, grouping):
         totals = dict.fromkeys(GROUPS, Decimal(0))
@@ -117,24 +120,76 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
                 _employer(found, span, days),
             )
         )
-    ranks = store.category_ranks(conn)
+    months = analysis.months(span.start, span.end)
+    sources = _sources(found, span, months, store.category_ranks(conn))
+    return Income(currency, tuple(periods), tuple(sources), found.through)
+
+
+def _sources(
+    found: analysis.Rows,
+    span: analysis.Span,
+    months: int,
+    ranks: store.Ranks,
+) -> list[Source]:
     sums: dict[tuple[str, str], tuple[int, Decimal]] = {}
-    for each in found.between(start, end):
+    for each in found.between(span.start, span.end):
         key = (group(each.row), each.row.leaf)
         count, total = sums.get(key, (0, Decimal(0)))
         sums[key] = (count + 1, total + each.amount)
-    sources = sorted(
-        (
-            Source(name, leaf, count, total.quantize(CENT))
-            for (name, leaf), (count, total) in sums.items()
-        ),
+    usual = _usual(found, span)
+    year = _year_before(found, span)
+    nothing = Decimal(0).quantize(CENT)
+    sources = [
+        Source(
+            name,
+            leaf,
+            count,
+            total.quantize(CENT),
+            (total / months).quantize(CENT),
+            None if usual is None else usual.get(leaf, nothing),
+            None if year is None else year.get(leaf, nothing),
+        )
+        for (name, leaf), (count, total) in sums.items()
+    ]
+    # A source that usually comes in and did not in the range is there too, at nothing.
+    seen = {leaf for _, leaf in sums}
+    for leaf, amount in (usual or {}).items():
+        if leaf not in seen and amount > 0:
+            sources.append(
+                Source(
+                    _GROUP_OF.get(leaf, OTHER),
+                    leaf,
+                    0,
+                    nothing,
+                    nothing,
+                    amount,
+                    None if year is None else year.get(leaf, nothing),
+                )
+            )
+    return sorted(
+        sources,
         key=lambda source: (
             GROUPS.index(source.group),
             -source.total,
             ranks.leaf(source.leaf, cashflow.INCOME),
         ),
     )
-    return Income(currency, tuple(periods), tuple(sources), found.through)
+
+
+def _usual(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:
+    """leaf -> the median of what came in during each of the twelve months before the range."""
+    return analysis.usual(found, span.start, lambda each: (each.row.leaf, each.amount))
+
+
+def _year_before(found: analysis.Rows, span: analysis.Span) -> dict[str, Decimal] | None:
+    """leaf -> what came in during the range a year earlier."""
+    before = span.year_before()
+    if before is None:
+        return None
+    sums: dict[str, Decimal] = defaultdict(Decimal)
+    for each in found.between(*before):
+        sums[each.row.leaf] += each.amount
+    return {leaf: total.quantize(CENT) for leaf, total in sums.items()}
 
 
 def _employer(found: analysis.Rows, span: analysis.Span, days: tuple[date, date]) -> Decimal | None:

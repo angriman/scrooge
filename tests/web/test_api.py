@@ -13,8 +13,8 @@ from scrooge import categories, networth, overview, staging
 from scrooge.models import Kind
 from scrooge.storage import db
 from scrooge.web import app as webapp
-from tests.storage.helpers import OCTOBER, OWNER, PARTNER, batch
-from tests.test_income import SALARY
+from tests.storage.helpers import OCTOBER, OWNER, PARTNER, batch, txn
+from tests.test_income import SALARY, salaries
 from tests.test_networth import NOW, account, close, deposit_and_pensions, spent
 from tests.test_overview import household
 from tests.web import builders
@@ -830,6 +830,66 @@ def test_cash_flow_clamps_earlier_year_and_all_when_history_starts_mid_year(tmp_
     # An open-ended `to` within the history clamps its start to the first statement month.
     to_sep = local.get("/api/cashflow", params={"to": "2026-09"}).json()
     assert (to_sep["first"], to_sep["last"]) == ("2025-07-01", "2026-09-30")
+
+
+def test_cash_flow_sources_send_monthly_usual_and_year_before(tmp_path: Path) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, NOW)
+    # 12 months of 2025 salary + 2 months of 2026 (Jan-Feb), plus a cashback in Feb 2026.
+    rows = [
+        *salaries("5000", date(2025, 1, 1), 12),
+        *salaries("6000", date(2026, 1, 1), 2),
+        txn("-100", date=date(2026, 1, 10), source_ref="g1"),
+        txn(
+            "30",
+            date=date(2026, 2, 10),
+            source_ref="cb1",
+            kind=Kind.INCOME,
+            category=categories.CASHBACK,
+        ),
+    ]
+    builders.close(conn, OWNER, (date(2025, 1, 1), date(2026, 2, 28)), ("migros", rows))
+    conn.close()
+    local = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
+
+    ytd = local.get("/api/cashflow", params={"range": "ytd"}).json()["report"]
+    assert ytd["months"] == 2
+    assert ytd["sources"] == [
+        {
+            "group": "Work",
+            "name": "Salary",
+            "count": 2,
+            "total": "12000.00",
+            "monthly": "6000.00",
+            "usual": "5000.00",
+            "year_before": "10000.00",
+        },
+        {
+            "group": "Other",
+            "name": "Cashback",
+            "count": 1,
+            "total": "30.00",
+            "monthly": "15.00",
+            "usual": "0.00",
+            "year_before": "0.00",
+        },
+    ]
+
+    # Before 12 months are known, usual and year_before are null while monthly uses clamped months.
+    early = local.get("/api/cashflow", params={"from": "2024-01", "to": "2025-03"}).json()
+    assert early["first"] == "2025-01-01"
+    assert early["report"]["sources"] == [
+        {
+            "group": "Work",
+            "name": "Salary",
+            "count": 3,
+            "total": "15000.00",
+            "monthly": "5000.00",
+            "usual": None,
+            "year_before": None,
+        },
+    ]
 
 
 def test_a_cash_flow_that_cannot_be_read_is_refused(client: TestClient) -> None:

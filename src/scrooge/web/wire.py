@@ -706,7 +706,15 @@ def cashflow_report(shown: report.Report, label: categories.Labels) -> JSON:
         ],
         "other_merchants": {"count": spent.other_merchants, "spent": number(spent.other_spent)},
         "sources": [
-            {"group": s.group, "name": label(s.leaf), "count": s.count, "total": number(s.total)}
+            {
+                "group": s.group,
+                "name": label(s.leaf),
+                "count": s.count,
+                "total": number(s.total),
+                "monthly": number(s.monthly),
+                "usual": number(s.usual),
+                "year_before": number(s.year_before),
+            }
             for s in earned.sources
         ],
         "as_paid": [
