@@ -3,7 +3,7 @@
 
 import { month as monthOf } from '#lib/format/date.js';
 import { approximate, difference, negate, percentOf, sum } from '#lib/format/number.js';
-import type { Amount, PayingHolding, Payout, PayoutsReport } from '#lib/types.js';
+import type { Amount, PayingHolding, Payout, PayoutsReport, Person } from '#lib/types.js';
 
 /** The colour of dividends and of interest: shades of the colour of a gain, as income wears
  * on the cash flow. */
@@ -103,14 +103,28 @@ export function trailingFrom(through: string): string {
 	return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}-01`;
 }
 
-/** Whether the range shown is the twelve months up to the last day committed, the figures of
- * `trailing`. */
-export function isTrailing(income: Pick<PayoutsReport, 'first' | 'last' | 'through'>): boolean {
-	return (
-		income.through !== null &&
-		income.last === income.through &&
-		income.first === trailingFrom(income.through)
-	);
+/** The first day of the earliest month with statements for `owner`, or for everyone. */
+export function firstStatementMonth(
+	people: readonly Pick<Person, 'name' | 'first'>[],
+	owner: string | null
+): string | null {
+	const firsts = people
+		.filter((person) => person.first !== null && (owner === null || person.name === owner))
+		.map((person) => `${person.first!.slice(0, 7)}-01`);
+	if (!firsts.length) return null;
+	return firsts.reduce((earliest, month) => (month < earliest ? month : earliest));
+}
+
+/** Whether the range shown is the twelve months up to the last day committed (clamped to the
+ * first month with statements, when known), the figures of `trailing`. */
+export function isTrailing(
+	income: Pick<PayoutsReport, 'first' | 'last' | 'through'>,
+	firstMonth: string | null = null
+): boolean {
+	if (income.through === null || income.last !== income.through) return false;
+	const nominal = trailingFrom(income.through);
+	const expected = firstMonth && firstMonth > nominal ? firstMonth : nominal;
+	return income.first === expected;
 }
 
 /** The range shown when none is asked for (`lib/period.ts` picks the one asked). */

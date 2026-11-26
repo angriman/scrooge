@@ -212,6 +212,16 @@ def year_before(day: date) -> date:
     return day.replace(year=before)
 
 
+def since(conn: sqlite3.Connection, owner: str | None) -> date | None:
+    """The first day of the earliest month committed for `owner`, or for everyone."""
+    firsts = [
+        person.first.replace(day=1)
+        for person in query.people(conn)
+        if person.first is not None and owner in (None, person.name)
+    ]
+    return min(firsts, default=None)
+
+
 def through(conn: sqlite3.Connection, owner: str | None) -> date | None:
     """The last day committed for `owner`, or for everyone: the earliest of their last days."""
     lasts = [
