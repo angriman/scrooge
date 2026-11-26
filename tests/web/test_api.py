@@ -813,6 +813,18 @@ def test_cash_flow_clamps_earlier_year_and_all_when_history_starts_mid_year(tmp_
     assert y2025["report"]["months"] == 6
     assert y2025["report"]["categories"][0]["monthly"] == "100.00"
 
+    # A range ending before the first statement month is never inverted.
+    y2024 = local.get("/api/cashflow", params={"from": "2024", "to": "2024"}).json()
+    assert (y2024["first"], y2024["last"], y2024["report"]["totals"]) == (
+        "2024-01-01",
+        "2024-12-31",
+        None,
+    )
+
+    # An open-ended `to` within the history clamps its start to the first statement month.
+    to_sep = local.get("/api/cashflow", params={"to": "2026-09"}).json()
+    assert (to_sep["first"], to_sep["last"]) == ("2025-07-01", "2026-09-30")
+
 
 def test_a_cash_flow_that_cannot_be_read_is_refused(client: TestClient) -> None:
     assert client.get("/api/cashflow", params={"by": "decade"}).status_code == 400

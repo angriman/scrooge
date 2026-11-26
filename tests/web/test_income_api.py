@@ -206,4 +206,15 @@ def test_income_clamps_ranges_to_the_first_statement_month(client: TestClient) -
     earlier = client.get(
         "/api/income", params={"owner": PARTNER, "from": "2025", "to": "2025"}
     ).json()["income"]
-    assert (earlier["months"], earlier["holdings"]) == ([], [])
+    assert (earlier["first"], earlier["last"], earlier["months"], earlier["holdings"]) == (
+        "2025-01-01",
+        "2025-12-31",
+        [],
+        [],
+    )
+
+    to_only_earlier = client.get("/api/income", params={"owner": PARTNER, "to": "2025-12"}).json()[
+        "income"
+    ]
+    assert to_only_earlier["first"] <= to_only_earlier["last"]
+    assert (to_only_earlier["months"], to_only_earlier["holdings"]) == ([], [])

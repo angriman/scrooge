@@ -53,8 +53,8 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     earliest = analysis.since(conn, owner)
     if first is None and last is None and through is not None:
         first = analysis.add_months(through, -11)
-    if first is not None and earliest is not None:
-        first = max(first, earliest)
+    if earliest is not None:
+        first = earliest if first is None else max(first, earliest)
     counted = cashflow.counted(conn, owner)
     prepared = analysis.prepare(conn, counted, currency, through)
     return Report(

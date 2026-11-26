@@ -1009,8 +1009,8 @@ def _cashflow(request: Request) -> Response:
         first, last = asked.first, asked.last
         if first is None and last is None:
             first = _period_start(asked.range or "ytd", through, earliest)
-        elif first is not None and earliest is not None:
-            first = max(first, earliest)
+        elif earliest is not None and (last is None or last >= earliest):
+            first = earliest if first is None else max(first, earliest)
         shown = wire.unless_rate_missing(
             errors,
             lambda: report.run(
@@ -1053,8 +1053,8 @@ def _income(request: Request) -> Response:
         first = asked.first
         if first is None and asked.last is None:
             first = _period_start(asked.range, through, earliest)
-        elif first is not None and earliest is not None:
-            first = max(first, earliest)
+        elif earliest is not None and (asked.last is None or asked.last >= earliest):
+            first = earliest if first is None else max(first, earliest)
         shown = payouts.run(
             conn, first=first, last=asked.last, owner=asked.owner, currency=asked.currency
         )
