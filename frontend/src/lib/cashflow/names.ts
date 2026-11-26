@@ -3,7 +3,6 @@
 import { inOrder } from '#lib/design/data.js';
 import { day } from '#lib/format/date.js';
 import { t } from '#lib/i18n/index.svelte.js';
-import { trailingFrom } from '#lib/investments/income.js';
 
 /** The income groups of `income.GROUPS`, in the order they are stacked. */
 export const GROUPS = ['Work', 'Investments', 'Other'] as const;
@@ -45,29 +44,12 @@ export function rangePillLabel(range: { key?: string; label: string }): string {
 	return range.label;
 }
 
-/** The range as the lead says it: `this year so far`, `the last 12 months`, `2025`; falls back
- * to `since ...` / `from ... to ...` when a preset or year starts after its nominal start. */
-export function rangeName(
-	label: string | null,
-	first: string | null,
-	last: string | null,
-	through: string | null = null
-): string {
-	const clamped = (nominal: string | null) => Boolean(first && nominal && first > nominal);
-	if (label === 'ytd' || label === 'Year to date') {
-		const year = (through ?? first)?.slice(0, 4);
-		if (!clamped(year ? `${year}-01-01` : null)) return t('cashflow.inThisYear');
-	} else if (label === '12m' || label === 'Last 12 months') {
-		if (!clamped(through ? trailingFrom(through) : null)) return t('cashflow.inLast12m');
-	} else if (label === 'all' || label === 'All') {
-		return t('cashflow.inAll');
-	} else if (label) {
-		if (!clamped(/^\d{4}$/.test(label) ? `${label}-01-01` : null)) {
-			return t('cashflow.inYear', { label });
-		}
-	}
-	if (first && last && last !== through) {
-		return t('cashflow.fromTo', { first: day(first), last: day(last) });
-	}
+/** The range as the lead says it: `this year so far`, `the last 12 months`, `2025`. */
+export function rangeName(label: string | null, first: string | null, last: string | null): string {
+	if (label === 'ytd' || label === 'Year to date') return t('cashflow.inThisYear');
+	if (label === '12m' || label === 'Last 12 months') return t('cashflow.inLast12m');
+	if (label === 'all' || label === 'All') return t('cashflow.inAll');
+	if (label) return t('cashflow.inYear', { label });
+	if (first && last) return t('cashflow.fromTo', { first: day(first), last: day(last) });
 	return first ? t('cashflow.sinceDay', { date: day(first) }) : t('cashflow.overMonths');
 }

@@ -670,9 +670,8 @@ def test_a_copy_refuses_every_change(database: Path) -> None:
 
 def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: TestClient) -> None:
     sent = client.get("/api/cashflow").json()
-    # The fixture's statements only cover September 2026, so YTD starts at the first month.
     assert (sent["first"], sent["last"], sent["by"], sent["errors"]) == (
-        "2026-09-01",
+        "2026-01-01",
         None,
         "month",
         [],
@@ -681,11 +680,9 @@ def test_the_cash_flow_is_of_the_year_to_date_unless_a_range_is_asked(client: Te
     assert [r["key"] for r in sent["ranges"]] == ["ytd", "12m"]
     shown = sent["report"]
     assert shown["currency"] == "CHF"
-    assert [period["name"] for period in shown["periods"]] == ["2026-09"]
-    assert shown["months"] == 1
+    assert [period["name"] for period in shown["periods"]][-1] == "2026-09"
     assert shown["periods"][-1]["spent_by"] == {"Food": "120.00"}
     assert [category["name"] for category in shown["categories"]] == ["Food"]
-    assert shown["categories"][0]["monthly"] == "120.00"
     assert shown["totals"]["spent"] == "120.00"
     assert {line["currency"] for line in shown["as_paid"]} <= {"CHF", "EUR", "USD"}
     quarters = client.get("/api/cashflow", params={"by": "quarter", "from": "2026-07"}).json()
@@ -697,139 +694,16 @@ def test_a_period_of_another_page_picks_the_months_of_the_cash_flow(client: Test
         found: str | None = client.get("/api/cashflow", params=params).json()["first"]
         return found
 
-    # Statements only start in September 2026, so every broader range clamps to that month.
+    # The last month committed is September 2026: the period ends with it, months whole.
     assert first(range="1m") == "2026-09-01"
-    assert first(range="3m") == "2026-09-01"
-    assert first(range="1y") == "2026-09-01"
-    assert first(range="ytd") == "2026-09-01"
-    assert first(range="3m", **{"from": "2026-05"}) == "2026-09-01"
+    assert first(range="3m") == "2026-07-01"
+    assert first(range="1y") == "2025-10-01"
+    assert first(range="ytd") == "2026-01-01"
+    # A range asked for by its ends wins over a period.
+    assert first(range="3m", **{"from": "2026-05"}) == "2026-05-01"
     sent = client.get("/api/cashflow").json()
     assert [r["range"] for r in sent["ranges"]] == ["ytd", "1y"]
     assert client.get("/api/cashflow", params={"range": "2w"}).status_code == 400
-
-
-def test_cash_flow_clamps_ranges_to_the_first_statement_month(tmp_path: Path) -> None:
-    path = tmp_path / "scrooge.db"
-    conn = db.connect(path)
-    db.migrate(conn, NOW)
-    # Statements start mid-August and run through September: 2 months in a 9-month YTD range.
-    aug = date(2026, 8, 1)
-    sep = date(2026, 9, 1)
-    close(
-        conn,
-        account(
-            "migros",
-            "Migros",
-            "CHF",
-            "1000",
-            spent("-100", date(2026, 8, 12)),
-            month=aug,
-        ),
-        month=aug,
-    )
-    close(
-        conn,
-        account(
-            "migros",
-            "Migros",
-            "CHF",
-            "900",
-            spent("-200", date(2026, 9, 15)),
-            month=sep,
-        ),
-        month=sep,
-    )
-    conn.close()
-    local = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
-
-    for params in ({}, {"range": "ytd"}, {"range": "1y"}):
-        sent = local.get("/api/cashflow", params=params).json()
-        assert sent["first"] == "2026-08-01"
-        shown = sent["report"]
-        assert [p["name"] for p in shown["periods"]] == ["2026-08", "2026-09"]
-        assert shown["months"] == 2
-        # 300 over 2 statement-covered months = 150/month (not divided by 9 or 12).
-        assert shown["categories"][0]["monthly"] == "150.00"
-
-    quarter = local.get("/api/cashflow", params={"range": "1y", "by": "quarter"}).json()
-    assert [p["name"] for p in quarter["report"]["periods"]] == ["2026-Q3"]
-    assert quarter["report"]["months"] == 2
-
-    year = local.get("/api/cashflow", params={"range": "1y", "by": "year"}).json()
-    assert [p["name"] for p in year["report"]["periods"]] == ["2026"]
-    assert year["report"]["months"] == 2
-
-    earlier = local.get("/api/cashflow", params={"from": "2025", "to": "2025"}).json()
-    assert earlier["report"]["totals"] is None
-    assert earlier["report"]["periods"] == []
-    assert earlier["report"]["months"] == 0
-
-
-def test_cash_flow_clamps_earlier_year_and_all_when_history_starts_mid_year(tmp_path: Path) -> None:
-    path = tmp_path / "scrooge.db"
-    conn = db.connect(path)
-    db.migrate(conn, NOW)
-    jul_2025 = date(2025, 7, 1)
-    sep_2026 = date(2026, 9, 1)
-    close(
-        conn,
-        account(
-            "migros",
-            "Migros",
-            "CHF",
-            "1000",
-            spent("-600", date(2025, 7, 15)),
-            month=jul_2025,
-        ),
-        month=jul_2025,
-    )
-    close(
-        conn,
-        account(
-            "migros",
-            "Migros",
-            "CHF",
-            "400",
-            spent("-300", date(2026, 9, 15)),
-            month=sep_2026,
-        ),
-        month=sep_2026,
-    )
-    conn.close()
-    local = TestClient(webapp.create_app(path, currency="CHF"), base_url=SITE)
-
-    # Unclamped periods within the history keep their exact starts.
-    assert local.get("/api/cashflow", params={"range": "1m"}).json()["first"] == "2026-09-01"
-    assert local.get("/api/cashflow", params={"range": "3m"}).json()["first"] == "2026-07-01"
-    assert local.get("/api/cashflow", params={"range": "ytd"}).json()["first"] == "2026-01-01"
-    assert local.get("/api/cashflow", params={"range": "1y"}).json()["first"] == "2025-10-01"
-    assert (
-        local.get("/api/cashflow", params={"range": "3m", "from": "2026-05"}).json()["first"]
-        == "2026-05-01"
-    )
-
-    # "All" and "2025" both start in July 2025 (never January 2025).
-    all_sent = local.get("/api/cashflow", params={"range": "all"}).json()
-    assert all_sent["first"] == "2025-07-01"
-    assert all_sent["report"]["months"] == 15
-    assert all_sent["report"]["periods"][0]["name"] == "2025-07"
-
-    y2025 = local.get("/api/cashflow", params={"from": "2025", "to": "2025"}).json()
-    assert (y2025["first"], y2025["last"]) == ("2025-07-01", "2025-12-31")
-    assert y2025["report"]["months"] == 6
-    assert y2025["report"]["categories"][0]["monthly"] == "100.00"
-
-    # A range ending before the first statement month is never inverted.
-    y2024 = local.get("/api/cashflow", params={"from": "2024", "to": "2024"}).json()
-    assert (y2024["first"], y2024["last"], y2024["report"]["totals"]) == (
-        "2024-01-01",
-        "2024-12-31",
-        None,
-    )
-
-    # An open-ended `to` within the history clamps its start to the first statement month.
-    to_sep = local.get("/api/cashflow", params={"to": "2026-09"}).json()
-    assert (to_sep["first"], to_sep["last"]) == ("2025-07-01", "2026-09-30")
 
 
 def test_a_cash_flow_that_cannot_be_read_is_refused(client: TestClient) -> None:

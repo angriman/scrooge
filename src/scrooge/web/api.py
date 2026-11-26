@@ -328,6 +328,8 @@ def _statements(request: Request) -> Response:
             held, checks = {}, ()
         # A broker's currencies are one account here, and judged as one (`together`).
         rows = together.rows(conn, asked.owner, held)
+        typed_by_account = typed.figures(conn, asked.owner)
+        manuals = typed.manual_accounts(conn, asked.owner)
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
@@ -342,10 +344,29 @@ def _statements(request: Request) -> Response:
             one.spans,
             [listed(s) for s in one.statements],
         )
-        return {**shown, "holds": wire.account_holds(one.held), "parts": list(one.parts)}
+        figs = sorted(
+            (f for part in one.parts for f in typed_by_account.get((one.line.owner, part), ())),
+            key=lambda f: (-f.day.toordinal(), f.what, f.account, f.symbol or ""),
+        )
+        return {
+            **shown,
+            "holds": wire.account_holds(one.held),
+            "parts": list(one.parts),
+            "typed": [wire.typed_figure(f) for f in figs],
+            "typable": typed.typable(one.line.source),
+        }
 
     lines = tuple(one.line for one in rows)
     accounts = [row(one, late) for one, late in zip(rows, months.behind(lines), strict=True)]
+    accounts.extend(
+        wire.manual_account(
+            manual,
+            held.get((manual.owner, manual.account)),
+            typed_by_account.get((manual.owner, manual.account), ()),
+        )
+        for manual in manuals
+    )
+    accounts.sort(key=lambda a: (str(a["owner"]), str(a["account"]), str(a["source"] or "")))
     return JSONResponse(
         {
             "currency": asked.currency,
@@ -980,20 +1001,16 @@ def _ranges(through: date, start: int) -> list[dict[str, str]]:
 _MONTHS_BACK = {"1m": 0, "3m": 2, "1y": 11, "3y": 35}
 
 
-def _period_start(period: str | None, through: date | None, earliest: date | None) -> date | None:
+def _period_start(period: str | None, through: date | None, start: int | None) -> date | None:
     """The first day of `period` (one of `forms.PERIODS`), by whole months up to the last day
-    committed, `through`, never before `earliest` (the first month committed). None for no
-    period."""
+    committed, `through`; `start` is the year the statements start. None for no period."""
     if period is None or through is None:
         return None
+    if period == "ytd":
+        return date(through.year, 1, 1)
     if period == "all":
-        return earliest
-    start = (
-        date(through.year, 1, 1)
-        if period == "ytd"
-        else analysis.add_months(through, -_MONTHS_BACK[period])
-    )
-    return start if earliest is None else max(start, earliest)
+        return date(start, 1, 1) if start is not None else None
+    return analysis.add_months(through, -_MONTHS_BACK[period])
 
 
 def _cashflow(request: Request) -> Response:
@@ -1009,12 +1026,12 @@ def _cashflow(request: Request) -> Response:
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
         through = analysis.through(conn, asked.owner)
-        earliest = analysis.since(conn, asked.owner)
+        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
         first, last = asked.first, asked.last
         if first is None and last is None:
-            first = _period_start(asked.range or "ytd", through, earliest)
-        elif earliest is not None and (last is None or last >= earliest):
-            first = earliest if first is None else max(first, earliest)
+            first = _period_start(asked.range, through, min(firsts).year if firsts else None)
+        if first is None and last is None and through is not None:
+            first = date(through.year, 1, 1)
         shown = wire.unless_rate_missing(
             errors,
             lambda: report.run(
@@ -1034,7 +1051,7 @@ def _cashflow(request: Request) -> Response:
             "first": wire.day(first),
             "last": wire.day(last),
             "by": asked.grouping.value,
-            "ranges": _ranges(through, earliest.year) if through and earliest else [],
+            "ranges": [] if through is None else _ranges(through, min(firsts).year),
             "errors": errors,
         }
     )
@@ -1053,12 +1070,10 @@ def _income(request: Request) -> Response:
         except query.QueryError as exc:
             return _refused((wire.sentence(exc),))
         through = analysis.through(conn, asked.owner)
-        earliest = analysis.since(conn, asked.owner)
+        firsts = [p.first for p in query.people(conn) if p.first and asked.owner in (None, p.name)]
         first = asked.first
         if first is None and asked.last is None:
-            first = _period_start(asked.range, through, earliest)
-        elif earliest is not None and (asked.last is None or asked.last >= earliest):
-            first = earliest if first is None else max(first, earliest)
+            first = _period_start(asked.range, through, min(firsts).year if firsts else None)
         shown = payouts.run(
             conn, first=first, last=asked.last, owner=asked.owner, currency=asked.currency
         )
@@ -1067,7 +1082,7 @@ def _income(request: Request) -> Response:
         {
             "income": wire.payouts_report(shown),
             "logos": found,
-            "ranges": _ranges(through, earliest.year) if through and earliest else [],
+            "ranges": _ranges(through, min(firsts).year) if through and firsts else [],
             "errors": [wire.sentence(networth.MissingRateError(why)) for why in shown.missing],
         }
     )

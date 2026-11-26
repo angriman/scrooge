@@ -154,7 +154,7 @@ def test_without_a_range_it_is_the_twelve_months_the_rest_of_the_page_shows(
     client: TestClient,
 ) -> None:
     page = get(client)
-    assert "From 2026-07-01 to 2026-08-31" in text(page)
+    assert "From 2025-09-01 to 2026-08-31" in text(page)
     assert tables(flow(get(client, **{"from": "2026-08"})))[0][0][0] == "2026-08"
     assert len(tables(flow(get(client, **{"from": "2026-08"})))[0]) == 1
 

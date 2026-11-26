@@ -37,17 +37,15 @@ opening its transactions.
 		range: string;
 		/** Whose figures, for the transactions a holding opens. */
 		owner: string | null;
-		/** The first day of the earliest month with statements, to detect clamped 12m/YTD views. */
-		firstMonth?: string | null;
 	}
 
-	let { income, logos, range, owner, firstMonth = null }: Props = $props();
+	let { income, logos, range, owner }: Props = $props();
 
 	const currency = $derived(income.currency);
 	const total = $derived(net(income.totals));
 	const beforeTax = $derived(paid(income.totals));
 	const moved = $derived(change(income.totals, income.year_before));
-	const trailing = $derived(isTrailing(income, firstMonth) ? null : income.trailing);
+	const trailing = $derived(isTrailing(income) ? null : income.trailing);
 
 	let width = $state(640);
 	const HEIGHT = 200;

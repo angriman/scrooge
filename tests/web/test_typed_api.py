@@ -3,10 +3,16 @@ the end of a day where no statement says it, as `scrooge balance` and `scrooge p
 them."""
 
 import sqlite3
+from datetime import date
 from typing import Any
 
 import pytest
 
+from scrooge import staging
+from scrooge.models import Kind
+from scrooge.storage import db
+from tests.storage.helpers import batch, certificate, certified, statement, txn
+from tests.test_networth import NOW, rate
 from tests.web.builders import Site
 
 
@@ -113,3 +119,156 @@ def test_a_figure_needs_json_the_token_and_the_import_page(site: Site) -> None:
     assert copy.post("/api/accounts/typed", json=sent, headers=headers).status_code == 403
     bare = site.app()
     assert bare.post("/api/accounts/typed", json=sent, headers=headers).status_code == 404
+
+
+def test_typed_only_accounts_appear_in_statements_and_disappear_when_removed(site: Site) -> None:
+    assert (
+        _send(
+            site,
+            owner="Lukas",
+            account="Kasse",
+            day="2026-01-31",
+            what="balance",
+            amount="1200.50",
+            currency="CHF",
+        )[0]
+        == 200
+    )
+    assert (
+        _send(
+            site,
+            owner="Lukas",
+            account="Kasse",
+            day="2026-02-28",
+            what="position",
+            symbol="ACME",
+            quantity="5",
+            currency="CHF",
+            tab="Stocks",
+        )[0]
+        == 200
+    )
+    assert (
+        _send(
+            site,
+            owner="Anna",
+            account="Cash Box",
+            day="2026-01-31",
+            what="balance",
+            amount="50.00",
+            currency="CHF",
+        )[0]
+        == 200
+    )
+
+    # Also add a pension certificate (balance-only typable) and a Schwab export (both typable).
+    conn = db.connect(site.database)
+    rate(conn, "USD", date(2026, 1, 1), "0.9")
+    staging.stage(conn, certified(certificate(date(2026, 1, 1), "10000", issuer="AXA")), now=NOW)
+    schwab_row = txn(
+        "10",
+        date=date(2026, 2, 10),
+        account="Schwab USD",
+        currency="USD",
+        description="Dividend",
+        kind=Kind.DIVIDEND,
+        source_file="schwab.csv",
+    )
+    staging.stage(
+        conn,
+        batch(
+            statement("schwab", [schwab_row], filename="schwab.csv", month=date(2026, 2, 1)),
+            month=date(2026, 2, 1),
+        ),
+        now=NOW,
+    )
+    staging.commit(conn, owner="Lukas", now=NOW)
+    conn.close()
+
+    assert (
+        _send(
+            site,
+            owner="Lukas",
+            account="Pillar 2 AXA",
+            day="2026-02-28",
+            what="balance",
+            amount="10500",
+            currency="CHF",
+        )[0]
+        == 200
+    )
+    assert (
+        _send(
+            site,
+            owner="Lukas",
+            account="Schwab USD",
+            day="2026-01-31",
+            what="balance",
+            amount="100",
+            currency="USD",
+        )[0]
+        == 200
+    )
+
+    sent = site.client.get("/api/statements", params={"owner": "Lukas"}).json()
+    accounts = {a["account"]: a for a in sent["accounts"]}
+    assert "Cash Box" not in accounts  # Anna's account excluded by owner filter
+
+    kasse = accounts["Kasse"]
+    assert kasse["source"] is None
+    assert kasse["typable"] == "both"
+    assert kasse["parts"] == ["Kasse"]
+    assert kasse["statements"] == []
+    assert kasse["spans"] == []
+    assert kasse["typed"] == [
+        {
+            "account": "Kasse",
+            "day": "2026-02-28",
+            "what": "position",
+            "currency": "CHF",
+            "amount": None,
+            "symbol": "ACME",
+            "quantity": "5",
+        },
+        {
+            "account": "Kasse",
+            "day": "2026-01-31",
+            "what": "balance",
+            "currency": "CHF",
+            "amount": "1200.5",
+            "symbol": None,
+            "quantity": None,
+        },
+    ]
+
+    assert accounts["Pillar 2 AXA"]["typable"] == "balance"
+    assert [f["day"] for f in accounts["Pillar 2 AXA"]["typed"]] == ["2026-02-28"]
+    assert accounts["Schwab USD"]["typable"] == "both"
+    assert [f["account"] for f in accounts["Schwab USD"]["typed"]] == ["Schwab USD"]
+
+    # Removing every typed figure from Kasse drops the typed-only account from /api/statements.
+    assert (
+        _send(
+            site,
+            owner="Lukas",
+            account="Kasse",
+            day="2026-01-31",
+            what="balance",
+            remove=True,
+        )[0]
+        == 200
+    )
+    assert (
+        _send(
+            site,
+            owner="Lukas",
+            account="Kasse",
+            day="2026-02-28",
+            what="position",
+            symbol="ACME",
+            remove=True,
+        )[0]
+        == 200
+    )
+    after = site.client.get("/api/statements", params={"owner": "Lukas"}).json()
+    assert "Kasse" not in {a["account"] for a in after["accounts"]}
