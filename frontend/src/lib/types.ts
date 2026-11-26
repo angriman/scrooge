@@ -348,6 +348,9 @@ export interface Statements {
 	currency: string;
 	/** Up to this day every monthly account's statements are in. */
 	covered: Day | null;
+	/** What the accounts with a known balance hold together, rounded once to the cent;
+	 * null when none is known. */
+	total: Amount | null;
 	accounts: StatementsAccount[];
 	checks: Check[];
 	errors: string[];
