@@ -108,7 +108,7 @@ renaming a category, a typed balance). Centered on desktop, a bottom sheet on a 
 					disabled={!dismissible}
 					aria-label={t('ui.close')}
 					title={t('ui.close')}
-					class="inline-flex size-8 shrink-0 items-center justify-center rounded-control text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-40"
+					class="inline-flex size-8 shrink-0 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink dark:hover:bg-raised disabled:opacity-40"
 				>
 					<X class="size-4" aria-hidden="true" />
 				</BitsDialog.Close>

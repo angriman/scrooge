@@ -1,0 +1,59 @@
+/* Alpine: the light theme, a crisp paper-and-slate ledger for reading figures in daylight.
+ * Gives every role of night.css a colour of the palette, under [data-theme='alpine']. */
+
+[data-theme='alpine'] {
+	color-scheme: light;
+
+	/* Surfaces: cool recessed wells (sunken), a soft snow page, white panels lifted off it,
+	 * and white floating surfaces (menus, popovers, inputs, active segments). */
+	--surface-sunken: var(--mist-150);
+	--surface-page: var(--snow-50);
+	--surface-panel: var(--white);
+	--surface-raised: var(--white);
+
+	/* Lines: hairlines between rows and panels, and input edges that have to stand out. */
+	--line: var(--mist-200);
+	--line-strong: var(--slate-500);
+
+	/* Text: deep navy ink for figures and headings, cool slate for notes and captions. */
+	--ink: var(--navy-900);
+	--ink-secondary: var(--slate-700);
+	--ink-muted: var(--slate-600);
+
+	/* The one colour of the app's own: what is chosen, links, the main action. */
+	--brand: var(--indigo-600);
+	--brand-hover: var(--indigo-700);
+	--brand-soft: color-mix(in srgb, var(--indigo-600) 12%, transparent);
+	--on-brand: var(--white);
+	--focus: var(--indigo-600);
+
+	/* Signals: money gained or coming in, money lost or going out, and what needs a look. */
+	--gain: var(--teal-700);
+	--gain-soft: color-mix(in srgb, var(--teal-700) 12%, transparent);
+	--loss: var(--rose-700);
+	--loss-soft: color-mix(in srgb, var(--rose-700) 12%, transparent);
+	--caution: var(--amber-700);
+	--caution-soft: color-mix(in srgb, var(--amber-700) 12%, transparent);
+
+	/* Data: the same eight hue families as Night, deepened so every bar, line and label reads
+	 * clearly against white panels and snow pages without colliding with brand, gain or loss. */
+	--data-1: var(--magenta-600);
+	--data-2: var(--amber-600);
+	--data-3: var(--sky-600);
+	--data-4: var(--lime-700);
+	--data-5: var(--violet-600);
+	--data-6: var(--sand-600);
+	--data-7: var(--slate-650);
+	--data-8: var(--coral-600);
+	--data-other: var(--slate-550);
+
+	/* The shadow of what floats over the page (menus, popovers, tooltips). */
+	--float-shadow: 0 8px 24px rgb(20 27 45 / 0.12), 0 2px 6px rgb(20 27 45 / 0.08);
+
+	/* The scaffolding of a chart: gridlines and the axis. */
+	--chart-grid: var(--mist-200);
+	--chart-axis: var(--slate-600);
+
+	/* Type: one family for everything, its figures of one width so that columns line up. */
+	--font-ui: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, sans-serif;
+}

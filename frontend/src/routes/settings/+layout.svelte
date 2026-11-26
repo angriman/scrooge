@@ -2,6 +2,7 @@
 	import Coins from '@lucide/svelte/icons/coins';
 	import Image from '@lucide/svelte/icons/image';
 	import ListFilter from '@lucide/svelte/icons/list-filter';
+	import SunMoon from '@lucide/svelte/icons/sun-moon';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
@@ -25,7 +26,8 @@
 		rules: ListFilter,
 		people: Users,
 		currencies: Coins,
-		logos: Image
+		logos: Image,
+		appearance: SunMoon
 	};
 
 	const along = $derived.by(() => {

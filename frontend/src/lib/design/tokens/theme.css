@@ -1,7 +1,7 @@
-/* What Tailwind calls the roles of the theme (tokens/night.css), and the scales every theme
- * shares: type, corners. A class names a role (`bg-panel`, `text-ink-secondary`,
- * `fill-data-3`), never a colour, so that changing a theme changes no component. Tailwind's
- * own colours are left out: a class can only name a role. */
+/* What Tailwind calls the roles of the themes (tokens/night.css, tokens/alpine.css), and the
+ * scales every theme shares: type, corners. A class names a role (`bg-panel`,
+ * `text-ink-secondary`, `fill-data-3`), never a colour, so that changing a theme changes no
+ * component. Tailwind's own colours are left out: a class can only name a role. */
 
 /* `dark:` is the night theme, for the rare component that has to differ beyond its tokens:
  * named, or worn by a page that names no theme (night.css). */

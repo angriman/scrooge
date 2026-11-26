@@ -97,6 +97,11 @@ export function monthTickOf(date: Date, language: Language = getLanguage()): str
 	return date.getMonth() === 0 ? monthOf(date, language) : MONTHS[language][date.getMonth()];
 }
 
+/** `Sep`, of a local midnight such as a timeline tick whose year is shown on January. */
+export function shortMonthOf(date: Date, language: Language = getLanguage()): string {
+	return MONTHS[language][date.getMonth()];
+}
+
 /** `5 Nov`, of a local midnight such as a chart's tick. */
 export function dayOf(date: Date, language: Language = getLanguage()): string {
 	return `${date.getDate()} ${MONTHS[language][date.getMonth()]}`;
