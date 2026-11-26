@@ -18,7 +18,7 @@ from tests.test_income import SALARY
 from tests.test_networth import NOW, account, close, deposit_and_pensions, spent
 from tests.test_overview import household
 from tests.web import builders
-from tests.web.test_login import STORED
+from tests.web.test_login import STORED, sign_in
 
 SITE = "http://127.0.0.1:8765"
 NOVEMBER = date(2026, 11, 1)
@@ -278,15 +278,26 @@ def test_without_signing_in_the_api_says_so(database: Path) -> None:
     assert response.json() == {"errors": ["Sign in first."]}
 
 
-SHELL = '<html><body><script>start("/app")</script></body></html>'
+SHELL = f'<html><body><!-- {"x" * 600} --><script>start("/app")</script></body></html>'
+IMMUTABLE_JS = "export const label = " + repr("scrooge-" * 200) + ";\n"
+BIG_JS = "export const chunk = " + repr("overview-" * 8000) + ";\n"
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + bytes(1024)
+WOFF2_BYTES = b"wOF2" + bytes(1024)
+IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 
 
 @pytest.fixture
 def spa(tmp_path: Path) -> Path:
     folder = tmp_path / "spa"
-    (folder / "_app").mkdir(parents=True)
+    (folder / "_app" / "immutable" / "entry").mkdir(parents=True)
+    (folder / "_app" / "immutable" / "chunks").mkdir(parents=True)
+    (folder / "_app" / "immutable" / "assets").mkdir(parents=True)
     (folder / "index.html").write_text(SHELL)
     (folder / "_app" / "start.js").write_text("export {}")
+    (folder / "_app" / "immutable" / "entry" / "app.hash.js").write_text(IMMUTABLE_JS)
+    (folder / "_app" / "immutable" / "chunks" / "big.hash.js").write_text(BIG_JS)
+    (folder / "_app" / "immutable" / "assets" / "icon.hash.png").write_bytes(PNG_BYTES)
+    (folder / "_app" / "immutable" / "assets" / "font.hash.woff2").write_bytes(WOFF2_BYTES)
     (tmp_path / "secret.txt").write_text("not served")
     return folder
 
@@ -326,9 +337,137 @@ def test_before_it_is_built_app_says_how_to_build_it(database: Path, tmp_path: P
     response = client.get("/app/")
     assert response.status_code == 404
     assert "make web" in response.text
+    assert "cache-control" not in response.headers
+    asset = client.get("/app/_app/immutable/entry/app.hash.js")
+    assert asset.status_code == 404
+    assert "cache-control" not in asset.headers
     assert client.get("/").headers["content-security-policy"] == (
         "default-src 'self'; frame-ancestors 'none'"
     )
+
+
+def test_app_shell_is_not_cached_and_immutable_assets_are_cached_forever(
+    database: Path, spa: Path
+) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    for address in ("/app", "/app/", "/app/investments", "/app/index.html"):
+        response = client.get(address)
+        assert response.status_code == 200
+        assert response.text == SHELL
+        assert response.headers["cache-control"] == "no-cache"
+
+    for address in (
+        "/app/_app/immutable/entry/app.hash.js",
+        "/app/_app/immutable/chunks/big.hash.js",
+        "/app/_app/immutable/assets/icon.hash.png",
+        "/app/_app/immutable/assets/font.hash.woff2",
+    ):
+        response = client.get(address)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == IMMUTABLE_CACHE
+
+    non_immutable = client.get("/app/_app/start.js")
+    assert non_immutable.status_code == 200
+    assert "cache-control" not in non_immutable.headers
+
+    # Path traversal out of _app/immutable/ never borrows the immutable header.
+    escaped_shell = client.get("/app/_app/immutable/..%2F..%2Findex.html")
+    assert escaped_shell.text == SHELL
+    assert escaped_shell.headers["cache-control"] == "no-cache"
+
+    escaped_js = client.get("/app/_app/immutable/..%2Fstart.js")
+    assert escaped_js.text == "export {}"
+    assert "cache-control" not in escaped_js.headers
+
+    outside = client.get("/app/..%2Fsecret.txt")
+    assert outside.text == SHELL
+    assert outside.headers["cache-control"] == "no-cache"
+
+
+def test_text_responses_are_gzipped_and_binary_assets_are_not(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    gzip_headers = {"accept-encoding": "gzip"}
+    plain_headers = {"accept-encoding": "identity"}
+
+    for address, expected in (
+        ("/app/_app/immutable/entry/app.hash.js", IMMUTABLE_JS),
+        ("/app/_app/immutable/chunks/big.hash.js", BIG_JS),
+        ("/app", SHELL),
+    ):
+        compressed = client.get(address, headers=gzip_headers)
+        plain = client.get(address, headers=plain_headers)
+        assert compressed.status_code == 200
+        assert compressed.headers["content-encoding"] == "gzip"
+        assert "accept-encoding" in compressed.headers["vary"].lower()
+        assert compressed.text == expected
+        assert "content-encoding" not in plain.headers
+        assert "accept-encoding" in plain.headers["vary"].lower()
+        assert plain.text == expected
+        assert compressed.num_bytes_downloaded < plain.num_bytes_downloaded
+
+    api_gzip = client.get("/api/transactions", headers=gzip_headers)
+    api_plain = client.get("/api/transactions", headers=plain_headers)
+    assert len(api_plain.content) >= 500
+    assert api_gzip.headers["content-encoding"] == "gzip"
+    assert "accept-encoding" in api_gzip.headers["vary"].lower()
+    assert api_gzip.json() == api_plain.json()
+    assert api_gzip.num_bytes_downloaded < api_plain.num_bytes_downloaded
+
+    tiny = client.get("/app/_app/start.js", headers=gzip_headers)
+    assert "content-encoding" not in tiny.headers
+    assert tiny.text == "export {}"
+
+    png = client.get("/app/_app/immutable/assets/icon.hash.png", headers=gzip_headers)
+    assert "content-encoding" not in png.headers
+    assert png.content == PNG_BYTES
+    assert png.headers["cache-control"] == IMMUTABLE_CACHE
+
+    woff2 = client.get("/app/_app/immutable/assets/font.hash.woff2", headers=gzip_headers)
+    assert "content-encoding" not in woff2.headers
+    assert woff2.content == WOFF2_BYTES
+    assert woff2.headers["cache-control"] == IMMUTABLE_CACHE
+
+
+def test_immutable_assets_keep_csp_and_require_sign_in_when_password_set(
+    database: Path, spa: Path
+) -> None:
+    app = webapp.create_app(database, password=STORED, spa=spa)
+    client = TestClient(app, base_url=SITE, follow_redirects=False)
+    digest = base64.b64encode(hashlib.sha256(b'start("/app")').digest()).decode()
+    policy = (
+        f"default-src 'self'; script-src 'self' 'sha256-{digest}'; "
+        "style-src 'self'; style-src-attr 'unsafe-inline'; frame-ancestors 'none'"
+    )
+
+    asset_path = "/app/_app/immutable/entry/app.hash.js"
+    blocked = client.get(asset_path)
+    assert blocked.status_code == 303
+    assert blocked.headers["location"].startswith("/login?next=")
+    assert "cache-control" not in blocked.headers
+    assert blocked.headers["content-security-policy"] == policy
+
+    assert sign_in(client).status_code == 303
+    signed = client.get(asset_path, headers={"accept-encoding": "gzip"})
+    assert signed.status_code == 200
+    assert signed.headers["cache-control"] == IMMUTABLE_CACHE
+    assert signed.headers["content-encoding"] == "gzip"
+    assert signed.headers["content-security-policy"] == policy
+    assert signed.text == IMMUTABLE_JS
+
+
+def test_head_request_on_spa_shell_and_immutable_asset(database: Path, spa: Path) -> None:
+    client = TestClient(webapp.create_app(database, spa=spa), base_url=SITE)
+    shell_head = client.head("/app", headers={"accept-encoding": "gzip"})
+    assert shell_head.status_code == 200
+    assert shell_head.headers["cache-control"] == "no-cache"
+    assert shell_head.content == b""
+
+    asset_head = client.head(
+        "/app/_app/immutable/entry/app.hash.js", headers={"accept-encoding": "gzip"}
+    )
+    assert asset_head.status_code == 200
+    assert asset_head.headers["cache-control"] == IMMUTABLE_CACHE
+    assert asset_head.content == b""
 
 
 def test_without_a_frontend_there_is_no_app(client: TestClient) -> None:
