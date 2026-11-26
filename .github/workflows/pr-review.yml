@@ -1,0 +1,89 @@
+# Automated PR triage and review via Antigravity CLI (`agy`).
+#
+# Runs after CI completes on a pull request (or manually via workflow_dispatch), processes at
+# most 5 unreviewed same-repo PRs from collaborators ordered bottom-of-stack first:
+#   - failed CI  -> comments asking the author to address failures
+#   - passed CI  -> picks Gemini 4 Hydrogen High (large/critical logic PRs) or Hydrogen Medium
+#                   (smaller/focused PRs), posts review comments or pushes verified small fixes;
+#                   never auto-merges.
+#
+# Requires repository secret `GEMINI_API_KEY`. Optional `PR_REVIEW_TOKEN` PAT allows pushed fix
+# commits to re-trigger CI automatically.
+#
+# Third-party actions are pinned to the full commit SHA of a release, its version beside it.
+
+name: PR review
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      max_prs:
+        description: "Maximum PRs to process in this run"
+        required: false
+        default: "5"
+        type: string
+      pr_number:
+        description: "Optional single PR number to review"
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: pr-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          token: ${{ secrets.PR_REVIEW_TOKEN || github.token }}
+
+      - name: Install Tesseract
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.23"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Antigravity CLI
+        run: |
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run PR review batch
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_TOKEN: ${{ secrets.PR_REVIEW_TOKEN || github.token }}
+          MAX_PRS: ${{ inputs.max_prs || '5' }}
+          PR_NUMBER: ${{ inputs.pr_number || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          args=(--repo "$REPO" --max-prs "$MAX_PRS")
+          if [ -n "$PR_NUMBER" ]; then
+            args+=(--pr "$PR_NUMBER")
+          fi
+          python3 .github/scripts/pr_review.py "${args[@]}"
