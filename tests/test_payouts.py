@@ -195,7 +195,19 @@ def test_both_people_together(conn: sqlite3.Connection) -> None:
     assert shown.year_before is None
     hers = his(conn, owner=PARTNER)
     assert hers.totals == amounts("0", "1")
-    assert hers.first == date(2025, 9, 1)
+    assert hers.first == date(2026, 1, 1)
+    assert [month.name for month in hers.months] == [f"2026-{m:02}" for m in range(1, 9)]
+    assert hers.trailing == hers.totals
+
+
+def test_a_range_is_clamped_to_the_first_statement_month(conn: sqlite3.Connection) -> None:
+    clamped = his(conn, owner=PARTNER, first=date(2025, 1, 1))
+    assert clamped.first == date(2026, 1, 1)
+    assert [month.name for month in clamped.months] == [f"2026-{m:02}" for m in range(1, 9)]
+
+    before = his(conn, owner=PARTNER, first=date(2025, 1, 1), last=date(2025, 12, 31))
+    assert (before.months, before.holdings, before.totals) == ((), (), payouts.NOTHING)
+    assert before.trailing == amounts("0", "1")
 
 
 def test_a_range_that_ends_before_it_starts_has_nothing(conn: sqlite3.Connection) -> None:
