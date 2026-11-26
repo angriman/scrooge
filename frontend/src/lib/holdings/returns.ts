@@ -8,6 +8,31 @@ import { approximate } from '#lib/format/number.js';
 import { t, type MessageKey } from '#lib/i18n/index.svelte.js';
 import type { Amount, HeldInstrument, HoldingReturns, PeriodReturn } from '#lib/types.js';
 
+/** Unique key for one held instrument across currency and asset class. */
+export function holdingKey(holding: Pick<HeldInstrument, 'symbol' | 'currency' | 'asset'>): string {
+	return `${holding.symbol}|${holding.currency}|${holding.asset}`;
+}
+
+/** Query parameter value for `holding`: the bare symbol when unique across `holdings`,
+ * falling back to its full key when two holdings share a symbol. */
+export function holdingParam(holding: HeldInstrument, holdings: readonly HeldInstrument[]): string {
+	const matches = holdings.filter((item) => item.symbol === holding.symbol).length;
+	return matches === 1 ? holding.symbol : holdingKey(holding);
+}
+
+/** Find the holding named by a `holding` query parameter (matching full key first, then symbol). */
+export function findHolding(
+	holdings: readonly HeldInstrument[],
+	param: string | null
+): HeldInstrument | null {
+	if (!param) return null;
+	return (
+		holdings.find((item) => holdingKey(item) === param) ??
+		holdings.find((item) => item.symbol === param) ??
+		null
+	);
+}
+
 export const SORTS = [
 	{ value: 'value', label: 'Value' },
 	{ value: 'gain', label: 'Gain' },

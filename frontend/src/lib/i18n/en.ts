@@ -31,6 +31,8 @@ export const en = {
 	'common.noChange': 'no change',
 	'common.notKnownShorterHistory': 'Not known: the history is shorter',
 
+	'ui.close': 'Close',
+
 	'asset.Cash': 'Cash',
 	'asset.CashOwed': 'Cash owed',
 	'asset.ETFs': 'ETFs',
