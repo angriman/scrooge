@@ -30,6 +30,7 @@ from starlette.routing import Route
 from scrooge import (
     analysis,
     attention,
+    cashflow,
     categories,
     classification,
     closing,
@@ -50,6 +51,7 @@ from scrooge import (
     recap,
     recurring,
     report,
+    spending,
     staging,
     suggestions,
     together,
@@ -423,6 +425,15 @@ def _transactions(request: Request) -> Response:
         limit = _count(params, "limit", _PAGE, _MOST)
         newest = result.rows[::-1][offset : offset + limit]
         kept = _originals(request, conn, (row.file for row in newest))
+        spent_merchants = (
+            {
+                counted_row.id: spending.merchant(counted_row)
+                for counted_row in cashflow.counted(conn, wanted.owner)
+                if spending.is_expense(counted_row)
+            }
+            if newest
+            else {}
+        )
     return JSONResponse(
         {
             "count": len(result.rows),
@@ -447,6 +458,7 @@ def _transactions(request: Request) -> Response:
                     every.get(row.id),
                     found.label,
                     None if row.file is None else kept.get(row.file),
+                    spent_merchants.get(row.id),
                 )
                 for row in newest
             ],

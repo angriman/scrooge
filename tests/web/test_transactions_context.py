@@ -185,3 +185,95 @@ def test_a_merchant_named_after_its_account_lists_only_what_was_spent(client: Te
     # A fee is the account's, as on the cash flow.
     fee = client.get("/api/transactions", params={"merchant": "ibkr usd"}).json()
     assert fee["totals"] == [{"currency": "USD", "count": 1, "total": "-10"}]
+
+
+def test_transaction_rows_send_canonical_merchant_and_category_context(
+    client: TestClient,
+) -> None:
+    rows = client.get("/api/transactions", params={"owner": OWNER}).json()["rows"]
+    coop = next(r for r in rows if r["counterparty"] == "Coop-3 Bern")
+    assert (coop["merchant"], coop["category_context"]) == ("Coop Bern", True)
+
+    fee = next(r for r in rows if r["kind"] == "commission")
+    assert (fee["merchant"], fee["category_context"]) == ("IBKR USD", True)
+
+    salary = next(r for r in rows if r["kind"] == "income")
+    assert (salary["merchant"], salary["category_context"]) == (None, True)
+
+    transfer = next(r for r in rows if r["kind"] == "transfer")
+    assert (transfer["merchant"], transfer["category_context"]) == (None, False)
+
+
+def test_transaction_row_context_excludes_inter_person_household_and_investment_principal(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "scrooge.db"
+    conn = db.connect(path)
+    db.migrate(conn, BUILT)
+    lukas_migros = [
+        txn("-50", date=date(2026, 8, 5), source_ref="1", counterparty="ANNA MEIER"),
+        txn(
+            "-100",
+            date=date(2026, 8, 8),
+            source_ref="4",
+            kind=Kind.INTERNAL,
+            category=None,
+        ),
+        txn(
+            "-20",
+            date=date(2026, 8, 9),
+            source_ref="5",
+            kind=Kind.EXPENSE,
+            category=categories.OWN_TRANSFER,
+        ),
+    ]
+    lukas_ibkr = [
+        txn(
+            "-500",
+            date=date(2026, 8, 6),
+            source_ref="2",
+            kind=Kind.SECURITY_TRADE,
+            category=categories.INVESTMENTS,
+            **USD,
+        ),
+        txn(
+            "40",
+            date=date(2026, 8, 7),
+            source_ref="3",
+            kind=Kind.TRADING,
+            category=categories.TRADING,
+            **USD,
+        ),
+    ]
+    close(
+        conn,
+        OWNER,
+        (date(2026, 8, 1), date(2026, 8, 31)),
+        ("migros", lukas_migros),
+        ("ibkr", lukas_ibkr),
+    )
+    close(
+        conn,
+        PARTNER,
+        (date(2026, 8, 1), date(2026, 8, 31)),
+        ("migros", [txn("50", date=date(2026, 8, 5), source_ref="1", counterparty="LUKAS MEIER")]),
+    )
+    conn.close()
+    app_client = TestClient(webapp.create_app(path), base_url=SITE)
+
+    # Household view drops inter-person spending from merchant context; single-owner view keeps it.
+    household_rows = app_client.get("/api/transactions").json()["rows"]
+    to_partner_household = next(
+        r for r in household_rows if r["owner"] == OWNER and r["counterparty"] == "ANNA MEIER"
+    )
+    assert to_partner_household["merchant"] is None
+    lukas_only = app_client.get("/api/transactions", params={"owner": OWNER}).json()["rows"]
+    to_partner_single = next(r for r in lukas_only if r["counterparty"] == "ANNA MEIER")
+    assert to_partner_single["merchant"] == "ANNA MEIER"
+
+    # Investment principal, internal, and transfer-side rows have no category context; Trading does.
+    by_kind = {r["kind"]: r for r in lukas_only if r["counterparty"] != "ANNA MEIER"}
+    assert by_kind["security_trade"]["category_context"] is False
+    assert by_kind["trading"]["category_context"] is True
+    assert by_kind["internal"]["category_context"] is False
+    assert by_kind["expense"]["category_context"] is False  # categorized as own_transfer

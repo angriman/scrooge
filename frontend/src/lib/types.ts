@@ -408,6 +408,10 @@ export interface Transaction {
 	recurring: 'monthly' | 'yearly' | null;
 	/** Whether its category can be changed here. */
 	changeable: boolean;
+	/** Canonical merchant name as the cash flow counts spending there; null when not spent. */
+	merchant: string | null;
+	/** Whether opening category context for this row's category has spending/income history. */
+	category_context: boolean;
 }
 
 export interface Total {

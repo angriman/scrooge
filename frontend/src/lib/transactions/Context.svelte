@@ -1,11 +1,11 @@
 <!--
 @component
-What the transactions are cut to, over the last two years: one category, merchant or account,
-a bar for each month against its usual month (the dashed line), the last month lighter while
-it is not over. A category or a merchant is what was spent (or earned); an account is its net
-flow, money put aside above the line of nothing and money taken out below it. Beside it, where
-most of a category was spent, each a link to its rows, or what an account holds now. A month
-pointed at is said in full beneath.
+What the transactions are cut to (or shown in the side panel), over the last two years: one
+category, merchant or account, a bar for each month against its usual month (the dashed line),
+the last month lighter while it is not over. A category or a merchant is what was spent (or
+earned); an account is its net flow, money put aside above the line of nothing and money taken
+out below it. Beside or below it, where most of a category was spent, or what an account holds
+now. A month pointed at is said in full beneath.
 -->
 <script lang="ts">
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
@@ -17,11 +17,15 @@ pointed at is said in full beneath.
 
 	interface Props {
 		context: TransactionsContext;
-		/** The address of the transactions of a merchant. */
-		merchant: (name: string) => string;
+		/** The address of the transactions of a merchant (used when `onmerchant` is not given). */
+		merchant?: (name: string) => string;
+		/** Called when a top merchant is clicked (e.g. to switch the side panel to it). */
+		onmerchant?: (name: string) => void;
+		/** Rendered inside a SidePanel: omit the outer card chrome and duplicate heading. */
+		embedded?: boolean;
 	}
 
-	let { context, merchant }: Props = $props();
+	let { context, merchant, onmerchant, embedded = false }: Props = $props();
 
 	const KINDS = $derived({
 		category: t('transactions.kindCategory'),
@@ -61,28 +65,7 @@ pointed at is said in full beneath.
 	const pointed = $derived(shown === null ? null : context.months[shown]);
 </script>
 
-<section
-	class="rounded-panel bg-panel p-4"
-	aria-label={t('transactions.contextSectionAria', { name: context.name })}
->
-	<header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-		<div class="min-w-0">
-			<p class="text-caption text-ink-muted">{KINDS[context.kind]}, {said}</p>
-			<h2 class="truncate text-title font-medium text-ink">{context.name}</h2>
-		</div>
-		{#if context.balance !== null}
-			<p class="text-small text-ink-secondary">
-				{t('transactions.holdsNowBefore')}
-				<Amount
-					value={context.balance}
-					currency={context.currency}
-					class="text-body text-ink"
-				/>{#if t('transactions.holdsNowAfter')}
-					{t('transactions.holdsNowAfter')}{/if}
-			</p>
-		{/if}
-	</header>
-
+{#snippet body()}
 	{#each context.errors as error (error)}
 		<p class="mt-3 flex items-start gap-2 text-small text-ink" role="status">
 			<CircleAlert class="mt-0.5 size-4 shrink-0 text-caution" aria-hidden="true" />
@@ -93,7 +76,11 @@ pointed at is said in full beneath.
 	{#if first && last}
 		{@const told = pointed ?? last}
 		{@const sofar = context.partial && told === last ? t('transactions.contextSoFarSuffix') : ''}
-		<div class="mt-3 grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+		<div
+			class={embedded
+				? 'space-y-5'
+				: 'mt-3 grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_16rem]'}
+		>
 			<div class="min-w-0">
 				<div bind:clientWidth={width}>
 					<svg
@@ -238,19 +225,36 @@ pointed at is said in full beneath.
 					<ul class="mt-1 divide-y divide-line">
 						{#each context.merchants as payee (payee.name)}
 							<li>
-								<a
-									href={merchant(payee.name)}
-									class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
-								>
-									<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
-									<span class="text-caption text-ink-muted">{payee.count}×</span>
-									<Amount
-										value={payee.amount}
-										currency={context.currency}
-										places={0}
-										class="text-body text-ink"
-									/>
-								</a>
+								{#if onmerchant}
+									<button
+										type="button"
+										onclick={() => onmerchant(payee.name)}
+										class="flex w-full items-baseline gap-3 rounded-control px-1.5 py-1.5 text-left hover:bg-sunken"
+									>
+										<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
+										<span class="text-caption text-ink-muted tabular-nums">{payee.count}×</span>
+										<Amount
+											value={payee.amount}
+											currency={context.currency}
+											places={0}
+											class="text-body text-ink"
+										/>
+									</button>
+								{:else}
+									<a
+										href={merchant?.(payee.name)}
+										class="flex items-baseline gap-3 rounded-control px-1 py-1.5 hover:bg-sunken"
+									>
+										<span class="min-w-0 flex-1 truncate text-body text-ink">{payee.name}</span>
+										<span class="text-caption text-ink-muted tabular-nums">{payee.count}×</span>
+										<Amount
+											value={payee.amount}
+											currency={context.currency}
+											places={0}
+											class="text-body text-ink"
+										/>
+									</a>
+								{/if}
 							</li>
 						{/each}
 					</ul>
@@ -260,4 +264,34 @@ pointed at is said in full beneath.
 	{:else if !context.errors.length}
 		<p class="mt-2 text-small text-ink-secondary">{t('transactions.contextEmpty')}</p>
 	{/if}
-</section>
+{/snippet}
+
+{#if embedded}
+	<div>
+		{@render body()}
+	</div>
+{:else}
+	<section
+		class="rounded-panel bg-panel p-4"
+		aria-label={t('transactions.contextSectionAria', { name: context.name })}
+	>
+		<header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+			<div class="min-w-0">
+				<p class="text-caption text-ink-muted">{KINDS[context.kind]}, {said}</p>
+				<h2 class="truncate text-title font-medium text-ink">{context.name}</h2>
+			</div>
+			{#if context.balance !== null}
+				<p class="text-small text-ink-secondary">
+					{t('transactions.holdsNowBefore')}
+					<Amount
+						value={context.balance}
+						currency={context.currency}
+						class="text-body text-ink"
+					/>{#if t('transactions.holdsNowAfter')}
+						{t('transactions.holdsNowAfter')}{/if}
+				</p>
+			{/if}
+		</header>
+		{@render body()}
+	</section>
+{/if}
