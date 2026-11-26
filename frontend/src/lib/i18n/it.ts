@@ -475,12 +475,12 @@ export const it: Messages = {
 	'costs.colYear': 'Anno',
 	'costs.colCommissions': 'Commissioni',
 	'costs.colTaxWithheld': 'Ritenute',
-	'costs.colOfWhatPaid': 'Sui proventi',
+	'costs.colTaxOfWhatPaid': 'Ritenute sui proventi',
 	'costs.soFar': 'finora',
 	'costs.allYears': 'Tutti gli anni',
 	'costs.byAccountEveryYear': 'Per conto, tutti gli anni',
 	'costs.footnote':
-		'Le commissioni includono quelle di broker e conti previdenziali; le spese bancarie della stessa categoria sono escluse. Da schermo tablet in su è indicata anche l’aliquota delle ritenute sui proventi lordi dell’anno. I movimenti in valute prive di tasso di cambio sono comunque visibili nei dettagli.',
+		'Le commissioni includono quelle di broker e conti previdenziali; le spese bancarie della stessa categoria sono escluse. È indicata anche l’aliquota delle ritenute sui proventi lordi dell’anno. I movimenti in valute prive di tasso di cambio sono comunque visibili nei dettagli.',
 
 	'pensions.12m': '12 mesi',
 	'pensions.ytd': 'Quest’anno',

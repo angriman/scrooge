@@ -467,12 +467,12 @@ export const en = {
 	'costs.colYear': 'Year',
 	'costs.colCommissions': 'Commissions',
 	'costs.colTaxWithheld': 'Tax withheld',
-	'costs.colOfWhatPaid': 'Of what was paid',
+	'costs.colTaxOfWhatPaid': 'Tax, of what was paid',
 	'costs.soFar': 'so far',
 	'costs.allYears': 'All years',
 	'costs.byAccountEveryYear': 'By account, every year',
 	'costs.footnote':
-		'Commissions are those charged on broker and pension accounts; a bank’s fees, of the same category, are left out. From a tablet’s width on, the tax withheld is also in percent of the dividends and interest paid that year, before tax. Rows in a currency left out for want of a rate still show in the transactions a figure opens.',
+		'Commissions are those charged on broker and pension accounts; a bank’s fees, of the same category, are left out. The tax withheld is also in percent of the dividends and interest paid that year, before tax. Rows in a currency left out for want of a rate still show in the transactions a figure opens.',
 
 	'pensions.12m': '12 months',
 	'pensions.ytd': 'This year',
