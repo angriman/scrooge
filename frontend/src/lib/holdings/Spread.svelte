@@ -12,6 +12,7 @@ how much the largest single holding weighs. The overview has the allocation of n
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import Swatch from '#lib/ui/Swatch.svelte';
+	import { holdingName } from './names.js';
 
 	interface Props {
 		spread: Portfolio['spread'];
@@ -43,7 +44,7 @@ how much the largest single holding weighs. The overview has the allocation of n
 	{#if largest}
 		<p class="mb-4 text-body text-ink-secondary">
 			{t('holdings.largestBefore')}
-			<span class="text-ink">{largest.name || largest.symbol}</span>{t('holdings.largestMiddle')}
+			<span class="text-ink">{holdingName(largest)}</span>{t('holdings.largestMiddle')}
 			<span class={approximate(largest.share) >= 25 ? 'text-caution' : 'text-ink'}
 				>{percent(largest.share)}</span
 			>

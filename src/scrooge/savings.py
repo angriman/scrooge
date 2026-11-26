@@ -8,7 +8,9 @@ is counted as it arrives.
 
 The savings rate of a period is that of the twelve months ending with it, on the same terms
 as the employer's share of income. Beside the rate on income there is the rate on salary,
-the income from work alone: what was saved as a part of what work paid.
+the income from work alone: what was saved as a part of what work paid. A period where next
+to nothing came in (less than `FLOOR` francs, converted into the currency asked for) has no
+rate: dividing a month's spending by a few francs of interest gives thousands of percent.
 """
 
 from __future__ import annotations
@@ -22,7 +24,13 @@ from decimal import Decimal
 from scrooge import analysis, income, spending
 from scrooge.analysis import CENT, Converted
 from scrooge.cashflow import Counted, Grouping
-from scrooge.networth import DEFAULT_CURRENCY
+from scrooge.networth import BASE, DEFAULT_CURRENCY, rates_on
+
+# Below this many francs coming in, saved ÷ income says nothing: a few francs of interest
+# against a month's spending turns into thousands of percent. In francs, the currency every
+# rate is stored against, converted into the currency asked for so that the same periods have
+# a rate whatever the currency. Without a rate for that currency, 100 of it.
+FLOOR = Decimal(100)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +38,7 @@ class Totals:
     income: Decimal
     spent: Decimal  # money out, less what came back
     work: Decimal  # the income from work
+    floor: Decimal = FLOOR  # least income (or salary) for a rate; in the same currency
 
     @property
     def saved(self) -> Decimal:
@@ -37,13 +46,14 @@ class Totals:
 
     @property
     def rate(self) -> Decimal | None:
-        """What was saved, as a part of income; None without income."""
-        return analysis.share(self.saved, self.income)
+        """What was saved, as a part of income; None when less than `floor` came in."""
+        return analysis.share(self.saved, self.income) if self.income >= self.floor else None
 
     @property
     def rate_salary(self) -> Decimal | None:
-        """What was saved, as a part of the salary (the income from work); None without one."""
-        return analysis.share(self.saved, self.work)
+        """What was saved, as a part of the salary (the income from work); None when less than
+        `floor` came from work."""
+        return analysis.share(self.saved, self.work) if self.work >= self.floor else None
 
     @property
     def from_work(self) -> Decimal | None:
@@ -75,7 +85,7 @@ def _counts(row: Counted) -> bool:
     return income.is_income(row) or spending.is_spent(row)
 
 
-def _totals(rows: Sequence[Converted]) -> Totals:
+def _totals(rows: Sequence[Converted], floor: Decimal = FLOOR) -> Totals:
     earned = spent = work = Decimal(0)
     for each in rows:
         if income.is_income(each.row):
@@ -84,7 +94,18 @@ def _totals(rows: Sequence[Converted]) -> Totals:
                 work += each.amount
         else:
             spent -= each.amount
-    return Totals(earned.quantize(CENT), spent.quantize(CENT), work.quantize(CENT))
+    return Totals(earned.quantize(CENT), spent.quantize(CENT), work.quantize(CENT), floor)
+
+
+def _floors(conn: sqlite3.Connection, currency: str, days: Sequence[date]) -> dict[date, Decimal]:
+    """`FLOOR` francs in `currency` on each day; `FLOOR` of `currency` without a rate."""
+    unique = sorted(set(days))
+    if currency == BASE:
+        return dict.fromkeys(unique, FLOOR)
+    francs = rates_on(conn, unique).get(currency)
+    if not francs:
+        return dict.fromkeys(unique, FLOOR)
+    return {day: (FLOOR / rate).quantize(CENT) for day, rate in zip(unique, francs, strict=True)}
 
 
 def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
@@ -107,26 +128,34 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     span = found.span(first, last)
     if span is None:
         return Savings(currency, None, None, None, None, (), found.through)
+    grouped = list(found.by_period(span, grouping))
+    windows = [analysis.window(span, days) for _, days, _ in grouped]
+    before = span.year_before()
+    days = [
+        span.end,
+        *(min(days[1], span.end) for _, days, _ in grouped),
+        *(window[1] for window in windows if window is not None),
+        *(() if before is None else (before[1],)),
+    ]
+    floor = _floors(conn, currency, days)
     periods = []
-    for name, days, inside in found.by_period(span, grouping):
-        window = analysis.window(span, days)
-        year = None if window is None else _totals(found.between(*window))
+    for (name, period_days, inside), window in zip(grouped, windows, strict=True):
+        year = None if window is None else _totals(found.between(*window), floor[window[1]])
         periods.append(
             Period(
                 name,
-                *days,
-                _totals(inside),
+                *period_days,
+                _totals(inside, floor[min(period_days[1], span.end)]),
                 None if year is None else year.rate,
                 None if year is None else year.rate_salary,
             )
         )
-    before = span.year_before()
     return Savings(
         currency,
         span.start,
         span.end,
-        _totals(found.between(span.start, span.end)),
-        None if before is None else _totals(found.between(*before)),
+        _totals(found.between(span.start, span.end), floor[span.end]),
+        None if before is None else _totals(found.between(*before), floor[before[1]]),
         tuple(periods),
         span.through,
     )

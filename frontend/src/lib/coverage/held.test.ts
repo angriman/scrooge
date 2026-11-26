@@ -27,4 +27,14 @@ describe('what the accounts hold together', () => {
 		expect(heldTogether([{ balance: null }])).toEqual({ total: null, unknown: 1 });
 		expect(heldTogether([])).toEqual({ total: null, unknown: 0 });
 	});
+
+	it('uses the server-rounded total when given, keeping the count of unknown balances', () => {
+		expect(
+			heldTogether([{ balance: '1068.09' }, { balance: '114.90' }, { balance: null }], '1182.98')
+		).toEqual({
+			total: '1182.98',
+			unknown: 1
+		});
+		expect(heldTogether([{ balance: null }], null)).toEqual({ total: null, unknown: 1 });
+	});
 });
