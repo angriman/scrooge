@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { isRedirect } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
@@ -16,11 +17,20 @@
 	import Allocation from '#lib/overview/Allocation.svelte';
 	import Investments from '#lib/overview/Investments.svelte';
 	import { incomeQuery, returnsQuery } from '#lib/overview/investments.js';
+	import {
+		BREAKDOWNS,
+		createLatestRunner,
+		type Breakdown,
+		type LatestRunner,
+		type MonthLoader,
+		type WorthLoader
+	} from '#lib/overview/lazy.js';
 	import MonthSection from '#lib/overview/MonthSection.svelte';
 	import NetWorthCard, { VIEWS, type View } from '#lib/overview/NetWorthCard.svelte';
 	import Notices from '#lib/overview/Notices.svelte';
 	import { statementsUpTo } from '#lib/overview/through.js';
 	import { daysBack, DEFAULT_RANGE, RANGES, rangeLabel, type Range } from '#lib/overview/range.js';
+	import type { Month, NetWorth } from '#lib/types.js';
 	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import { here, oneOf, show } from '#lib/view.js';
 	import type { PageProps } from './$types';
@@ -28,7 +38,6 @@
 	let { data }: PageProps = $props();
 
 	const figures = $derived(data.shown.overview);
-	const series = $derived(data.worth.series);
 	const currency = $derived(figures?.currency ?? data.session.currency);
 	const owner = $derived(page.url.searchParams.get('owner'));
 	// The header's day for whose figures are shown: the card does not name a later one.
@@ -42,6 +51,174 @@
 				? t('overview.ownerTitle', { owner })
 				: t('overview.householdTitle')
 	);
+
+	// The breakdown and month live in the address via shallow updates: switching them fetches
+	// only the slice needed and caches it for the current `(owner, currency)` load.
+	const askedBy = $derived(oneOf(here(), 'by', BREAKDOWNS, 'asset'));
+	const by = $derived<Breakdown>(askedBy === 'owner' && !data.people ? 'asset' : askedBy);
+	const monthParam = $derived(here().searchParams.get('month') ?? '');
+
+	let worthOverride = $state<{
+		loader: WorthLoader;
+		by: Breakdown;
+		worth: NetWorth;
+		loading: boolean;
+		error: string | null;
+	} | null>(null);
+
+	const activeWorth = $derived(
+		worthOverride?.loader === data.worthLoader ? worthOverride.worth : data.worth
+	);
+	const seriesBy = $derived(
+		worthOverride?.loader === data.worthLoader ? worthOverride.by : data.by
+	);
+	const worthLoading = $derived(
+		worthOverride?.loader === data.worthLoader ? worthOverride.loading : false
+	);
+	const worthError = $derived(
+		worthOverride?.loader === data.worthLoader ? worthOverride.error : null
+	);
+	const series = $derived(activeWorth.series);
+
+	let monthOverride = $state<{
+		loader: MonthLoader;
+		month: Month;
+		loading: boolean;
+		error: string | null;
+	} | null>(null);
+
+	const activeMonth = $derived(
+		monthOverride?.loader === data.monthLoader ? monthOverride.month : data.month
+	);
+	const monthLoading = $derived(
+		monthOverride?.loader === data.monthLoader ? monthOverride.loading : false
+	);
+	const monthError = $derived(
+		monthOverride?.loader === data.monthLoader ? monthOverride.error : null
+	);
+
+	let worthRunner: LatestRunner<Breakdown> | null = null;
+	$effect(() => {
+		const loader = data.worthLoader;
+		const fallbackBy = data.by;
+		const fallbackWorth = data.worth;
+		const currentWorth = () =>
+			worthOverride?.loader === loader
+				? { by: worthOverride.by, worth: worthOverride.worth }
+				: { by: fallbackBy, worth: fallbackWorth };
+		const runner = createLatestRunner<Breakdown, NetWorth>(loader, {
+			subject: () => t('overview.worthSubject'),
+			onImmediate(chosen, sent) {
+				worthOverride = { loader, by: chosen, worth: sent, loading: false, error: null };
+			},
+			onLoading() {
+				worthOverride = { loader, ...currentWorth(), loading: true, error: null };
+			},
+			onSuccess(chosen, sent) {
+				if (sent.series) {
+					worthOverride = { loader, by: chosen, worth: sent, loading: false, error: null };
+				} else {
+					worthOverride = {
+						loader,
+						...currentWorth(),
+						loading: false,
+						error:
+							sent.errors.join(' ') ||
+							t('overview.notKnownWhy', {
+								what: t('overview.worthSubject'),
+								why: t('api.unreachable')
+							})
+					};
+				}
+			},
+			onError(_chosen, message) {
+				worthOverride = { loader, ...currentWorth(), loading: false, error: message };
+			},
+			onRedirect(target) {
+				location.assign(target);
+			}
+		});
+		worthRunner = runner;
+		return () => {
+			runner.dispose();
+			if (worthRunner === runner) worthRunner = null;
+		};
+	});
+
+	$effect(() => {
+		const loader = data.worthLoader;
+		const chosen = by;
+		const initialBy = data.by;
+		const hasAssets = data.assets.series !== null;
+		untrack(() => {
+			if (!hasAssets) return;
+			if (worthOverride?.loader !== loader && chosen === initialBy) return;
+			worthRunner?.run(chosen);
+		});
+	});
+
+	let monthRunner: LatestRunner<string> | null = null;
+	$effect(() => {
+		const loader = data.monthLoader;
+		const fallbackMonth = data.month;
+		const currentMonth = () =>
+			monthOverride?.loader === loader ? monthOverride.month : fallbackMonth;
+		const runner = createLatestRunner<string, Month>(loader, {
+			subject: () => t('monthSection.monthSubject'),
+			onImmediate(_chosen, sent) {
+				monthOverride = { loader, month: sent, loading: false, error: null };
+			},
+			onLoading() {
+				monthOverride = { loader, month: currentMonth(), loading: true, error: null };
+			},
+			onSuccess(_chosen, sent) {
+				if (sent.month) {
+					monthOverride = { loader, month: sent, loading: false, error: null };
+				} else {
+					monthOverride = {
+						loader,
+						month: currentMonth(),
+						loading: false,
+						error:
+							sent.errors.join(' ') ||
+							t('overview.notKnownWhy', {
+								what: t('monthSection.monthSubject'),
+								why: t('api.unreachable')
+							})
+					};
+				}
+			},
+			onError(_chosen, message) {
+				monthOverride = { loader, month: currentMonth(), loading: false, error: message };
+			},
+			onRedirect(target) {
+				location.assign(target);
+			}
+		});
+		monthRunner = runner;
+		return () => {
+			runner.dispose();
+			if (monthRunner === runner) monthRunner = null;
+		};
+	});
+
+	$effect(() => {
+		const loader = data.monthLoader;
+		const chosen = monthParam;
+		const initialParam = data.monthParam;
+		untrack(() => {
+			if (monthOverride?.loader !== loader && chosen === initialParam) return;
+			monthRunner?.run(chosen);
+		});
+	});
+
+	function onmonth(chosen: string) {
+		if (chosen === monthParam) {
+			monthRunner?.run(chosen);
+			return;
+		}
+		void show(here(), { month: chosen }, { shallow: true });
+	}
 
 	// The range only changes the address: the page has every day already.
 	const range = $derived(
@@ -85,17 +262,20 @@
 		{ value: 'total', label: t('overview.total') }
 	]);
 	const nameOf = $derived(
-		data.by === 'owner'
+		seriesBy === 'owner'
 			? (name: string) => name
-			: data.by === 'liquidity'
+			: seriesBy === 'liquidity'
 				? liquidityName
 				: assetName
 	);
 	const colors = $derived.by(() => {
-		if (data.by === 'owner') return inOrder(data.session.people.map((person) => person.name));
-		const of = data.by === 'liquidity' ? liquidityColor : assetColor;
+		if (seriesBy === 'owner') return inOrder(data.session.people.map((person) => person.name));
+		const of = seriesBy === 'liquidity' ? liquidityColor : assetColor;
 		return new Map((series?.parts ?? []).map((part) => [part.name, of(part.name)]));
 	});
+	const pageErrors = $derived([
+		...new Set([...data.shown.errors, ...activeWorth.errors, ...activeMonth.errors])
+	]);
 </script>
 
 <svelte:head>
@@ -108,7 +288,7 @@
 	readOnly={data.session.read_only}
 />
 
-{#each [...data.shown.errors, ...data.worth.errors, ...data.month.errors] as error (error)}
+{#each pageErrors as error (error)}
 	<p
 		class="mb-4 flex items-start gap-2 rounded-panel border border-caution/40 bg-caution-soft px-4 py-3 text-body text-ink"
 		role="status"
@@ -128,6 +308,7 @@
 	<div class="grid grid-cols-1 gap-4">
 		<NetWorthCard
 			{series}
+			{seriesBy}
 			{colors}
 			{nameOf}
 			{title}
@@ -136,8 +317,10 @@
 			{range}
 			onrange={(chosen: Range) => show(here(), { range: chosen }, { shallow: true })}
 			{breakdowns}
-			by={data.by}
-			onby={(by) => show(here(), { by: by === 'asset' ? null : by })}
+			{by}
+			onby={(chosen) => show(here(), { by: chosen === 'asset' ? null : chosen }, { shallow: true })}
+			loading={worthLoading}
+			error={worthError}
 			{view}
 			onview={(chosen: View) =>
 				show(here(), { view: chosen === 'chart' ? null : chosen }, { shallow: true })}
@@ -156,8 +339,8 @@
 			<Investments {returned} paid={data.paid} {range} {returnsHref} {incomeHref} />
 		</div>
 
-		{#if data.month.month}
-			<MonthSection recap={data.month.month} />
+		{#if activeMonth.month}
+			<MonthSection recap={activeMonth.month} {onmonth} loading={monthLoading} error={monthError} />
 		{/if}
 	</div>
 {/if}

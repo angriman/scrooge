@@ -14,6 +14,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 </script>
 
 <script lang="ts">
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import NetWorthChart, { type Day } from '#lib/charts/NetWorthChart.svelte';
 	import { netWorthChartLabel } from '#lib/charts/netWorth.js';
 	import { addDays, day } from '#lib/format/date.js';
@@ -37,6 +38,8 @@ headline and the legend. The chart can give way to a table of the month-ends.
 
 	interface Props {
 		series: Series;
+		/** Which breakdown `series` currently represents (may lag behind `by` while loading). */
+		seriesBy?: string;
 		colors: ReadonlyMap<string, string>;
 		nameOf?: (name: string) => string;
 		/** What the headline is of: `Net worth`, `Anna’s net worth`. */
@@ -51,6 +54,10 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		breakdowns: readonly { value: string; label: string }[];
 		by: string;
 		onby: (by: string) => void;
+		/** Whether an uncached breakdown is currently being fetched. */
+		loading?: boolean;
+		/** Inline error message when a lazy breakdown fetch failed. */
+		error?: string | null;
 		/** The chart, or the table of the month-ends. */
 		view: View;
 		onview: (view: View) => void;
@@ -60,6 +67,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 
 	let {
 		series,
+		seriesBy,
 		colors,
 		nameOf = (name: string) => name,
 		title,
@@ -70,16 +78,20 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		breakdowns,
 		by,
 		onby,
+		loading = false,
+		error = null,
 		view,
 		onview,
 		months
 	}: Props = $props();
 
+	const activeSeriesBy = $derived(seriesBy ?? by);
+
 	let hidden = $state<ReadonlySet<string>>(new Set());
 	let hovered = $state<Day | null>(null);
 
 	$effect.pre(() => {
-		void by;
+		void activeSeriesBy;
 		hidden = new Set();
 		hovered = null;
 	});
@@ -118,7 +130,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	const chartLabel = $derived(
 		netWorthChartLabel(
 			shownTitle,
-			by,
+			activeSeriesBy,
 			parts.length > 0 && hidden.size <= parts.length,
 			firstShownDay,
 			lastDay
@@ -206,62 +218,73 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	{#if view === 'table' && months}
 		<MonthEnds {months} {currency} class="mt-3 pb-3" />
 	{:else}
-		<NetWorthChart
-			{series}
-			{colors}
-			{nameOf}
-			{back}
-			{hidden}
-			label={chartLabel}
-			bind:hovered
-			class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-1"
-		/>
-		<div class="min-h-10 px-5 pb-3">
-			{#if series.parts.length}
-				<ul
-					class="flex flex-wrap items-center gap-x-1 gap-y-1"
-					aria-label={t('overview.partsShownAria')}
-				>
-					{#each series.parts as part (part.name)}
-						{@const shown = !hidden.has(part.name)}
-						{@const label = nameOf(part.name)}
-						<li>
-							<button
-								type="button"
-								aria-pressed={shown}
-								title={shown
-									? t('overview.leaveOut', { name: label })
-									: t('overview.showPart', { name: label })}
-								onclick={() => toggle(part.name)}
-								class={cn(
-									'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-sunken dark:hover:bg-raised',
-									!shown && 'opacity-45'
-								)}
-							>
-								<Swatch
-									color={shown ? (colors.get(part.name) ?? 'var(--data-other)') : 'transparent'}
-									class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
-								/>
-								<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
-									{label}
-								</span>
-								<span class="text-ink tabular-nums">{short(part.values[at])}</span>
-							</button>
-						</li>
-					{/each}
-					{#if hidden.size}
-						<li>
-							<button
-								type="button"
-								onclick={() => (hidden = new Set())}
-								class="rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
-							>
-								{t('overview.showAll')}
-							</button>
-						</li>
-					{/if}
-				</ul>
-			{/if}
+		{#if error}
+			<p
+				class="mx-5 mt-3 flex items-start gap-2 rounded-panel border border-caution/40 bg-caution-soft px-3 py-2 text-small text-ink"
+				role="alert"
+			>
+				<CircleAlert class="mt-0.5 size-4 shrink-0 text-caution" aria-hidden="true" />
+				{error}
+			</p>
+		{/if}
+		<div aria-busy={loading} class={cn('transition-opacity', loading && 'opacity-60')}>
+			<NetWorthChart
+				{series}
+				{colors}
+				{nameOf}
+				{back}
+				{hidden}
+				label={chartLabel}
+				bind:hovered
+				class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-1"
+			/>
+			<div class="min-h-10 px-5 pb-3">
+				{#if series.parts.length}
+					<ul
+						class="flex flex-wrap items-center gap-x-1 gap-y-1"
+						aria-label={t('overview.partsShownAria')}
+					>
+						{#each series.parts as part (part.name)}
+							{@const shown = !hidden.has(part.name)}
+							{@const label = nameOf(part.name)}
+							<li>
+								<button
+									type="button"
+									aria-pressed={shown}
+									title={shown
+										? t('overview.leaveOut', { name: label })
+										: t('overview.showPart', { name: label })}
+									onclick={() => toggle(part.name)}
+									class={cn(
+										'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-sunken dark:hover:bg-raised',
+										!shown && 'opacity-45'
+									)}
+								>
+									<Swatch
+										color={shown ? (colors.get(part.name) ?? 'var(--data-other)') : 'transparent'}
+										class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
+									/>
+									<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
+										{label}
+									</span>
+									<span class="text-ink tabular-nums">{short(part.values[at])}</span>
+								</button>
+							</li>
+						{/each}
+						{#if hidden.size}
+							<li>
+								<button
+									type="button"
+									onclick={() => (hidden = new Set())}
+									class="rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
+								>
+									{t('overview.showAll')}
+								</button>
+							</li>
+						{/if}
+					</ul>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </section>

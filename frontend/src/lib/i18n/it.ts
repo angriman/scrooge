@@ -177,6 +177,7 @@ export const it: Messages = {
 	'overview.ofNetWorth': 'Sul patrimonio',
 	'overview.returnedSubject': 'Il rendimento degli investimenti',
 	'overview.paidSubject': 'I proventi degli investimenti',
+	'overview.worthSubject': 'Questo dettaglio del patrimonio',
 	'overview.notKnownWhy': '{what} non è noto: {why}',
 	'overview.investmentsTitle': 'Investimenti',
 	'overview.twr': 'Rendimento ponderato per il tempo',
@@ -194,6 +195,7 @@ export const it: Messages = {
 
 	'monthSection.earlierMonth': 'Mese precedente: {month}',
 	'monthSection.laterMonth': 'Mese successivo: {month}',
+	'monthSection.monthSubject': 'Questo mese',
 	'monthSection.soFar': 'Finora, fino al {date}',
 	'monthSection.oneMissing': 'L’estratto di {account} non è ancora arrivato',
 	'monthSection.manyMissing': 'Mancano ancora {count} estratti',

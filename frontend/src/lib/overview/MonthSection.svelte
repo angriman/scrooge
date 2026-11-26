@@ -28,7 +28,17 @@ read as complete.
 	import { cn } from '#lib/ui/cn.js';
 	import { here, withQuery } from '#lib/view.js';
 
-	let { recap }: { recap: MonthRecap } = $props();
+	interface Props {
+		recap: MonthRecap;
+		/** Shallowly switch to an adjacent month on unmodified primary click. */
+		onmonth?: (month: string) => void;
+		/** Whether an uncached month recap is currently being fetched. */
+		loading?: boolean;
+		/** Inline error message when a lazy month fetch failed. */
+		error?: string | null;
+	}
+
+	let { recap, onmonth, loading = false, error = null }: Props = $props();
 
 	const SHOWN = 5; // categories listed on their own; the rest are one line
 	// A category within this many percent of its usual month spent as usual.
@@ -45,10 +55,30 @@ read as complete.
 
 	const step = (month: string | null, key: MessageKey) =>
 		month
-			? { href: withQuery(here(), { month }), label: t(key, { month: monthName(month) }) }
+			? {
+					month,
+					href: withQuery(here(), { month }),
+					label: t(key, { month: monthName(month) })
+				}
 			: null;
 	const earlier = $derived(step(recap.earlier, 'monthSection.earlierMonth'));
 	const later = $derived(step(recap.later, 'monthSection.laterMonth'));
+
+	function chooseMonth(event: MouseEvent, month: string) {
+		if (
+			!onmonth ||
+			event.defaultPrevented ||
+			event.button !== 0 ||
+			event.metaKey ||
+			event.ctrlKey ||
+			event.shiftKey ||
+			event.altKey
+		) {
+			return;
+		}
+		event.preventDefault();
+		onmonth(month);
+	}
 
 	const missingNames = $derived(recap.missing.map((account) => account.account));
 	/** `2.5×` the usual month, for what was more than double it: a percent that large says less. */
@@ -73,6 +103,7 @@ read as complete.
 						href={link.href}
 						aria-label={link.label}
 						data-sveltekit-reset="false"
+						onclick={(event) => chooseMonth(event, link.month)}
 						class="grid size-11 place-items-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink sm:size-8 dark:hover:bg-raised"
 					>
 						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight
@@ -107,7 +138,20 @@ read as complete.
 		</p>
 	</header>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	{#if error}
+		<p
+			class="mb-4 flex items-start gap-2 rounded-panel border border-caution/40 bg-caution-soft px-4 py-3 text-small text-ink"
+			role="alert"
+		>
+			<CircleAlert class="mt-0.5 size-4 shrink-0 text-caution" aria-hidden="true" />
+			{error}
+		</p>
+	{/if}
+
+	<div
+		aria-busy={loading}
+		class={cn('grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-2', loading && 'opacity-60')}
+	>
 		<Panel title={t('monthSection.movedTitle')} note={t('monthSection.movedNote')}>
 			{#if recap.before !== null && recap.other !== null}
 				<MonthBridge
