@@ -172,6 +172,7 @@ export const it: Messages = {
 	'overview.investmentsTitle': 'Investimenti',
 	'overview.twr': 'Rendimento ponderato per il tempo',
 	'overview.twrSpan': 'Rendimento ponderato per il tempo, {span}',
+	'overview.rangeStarts': 'Periodo dal {date}',
 	'overview.performanceLink': 'Rendimento',
 	'overview.noInvestmentAccount': 'Nessun conto d’investimento.',
 	'overview.nothingInvested': 'Non noto: nulla era investito.',
@@ -427,7 +428,7 @@ export const it: Messages = {
 	'investments.mwrNone':
 		'Il rendimento ponderato per il capitale non è calcolabile in questo periodo.',
 	'investments.twrSinceNote':
-		'Il rendimento ponderato per il tempo decorre dal {date}: prima non risultavano capitali investiti rilevanti.',
+		'Il periodo inizia il {start}; prima del {date} non risultavano capitali investiti rilevanti.',
 	'investments.putIn': 'Versato',
 	'investments.atTheStart': 'All’inizio',
 	'investments.now': 'Ora',

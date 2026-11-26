@@ -27,9 +27,11 @@ export function rangeOf(asked: string | null): Range {
 	return RANGES.some((range) => range.value === value) ? (value as Range) : DEFAULT_RANGE;
 }
 
-/** What the range is called after a figure: `this year`, `over the past month`; `since 1 Sep
- * 2026` when the history starts after the range would. */
-export function over(range: Range, first: Day, last: Day): string {
+/** What the time-weighted return is called after a figure: `this year`, `over the past month`;
+ * `since 1 Sep 2026` when it counts from a later day (money was first put in later, or the
+ * history starts after the range would). */
+export function over(range: Range, first: Day, last: Day, since: Day | null = null): string {
+	if (since && since > first) return t('investments.sinceDay', { date: day(since) });
 	const back = daysBack(range, last);
 	if (back === null || addDays(last, 1 - back) !== first) {
 		return t('investments.sinceDay', { date: day(first) });
@@ -47,6 +49,13 @@ export function over(range: Range, first: Day, last: Day): string {
 			return t('investments.overPast3Years');
 	}
 	return t('investments.sinceDay', { date: day(first) });
+}
+
+/** Secondary note when the time-weighted return starts counting after the range's first day:
+ * names the range's start and explains why the return starts later. Null when they match. */
+export function twrSinceNote(first: Day | null, since: Day | null): string | null {
+	if (!first || !since || since <= first) return null;
+	return t('investments.twrSinceNote', { start: day(first), date: day(since) });
 }
 
 /** What is said under an account's name: whose it is, when both people's are listed; the

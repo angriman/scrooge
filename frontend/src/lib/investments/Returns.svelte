@@ -26,6 +26,7 @@ worth in each benchmark, and the same figures account by account.
 		nearest,
 		over,
 		plot,
+		twrSinceNote,
 		type Range
 	} from './performance.js';
 
@@ -44,7 +45,8 @@ worth in each benchmark, and the same figures account by account.
 
 	const currency = $derived(performance.currency);
 	const totals = $derived(performance.totals!);
-	const span = $derived(over(range, performance.first!, performance.last!));
+	const span = $derived(over(range, performance.first!, performance.last!, totals.twr_since));
+	const sinceNote = $derived(twrSinceNote(performance.first, totals.twr_since));
 	const way = $derived(direction(totals.twr, 1));
 	const change = $derived(difference(totals.end, totals.start));
 	const beside = $derived(compared(totals.twr, performance.benchmarks));
@@ -158,8 +160,8 @@ worth in each benchmark, and the same figures account by account.
 				{:else}
 					{t('investments.mwrNone')}
 				{/if}
-				{#if totals.twr_since}
-					{t('investments.twrSinceNote', { date: day(totals.twr_since) })}
+				{#if sinceNote}
+					{sinceNote}
 				{/if}
 			</p>
 		</div>
