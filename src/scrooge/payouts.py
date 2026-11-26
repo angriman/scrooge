@@ -164,9 +164,15 @@ def run(
     if found.through is None:
         return Payouts(currency, None, None, NOTHING, None, NOTHING, (), (), None, missing)
     end = last or found.through
+    earliest = analysis.since(conn, owner)
     start = first or analysis.add_months(end, -11)
-    trailing = _sum(found.between(analysis.add_months(found.through, -11), found.through)).paid()
-    if start > end:
+    trailing_start = analysis.add_months(found.through, -11)
+    if earliest is not None:
+        if end >= earliest:
+            start = max(start, earliest)
+        trailing_start = max(trailing_start, earliest)
+    trailing = _sum(found.between(trailing_start, found.through)).paid()
+    if start > end or (earliest is not None and end < earliest):
         return Payouts(
             currency, start, end, NOTHING, None, trailing, (), (), found.through, missing
         )
