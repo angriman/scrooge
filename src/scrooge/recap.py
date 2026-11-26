@@ -58,9 +58,9 @@ class Recap:
     work: Decimal  # the income from work, the salary
     spent: Decimal  # money out, less what came back
     arrived: Decimal  # what accounts held on the day they first counted, within the month
-    rate: Decimal | None  # what was saved, as a part of income; None without income
+    rate: Decimal | None  # what was saved, as a part of income; None below savings.FLOOR
     rate_year: Decimal | None  # the same, over the twelve months ending with the month
-    rate_salary: Decimal | None  # what was saved, as a part of the salary; None without one
+    rate_salary: Decimal | None  # what was saved, as a part of the salary; None below savings.FLOOR
     rate_salary_year: Decimal | None  # the same, over the twelve months ending with the month
     categories: tuple[Category, ...]  # the largest first
     missing: tuple[months.Coverage, ...]  # monthly accounts whose statements end before `last`

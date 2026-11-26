@@ -1,6 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
 import { setLanguage } from '#lib/i18n/index.svelte.js';
+import { net, paid } from '#lib/investments/income.js';
 import type {
 	InvestmentIncome,
 	InvestmentPerformance,
@@ -145,6 +146,9 @@ describe('the card', () => {
 			paid: { net: '130', tax: '20', currency: 'CHF' },
 			errors: []
 		});
+		// Overview's card and Investments → Income's headline share the same after-tax basis.
+		expect(incomeShown({ sent: income, errors: [] }).paid?.net).toBe(net(income.income.totals));
+		expect(paid(income.income.totals)).toBe('150');
 	});
 
 	it('names the range start as secondary text when the return counts from a later day', () => {
