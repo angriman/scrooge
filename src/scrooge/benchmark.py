@@ -84,14 +84,14 @@ def follow(  # noqa: PLR0913  # which benchmark, over which days, with what mone
         (symbol,),
     ).fetchone()
     if found is None:
-        msg = "no close of it is stored; `scrooge prices` fetches it"
+        msg = "no close of it is stored"
         raise BenchmarkError(msg)
     closes = _closes(conn, int(found[0]), days[-1])
     if not closes or closes[0][0] > days[0]:
-        msg = f"no close of it is stored on or before {days[0]}; `scrooge prices` fetches it"
+        msg = f"no close of it is stored on or before {days[0]}"
         raise BenchmarkError(msg)
     if closes[-1][0] <= days[0]:
-        msg = f"no close of it is stored after {days[0]}; `scrooge prices` fetches it"
+        msg = f"no close of it is stored after {days[0]}"
         raise BenchmarkError(msg)
     native = networth.carried(closes, days)  # the close net worth takes
     prices = networth.convert(native, str(found[1]), currency, networth.rates_on(conn, days))

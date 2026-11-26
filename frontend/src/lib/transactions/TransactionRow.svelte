@@ -142,10 +142,10 @@ details in the side panel; changing a row's category opens a modal dialog.
 					onclick={(event) => ondetail('category', row.category!, event.currentTarget)}
 					title={t('transactions.categoryDetailsTitle', { category: row.category })}
 					class={cn(
-						'inline-flex max-w-full min-w-0 items-center truncate rounded-full px-2 py-0.5 text-caption transition-colors',
+						'inline-flex max-w-full min-w-0 items-center truncate rounded-full border px-2 py-0.5 text-caption transition-colors',
 						categoryActive
-							? 'bg-brand-soft font-medium text-brand'
-							: 'bg-sunken text-ink-secondary hover:bg-raised hover:text-ink'
+							? 'border-transparent bg-brand-soft font-medium text-brand'
+							: 'border-transparent bg-sunken text-ink-secondary hover:border-line-strong hover:text-ink dark:hover:border-transparent dark:hover:bg-raised'
 					)}
 				>
 					<span class="truncate">{row.category}</span>

@@ -21,11 +21,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from scrooge import categories, query, settings, staging
+from scrooge import categories, networth, query, settings, staging
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store
 from scrooge.web import wire
-from scrooge.web.api import _origin_and_token, _refused, _sent, language_of
+from scrooge.web.api import _origin_and_token, _refused, _sent, language_of, logos
 
 # What a change refused answers: what was asked cannot be done as it is.
 _REFUSED = (settings.SettingsError, staging.StagingError, ConfigError)
@@ -141,18 +141,24 @@ def _text(sent: dict[str, object], name: str) -> str:
     return value
 
 
-def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
-    """The rule a change is about: its file, its place there, and its lines as shown."""
-    key, position = _text(sent, "file"), sent.get("position")
+def _file(request: Request, key: str) -> settings.RulesFile:
+    """The configured rules file named `key`, or an error when none has that key."""
     files = settings.rule_files(_shared(request), _people(request), None)
-    path = next((file.path for file in files if file.key == key), None)
-    if path is None:
+    found = next((file for file in files if file.key == key), None)
+    if found is None:
         msg = f"There is no rules file {key or 'named'} here."
         raise _UnreadableError(msg)
+    return found
+
+
+def _seen(request: Request, sent: dict[str, object]) -> settings.Seen:
+    """The rule a change is about: its file, its place there, and its lines as shown."""
+    file = _file(request, _text(sent, "file"))
+    position = sent.get("position")
     if not isinstance(position, int) or isinstance(position, bool):
         msg = "Send the place of the rule in its file as a number."
         raise _UnreadableError(msg)
-    return settings.Seen(path, position, _text(sent, "version"))
+    return settings.Seen(file.path, position, _text(sent, "version"))
 
 
 async def _edit_rule(request: Request) -> Response:
@@ -189,6 +195,24 @@ async def _move_rule(request: Request) -> Response:
         steps = by if isinstance(by, int) and not isinstance(by, bool) else 0
         beside = _text(sent, "beside")
         settings.move_rule(_seen(request, sent), steps, beside, _categories_file(request))
+
+    return await _change(request, act)
+
+
+async def _move_rule_file(request: Request) -> Response:
+    """Move a rule to another rules file: `{"file", "position", "version", "to"}`. Moving to
+    the shared rules puts it first so it comes ahead of catch-all rules; moving to a person's
+    own rules puts it last, after their existing overrides and before the shared ones."""
+
+    def act(sent: dict[str, object]) -> None:
+        seen = _seen(request, sent)
+        target = _file(request, _text(sent, "to"))
+        settings.move_rule_to(
+            seen,
+            target.path,
+            _categories_file(request),
+            first=target.owner is None,
+        )
 
     return await _change(request, act)
 
@@ -303,16 +327,65 @@ async def _remove_category(request: Request) -> Response:
     return await _change(request, act)
 
 
+def _listed_people(request: Request) -> Response:
+    """Every person in the config or database, with their counterparty patterns and accounts."""
+    rules = request.app.state.rules
+    patterns = None if rules is None else rules.people
+    with db.reading(request.app.state.database) as conn:
+        listed = settings.listed_people(conn, patterns)
+    return JSONResponse(
+        {
+            "people": [wire.listed_person(person) for person in listed],
+            "errors": [],
+        }
+    )
+
+
+def _currencies(request: Request) -> Response:
+    """The currencies offered, the default, the month-end table columns, and the language."""
+    state = request.app.state
+    return JSONResponse(
+        {
+            "currency": state.currency,
+            "currencies": list(networth.CURRENCIES),
+            "table_currencies": list(state.currencies),
+            "language": language_of(request),
+            "languages": list(categories.LANGUAGES),
+            "errors": [],
+        }
+    )
+
+
+def _listed_logos(request: Request) -> Response:
+    """Every non-bill holding instrument and the logos stored for them."""
+    state = request.app.state
+    with db.reading(state.database) as conn:
+        listed = settings.listed_logos(conn)
+        found = logos(request, conn)
+    return JSONResponse(
+        {
+            "instruments": [wire.listed_logo(item) for item in listed],
+            "logos": found,
+            "editable": not state.read_only,
+            "errors": [],
+        }
+    )
+
+
 routes = [
     Route("/rules", _rules, name="api_settings_rules"),
     Route("/rules/test", _test, name="api_settings_rules_test"),
     Route("/rules/edit", _edit_rule, methods=["POST"], name="api_settings_rules_edit"),
     Route("/rules/remove", _remove_rule, methods=["POST"], name="api_settings_rules_remove"),
     Route("/rules/move", _move_rule, methods=["POST"], name="api_settings_rules_move"),
+    Route("/rules/file", _move_rule_file, methods=["POST"], name="api_settings_rules_file"),
     Route("/categories", _listed_categories, name="api_settings_categories"),
     Route("/categories/add", _add_category, methods=["POST"], name="api_settings_add"),
     Route("/categories/rename", _rename_category, methods=["POST"], name="api_settings_rename"),
     Route("/categories/merge", _merge_category, methods=["POST"], name="api_settings_merge"),
     Route("/categories/move", _move_category, methods=["POST"], name="api_settings_move"),
     Route("/categories/remove", _remove_category, methods=["POST"], name="api_settings_remove"),
+    Route("/people", _listed_people, name="api_settings_people"),
+    Route("/currencies", _currencies, name="api_settings_currencies"),
+    Route("/logos", _listed_logos, name="api_settings_logos"),
 ]

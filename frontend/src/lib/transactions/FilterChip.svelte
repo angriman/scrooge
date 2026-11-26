@@ -64,7 +64,7 @@ cross that clears it. Choosing it opens what it can be set to.
 			type="button"
 			onclick={onclear}
 			aria-label={t('transactions.clearFilterAria', { label: label.toLowerCase() })}
-			class="mr-1 grid size-6 place-items-center rounded-full text-ink-secondary hover:bg-raised hover:text-ink"
+			class="mr-1 grid size-6 place-items-center rounded-full text-ink-secondary hover:bg-sunken hover:text-ink dark:hover:bg-raised"
 		>
 			<X class="size-3.5" aria-hidden="true" />
 		</button>

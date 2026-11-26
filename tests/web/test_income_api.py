@@ -15,6 +15,7 @@ from scrooge.web import app as webapp
 from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, close
 from tests.test_payouts import (
     ANNA,
+    CUSIP,
     DIVIDEND,
     END,
     ISIN,
@@ -39,6 +40,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     close(conn, PARTNER, (date(2026, 1, 1), END), END, ("migros", ANNA))
     store.instrument_id(conn, "ACME", "Stocks", "USD", name="ACME Corp")
     store.instrument_id(conn, ISIN, "Funds", "CHF", name="ACME Global Fund")
+    store.instrument_id(conn, CUSIP, "Bonds", "USD", date(2026, 7, 24))
     store.set_logo(conn, "ACME", logos.read(PNG), "acme.png", CLOSED_AT.isoformat())
     store.set_rate(conn, date(2025, 3, 14), "USD", Decimal("0.80"), source="fetched:yahoo")
     store.set_rate(conn, date(2026, 3, 16), "USD", Decimal("0.90"), source="fetched:yahoo")
@@ -71,6 +73,8 @@ def test_the_last_twelve_months_are_sent_unless_a_range_is_asked(client: TestCli
         "key": "ACME",
         "name": "ACME Corp",
         "symbol": "ACME",
+        "type": "stock",
+        "maturity": None,
         "account": None,
         "owner": None,
         "dividends": "180.00",
@@ -79,6 +83,13 @@ def test_the_last_twelve_months_are_sent_unless_a_range_is_asked(client: TestCli
         "count": 3,
         "last": "2026-06-15",
     }
+    bill = shown["holdings"][1]
+    assert (bill["key"], bill["symbol"], bill["type"], bill["maturity"]) == (
+        CUSIP,
+        CUSIP,
+        "bill",
+        "2026-07-24",
+    )
     accounts = [(h["name"], h["owner"]) for h in shown["holdings"] if h["account"]]
     assert accounts == [("IBKR USD", None), ("Migros", None)]
     assert list(sent["logos"]) == ["ACME"]
@@ -125,7 +136,7 @@ def test_rows_without_a_rate_are_left_out_and_said(client: TestClient) -> None:
     # Nothing is in pounds, and no rate is stored for them: what is shown is empty, not gone.
     assert sent["income"]["totals"]["net"] == "0.00"
     assert sent["income"]["through"] == "2026-08-31"
-    assert sent["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+    assert sent["errors"] == ["No exchange rate is stored for GBP."]
 
 
 def test_a_row_in_a_currency_without_a_rate_leaves_the_others_shown(tmp_path: Path) -> None:
@@ -140,7 +151,7 @@ def test_a_row_in_a_currency_without_a_rate_leaves_the_others_shown(tmp_path: Pa
     shown = sent.json()
     assert shown["income"]["totals"]["interest"] == "5.00"
     assert [h["key"] for h in shown["income"]["holdings"]] == ["Migros"]
-    assert shown["errors"] == ["No exchange rate is stored for GBP: run `scrooge prices`."]
+    assert shown["errors"] == ["No exchange rate is stored for GBP."]
 
 
 def test_a_period_of_another_page_picks_the_months_paid(client: TestClient) -> None:
@@ -186,3 +197,35 @@ def test_no_range_is_offered_without_a_first_day(
     sent = client.get("/api/income", params={"owner": OWNER}).json()
     assert sent["income"]["through"] == "2026-08-31"
     assert sent["ranges"] == []
+
+
+def test_income_clamps_ranges_to_the_first_statement_month(client: TestClient) -> None:
+    # Anna's statements cover 2026-01..2026-08 (8 months).
+    for params in (
+        {"owner": PARTNER},
+        {"owner": PARTNER, "range": "ytd"},
+        {"owner": PARTNER, "range": "1y"},
+        {"owner": PARTNER, "range": "all"},
+        {"owner": PARTNER, "from": "2025"},
+    ):
+        shown = client.get("/api/income", params=params).json()["income"]
+        assert shown["first"] == "2026-01-01"
+        assert len(shown["months"]) == 8
+        assert shown["months"][0]["month"] == "2026-01"
+        assert shown["months"][-1]["month"] == "2026-08"
+
+    earlier = client.get(
+        "/api/income", params={"owner": PARTNER, "from": "2025", "to": "2025"}
+    ).json()["income"]
+    assert (earlier["first"], earlier["last"], earlier["months"], earlier["holdings"]) == (
+        "2025-01-01",
+        "2025-12-31",
+        [],
+        [],
+    )
+
+    to_only_earlier = client.get("/api/income", params={"owner": PARTNER, "to": "2025-12"}).json()[
+        "income"
+    ]
+    assert to_only_earlier["first"] <= to_only_earlier["last"]
+    assert (to_only_earlier["months"], to_only_earlier["holdings"]) == ([], [])

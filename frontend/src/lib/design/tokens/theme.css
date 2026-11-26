@@ -1,7 +1,7 @@
-/* What Tailwind calls the roles of the theme (tokens/night.css), and the scales every theme
- * shares: type, corners. A class names a role (`bg-panel`, `text-ink-secondary`,
- * `fill-data-3`), never a colour, so that changing a theme changes no component. Tailwind's
- * own colours are left out: a class can only name a role. */
+/* What Tailwind calls the roles of the themes (tokens/night.css, tokens/alpine.css), and the
+ * scales every theme shares: type, corners. A class names a role (`bg-panel`,
+ * `text-ink-secondary`, `fill-data-3`), never a colour, so that changing a theme changes no
+ * component. Tailwind's own colours are left out: a class can only name a role. */
 
 /* `dark:` is the night theme, for the rare component that has to differ beyond its tokens:
  * named, or worn by a page that names no theme (night.css). */
@@ -93,6 +93,23 @@
 	--color-danger: var(--loss);
 	--color-warning: var(--caution);
 	--color-info: var(--brand);
+}
+
+/* LayerChart's axis and legend labels default to 10px in `@layer components` via `:where(...)`
+ * (zero specificity). Giving them our `--text-caption` token (12px) puts every chart — both
+ * LayerChart and the custom SVGs using `text-caption` — on one shared type step. */
+@layer components {
+	.lc-axis-label,
+	.lc-axis-tick-label,
+	.lc-legend-title,
+	.lc-legend-tick-text {
+		font-size: var(--text-caption);
+	}
+
+	.lc-axis-label,
+	.lc-axis-tick-label {
+		font-weight: 400;
+	}
 }
 
 @layer base {

@@ -10,9 +10,7 @@
 	import Recurring from '#lib/cashflow/Recurring.svelte';
 	import Spending from '#lib/cashflow/Spending.svelte';
 	import Table from '#lib/cashflow/Table.svelte';
-	import WhatMoved from '#lib/cashflow/WhatMoved.svelte';
 	import WhoPaid from '#lib/cashflow/WhoPaid.svelte';
-	import { whatMoved } from '#lib/cashflow/whatMoved.js';
 	import { partColors, rangeName, rangePillLabel } from '#lib/cashflow/names.js';
 	import { anyRecurring } from '#lib/cashflow/recurring.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -39,11 +37,10 @@
 	]);
 	const by = $derived(oneOf(page.url, 'by', ['month', 'quarter', 'year'], 'month'));
 	const views = $derived([
-		{ value: 'time' as const, label: t('cashflow.viewTime') },
-		{ value: 'flow' as const, label: t('cashflow.viewFlow') },
+		{ value: 'chart' as const, label: t('overview.chart') },
 		{ value: 'table' as const, label: t('overview.table') }
 	]);
-	const view = $derived(oneOf(here(), 'view', ['time', 'flow', 'table'], 'time'));
+	const view = $derived(oneOf(here(), 'view', ['chart', 'table'], 'chart'));
 
 	// The transactions behind a line: the same person, the same range, and the same currency
 	// for the months shown above them.
@@ -77,20 +74,12 @@
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
 	<h1 class="text-heading font-medium text-ink">{t('cashflow.title')}</h1>
 	{#if flow.ranges.length}
-		<div class="flex flex-wrap items-center gap-2">
-			<Segmented
-				label={t('overview.rangeAria')}
-				value={chosen}
-				options={flow.ranges.map((range) => ({ value: range.key, label: rangePillLabel(range) }))}
-				onchange={(key) => show(here(), choose(flow.ranges, key))}
-			/>
-			<Segmented
-				label={t('cashflow.eachColumnAria')}
-				value={by}
-				options={byOptions}
-				onchange={(value) => show(here(), { by: value === 'month' ? null : value })}
-			/>
-		</div>
+		<Segmented
+			label={t('overview.rangeAria')}
+			value={chosen}
+			options={flow.ranges.map((range) => ({ value: range.key, label: rangePillLabel(range) }))}
+			onchange={(key) => show(here(), choose(flow.ranges, key))}
+		/>
 	{/if}
 </div>
 
@@ -116,51 +105,51 @@
 		totals={report.totals}
 		yearBefore={report.year_before}
 		currency={report.currency}
-		range={rangeName(chosen || null, flow.first, flow.last)}
+		range={rangeName(chosen || null, flow.first, flow.last, report.through)}
 		paidBack={report.paid_back}
 	/>
 
-	{@const moved = whatMoved(report.categories)}
-	{#if report.paid_by || moved.length}
-		<div
-			class={['mt-6 grid items-start gap-6', report.paid_by && moved.length && 'lg:grid-cols-2']}
-		>
-			{#if moved.length}<WhatMoved {moved} {colors} {transactions} />{/if}
-			{#if report.paid_by}<WhoPaid
-					paidBy={report.paid_by}
-					currency={report.currency}
-					people={data.session.people}
-				/>{/if}
-		</div>
-	{/if}
+	<Panel class="mt-6" title={t('cashflow.viewFlow')}>
+		<Flow {report} {colors} />
+	</Panel>
 
-	<Panel class="mt-6">
+	<Panel class="mt-6" title={t('cashflow.viewTime')}>
 		{#snippet actions()}
 			<Segmented
 				label={t('overview.showAria')}
 				value={view}
 				options={views}
 				onchange={(value) =>
-					show(here(), { view: value === 'time' ? null : value }, { shallow: true })}
+					show(here(), { view: value === 'chart' ? null : value }, { shallow: true })}
+			/>
+			<Segmented
+				label={t('cashflow.eachColumnAria')}
+				value={by}
+				options={byOptions}
+				onchange={(value) => show(here(), { by: value === 'month' ? null : value })}
 			/>
 		{/snippet}
-		{#if view === 'flow'}
-			<Flow {report} {colors} />
-		{:else if view === 'table'}
+		{#if view === 'table'}
 			<Table periods={report.periods} totals={report.totals} currency={report.currency} />
 		{:else}
 			<OverTime periods={report.periods} {colors} currency={report.currency} />
 		{/if}
 	</Panel>
 
-	<div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-		<Spending {report} {colors} {transactions} />
+	<div class="mt-6 grid items-start gap-6 lg:grid-cols-2">
 		<Income {report} {transactions} />
+		<Spending {report} {colors} {transactions} />
 	</div>
 
 	{#if anyRecurring(data.recurring)}
 		<div class="mt-6">
 			<Recurring recurring={data.recurring} transactions={allTransactions} />
+		</div>
+	{/if}
+
+	{#if report.paid_by}
+		<div class="mt-6">
+			<WhoPaid paidBy={report.paid_by} currency={report.currency} people={data.session.people} />
 		</div>
 	{/if}
 

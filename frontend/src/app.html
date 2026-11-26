@@ -4,6 +4,18 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" href="/static/icons/icon.svg" />
+		<script>
+			(() => {
+				let stored = null;
+				try {
+					stored = localStorage.getItem('scrooge-theme');
+				} catch {}
+				const light =
+					typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches;
+				document.documentElement.dataset.theme =
+					stored === 'light' || (stored !== 'dark' && light) ? 'alpine' : 'night';
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body>

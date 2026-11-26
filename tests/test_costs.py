@@ -154,7 +154,7 @@ def test_both_people_together_name_their_accounts_of_a_name_after_each(
 
 
 def test_rows_in_a_currency_without_a_rate_are_left_out_and_said(conn: sqlite3.Connection) -> None:
-    said = "no exchange rate is stored for GBP: run `scrooge prices`"
+    said = "no exchange rate is stored for GBP"
     assert costs.run(conn, owner=OWNER, currency="CHF").missing == (said,)
     # In pounds, only the pounds are counted.
     pounds = costs.run(conn, owner=OWNER, currency="GBP")

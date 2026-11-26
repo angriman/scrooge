@@ -48,6 +48,19 @@ phone. Controlled by the caller (typically from a URL query parameter via `lib/v
 	let contentRef = $state<HTMLElement | null>(null);
 	let bodyRef = $state<HTMLElement | null>(null);
 	let lastSubject: string | null | undefined = undefined;
+	let mobile = $state(false);
+
+	// Only the full-screen phone sheet is modal; on desktop the list behind stays reachable.
+	() => {
+		if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+		const mql = window.matchMedia('(max-width: 767px)');
+		mobile = mql.matches;
+		const onChange = (event: MediaQueryListEvent) => {
+			mobile = event.matches;
+		};
+		mql.addEventListener('change', onChange);
+		return () => mql.removeEventListener('change', onChange);
+	};
 
 	// When switching directly from one row to another while the panel stays open, reset scroll
 	// and move focus into the panel without scrolling the list behind it.
@@ -84,8 +97,8 @@ phone. Controlled by the caller (typically from a URL query parameter via `lib/v
 	<BitsDialog.Portal>
 		<BitsDialog.Content
 			bind:ref={contentRef}
-			preventScroll={false}
-			trapFocus={false}
+			preventScroll={mobile}
+			trapFocus={mobile}
 			interactOutsideBehavior="ignore"
 			escapeKeydownBehavior="close"
 			onCloseAutoFocus={handleCloseAutoFocus}
@@ -96,41 +109,45 @@ phone. Controlled by the caller (typically from a URL query parameter via `lib/v
 				className
 			)}
 		>
-			<header
-				class="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4"
-			>
-				<div class="flex min-w-0 items-center gap-3">
-					{@render leading?.()}
-					<div class="min-w-0">
-						<BitsDialog.Title class="truncate text-heading font-medium text-ink">
-							{title}
-						</BitsDialog.Title>
-						{#if description}
-							<BitsDialog.Description class="mt-0.5 text-small text-ink-secondary">
-								{description}
-							</BitsDialog.Description>
-						{/if}
-						{#if meta}
-							<div class="mt-0.5 text-small text-ink-muted">
-								{@render meta()}
+			{#snippet child({ props })}
+				<div {...props} bind:this={contentRef} aria-modal={mobile ? 'true' : undefined}>
+					<header
+						class="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4"
+					>
+						<div class="flex min-w-0 items-center gap-3">
+							{@render leading?.()}
+							<div class="min-w-0">
+								<BitsDialog.Title class="truncate text-heading font-medium text-ink">
+									{title}
+								</BitsDialog.Title>
+								{#if description}
+									<BitsDialog.Description class="mt-0.5 text-small text-ink-secondary">
+										{description}
+									</BitsDialog.Description>
+								{/if}
+								{#if meta}
+									<div class="mt-0.5 text-small text-ink-muted">
+										{@render meta()}
+									</div>
+								{/if}
 							</div>
-						{/if}
+						</div>
+						<BitsDialog.Close
+							aria-label={t('ui.close')}
+							title={t('ui.close')}
+							class="inline-flex size-8 shrink-0 items-center justify-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink dark:hover:bg-raised"
+						>
+							<X class="size-4" aria-hidden="true" />
+						</BitsDialog.Close>
+					</header>
+					<div
+						bind:this={bodyRef}
+						class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+					>
+						{@render children()}
 					</div>
 				</div>
-				<BitsDialog.Close
-					aria-label={t('ui.close')}
-					title={t('ui.close')}
-					class="inline-flex size-8 shrink-0 items-center justify-center rounded-control text-ink-secondary hover:bg-raised hover:text-ink"
-				>
-					<X class="size-4" aria-hidden="true" />
-				</BitsDialog.Close>
-			</header>
-			<div
-				bind:this={bodyRef}
-				class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
-			>
-				{@render children()}
-			</div>
+			{/snippet}
 		</BitsDialog.Content>
 	</BitsDialog.Portal>
 </BitsDialog.Root>

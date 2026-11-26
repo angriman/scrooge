@@ -81,50 +81,54 @@ its amount. When more went out than came in, the difference comes from savings.
 </script>
 
 <!-- Narrower than its labels need, it scrolls sideways rather than squeeze the bands. -->
-<div class="-mx-4 overflow-x-auto px-4">
-	<div class="h-[340px] w-full min-w-[34rem]" role="img" aria-label={t('cashflow.flowAria')}>
-		<Chart data={graph} padding={{ left: 120, right: 140, top: 6, bottom: 6 }}>
-			<Svg>
-				<Sankey nodeId={(d) => d.id} nodeWidth={8} nodePadding={12} nodeAlign="justify">
-					{#snippet children({ nodes, links })}
-						{#each links as link, index (index)}
-							{@const from = link.source.x1 ?? 0}
-							{@const to = link.target.x0 ?? 0}
-							{@const middle = (from + to) / 2}
-							<path
-								d="M{from},{link.y0} C{middle},{link.y0} {middle},{link.y1} {to},{link.y1}"
-								fill="none"
-								stroke={fill(link.target.id === IN ? link.source.id : link.target.id)}
-								stroke-opacity="0.35"
-								stroke-width={Math.max(1, link.width ?? 1)}
-							/>
-						{/each}
-						{#each nodes as node (node.id)}
-							{@const left = node.depth === 0}
-							<rect
-								x={node.x0}
-								y={node.y0}
-								width={(node.x1 ?? 0) - (node.x0 ?? 0)}
-								height={Math.max(1, (node.y1 ?? 0) - (node.y0 ?? 0))}
-								fill={node.fill}
-								rx="2"
-							/>
-							<text
-								x={left ? (node.x0 ?? 0) - 6 : (node.x1 ?? 0) + 6}
-								y={((node.y0 ?? 0) + (node.y1 ?? 0)) / 2}
-								dy="0.35em"
-								text-anchor={left ? 'end' : 'start'}
-								class="fill-ink text-caption"
-							>
-								{node.label}
-								{#if node.id !== IN}<tspan class="fill-ink-muted"
-										>{short(String(Math.round(node.value ?? 0)))}</tspan
-									>{/if}
-							</text>
-						{/each}
-					{/snippet}
-				</Sankey>
-			</Svg>
-		</Chart>
+{#if graph.links.length}
+	<div class="-mx-4 overflow-x-auto px-4">
+		<div class="h-[340px] w-full min-w-[34rem]" role="img" aria-label={t('cashflow.flowAria')}>
+			<Chart data={graph} padding={{ left: 120, right: 140, top: 6, bottom: 6 }}>
+				<Svg>
+					<Sankey nodeId={(d) => d.id} nodeWidth={8} nodePadding={12} nodeAlign="justify">
+						{#snippet children({ nodes, links })}
+							{#each links as link, index (index)}
+								{@const from = link.source.x1 ?? 0}
+								{@const to = link.target.x0 ?? 0}
+								{@const middle = (from + to) / 2}
+								<path
+									d="M{from},{link.y0} C{middle},{link.y0} {middle},{link.y1} {to},{link.y1}"
+									fill="none"
+									stroke={fill(link.target.id === IN ? link.source.id : link.target.id)}
+									stroke-opacity="0.35"
+									stroke-width={Math.max(1, link.width ?? 1)}
+								/>
+							{/each}
+							{#each nodes as node (node.id)}
+								{@const left = node.depth === 0}
+								<rect
+									x={node.x0}
+									y={node.y0}
+									width={(node.x1 ?? 0) - (node.x0 ?? 0)}
+									height={Math.max(1, (node.y1 ?? 0) - (node.y0 ?? 0))}
+									fill={node.fill}
+									rx="2"
+								/>
+								<text
+									x={left ? (node.x0 ?? 0) - 6 : (node.x1 ?? 0) + 6}
+									y={((node.y0 ?? 0) + (node.y1 ?? 0)) / 2}
+									dy="0.35em"
+									text-anchor={left ? 'end' : 'start'}
+									class="fill-ink text-caption"
+								>
+									{node.label}
+									{#if node.id !== IN}<tspan class="fill-ink-muted"
+											>{short(String(Math.round(node.value ?? 0)))}</tspan
+										>{/if}
+								</text>
+							{/each}
+						{/snippet}
+					</Sankey>
+				</Svg>
+			</Chart>
+		</div>
 	</div>
-</div>
+{:else}
+	<p class="text-body text-ink-secondary">{t('cashflow.emptyHeading')}</p>
+{/if}
