@@ -53,9 +53,16 @@ export async function loaded<T extends { errors: string[] }>(
 /** What the time-weighted return is over: the range (`over the past year`), or from the day
  * it counts from when money was first put in later (`since 3 Mar 2026`). Empty without days. */
 export function returnSpan(range: Range, report: PerformanceReport): string {
+	return report.first && report.last
+		? over(range, report.first, report.last, report.totals?.twr_since ?? null)
+		: '';
+}
+
+/** The range's start when the time-weighted return counts from a later day; else null. */
+export function rangeStartNote(report: PerformanceReport): string | null {
 	const since = report.totals?.twr_since;
-	if (since) return t('investments.sinceDay', { date: day(since) });
-	return report.first && report.last ? over(range, report.first, report.last) : '';
+	if (!report.first || !since || since <= report.first) return null;
+	return t('overview.rangeStarts', { date: day(report.first) });
 }
 
 /** The return half of the card: `measured` with its figures, `uninvested` when nothing was
@@ -64,6 +71,7 @@ export function returnSpan(range: Range, report: PerformanceReport): string {
 export interface ReturnShown {
 	state: 'measured' | 'uninvested' | 'none' | 'unknown';
 	span: string;
+	rangeNote: string | null;
 	twr: Amount | null;
 	gain: Amount | null;
 	currency: string;
@@ -74,11 +82,22 @@ export function returnShown(shown: Loaded<InvestmentPerformance>, range: Range):
 	const report = shown.sent?.performance ?? null;
 	const totals = report?.totals ?? null;
 	const errors = [...new Set(shown.errors)];
-	if (!report) return { state: 'unknown', span: '', twr: null, gain: null, currency: '', errors };
+	if (!report) {
+		return {
+			state: 'unknown',
+			span: '',
+			rangeNote: null,
+			twr: null,
+			gain: null,
+			currency: '',
+			errors
+		};
+	}
 	const state = !totals ? 'none' : totals.twr === null ? 'uninvested' : 'measured';
 	return {
 		state,
 		span: returnSpan(range, report),
+		rangeNote: rangeStartNote(report),
 		twr: totals?.twr ?? null,
 		gain: totals?.gain ?? null,
 		currency: report.currency,

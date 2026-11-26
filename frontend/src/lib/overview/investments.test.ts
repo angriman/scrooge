@@ -11,6 +11,7 @@ import {
 	incomeQuery,
 	incomeShown,
 	loaded,
+	rangeStartNote,
 	refusal,
 	returnShown,
 	returnSpan,
@@ -134,6 +135,7 @@ describe('the card', () => {
 		expect(returnShown({ sent: performance(), errors: [] }, '1y')).toEqual({
 			state: 'measured',
 			span: 'over the past year',
+			rangeNote: null,
 			twr: '9.5',
 			gain: '100',
 			currency: 'CHF',
@@ -143,6 +145,25 @@ describe('the card', () => {
 			paid: { net: '130', tax: '20', currency: 'CHF' },
 			errors: []
 		});
+	});
+
+	it('names the range start as secondary text when the return counts from a later day', () => {
+		const later = performance({
+			first: '2026-07-05',
+			last: '2026-09-30',
+			totals: { ...measured, twr_since: '2026-08-31' }
+		});
+		expect(returnShown({ sent: later, errors: [] }, '1y')).toMatchObject({
+			state: 'measured',
+			span: 'since 31 Aug 2026',
+			rangeNote: 'Range starts 5 Jul 2026'
+		});
+		expect(
+			rangeStartNote(
+				report({ first: '2026-07-05', totals: { ...measured, twr_since: '2026-07-05' } })
+			)
+		).toBeNull();
+		expect(rangeStartNote(report({ first: null, last: null, totals: null }))).toBeNull();
 	});
 
 	it('keeps what was paid when the return is not known, and says why once', () => {
@@ -203,6 +224,13 @@ describe('taxWithheld', () => {
 		setLanguage('it');
 		try {
 			expect(returnSpan('1y', report())).toBe('nell’ultimo anno');
+			const later = report({
+				first: '2026-07-05',
+				last: '2026-09-30',
+				totals: { ...measured, twr_since: '2026-08-31' }
+			});
+			expect(returnSpan('1y', later)).toBe('dal 31 Ago 2026');
+			expect(rangeStartNote(later)).toBe('Periodo dal 5 Lug 2026');
 			const refused = (() => {
 				try {
 					error(500, 'Internal Error');

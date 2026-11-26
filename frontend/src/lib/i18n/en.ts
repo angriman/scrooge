@@ -166,6 +166,7 @@ export const en = {
 	'overview.investmentsTitle': 'Investments',
 	'overview.twr': 'Time-weighted return',
 	'overview.twrSpan': 'Time-weighted return, {span}',
+	'overview.rangeStarts': 'Range starts {date}',
 	'overview.performanceLink': 'Performance',
 	'overview.noInvestmentAccount': 'No investment account yet.',
 	'overview.nothingInvested': 'Not known: nothing was invested.',
@@ -415,7 +416,7 @@ export const en = {
 	'investments.mwrFlowsNote': '{per}, on the money as it was put in.',
 	'investments.mwrNone': 'The money-weighted return has no rate to give over these days.',
 	'investments.twrSinceNote':
-		'The time-weighted return counts from {date}: before it, next to nothing was invested.',
+		'The range starts on {start}; before {date}, next to nothing was invested.',
 	'investments.putIn': 'Put in',
 	'investments.atTheStart': 'At the start',
 	'investments.now': 'Now',
