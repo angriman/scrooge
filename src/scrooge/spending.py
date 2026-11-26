@@ -152,7 +152,7 @@ def run(  # noqa: PLR0913  # the range, whose, how grouped, in what
     spent = [each for each in inside if not paid_back(each.row)]
     came_back = [each.amount for each in inside if paid_back(each.row)]
     returned = sum(came_back, Decimal(0))
-    months = _months(span.start, span.end)
+    months = analysis.months(span.start, span.end)
     categories = _categories(found, span, spent, months, store.category_ranks(conn))
     largest = [category.name for category in categories[:SHOWN] if category.spent > 0]
     parts = (
@@ -297,7 +297,3 @@ def _merchants(spent: list[Converted]) -> list[Merchant]:
             )
         )
     return sorted(merchants, key=lambda merchant: (-merchant.spent, merchant.name))
-
-
-def _months(start: date, end: date) -> int:
-    return (end.year - start.year) * 12 + end.month - start.month + 1

@@ -630,7 +630,16 @@ export interface CashFlowReport {
 		last: string;
 	}[];
 	other_merchants: { count: number; spent: Amount };
-	sources: { group: string; name: string; count: number; total: Amount }[];
+	sources: {
+		group: string;
+		name: string;
+		count: number;
+		total: Amount;
+		monthly: Amount;
+		/** The median month of the twelve before the range. */
+		usual: Amount | null;
+		year_before: Amount | null;
+	}[];
 	/** Income and expenses in each currency, as paid: nothing converted. */
 	as_paid: {
 		period: string;

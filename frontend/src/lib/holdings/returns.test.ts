@@ -57,7 +57,6 @@ function holding(symbol: string, fields: Partial<HeldInstrument> = {}): HeldInst
 	return {
 		symbol,
 		name: '',
-		type: 'etf',
 		asset: 'ETFs',
 		type: 'etf',
 		currency: 'USD',
