@@ -363,10 +363,13 @@ def test_what_is_held_is_sent_with_each_instrument_its_positions_and_its_spread(
     assert held["accounts"] == 3
     # Each instrument, largest first, with its positions account by account; its share to
     # the tenth the app shows, shared out of the exact values so that they add up to 100.
-    assert [(h["symbol"], h["share"], len(h["positions"])) for h in held["holdings"]] == [
-        ("912797ZZ1", "84.6", 1),
-        ("GADG", "7.7", 1),
-        ("WIDG", "7.7", 3),
+    assert [
+        (h["symbol"], h["type"], h["maturity"], h["share"], len(h["positions"]))
+        for h in held["holdings"]
+    ] == [
+        ("912797ZZ1", "bill", "2026-12-24", "84.6", 1),
+        ("GADG", "stock", None, "7.7", 1),
+        ("WIDG", "etf", None, "7.7", 3),
     ]
     widget = held["holdings"][2]["positions"]
     assert [(p["owner"], p["account"], p["value"]) for p in widget] == [
@@ -597,3 +600,55 @@ def test_choosing_a_language_is_allowed_in_read_only_mode(database: Path) -> Non
     chosen = client.post("/api/language", json={"language": "it"}, headers={"x-token": token})
     assert chosen.status_code == 200
     assert client.get("/api/session").json()["language"] == "it"
+
+
+def test_holding_detail_returns_series_and_transactions(client: TestClient, database: Path) -> None:
+    response = client.get(
+        "/api/holdings/detail",
+        params={"symbol": "WIDG", "currency": "USD", "instrument_currency": "USD", "asset": "ETFs"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["errors"] == []
+    detail = body["detail"]
+    assert detail["symbol"] == "WIDG"
+    assert detail["currency"] == "USD"
+    assert detail["series"]
+    assert detail["series"][-1]["value"] == "900.00"
+    assert detail["total_transactions"] == 3
+    assert len(detail["transactions"]) == 3
+
+    # Missing FX rate leaves transactions populated while flagging the chart error.
+    no_rate = client.get("/api/holdings/detail", params={"symbol": "WIDG", "currency": "JPY"})
+    assert no_rate.status_code == 200
+    partial = no_rate.json()
+    assert partial["detail"]["series"] == []
+    assert partial["detail"]["total_transactions"] == 3
+    assert partial["errors"]
+
+    # Read-only mode still serves GET /api/holdings/detail cleanly.
+    ro = TestClient(webapp.create_app(database, currency="USD", read_only=True), base_url=SITE)
+    assert ro.get("/api/holdings/detail", params={"symbol": "912797ZZ1"}).status_code == 200
+
+
+def test_holding_detail_validation_and_not_found(client: TestClient) -> None:
+    assert client.get("/api/holdings/detail").status_code == 400
+    assert (
+        client.get(
+            "/api/holdings/detail", params={"symbol": "WIDG", "instrument_currency": "12"}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.get("/api/holdings/detail", params={"symbol": "WIDG", "asset": "Magic"}).status_code
+        == 400
+    )
+    assert (
+        client.get("/api/holdings/detail", params={"symbol": "WIDG", "limit": "0"}).status_code
+        == 400
+    )
+    assert (
+        client.get("/api/holdings/detail", params={"symbol": "WIDG", "owner": "Zoe"}).status_code
+        == 400
+    )
+    assert client.get("/api/holdings/detail", params={"symbol": "UNKNOWN"}).status_code == 404

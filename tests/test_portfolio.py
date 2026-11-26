@@ -384,6 +384,14 @@ def test_positions_are_listed_by_person_kind_and_value(conn: sqlite3.Connection)
     ]
     mine = agrees_with_net_worth(conn, OWNER, "USD")
     assert mine.positions == held.positions[2:]
+    holdings_by_symbol = {h.symbol: h for h in held.holdings}
+    assert (holdings_by_symbol["WIDG"].type, holdings_by_symbol["WIDG"].maturity) == ("etf", None)
+    assert holdings_by_symbol["WIDG"].positions == 3
+    assert (holdings_by_symbol["GADG"].type, holdings_by_symbol["GADG"].maturity) == ("stock", None)
+    assert (holdings_by_symbol["912797ZZ1"].type, holdings_by_symbol["912797ZZ1"].maturity) == (
+        "bill",
+        date(2026, 12, 24),
+    )
     hers = agrees_with_net_worth(conn, PARTNER, "EUR")
     assert [p.value_native for p in hers.positions] == [D(350), D(50)]
     assert {p.owner for p in hers.positions} == {PARTNER}

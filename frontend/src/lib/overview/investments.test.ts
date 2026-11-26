@@ -100,8 +100,8 @@ describe('the links to the investments page', () => {
 		expect(returnsQuery(address(''), 'ytd').toString()).toBe('');
 	});
 
-	it('open the income over the last twelve months', () => {
-		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe('owner=Anna&view=income');
+	it('open the payouts over the last twelve months', () => {
+		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe('owner=Anna&view=payouts');
 	});
 });
 

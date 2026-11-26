@@ -41,6 +41,7 @@ from scrooge import (
     settings,
     suggestions,
 )
+from scrooge import holding_detail as holding_detail_
 from scrooge.context import Context
 from scrooge.merchants import Merchants
 
@@ -333,8 +334,10 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
             {
                 "symbol": h.symbol,
                 "name": h.name,
+                "type": h.type,
                 "asset": h.asset,
                 "currency": h.currency,
+                "maturity": day(h.maturity),
                 "value": number(h.value),
                 "share": share,
                 "cost": number(h.cost),
@@ -370,6 +373,24 @@ def holdings(held: portfolio.Portfolio, returned: holding_returns.Found | None =
             for rung in held.ladder
         ],
         "notes": list(held.notes),
+    }
+
+
+def holding_detail(
+    detail: holding_detail_.Detail, label: categories.Labels, kept: Mapping[int, str]
+) -> JSON:
+    """One holding's daily value history and latest committed transactions."""
+    return {
+        "symbol": detail.symbol,
+        "currency": detail.currency,
+        "series": [
+            {"day": day(point.day), "value": number(point.value)} for point in detail.series
+        ],
+        "transactions": [
+            transaction(row, None, label, None if row.file is None else kept.get(row.file))
+            for row in detail.transactions
+        ],
+        "total_transactions": detail.total_transactions,
     }
 
 

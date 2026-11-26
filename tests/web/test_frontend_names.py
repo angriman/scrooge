@@ -37,3 +37,17 @@ def test_what_is_liquid_wears_a_colour_no_type_of_asset_does() -> None:
 
 def test_every_group_of_income_has_its_colour() -> None:
     assert _keys("INCOME_SLOTS") == set(income.GROUPS)
+
+
+def test_overview_and_investments_share_asset_colour_map() -> None:
+    root = DATA.parents[1]
+    for relative in (
+        "overview/Allocation.svelte",
+        "holdings/Spread.svelte",
+        "holdings/HoldingsMap.svelte",
+        "holdings/HoldingsList.svelte",
+        "holdings/Bills.svelte",
+    ):
+        text = (root / relative).read_text()
+        assert "assetColor" in text, f"{relative} should colour asset types via assetColor"
+        assert "bg-data-" not in text, f"{relative} should not hardcode bg-data-* classes"

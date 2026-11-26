@@ -208,8 +208,12 @@ export interface Position {
 export interface HeldInstrument {
 	symbol: string;
 	name: string;
+	/** Instrument kind: `etf`, `stock`, `fund`, `bill`, or `bond`. */
+	type: string;
 	asset: string;
 	currency: string;
+	/** Maturity date for bills and bonds; null otherwise. */
+	maturity: Day | null;
 	value: Amount;
 	/** Of all securities, in percent to the tenth, shared out so that the holdings add up to
 	 * 100. */
@@ -220,6 +224,27 @@ export interface HeldInstrument {
 	/** What it returned, every account together, in the currency asked for. */
 	returns: HoldingReturns | null;
 	positions: Position[];
+}
+
+/** One point of a holding's value history (`/api/holdings/detail`). */
+export interface HoldingValuePoint {
+	day: Day;
+	value: Amount;
+}
+
+/** Daily value history and latest committed transactions for one holding. */
+export interface HoldingDetail {
+	symbol: string;
+	currency: string;
+	series: HoldingValuePoint[];
+	transactions: Transaction[];
+	total_transactions: number;
+}
+
+/** `/api/holdings/detail` response. */
+export interface HoldingDetailResponse {
+	detail: HoldingDetail;
+	errors: string[];
 }
 
 /** What a holding returned over a range (src/scrooge/holding_returns.py `Period`): all null

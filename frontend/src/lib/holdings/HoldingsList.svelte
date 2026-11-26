@@ -16,6 +16,7 @@ year. Choosing a row opens its details in the side panel.
 	import Share from '#lib/ui/Share.svelte';
 	import Swatch from '#lib/ui/Swatch.svelte';
 	import { cn } from '#lib/ui/cn.js';
+	import { holdingDue, holdingName } from './names.js';
 	import { holdingKey, sortHoldings, sortOptions, yearOf, type Sort } from './returns.js';
 
 	interface Props {
@@ -57,6 +58,8 @@ year. Choosing a row opens its details in the side panel.
 			{@const key = holdingKey(holding)}
 			{@const active = selected === key}
 			{@const color = assetColor(holding.asset)}
+			{@const display = holdingName(holding)}
+			{@const due = holdingDue(holding)}
 			<li id="holding-{key}" class="scroll-mt-20 border-t border-line first:border-t-0">
 				<button
 					type="button"
@@ -81,13 +84,14 @@ year. Choosing a row opens its details in the side panel.
 							{/if}
 						{/if}
 						<span class="min-w-0">
-							<span class="block truncate font-medium text-ink"
-								>{holding.name || holding.symbol}</span
+							<span class="block truncate font-medium text-ink">{display}</span>
+							<span
+								class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-small text-ink-muted"
 							>
-							<span class="flex items-center gap-1.5 text-small text-ink-muted">
 								<Swatch {color} class="size-2 rounded-full" />
 								<span class="text-ink-secondary">{assetName(holding.asset)}</span>
-								{#if holding.name}<span class="truncate">{holding.symbol}</span>{/if}
+								{#if due}<span class="shrink-0 text-ink-secondary">{due}</span>{/if}
+								{#if display !== holding.symbol}<span class="truncate">{holding.symbol}</span>{/if}
 								{#if holding.positions.length > 1}<span class="shrink-0"
 										>{t('holdings.inAccounts', { count: holding.positions.length })}</span
 									>{/if}
