@@ -795,8 +795,6 @@ export const it: Messages = {
 		'Applicate ai movimenti di {owner}, nell’ordine indicato: vale la prima corrispondenza.',
 	'settings.rulesNoteAll':
 		'Nell’ordine in cui vengono valutate: la prima corrispondenza assegna la categoria.',
-	'settings.stayNote':
-		'Una regola può cambiare ordine solo all’interno dello stesso file: per spostarla tra personale e condiviso occorre modificare i file direttamente.',
 	'settings.noRulesFiles': 'Nessun file di regole configurato.',
 	'settings.noRulesYet':
 		'Nessuna regola ancora: scegliendo una categoria in Importa o Movimenti con “ricorda” ne verrà creata una.',
@@ -823,8 +821,8 @@ export const it: Messages = {
 	'settings.unmatchedHint': 'per movimenti senza regola',
 	'settings.ownRulesTitle': 'Regole personali di {owner}',
 	'settings.sharedRulesTitle': 'Regole condivise',
-	'settings.ownRulesNote': '{file}: per i conti di {owner}, valutate prima delle regole condivise.',
-	'settings.sharedRulesNote': '{file}: per i movimenti di tutti.',
+	'settings.ownRulesNote': 'Per i conti di {owner}, valutate prima delle regole condivise.',
+	'settings.sharedRulesNote': 'Per i movimenti di tutti.',
 	'settings.dirIn': 'in entrata',
 	'settings.dirOut': 'in uscita',
 	'settings.dirBoth': 'entrambi',
@@ -846,6 +844,11 @@ export const it: Messages = {
 	'settings.tryPatternTitle': 'Prova il pattern',
 	'settings.editRuleAria': 'Modifica la regola {match}',
 	'settings.edit': 'Modifica',
+	'settings.moveRuleAria': 'Sposta {match} in un altro elenco di regole',
+	'settings.moveRuleTitle': 'Sposta tra regole personali e condivise',
+	'settings.moveRuleTo': 'Sposta {match} in',
+	'settings.moveRuleToAria': 'Dove spostare {match}',
+	'settings.chooseRulePlace': 'Scegli dove',
 	'settings.moveUpAria': 'Sposta su {match}',
 	'settings.moveDownAria': 'Sposta giù {match}',
 	'settings.triedEarlierTitle': 'Valuta prima',

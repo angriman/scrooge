@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 from scrooge import categories, classification, patterns, query, rulesfile, staging, yamlfiles
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store, taxonomy
@@ -330,6 +332,42 @@ def move_rule(seen: Seen, by: int, beside: str, categories_file: Path | None) ->
         return rulesfile.swapped(text, upper, lower)
 
     _change_rule(seen, categories_file, swap)
+
+
+def move_rule_to(
+    seen: Seen, target: Path, categories_file: Path | None, *, first: bool = False
+) -> None:
+    """Move the rule `seen` into another rules file `target`, keeping its lines, comments and
+    formatting intact. Both files are written and checked together under the lock, and put back
+    byte for byte (with a newly created `target` removed) if anything fails."""
+    with yamlfiles.LOCK:
+        if seen.file == target or seen.file.resolve() == target.resolve():
+            msg = f"rule {seen.position} is already in {target.name}"
+            raise SettingsError(msg)
+        try:
+            src_text, _, entry = rulesfile.find(seen.file, seen.position, seen.version)
+        except ConfigError as exc:
+            raise SettingsError(str(exc)) from None
+        refusal = entry.refusal(editing=False)
+        if refusal:
+            msg = f"rule {seen.position} of {seen.file.name} cannot be moved here: {refusal}"
+            raise SettingsError(msg)
+        try:
+            dest_text, _ = rulesfile.read(target)
+            block = src_text[entry.lines[0] : entry.lines[1]]
+            updated_dest = rulesfile.inserted(dest_text, target, block, first=first)
+        except ConfigError as exc:
+            raise SettingsError(str(exc)) from None
+        updated_src = rulesfile.removed(src_text, entry)
+        known = _known(categories_file)
+        with _kept([seen.file, target]):
+            yamlfiles.write(target, updated_dest)
+            yamlfiles.write(seen.file, updated_src)
+            try:
+                classification.load_rules([seen.file, target], known)
+            except (ConfigError, yaml.YAMLError) as exc:
+                msg = f"the rules files were left as they were: {exc}"
+                raise SettingsError(msg) from None
 
 
 def _taxonomy(extras: Sequence[categories.Extra]) -> list[tuple[str, str, str | None, bool]]:
