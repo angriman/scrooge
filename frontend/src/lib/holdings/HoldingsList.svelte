@@ -67,7 +67,7 @@ year. Choosing a row opens its details in the side panel.
 					onclick={() => onchoose(holding)}
 					class={cn(
 						'grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_9rem_8rem_auto]',
-						active ? 'bg-brand-soft' : 'hover:bg-raised'
+						active ? 'bg-brand-soft' : 'hover:bg-sunken dark:hover:bg-raised'
 					)}
 				>
 					<span class="flex min-w-0 items-center gap-3">
@@ -76,7 +76,7 @@ year. Choosing a row opens its details in the side panel.
 								<img
 									src={logos[holding.symbol]}
 									alt=""
-									class="size-7 shrink-0 rounded-control bg-ink object-contain p-0.5"
+									class="size-7 shrink-0 rounded-control border border-line bg-panel object-contain p-0.5 dark:border-0 dark:bg-ink"
 								/>
 							{:else}
 								<span class="size-7 shrink-0" aria-hidden="true"></span>

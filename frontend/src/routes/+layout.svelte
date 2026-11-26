@@ -22,8 +22,11 @@
 	import { getLanguage, setLanguage, t, type Language } from '#lib/i18n/index.svelte.js';
 	import { asked, stepTo } from '#lib/moved.js';
 	import { renamed } from '#lib/renamed.js';
+	import { initTheme } from '#lib/theme.svelte.js';
 
 	let { data, children }: LayoutProps = $props();
+
+	$effect(() => initTheme());
 
 	$effect(() => {
 		setLanguage(data.session.language);

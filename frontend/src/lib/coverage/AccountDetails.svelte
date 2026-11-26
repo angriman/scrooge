@@ -170,7 +170,9 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 		{/if}
 		<ul class="grid gap-1">
 			{#each account.statements as statement (statement.id)}
-				<li class="rounded-control border border-line/70 px-3 py-2 hover:bg-raised/60">
+				<li
+					class="rounded-control border border-line/70 px-3 py-2 hover:bg-sunken/60 dark:hover:bg-raised/60"
+				>
 					<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
 						<span class="text-body text-ink">{span(statement.first, statement.last)}</span>
 						<span class="flex items-center gap-2 text-caption whitespace-nowrap">
@@ -285,7 +287,7 @@ figures (with inline add and 1-click remove where allowed), and closing/reopenin
 		{/if}
 
 		{#if canType && token && account.typable !== 'none'}
-			<div class="rounded-control border border-line bg-raised/30 p-3">
+			<div class="rounded-control border border-line bg-sunken/40 dark:bg-raised/30 p-3">
 				<p class="mb-2 text-caption font-medium text-ink-secondary">{t('typed.addHeading')}</p>
 				<TypedFigure
 					owners={[account.owner]}

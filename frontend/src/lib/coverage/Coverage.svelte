@@ -160,7 +160,7 @@ over time, statements, typed figures) in the side panel.
 							class={cn(
 								'grid w-full grid-cols-[minmax(0,1fr)_auto_1rem] items-center gap-x-4 gap-y-2 px-4 py-3 text-left',
 								COLUMNS,
-								active ? 'bg-brand-soft' : 'hover:bg-raised'
+								active ? 'bg-brand-soft' : 'hover:bg-sunken dark:hover:bg-raised'
 							)}
 						>
 							<span class="min-w-0">

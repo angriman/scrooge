@@ -170,7 +170,7 @@
 				bind:this={typeButtonRef}
 				type="button"
 				onclick={() => (typingOpen = true)}
-				class="h-8 rounded-control border border-line bg-panel px-3 text-small text-ink hover:border-line-strong hover:bg-raised"
+				class="h-8 rounded-control border border-line bg-panel px-3 text-small text-ink hover:border-line-strong hover:bg-sunken dark:hover:bg-raised"
 			>
 				{t('typed.button')}
 			</button>
@@ -195,7 +195,7 @@
 					bind:this={typeButtonRef}
 					type="button"
 					onclick={() => (typingOpen = true)}
-					class="h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong hover:bg-raised"
+					class="h-8 rounded-control border border-line px-3 text-small text-ink hover:border-line-strong hover:bg-sunken dark:hover:bg-raised"
 				>
 					{t('typed.button')}
 				</button>
