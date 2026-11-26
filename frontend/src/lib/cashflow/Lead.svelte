@@ -54,6 +54,8 @@ came in, what went out, the salary and how much of the income was earned by work
 						{t('cashflow.ofSalaryAfter')}{/if}.
 				{:else if short}
 					{t('cashflow.shortfallNote')}
+				{:else if approximate(totals.income) > 0}
+					{t('cashflow.littleCameIn')}
 				{:else}
 					{t('cashflow.nothingCameIn')}
 				{/if}

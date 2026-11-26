@@ -304,6 +304,7 @@ export const en = {
 	'cashflow.onYearBefore': 'on the same months a year before',
 	'cashflow.ofSalaryAfter': 'of salary',
 	'cashflow.shortfallNote': 'Savings, or money from earlier, made up the difference.',
+	'cashflow.littleCameIn': 'Next to nothing came in over these months.',
 	'cashflow.nothingCameIn': 'Nothing came in over these months.',
 	'cashflow.cameIn': 'Came in',
 	'cashflow.wentOut': 'Went out',
