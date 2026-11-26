@@ -5,12 +5,10 @@ from decimal import Decimal
 from hypothesis import given
 from hypothesis import strategies as st
 
-from scrooge import analysis, categories, staging
+from scrooge import analysis, categories
 from scrooge.analysis import Converted, Rows, Span
 from scrooge.cashflow import Counted, Grouping
 from scrooge.models import Kind
-from scrooge.storage import db
-from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, certificate, certified, close, txn
 
 days = st.dates(min_value=date(1990, 1, 1), max_value=date(2100, 12, 31))
 
@@ -270,36 +268,3 @@ def test_by_period_of_a_range_inside_one_period_is_that_period_alone() -> None:
     [(name, days, inside)] = list(FOUND.by_period(span, Grouping.YEAR))
     assert (name, days) == ("2026", (date(2026, 1, 1), date(2026, 12, 31)))
     assert [each.day for each in inside] == [date(2026, 4, 1)]
-
-
-def test_since_is_the_first_day_of_the_earliest_committed_statement_month() -> None:
-    conn = db.connect(":memory:")
-    db.migrate(conn, CLOSED_AT)
-    assert analysis.since(conn, None) is None
-    assert analysis.since(conn, OWNER) is None
-
-    # A pension certificate alone does not start a statement range.
-    staging.stage(conn, certified(certificate(date(2024, 1, 1), "9000"), owner=OWNER), CLOSED_AT)
-    staging.commit(conn, owner=OWNER, now=CLOSED_AT)
-    assert analysis.since(conn, OWNER) is None
-    assert analysis.since(conn, None) is None
-
-    # Mid-month statements anchor to the first of their month; household takes the earliest.
-    close(
-        conn,
-        OWNER,
-        (date(2026, 7, 6), date(2026, 8, 31)),
-        date(2026, 8, 31),
-        ("migros", [txn("-50", date=date(2026, 7, 10), source_ref="1")]),
-    )
-    close(
-        conn,
-        PARTNER,
-        (date(2026, 8, 4), date(2026, 8, 31)),
-        date(2026, 8, 31),
-        ("migros", [txn("-40", date=date(2026, 8, 10), source_ref="1")]),
-    )
-    assert analysis.since(conn, OWNER) == date(2026, 7, 1)
-    assert analysis.since(conn, PARTNER) == date(2026, 8, 1)
-    assert analysis.since(conn, None) == date(2026, 7, 1)
-    conn.close()

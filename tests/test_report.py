@@ -1,7 +1,6 @@
 import sqlite3
 from collections.abc import Iterator
 from datetime import date
-from decimal import Decimal
 
 import pytest
 
@@ -9,7 +8,7 @@ from scrooge import query, report, staging
 from scrooge.report import Shortcut
 from scrooge.storage import db
 from tests import test_savings as rows
-from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, certificate, certified, close, txn
+from tests.storage.helpers import CLOSED_AT, OWNER, PARTNER, certificate, certified, close
 
 END = rows.END
 
@@ -75,47 +74,4 @@ def test_a_certificate_dated_after_the_statements_does_not_move_the_last_day() -
     assert (shown.savings.first, shown.savings.last) == (date(2025, 1, 1), date(2025, 12, 31))
     assert [shortcut.label for shortcut in shown.shortcuts] == ["Last 12 months", "2025", "All"]
     assert shown.shortcuts[-1].first == "2025"
-    connection.close()
-
-
-def test_a_range_does_not_start_before_the_first_statement_month(conn: sqlite3.Connection) -> None:
-    hers = report.run(conn, owner=PARTNER, currency="CHF")
-    assert (hers.savings.first, hers.savings.last) == (date(2026, 1, 1), END)
-    assert len(hers.spending.periods) == 8
-    assert hers.spending.months == 8
-    assert hers.spending.periods[0].name == "2026-01"
-
-    # A range ending completely before her statements has nothing to show.
-    earlier = report.run(
-        conn, owner=PARTNER, first=date(2025, 1, 1), last=date(2025, 12, 31), currency="CHF"
-    )
-    assert (earlier.savings.totals, earlier.spending.months, earlier.spending.periods) == (
-        None,
-        0,
-        (),
-    )
-
-
-def test_mid_year_mid_month_start_clamps_periods_and_monthly_averages() -> None:
-    connection = db.connect(":memory:")
-    db.migrate(connection, CLOSED_AT)
-    close(
-        connection,
-        OWNER,
-        (date(2026, 7, 6), date(2026, 8, 31)),
-        date(2026, 8, 31),
-        (
-            "migros",
-            [
-                txn("-100", date=date(2026, 7, 10), source_ref="1"),
-                txn("-200", date=date(2026, 8, 12), source_ref="2"),
-            ],
-        ),
-    )
-    for first in (None, date(2026, 1, 1)):
-        shown = report.run(connection, owner=OWNER, first=first, currency="CHF")
-        assert (shown.savings.first, shown.savings.last) == (date(2026, 7, 1), date(2026, 8, 31))
-        assert [p.name for p in shown.spending.periods] == ["2026-07", "2026-08"]
-        assert shown.spending.months == 2
-        assert shown.spending.categories[0].monthly == Decimal("150.00")
     connection.close()

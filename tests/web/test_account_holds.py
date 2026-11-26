@@ -46,6 +46,11 @@ def test_each_account_says_what_it_holds_and_what_it_held_at_each_month_end(
         ],
     }
     assert accounts[OWNER, "Migros"]["parts"] == ["Migros"]
+    assert (accounts[OWNER, "Migros"]["typable"], accounts[OWNER, "Migros"]["typed"]) == (
+        "none",
+        [],
+    )
+    assert (broker["typable"], broker["typed"]) == ("none", [])
     bank = accounts[OWNER, "Migros"]["holds"]
     assert (bank["cash"], bank["securities"]) == (
         [{"asset": "Cash", "currency": "CHF", "amount": "700.00", "converted": "700.00"}],

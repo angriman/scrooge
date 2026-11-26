@@ -116,7 +116,7 @@
 		totals={report.totals}
 		yearBefore={report.year_before}
 		currency={report.currency}
-		range={rangeName(chosen || null, flow.first, flow.last, report.through)}
+		range={rangeName(chosen || null, flow.first, flow.last)}
 		paidBack={report.paid_back}
 	/>
 

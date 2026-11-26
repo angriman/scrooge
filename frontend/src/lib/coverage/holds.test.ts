@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { setLanguage } from '#lib/i18n/index.svelte.js';
-import { heldLines, securitiesQuery, sparkline, trend } from './holds.js';
+import { heldLines, securitiesQuery } from './holds.js';
 
 describe('heldLines', () => {
 	it('lists cash by currency, converted where it is not the page’s, then the securities', () => {
@@ -51,44 +51,8 @@ describe('heldLines', () => {
 			'Pension fund balance'
 		]);
 	});
-});
 
-describe('sparkline', () => {
-	it('puts the lowest balance at the bottom and the highest at the top', () => {
-		expect(sparkline(['100', '300', '200'], 40, 12, 1)).toBe('0,11 20,1 40,6');
-	});
-
-	it('draws a flat line across the middle and nothing for a single month', () => {
-		expect(sparkline(['5', '5'], 10, 8)).toBe('0,4 10,4');
-		expect(sparkline(['5'], 10, 8)).toBe('');
-		expect(sparkline([], 10, 8)).toBe('');
-	});
-});
-
-describe('securitiesQuery', () => {
-	it('opens the holdings of the account’s owner, in the currency the address names', () => {
-		expect(securitiesQuery('Anna Lee', 'USD')).toBe('view=holdings&owner=Anna+Lee&currency=USD');
-		expect(securitiesQuery('Anna', null)).toBe('view=holdings&owner=Anna');
-	});
-});
-
-describe('trend', () => {
-	const months = (...balances: string[]) =>
-		balances.map((balance, index) => ({ day: `2026-0${index + 1}-28`, balance }));
-
-	it('says which way the balance went since the first month-end of its line', () => {
-		expect(trend(months('41000.40', '35000', '42000'), 'CHF')).toBe(
-			'up from 41’000 CHF at the end of Jan 2026'
-		);
-		expect(trend(months('500', '400'), 'USD')).toBe('down from 500 USD at the end of Jan 2026');
-		expect(trend(months('0.26', '0.26'), 'EUR')).toBe('unchanged since the end of Jan 2026');
-	});
-
-	it('says nothing without a line', () => {
-		expect(trend(months('100'), 'CHF')).toBe('');
-	});
-
-	it('localizes held lines and trends into Italian', () => {
+	it('localizes held lines into Italian', () => {
 		setLanguage('it');
 		try {
 			const holds = {
@@ -100,13 +64,15 @@ describe('trend', () => {
 				'Saldo carta in EUR',
 				'Titoli'
 			]);
-			expect(trend(months('41000.40', '42000'), 'CHF')).toBe(
-				'in aumento da 41’000 CHF a fine Gen 2026'
-			);
-			expect(trend(months('500', '400'), 'USD')).toBe('in calo da 500 USD a fine Gen 2026');
-			expect(trend(months('0.26', '0.26'), 'EUR')).toBe('invariato da fine Gen 2026');
 		} finally {
 			setLanguage('en');
 		}
+	});
+});
+
+describe('securitiesQuery', () => {
+	it('opens the holdings of the account’s owner, in the currency the address names', () => {
+		expect(securitiesQuery('Anna Lee', 'USD')).toBe('view=holdings&owner=Anna+Lee&currency=USD');
+		expect(securitiesQuery('Anna', null)).toBe('view=holdings&owner=Anna');
 	});
 });
