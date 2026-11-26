@@ -5,12 +5,13 @@ month, and against its usual month and the same months a year before. Below them
 most was spent at. Each opens its transactions over the same range.
 -->
 <script lang="ts">
-	import { approximate, difference, percentOf, signedPercent } from '#lib/format/number.js';
+	import { approximate, signedPercent } from '#lib/format/number.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { CashFlowReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
 	import Panel from '#lib/ui/Panel.svelte';
 	import { cn } from '#lib/ui/cn.js';
+	import { against, barWidth, changeTone } from './bars.js';
 	import { spendingPartName } from './names.js';
 
 	interface Props {
@@ -23,19 +24,6 @@ most was spent at. Each opens its transactions over the same range.
 	let { report, colors, transactions }: Props = $props();
 
 	const largest = $derived(Math.max(1, ...report.categories.map((c) => approximate(c.spent))));
-	/** How far `now` is from `then`, in percent of `then`; null when there is nothing to say. */
-	const against = (now: string, then: string | null) => {
-		if (then === null || approximate(then) <= 0) return null;
-		return percentOf(difference(now, then), then, 0);
-	};
-	const tone = (change: string | null) =>
-		change === null
-			? ''
-			: approximate(change) > 10
-				? 'text-caution'
-				: approximate(change) < -10
-					? 'text-gain'
-					: 'text-ink-secondary';
 	let merchants = $state(false);
 </script>
 
@@ -44,6 +32,7 @@ most was spent at. Each opens its transactions over the same range.
 		{#each report.categories as category (category.name)}
 			{@const usual = against(category.monthly, category.usual)}
 			{@const before = against(category.spent, category.year_before)}
+			{@const width = barWidth(category.spent, largest)}
 			<li>
 				<a
 					href={transactions({ category: category.name })}
@@ -58,21 +47,23 @@ most was spent at. Each opens its transactions over the same range.
 					</span>
 					<Amount value={category.spent} places={0} class="text-right text-body text-ink" />
 					<span class="h-1.5 self-center rounded-full bg-sunken" aria-hidden="true">
-						<span
-							class="block h-full rounded-full"
-							style:width="{Math.max(1.5, (approximate(category.spent) / largest) * 100)}%"
-							style:background={colors.get(category.name) ?? 'var(--data-other)'}
-						></span>
+						{#if width > 0}
+							<span
+								class="block h-full rounded-full"
+								style:width="{width}%"
+								style:background={colors.get(category.name) ?? 'var(--data-other)'}
+							></span>
+						{/if}
 					</span>
 					<span class="flex justify-end gap-3 text-caption whitespace-nowrap text-ink-muted">
 						<span
 							><Amount value={category.monthly} places={0} class="text-ink-secondary" />
 							{t('cashflow.aMonthSuffix')}</span
 						>
-						{#if usual !== null}<span class={tone(usual)}
+						{#if usual !== null}<span class={changeTone(usual, 'down')}
 								>{t('cashflow.usualSuffix', { pct: signedPercent(usual, 0) })}</span
 							>{/if}
-						{#if before !== null}<span class={cn('hidden sm:inline', tone(before))}
+						{#if before !== null}<span class={cn('hidden sm:inline', changeTone(before, 'down'))}
 								>{t('cashflow.yearBeforeSuffix', { pct: signedPercent(before, 0) })}</span
 							>{/if}
 					</span>

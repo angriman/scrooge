@@ -148,10 +148,10 @@ details in the side panel; changing a row's category opens a modal dialog.
 				>
 					<span
 						class={cn(
-							'inline-flex max-w-full min-w-0 items-center truncate rounded-full px-2 py-0.5 transition-colors',
+							'inline-flex max-w-full min-w-0 items-center truncate rounded-full border px-2 py-0.5 transition-colors',
 							categoryActive
-								? 'bg-brand-soft font-medium text-brand'
-								: 'bg-sunken text-ink-secondary group-hover:bg-raised group-hover:text-ink'
+								? 'border-transparent bg-brand-soft font-medium text-brand'
+								: 'border-transparent bg-sunken text-ink-secondary group-hover:border-line-strong group-hover:text-ink dark:group-hover:border-transparent dark:group-hover:bg-raised'
 						)}
 					>
 						<span class="truncate">{row.category}</span>

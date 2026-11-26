@@ -77,6 +77,12 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	let hidden = $state<ReadonlySet<string>>(new Set());
 	let hovered = $state<Day | null>(null);
 
+	$effect.pre(() => {
+		void by;
+		hidden = new Set();
+		hovered = null;
+	});
+
 	const last = $derived(series.total.length - 1);
 	const lastDay = $derived(addDays(series.first!, last));
 	const back = $derived(daysBack(range, lastDay));
@@ -162,83 +168,26 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		</div>
 	</div>
 
-	<div class="mt-4 flex flex-wrap items-center justify-between gap-3 px-5">
-		{#if view === 'chart' && series.parts.length}
-			<ul
-				class="flex flex-wrap items-center gap-x-1 gap-y-1"
-				aria-label={t('overview.partsShownAria')}
-			>
-				{#each series.parts as part (part.name)}
-					{@const shown = !hidden.has(part.name)}
-					{@const label = nameOf(part.name)}
-					<li>
-						<button
-							type="button"
-							aria-pressed={shown}
-							title={shown
-								? t('overview.leaveOut', { name: label })
-								: t('overview.showPart', { name: label })}
-							onclick={() => toggle(part.name)}
-							class={cn(
-								'flex min-h-11 items-center gap-2 rounded-control px-2 py-2 text-small hover:bg-raised sm:min-h-0 sm:py-1',
-								!shown && 'opacity-45'
-							)}
-						>
-							<Swatch
-								color={shown ? (colors.get(part.name) ?? 'var(--data-other)') : 'transparent'}
-								class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
-							/>
-							<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
-								{label}
-							</span>
-							<span class="text-ink tabular-nums">{short(part.values[at])}</span>
-						</button>
-					</li>
-				{/each}
-				{#if hidden.size}
-					<li>
-						<button
-							type="button"
-							onclick={() => (hidden = new Set())}
-							class="inline-flex min-h-11 items-center rounded-control px-2 py-2 text-small text-brand hover:text-brand-hover sm:min-h-0 sm:py-1"
-						>
-							{t('overview.showAll')}
-						</button>
-					</li>
-				{/if}
-			</ul>
-		{:else}
-			<span></span>
+	<div class="mt-4 flex flex-wrap items-center justify-end gap-2 px-5">
+		<Segmented
+			label={t('overview.showAria')}
+			value={view}
+			options={views}
+			onchange={(chosen) => {
+				hidden = new Set();
+				hovered = null;
+				onview(chosen);
+			}}
+		/>
+		{#if view === 'chart' && breakdowns.length > 1}
+			<Segmented
+				label={t('overview.cutChartByAria')}
+				value={by}
+				options={breakdowns}
+				onchange={onby}
+			/>
 		{/if}
-		<div class="flex flex-wrap gap-2">
-			<Segmented
-				label={t('overview.showAria')}
-				value={view}
-				options={views}
-				onchange={(chosen) => {
-					hidden = new Set();
-					hovered = null;
-					onview(chosen);
-				}}
-			/>
-			{#if view === 'chart' && breakdowns.length > 1}
-				<Segmented
-					label={t('overview.cutChartByAria')}
-					value={by}
-					options={breakdowns}
-					onchange={(chosen) => {
-						hidden = new Set();
-						onby(chosen);
-					}}
-				/>
-			{/if}
-			<Segmented
-				label={t('overview.rangeAria')}
-				value={range}
-				options={ranges}
-				onchange={onrange}
-			/>
-		</div>
+		<Segmented label={t('overview.rangeAria')} value={range} options={ranges} onchange={onrange} />
 	</div>
 
 	{#if view === 'table' && months}
@@ -251,7 +200,54 @@ headline and the legend. The chart can give way to a table of the month-ends.
 			{back}
 			{hidden}
 			bind:hovered
-			class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-3"
+			class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-1"
 		/>
+		<div class="min-h-10 px-5 pb-3">
+			{#if series.parts.length}
+				<ul
+					class="flex flex-wrap items-center gap-x-1 gap-y-1"
+					aria-label={t('overview.partsShownAria')}
+				>
+					{#each series.parts as part (part.name)}
+						{@const shown = !hidden.has(part.name)}
+						{@const label = nameOf(part.name)}
+						<li>
+							<button
+								type="button"
+								aria-pressed={shown}
+								title={shown
+									? t('overview.leaveOut', { name: label })
+									: t('overview.showPart', { name: label })}
+								onclick={() => toggle(part.name)}
+								class={cn(
+									'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-sunken dark:hover:bg-raised',
+									!shown && 'opacity-45'
+								)}
+							>
+								<Swatch
+									color={shown ? (colors.get(part.name) ?? 'var(--data-other)') : 'transparent'}
+									class={shown ? undefined : 'ring-1 ring-ink-muted ring-inset'}
+								/>
+								<span class={shown ? 'text-ink-secondary' : 'text-ink-muted line-through'}>
+									{label}
+								</span>
+								<span class="text-ink tabular-nums">{short(part.values[at])}</span>
+							</button>
+						</li>
+					{/each}
+					{#if hidden.size}
+						<li>
+							<button
+								type="button"
+								onclick={() => (hidden = new Set())}
+								class="rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
+							>
+								{t('overview.showAll')}
+							</button>
+						</li>
+					{/if}
+				</ul>
+			{/if}
+		</div>
 	{/if}
 </section>

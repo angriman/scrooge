@@ -202,6 +202,11 @@ def add_months(month: date, n: int) -> date:
     return date(index // 12, index % 12 + 1, 1)
 
 
+def months(start: date, end: date) -> int:
+    """The calendar months from `start` to `end`, both included."""
+    return (end.year - start.year) * 12 + end.month - start.month + 1
+
+
 def year_before(day: date) -> date:
     """The same day a year earlier; the last day of a February for the last day of a
     February, whether or not either is a leap year's."""
@@ -210,6 +215,16 @@ def year_before(day: date) -> date:
     if day.month == 2 and day.day == last:
         return date(before, 2, calendar.monthrange(before, 2)[1])
     return day.replace(year=before)
+
+
+def since(conn: sqlite3.Connection, owner: str | None) -> date | None:
+    """The first day of the earliest month committed for `owner`, or for everyone."""
+    firsts = [
+        person.first.replace(day=1)
+        for person in query.people(conn)
+        if person.first is not None and owner in (None, person.name)
+    ]
+    return min(firsts, default=None)
 
 
 def through(conn: sqlite3.Connection, owner: str | None) -> date | None:

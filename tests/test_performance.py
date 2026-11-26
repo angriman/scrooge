@@ -379,7 +379,7 @@ def test_a_currency_without_a_rate_leaves_its_accounts_out_and_not_the_others(
         account("tastytrade", "Tastytrade", "CHF", "2000"),
     )
     shown = performance.run(conn, currency="CHF", range_="all")
-    assert shown.missing == ("no exchange rate is stored for USD: run `scrooge prices`",)
+    assert shown.missing == ("no exchange rate is stored for USD",)
     assert shown.left_out == (f"IBKR ({OWNER})",)
     assert [row.name for row in shown.holders] == ["Tastytrade"]
     nothing = performance.run(conn, currency="EUR", range_="all")

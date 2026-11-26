@@ -156,12 +156,148 @@ def test_income_is_grouped_by_where_it_comes_from(conn: sqlite3.Connection) -> N
 
 def test_the_sources_add_up_the_range_leaf_by_leaf(conn: sqlite3.Connection) -> None:
     assert his(conn).sources == (
-        Source(income.WORK, categories.SALARY, 8, Decimal(40000)),
-        Source(income.INVESTMENTS, categories.TRADING, 2, Decimal(180)),
-        Source(income.INVESTMENTS, categories.DIVIDENDS, 1, Decimal(90)),
-        Source(income.INVESTMENTS, categories.INTEREST, 1, Decimal(10)),
-        Source(income.OTHER, categories.CASHBACK, 1, Decimal(15)),
+        Source(
+            income.WORK,
+            categories.SALARY,
+            8,
+            Decimal("40000.00"),
+            Decimal("5000.00"),
+            Decimal("5000.00"),
+            Decimal("40000.00"),
+        ),
+        Source(
+            income.INVESTMENTS,
+            categories.TRADING,
+            2,
+            Decimal("180.00"),
+            Decimal("22.50"),
+            Decimal("0.00"),
+            Decimal("0.00"),
+        ),
+        Source(
+            income.INVESTMENTS,
+            categories.DIVIDENDS,
+            1,
+            Decimal("90.00"),
+            Decimal("11.25"),
+            Decimal("0.00"),
+            Decimal("80.00"),
+        ),
+        Source(
+            income.INVESTMENTS,
+            categories.INTEREST,
+            1,
+            Decimal("10.00"),
+            Decimal("1.25"),
+            Decimal("0.00"),
+            Decimal("0.00"),
+        ),
+        Source(
+            income.OTHER,
+            categories.CASHBACK,
+            1,
+            Decimal("15.00"),
+            Decimal("1.88"),
+            Decimal("0.00"),
+            Decimal("0.00"),
+        ),
     )
+
+
+def test_usual_and_year_before_need_twelve_prior_months(conn: sqlite3.Connection) -> None:
+    early = his(conn, first=date(2025, 1, 1), last=date(2025, 6, 30))
+    assert early.sources == (
+        Source(
+            income.WORK,
+            categories.SALARY,
+            6,
+            Decimal("30000.00"),
+            Decimal("5000.00"),
+            None,
+            None,
+        ),
+        Source(
+            income.INVESTMENTS,
+            categories.DIVIDENDS,
+            1,
+            Decimal("80.00"),
+            Decimal("13.33"),
+            None,
+            None,
+        ),
+    )
+    # A source that usually comes in and did not in the range is listed at nothing.
+    quiet = his(conn, first=date(2026, 9, 1), last=date(2026, 10, 31))
+    assert quiet.sources == (
+        Source(
+            income.WORK,
+            categories.SALARY,
+            0,
+            Decimal("0.00"),
+            Decimal("0.00"),
+            Decimal("5000.00"),
+            Decimal("10000.00"),
+        ),
+    )
+
+
+def test_negative_trading_and_negative_usual_months() -> None:
+    connection = db.connect(":memory:")
+    db.migrate(connection, CLOSED_AT)
+    rows = [
+        *salaries("5000", START, 12),
+        # Losing trading months throughout 2025 (median -100) and a net loss in Jan 2026.
+        *[txn("-100", date=date(2025, m, 10), source_ref=f"t{m}", **TRADE) for m in range(1, 13)],
+        txn("-50", date=date(2026, 1, 10), source_ref="t26", **TRADE),
+    ]
+    close(connection, OWNER, (START, date(2026, 2, 28)), date(2026, 2, 28), ("migros", rows))
+    jan = income.run(
+        connection,
+        first=date(2026, 1, 1),
+        last=date(2026, 1, 31),
+        owner=OWNER,
+        currency="CHF",
+    )
+    assert jan.sources == (
+        Source(
+            income.WORK,
+            categories.SALARY,
+            0,
+            Decimal("0.00"),
+            Decimal("0.00"),
+            Decimal("5000.00"),
+            Decimal("5000.00"),
+        ),
+        Source(
+            income.INVESTMENTS,
+            categories.TRADING,
+            1,
+            Decimal("-50.00"),
+            Decimal("-50.00"),
+            Decimal("-100.00"),
+            Decimal("-100.00"),
+        ),
+    )
+    # In February nothing came in: Salary (> 0 usual) appears at 0, Trading (-100 usual) does not.
+    feb = income.run(
+        connection,
+        first=date(2026, 2, 1),
+        last=date(2026, 2, 28),
+        owner=OWNER,
+        currency="CHF",
+    )
+    assert feb.sources == (
+        Source(
+            income.WORK,
+            categories.SALARY,
+            0,
+            Decimal("0.00"),
+            Decimal("0.00"),
+            Decimal("5000.00"),
+            Decimal("5000.00"),
+        ),
+    )
+    connection.close()
 
 
 def test_each_row_is_converted_at_the_rate_of_its_own_day(conn: sqlite3.Connection) -> None:

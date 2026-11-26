@@ -12,7 +12,7 @@ import { pick } from '#lib/view.js';
 import type { PageLoad } from './$types';
 
 // What the investments returned; with `view=holdings` what is held and the pensions, with
-// `view=income` what they paid: only what is shown is asked.
+// `view=payouts` (or legacy `view=income`) what they paid: only what is shown is asked.
 export const load: PageLoad = async ({ fetch, url }) => {
 	const view = url.searchParams.get('view');
 	if (view === 'holdings') {
@@ -23,7 +23,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		]);
 		return { held, pensions, income: null, costs: null, performance: null };
 	}
-	if (view === 'income') {
+	if (view === 'payouts' || view === 'income') {
 		// What investing cost each year is under what was paid, whatever the range. Costs that
 		// cannot be loaded leave what was paid shown, and their panel says why.
 		const [income, costs] = await Promise.all([

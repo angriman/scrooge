@@ -191,3 +191,19 @@ def test_a_brokers_currencies_are_closed_together_once_all_of_them_are() -> None
     lines = (lines[0], Coverage(OWNER, "ACME USD", "ibkr", OCT, None, last))
     [row] = together.arranged(lines, {}, files, {})
     assert row.line.closed == last
+
+
+def test_combined_and_total_round_once_from_exact_balances() -> None:
+    exact = D(4) / D("0.94")  # 4.255319...: rounds up to 4.26 on its own, twice is 8.5106 -> 8.51
+    part = Holds(exact.quantize(D("0.01")), (), None, (), exact=exact)
+    merged = together.combined([part, part])
+    assert merged is not None
+    assert merged.balance == D("8.51")
+    rows = (
+        together.Row(LINES[0], ("A",), (), (), part),
+        together.Row(LINES[1], ("B",), (), (), part),
+        together.Row(LINES[2], ("C",), (), (), None),
+    )
+    assert together.total(rows) == D("8.51")
+    assert together.total(rows[2:]) is None
+    assert together.total(()) is None

@@ -54,7 +54,7 @@ the percent beside it. What span it is over is the caller's to say, above it.
 					'rounded-control px-2 py-0.5 text-body font-medium tabular-nums',
 					way === 'up' && 'bg-gain-soft text-gain',
 					way === 'down' && 'bg-loss-soft text-loss',
-					way === 'flat' && 'bg-raised text-ink-secondary'
+					way === 'flat' && 'bg-sunken text-ink-secondary dark:bg-raised'
 				)}
 			>
 				{signedPercent(percent)}

@@ -126,7 +126,7 @@ Choosing a category opens its details in the side panel.
 									)}
 									class={cn(
 										'block min-h-11 w-full rounded-control px-2 py-2 text-left transition-colors sm:min-h-0 sm:py-1.5',
-										active ? 'bg-brand-soft' : 'hover:bg-raised'
+										active ? 'bg-brand-soft' : 'hover:bg-sunken dark:hover:bg-raised'
 									)}
 								>
 									<span class="flex items-center justify-between gap-3 text-small">

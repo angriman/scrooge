@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from scrooge import context, networth, performance, query
+from scrooge import context, holding_detail, networth, performance, query
 from scrooge.cashflow import Grouping
 from scrooge.models import Kind
 from scrooge.storage import money
@@ -212,6 +212,56 @@ def holdings_view(params: Mapping[str, str]) -> HoldingsView:
     errors: list[str] = []
     currency = _currency(params, errors)
     return HoldingsView(_text(params, "owner"), currency, tuple(errors))
+
+
+@dataclass(frozen=True, slots=True)
+class HoldingDetailView:
+    owner: str | None
+    currency: str
+    symbol: str
+    instrument_currency: str | None
+    asset: str | None
+    limit: int
+    errors: tuple[str, ...]
+
+
+def holding_detail_view(params: Mapping[str, str]) -> HoldingDetailView:
+    """`owner`, `currency`, `symbol`, optional `instrument_currency`, `asset`, and `limit`."""
+    errors: list[str] = []
+    currency = _currency(params, errors)
+    symbol = _text(params, "symbol") or ""
+    if not symbol:
+        errors.append("Ask for a holding symbol.")
+    instrument_currency = _text(params, "instrument_currency")
+    if instrument_currency is not None:
+        instrument_currency = instrument_currency.upper()
+        if (
+            len(instrument_currency) != 3
+            or not instrument_currency.isascii()
+            or not instrument_currency.isalpha()
+        ):
+            errors.append(f"'{instrument_currency}' is not a three-letter currency code.")
+            instrument_currency = None
+    asset = _text(params, "asset")
+    if asset is not None and asset not in networth.ASSETS:
+        errors.append(f"'{asset}' is not a kind of asset.")
+        asset = None
+    limit_text = _text(params, "limit")
+    limit = holding_detail.DEFAULT_LIMIT
+    if limit_text is not None:
+        if limit_text.isdecimal() and len(limit_text) <= 6 and int(limit_text) >= 1:
+            limit = min(int(limit_text), holding_detail.MAX_LIMIT)
+        else:
+            errors.append(f"'{limit_text}' is not a positive count.")
+    return HoldingDetailView(
+        _text(params, "owner"),
+        currency,
+        symbol,
+        instrument_currency,
+        asset,
+        limit,
+        tuple(errors),
+    )
 
 
 def networth_view(

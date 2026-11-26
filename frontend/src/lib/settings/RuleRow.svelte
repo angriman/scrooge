@@ -1,59 +1,88 @@
 <!--
 @component
 One rule: what it looks for, what it gives, and how many committed rows it matches. Where the
-app can change it, it is edited in place, moved up or down in its file, or taken out.
+app can change it, it is edited in place, moved up or down in its file, moved between personal
+and shared rules, or taken out.
 -->
 <script lang="ts">
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash from '@lucide/svelte/icons/trash-2';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import CategorySelect from '#lib/import/CategorySelect.svelte';
-	import type { Headed, Rule } from '#lib/types.js';
-	import { changes, directionName, draftOf, matchesName, type Draft } from './rules.js';
+	import type { Headed, Rule, RulesFile } from '#lib/types.js';
+	import { changes, directionName, draftOf, fileTitle, matchesName, type Draft } from './rules.js';
 
 	interface Props {
 		rule: Rule;
 		leaves: Headed[];
+		targets: RulesFile[];
 		editable: boolean;
 		first: boolean;
 		last: boolean;
 		/** Each answers what went wrong, or null when it was done. */
 		onsave: (draft: Draft) => Promise<string | null>;
 		onmove: (by: -1 | 1) => Promise<string | null>;
+		onmoveto: (to: string) => Promise<string | null>;
 		onremove: () => Promise<string | null>;
 		/** Try its pattern (as being edited) on the committed rows. */
 		ontry: (match: string, direction: Rule['direction']) => void;
 	}
 
-	let { rule, leaves, editable, first, last, onsave, onmove, onremove, ontry }: Props = $props();
+	let {
+		rule,
+		leaves,
+		targets,
+		editable,
+		first,
+		last,
+		onsave,
+		onmove,
+		onmoveto,
+		onremove,
+		ontry
+	}: Props = $props();
 
-	let editing = $state(false);
+	let mode = $state<'edit' | 'move' | null>(null);
 	let draft = $state<Draft>({ match: '', category: '', direction: '' });
+	let destination = $state('');
 	let busy = $state(false);
 	let problem = $state<string | null>(null);
 
 	function edit() {
 		draft = draftOf(rule);
 		problem = null;
-		editing = true;
+		mode = 'edit';
+	}
+
+	function startMove() {
+		destination = targets.length === 1 ? targets[0].key : '';
+		problem = null;
+		mode = 'move';
 	}
 
 	async function act(change: () => Promise<string | null>) {
 		busy = true;
 		problem = await change();
 		busy = false;
-		if (!problem) editing = false;
+		if (!problem) mode = null;
 	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (!changes(rule, draft)) {
-			editing = false;
+			mode = null;
 			return;
 		}
 		await act(() => onsave(draft));
+	}
+
+	async function moveTo(event: SubmitEvent) {
+		event.preventDefault();
+		if (!destination) return;
+		await act(() => onmoveto(destination));
 	}
 
 	async function remove() {
@@ -71,7 +100,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 </script>
 
 <li class="py-2">
-	{#if editing}
+	{#if mode === 'edit'}
 		<form onsubmit={save} class="flex flex-wrap items-end gap-2">
 			<label class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary">
 				{t('settings.patternLabel')}
@@ -109,7 +138,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				</button>
 				<button
 					type="button"
-					onclick={() => (editing = false)}
+					onclick={() => (mode = null)}
 					class="h-11 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink sm:h-8"
 				>
 					{t('accounts.cancel')}
@@ -120,6 +149,40 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
 				>
 					{busy ? t('settings.saving') : t('settings.save')}
+				</button>
+			</div>
+		</form>
+	{:else if mode === 'move'}
+		<form onsubmit={moveTo} class="flex flex-wrap items-center gap-2">
+			<span class="min-w-0 truncate text-small text-ink-secondary" title={rule.match}>
+				{t('settings.moveRuleTo', { match: rule.match })}
+			</span>
+			<select
+				bind:value={destination}
+				aria-label={t('settings.moveRuleToAria', { match: rule.match })}
+				class={field}
+			>
+				{#if targets.length > 1}
+					<option value="">{t('settings.chooseRulePlace')}</option>
+				{/if}
+				{#each targets as target (target.key)}
+					<option value={target.key}>{fileTitle(target)}</option>
+				{/each}
+			</select>
+			<div class="flex gap-2">
+				<button
+					type="button"
+					onclick={() => (mode = null)}
+					class="h-11 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink sm:h-8"
+				>
+					{t('accounts.cancel')}
+				</button>
+				<button
+					type="submit"
+					disabled={busy || !destination}
+					class="h-11 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60 sm:h-8"
+				>
+					{busy ? t('settings.saving') : t('settings.move')}
 				</button>
 			</div>
 		</form>
@@ -152,7 +215,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					{/if}
 				</div>
 			</div>
-			<div class="flex shrink-0 items-center gap-1 pl-7 sm:pl-0">
+			<div class="flex shrink-0 flex-wrap items-center gap-1 pl-7 sm:pl-0">
 				<button
 					type="button"
 					class={tryButton}
@@ -172,6 +235,18 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					>
 						<Pencil class="size-4" aria-hidden="true" />
 					</button>
+					{#if targets.length}
+						<button
+							type="button"
+							class={icon}
+							aria-label={t('settings.moveRuleAria', { match: rule.match })}
+							title={t('settings.moveRuleTitle')}
+							disabled={busy}
+							onclick={startMove}
+						>
+							<ArrowLeftRight class="size-4" aria-hidden="true" />
+						</button>
+					{/if}
 					<button
 						type="button"
 						class={icon}

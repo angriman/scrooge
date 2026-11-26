@@ -1,10 +1,15 @@
 /* The palette: every colour the themes are made of, by hue and step (higher is darker, 400 is
  * a hue at its plainest). Nothing outside src/lib/design/tokens reads these: a theme gives
- * them roles (night.css), and the app only ever names a role.
+ * them roles (night.css, alpine.css), and the app only ever names a role.
  *
  * On every surface of Night, the page, panels and what is raised over them (menus, tooltips,
  * a hovered row), text in mist-500 or lighter reads at 4.5:1 or more, and so does every hue at
- * 400; navy-700, the edge of an input, stands out at 3:1 or more. */
+ * 400; navy-700, the edge of an input, stands out at 3:1 or more.
+ *
+ * On every surface of Alpine (white panels, snow-50 page, mist-150 wells), text in slate-600 or
+ * darker reads at 5:1 or more, every signal and brand hue at 600–700 reads at 4.5:1 or more
+ * (including on its -soft tint), slate-500 input edges stand out at 3:1 or more, and every data
+ * series hue reads at 4:1 or more (4.7:1+ on panels). */
 
 :root {
 	/* Night's neutrals: the navy of the surfaces and lines, the mist of the text. */
@@ -19,18 +24,41 @@
 	--mist-400: #a9b2c6;
 	--mist-100: #e6eaf2;
 
-	/* The hues of the data and the signals. */
+	/* Alpine's neutrals: crisp paper panels on cool snow, slate lines and ink. */
+	--white: #ffffff;
+	--snow-50: #f4f6fa;
+	--mist-150: #e9eef6;
+	--mist-200: #d5dde9;
+	--slate-500: #77859e;
+	--slate-550: #65748c;
+	--slate-600: #55637d;
+	--slate-650: #4a5d78;
+	--slate-700: #3b4863;
+
+	/* The hues of the data and the signals: 300–400 for Night, 600–700 for Alpine. */
 	--indigo-300: #a3aefb;
 	--indigo-400: #8796f9;
+	--indigo-600: #3b4bc8;
+	--indigo-700: #2e3cb0;
 	--indigo-950: #12173a;
 	--teal-400: #3cc8b4;
+	--teal-700: #0a6b5e;
 	--amber-400: #f2b84b;
+	--amber-600: #9e5f06;
+	--amber-700: #8a5104;
 	--rose-400: #f0718a;
+	--rose-700: #b42042;
 	--sky-400: #5db4f0;
+	--sky-600: #0c74b8;
 	--violet-400: #b48cf2;
+	--violet-600: #6c3ec2;
 	--lime-400: #a8d46f;
+	--lime-700: #487516;
 	--sand-400: #c9b79c;
+	--sand-600: #82653b;
 	--magenta-400: #d77be0;
+	--magenta-600: #a634b3;
 	--slate-400: #8fa3bf;
 	--coral-400: #f28c6f;
+	--coral-600: #bc4b29;
 }

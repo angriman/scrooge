@@ -73,7 +73,7 @@ read as complete.
 						href={link.href}
 						aria-label={link.label}
 						data-sveltekit-reset="false"
-						class="grid size-11 place-items-center rounded-control text-ink-secondary hover:bg-raised hover:text-ink sm:size-8"
+						class="grid size-11 place-items-center rounded-control text-ink-secondary hover:bg-sunken hover:text-ink sm:size-8 dark:hover:bg-raised"
 					>
 						{#if index === 0}<ChevronLeft class="size-4" />{:else}<ChevronRight
 								class="size-4"

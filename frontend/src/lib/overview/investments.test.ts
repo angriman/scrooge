@@ -1,6 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
 import { setLanguage } from '#lib/i18n/index.svelte.js';
+import { net, paid } from '#lib/investments/income.js';
 import type {
 	InvestmentIncome,
 	InvestmentPerformance,
@@ -11,6 +12,7 @@ import {
 	incomeQuery,
 	incomeShown,
 	loaded,
+	rangeStartNote,
 	refusal,
 	returnShown,
 	returnSpan,
@@ -43,6 +45,7 @@ const report = (changes: Partial<PerformanceReport> = {}): PerformanceReport => 
 	series: [],
 	accounts: [],
 	benchmarks: [],
+	missing_benchmarks: [],
 	...changes
 });
 
@@ -100,8 +103,8 @@ describe('the links to the investments page', () => {
 		expect(returnsQuery(address(''), 'ytd').toString()).toBe('');
 	});
 
-	it('open the income over the last twelve months', () => {
-		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe('owner=Anna&view=income');
+	it('open the payouts over the last twelve months', () => {
+		expect(incomeQuery(address('?owner=Anna&range=3m')).toString()).toBe('owner=Anna&view=payouts');
 	});
 });
 
@@ -133,6 +136,7 @@ describe('the card', () => {
 		expect(returnShown({ sent: performance(), errors: [] }, '1y')).toEqual({
 			state: 'measured',
 			span: 'over the past year',
+			rangeNote: null,
 			twr: '9.5',
 			gain: '100',
 			currency: 'CHF',
@@ -142,6 +146,28 @@ describe('the card', () => {
 			paid: { net: '130', tax: '20', currency: 'CHF' },
 			errors: []
 		});
+		// Overview's card and Investments → Income's headline share the same after-tax basis.
+		expect(incomeShown({ sent: income, errors: [] }).paid?.net).toBe(net(income.income.totals));
+		expect(paid(income.income.totals)).toBe('150');
+	});
+
+	it('names the range start as secondary text when the return counts from a later day', () => {
+		const later = performance({
+			first: '2026-07-05',
+			last: '2026-09-30',
+			totals: { ...measured, twr_since: '2026-08-31' }
+		});
+		expect(returnShown({ sent: later, errors: [] }, '1y')).toMatchObject({
+			state: 'measured',
+			span: 'since 31 Aug 2026',
+			rangeNote: 'Range starts 5 Jul 2026'
+		});
+		expect(
+			rangeStartNote(
+				report({ first: '2026-07-05', totals: { ...measured, twr_since: '2026-07-05' } })
+			)
+		).toBeNull();
+		expect(rangeStartNote(report({ first: null, last: null, totals: null }))).toBeNull();
 	});
 
 	it('keeps what was paid when the return is not known, and says why once', () => {
@@ -202,6 +228,13 @@ describe('taxWithheld', () => {
 		setLanguage('it');
 		try {
 			expect(returnSpan('1y', report())).toBe('nell’ultimo anno');
+			const later = report({
+				first: '2026-07-05',
+				last: '2026-09-30',
+				totals: { ...measured, twr_since: '2026-08-31' }
+			});
+			expect(returnSpan('1y', later)).toBe('dal 31 Ago 2026');
+			expect(rangeStartNote(later)).toBe('Periodo dal 5 Lug 2026');
 			const refused = (() => {
 				try {
 					error(500, 'Internal Error');

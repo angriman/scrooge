@@ -5,6 +5,7 @@ each bill where it falls, as tall as its face, and the list of them. It leads wi
 repayment, the money that comes back first.
 -->
 <script lang="ts">
+	import { assetColor } from '#lib/design/data.js';
 	import { day, dayOfYear, daysBetween } from '#lib/format/date.js';
 	import { approximate, money, short, signed, sum } from '#lib/format/number.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -62,7 +63,8 @@ repayment, the money that comes back first.
 			{#each dated as rung, index (index)}
 				{@const left = (Math.max(0, daysBetween(from, rung.maturity!)) / span) * 100}
 				<span
-					class="absolute bottom-0 w-2 -translate-x-1/2 rounded-t-[2px] bg-data-6"
+					class="absolute bottom-0 w-2 -translate-x-1/2 rounded-t-[2px]"
+					style:background-color={assetColor('Bills')}
 					style:left="{left}%"
 					style:height="{Math.max(6, (approximate(rung.face) / tallest) * 100)}%"
 					title={t('bills.barTitle', {

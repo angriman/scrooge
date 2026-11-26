@@ -67,8 +67,8 @@ the costs could not be loaded, the panel says why in their place.
 					<th scope="col" class="pb-2 text-right font-normal">{t('costs.colCommissions')}</th>
 					<th scope="col" class="pb-2 text-right font-normal">{t('costs.colTaxWithheld')}</th>
 					<th scope="col" class="pb-2 text-right font-normal">{t('overview.total')}</th>
-					<th scope="col" class="hidden pb-2 text-right font-normal sm:table-cell"
-						>{t('costs.colOfWhatPaid')}</th
+					<th scope="col" class="hidden pb-2 pl-3 text-right font-normal sm:table-cell"
+						>{t('costs.colTaxOfWhatPaid')}</th
 					>
 				</tr>
 			</thead>
@@ -122,7 +122,7 @@ the costs could not be loaded, the panel says why in their place.
 					<li class="border-t border-line first:border-t-0">
 						<a
 							href={href({ account: each.account, owner: each.owner, broker: each.broker })}
-							class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 py-2 text-small hover:bg-raised"
+							class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 py-2 text-small hover:bg-sunken dark:hover:bg-raised"
 						>
 							<span class="min-w-0">
 								<span class="block truncate text-ink">{each.name}</span>

@@ -11,6 +11,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { HeldInstrument } from '#lib/types.js';
 	import { cn } from '#lib/ui/cn.js';
+	import { holdingName, mapLabel } from './names.js';
 
 	interface Props {
 		holdings: HeldInstrument[];
@@ -42,11 +43,6 @@ much one of them weighs. A tile chosen opens that holding in the list.
 				h: leaf.y1 - leaf.y0
 			}));
 	});
-
-	const label = (holding: HeldInstrument) =>
-		holding.name && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(holding.symbol)
-			? holding.name
-			: holding.symbol;
 </script>
 
 <div bind:clientWidth={width} class="relative w-full" style:height="{height}px">
@@ -58,12 +54,12 @@ much one of them weighs. A tile chosen opens that holding in the list.
 			type="button"
 			onclick={() => onchoose(holding)}
 			title={t('holdings.mapTileTitle', {
-				name: holding.name || holding.symbol,
+				name: holdingName(holding),
 				value: short(holding.value),
 				currency,
 				share: percent(holding.share)
 			})}
-			class="absolute flex flex-col justify-start overflow-hidden rounded-control border-t-2 text-left transition-[filter] hover:brightness-125 focus-visible:z-10"
+			class="absolute flex flex-col justify-start overflow-hidden rounded-control border-t-2 text-left transition-[filter] hover:brightness-95 focus-visible:z-10 dark:hover:brightness-125"
 			style:left="{tile.x}px"
 			style:top="{tile.y}px"
 			style:width="{tile.w}px"
@@ -76,7 +72,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 					<span
 						class={cn('block truncate font-medium text-ink', roomy ? 'text-body' : 'text-caption')}
 					>
-						{label(holding)}
+						{mapLabel(holding)}
 					</span>
 					{#if roomy}
 						<span class="block text-small text-ink-secondary tabular-nums"

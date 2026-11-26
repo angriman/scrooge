@@ -51,7 +51,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_FLOOR, Decimal
+from decimal import Decimal
 from math import prod
 
 from scrooge import networth
@@ -62,6 +62,7 @@ from scrooge.storage.money import from_nano
 _CENT = Decimal("0.01")
 _LADDER = ("bill", "bond")  # the types of instrument that are repaid on a day
 Split = tuple[date, int, int]  # the day, and so many new shares for so many old ones
+shared_out = networth.shared_out
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +165,8 @@ class Holding:
     # In `Portfolio.currency`; None when that of any of its positions is not known.
     cost: Decimal | None
     gain: Decimal | None
+    type: str = ""  # of the instrument: etf, stock, fund, bill or bond
+    maturity: date | None = None  # bills and bonds
 
     @property
     def return_percent(self) -> Decimal | None:
@@ -259,6 +262,8 @@ class Portfolio:
                     share=sum((shares[p] for p in parts), Decimal(0)),
                     cost=cost,
                     gain=None if cost is None else value - cost,
+                    type=parts[0].type,
+                    maturity=next((p.maturity for p in parts if p.maturity is not None), None),
                 )
             )
         return tuple(sorted(holdings, key=lambda h: (-h.value, h.symbol)))
@@ -299,19 +304,6 @@ class Portfolio:
             share = sum((shares[position] for position in held), Decimal(0))
             groups.append(Group(asset, tuple(held), value, share))
         return tuple(groups)
-
-
-def shared_out(exact: Sequence[Decimal], step: Decimal = _CENT) -> list[Decimal]:
-    """`exact` to the `step` (the cent unless asked), so that the parts add up to their
-    rounded sum: each is rounded down, and the steps that misses go to those that lost the
-    most (the largest remainders)."""
-    whole = sum(exact, Decimal(0)).quantize(step)
-    parts = [value.quantize(step, rounding=ROUND_FLOOR) for value in exact]
-    missing = int((whole - sum(parts, Decimal(0))) / step)
-    lost_most = sorted(range(len(exact)), key=lambda n: parts[n] - exact[n])
-    for n in lost_most[:missing]:
-        parts[n] += step
-    return parts
 
 
 def splits_through(conn: sqlite3.Connection, last: date) -> dict[int, list[Split]]:
