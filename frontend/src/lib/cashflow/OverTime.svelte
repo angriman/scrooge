@@ -82,7 +82,11 @@ a line. A column pointed at, or chosen with the keyboard, is said in full beneat
 	const every = $derived(Math.ceil(42 / Math.max(1, step)));
 
 	let shown = $state<number | null>(null);
-	const detail = $derived(periods[shown ?? periods.length - 1]);
+	$effect.pre(() => {
+		void periods;
+		shown = null;
+	});
+	const detail = $derived(periods[shown ?? periods.length - 1] ?? periods.at(-1));
 </script>
 
 <div bind:clientWidth={width}>

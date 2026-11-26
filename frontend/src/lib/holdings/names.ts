@@ -3,7 +3,7 @@
 
 import { day, dayOfYear } from '#lib/format/date.js';
 import { t } from '#lib/i18n/index.svelte.js';
-import type { HeldInstrument } from '#lib/types.js';
+import type { HeldInstrument, PayingHolding } from '#lib/types.js';
 
 type NamedHolding = Pick<HeldInstrument, 'symbol' | 'name' | 'asset'> & {
 	type?: string;
@@ -48,4 +48,15 @@ export function mapLabel(holding: NamedHolding): string {
 			: billName(holding);
 	}
 	return holding.name && ISIN.test(holding.symbol) ? holding.name : holding.symbol;
+}
+
+/** Primary display name of a paying holding on Investments -> Payouts. */
+export function payingName(
+	holding: Pick<PayingHolding, 'key' | 'name' | 'symbol' | 'type' | 'maturity' | 'account'>
+): string {
+	if (holding.account) return holding.name;
+	if (holding.type === 'bill' && holding.name === holding.symbol) {
+		return holding.maturity ? t('bills.nameDue', { date: day(holding.maturity) }) : t('bills.name');
+	}
+	return holding.name;
 }

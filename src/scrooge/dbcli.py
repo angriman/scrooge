@@ -1151,6 +1151,7 @@ def _serve(database: Path, port: int, pages: _Pages, reach: _Reach, out: TextIO)
         password=reach.password,
         read_only=reach.read_only,
         maturities=prices.TreasuryDirect(),
+        price_source=prices.Yahoo(),
         currency=pages.currency,
         currencies=pages.currencies,
         frozen=pages.frozen,

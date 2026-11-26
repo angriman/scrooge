@@ -161,9 +161,7 @@ def test_without_any_close_the_price_of_the_last_trade_is_shown_as_such(
     assert (position.quantity, position.price, position.price_day) == (D(6), D(55), day(20))
     assert position.price_is_trade
     assert position.value == D(330)
-    assert held.notes == (
-        "No close is stored for WIDG: valued at the price of the last trade. Run `scrooge prices`.",
-    )
+    assert held.notes == ("No close is stored for WIDG: valued at the price of the last trade.",)
 
 
 def test_a_trade_after_the_last_close_is_the_price_of_the_day(conn: sqlite3.Connection) -> None:
@@ -222,7 +220,8 @@ def test_holdings_a_statement_prints_are_held_at_the_close_it_prints(
 
 def test_a_bill_has_no_price_but_a_maturity(conn: sqlite3.Connection) -> None:
     close(conn, ibkr(bill("10000", "-9850", day(15))))
-    [position] = agrees_with_net_worth(conn, None, "USD").positions
+    held = agrees_with_net_worth(conn, None, "USD")
+    [position] = held.positions
     assert position == Position(
         owner=OWNER,
         account="IBKR USD",
@@ -242,6 +241,12 @@ def test_a_bill_has_no_price_but_a_maturity(conn: sqlite3.Connection) -> None:
         gain_native=D("22.50"),  # the interest earned so far
         cost=D("9850.00"),
         gain=D("22.50"),
+    )
+    [holding] = held.holdings
+    assert (holding.symbol, holding.type, holding.maturity) == (
+        "912797ZZ1",
+        "bill",
+        date(2026, 12, 24),
     )
 
 

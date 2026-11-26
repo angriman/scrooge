@@ -3,11 +3,11 @@
 Everything the app looks like is decided here, in three layers. A component names a role,
 never a colour, so a theme or a scale changes without touching a component.
 
-| Layer    | File                 | What it holds                                                                                        |
-| -------- | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| Palette  | `tokens/palette.css` | Every colour, by hue and step (`--navy-850`, `--teal-400`). Read only by themes.                     |
-| Theme    | `tokens/night.css`   | The roles, each given a colour of the palette: surfaces, lines, ink, brand, signals, data, the font. |
-| Tailwind | `tokens/theme.css`   | The roles as Tailwind classes, and the scales every theme shares: type and corners.                  |
+| Layer    | File                                    | What it holds                                                                                        |
+| -------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Palette  | `tokens/palette.css`                    | Every colour, by hue and step (`--navy-850`, `--teal-400`). Read only by themes.                     |
+| Themes   | `tokens/night.css`, `tokens/alpine.css` | The roles, each given a colour of the palette: surfaces, lines, ink, brand, signals, data, the font. |
+| Tailwind | `tokens/theme.css`                      | The roles as Tailwind classes, and the scales every theme shares: type and corners.                  |
 
 `data.ts` says which data colour each series wears (asset types, income groups), so a series
 has one colour on every page.
@@ -42,8 +42,10 @@ so that one passed in wins over the component's own.
 
 Charts are drawn with LayerChart and take their colours from `data.ts`.
 
-## Adding a theme
+## Themes
 
-A light theme (Alpine) is a new `tokens/alpine.css` giving every role of `night.css` under
-`[data-theme='alpine']`, imported in `src/app.css`, and colours added to the palette. Nothing
-else changes.
+`night.css` is the dark theme (default when no `data-theme` is set); `alpine.css` is the light
+theme under `[data-theme='alpine']`. By default the app follows `prefers-color-scheme: light`,
+and the user can override it under Settings → Appearance (stored in `localStorage`). Adding
+another theme means adding a token file giving every role under `[data-theme='<name>']`,
+importing it in `src/app.css`, and adding any needed palette steps.

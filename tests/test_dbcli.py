@@ -1228,6 +1228,7 @@ def test_serve_brings_the_schema_up_to_date_and_listens_on_this_machine_only(
     assert app.state.rules.people == {}
     assert app.state.imports.rules == [Path("rules.yaml")]
     assert app.state.imports.instruments == Path("instruments.yaml")
+    assert isinstance(app.state.price_source, prices.Yahoo)
     assert app.state.currency == "EUR"  # without 'currency' in the config
     assert run.count("schema_version") == len(db.migrations())
 

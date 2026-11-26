@@ -7,8 +7,8 @@ reader is already looking, in the headline and the legend.
 -->
 <script lang="ts">
 	import { AreaChart, Spline, type ChartState } from 'layerchart';
-	import { approximate, short } from '#lib/format/number.js';
-	import { addDays, dayOf, monthOf, toDate } from '#lib/format/date.js';
+	import { approximate, shortTick } from '#lib/format/number.js';
+	import { addDays, dayOf, monthTickOf, toDate } from '#lib/format/date.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { Series } from '#lib/types.js';
 
@@ -103,6 +103,9 @@ reader is already looking, in the headline and the legend.
 	$effect(() => {
 		hovered = context?.tooltip.data ?? null;
 	});
+
+	// Avoid passing scientific notation (e.g. D3 ticks near zero) to the decimal parser.
+	const formatY = (value: number) => shortTick(Math.abs(value) < 1e-6 ? '0' : String(value));
 </script>
 
 <div class={className}>
@@ -120,13 +123,20 @@ reader is already looking, in the headline and the legend.
 			svg: { 'aria-label': label },
 			area: { fillOpacity: 1, line: { strokeWidth: 1.25, class: 'stroke-panel' } },
 			// A few months or less: its ticks are days, which a month's name would repeat.
-			xAxis: { format: days.length <= 100 ? dayOf : monthOf, tickLength: 0, ticks: 6 },
+			xAxis: {
+				format: days.length <= 100 ? dayOf : monthTickOf,
+				tickLength: 0,
+				ticks: 6,
+				// With no tick marks (`tickLength: 0`), keep 12px labels clear of the plot edge.
+				tickLabelProps: { dy: 6 }
+			},
 			yAxis: {
 				placement: 'right',
-				format: (value: number) => short(String(value)),
+				format: formatY,
 				tickLength: 0,
-				// Clear of the plot: the labels are read apart from the areas they sit beside.
-				tickLabelProps: { dx: 10 }
+				// Right-aligned along one edge inside the fixed right padding, flush with the
+				// card's `px-5` margin (`60 - 48 = 12px` plus the chart's `px-2` = `20px`).
+				tickLabelProps: { textAnchor: 'end', dx: 48 }
 			},
 			grid: { class: '[&_line]:stroke-chart-grid' },
 			highlight: {

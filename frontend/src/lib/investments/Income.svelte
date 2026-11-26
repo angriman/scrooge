@@ -1,14 +1,16 @@
 <!--
 @component
-What investments paid over the range: dividends and interest in all, the tax withheld from them
-and what was left, against the same months a year before and, for another range, beside what
-the last twelve months paid; each month as a column, dividends below interest, before tax; and
-each holding, what paid the most first, opening its transactions.
+What investments paid over the range: what was left after the tax withheld, against the same
+months a year before and, for another range, beside what the last twelve months paid; with
+dividends, interest, what was paid before tax and the tax withheld beside it; each month as a
+column, dividends below interest, before tax; and each holding, what paid the most first,
+opening its transactions.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { day } from '#lib/format/date.js';
 	import { approximate, short, signedPercent } from '#lib/format/number.js';
+	import { payingName } from '#lib/holdings/names.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { PayoutsReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
@@ -21,6 +23,7 @@ each holding, what paid the most first, opening its transactions.
 		INTEREST_COLOR,
 		isTrailing,
 		monthLabel,
+		net,
 		paid,
 		stack,
 		transactionsOf,
@@ -34,14 +37,17 @@ each holding, what paid the most first, opening its transactions.
 		range: string;
 		/** Whose figures, for the transactions a holding opens. */
 		owner: string | null;
+		/** The first day of the earliest month with statements, to detect clamped 12m/YTD views. */
+		firstMonth?: string | null;
 	}
 
-	let { income, logos, range, owner }: Props = $props();
+	let { income, logos, range, owner, firstMonth = null }: Props = $props();
 
 	const currency = $derived(income.currency);
-	const total = $derived(paid(income.totals));
+	const total = $derived(net(income.totals));
+	const beforeTax = $derived(paid(income.totals));
 	const moved = $derived(change(income.totals, income.year_before));
-	const trailing = $derived(isTrailing(income) ? null : income.trailing);
+	const trailing = $derived(isTrailing(income, firstMonth) ? null : income.trailing);
 
 	let width = $state(640);
 	const HEIGHT = 200;
@@ -86,15 +92,20 @@ each holding, what paid the most first, opening its transactions.
 					</span>
 					{t('investments.onYearBeforePct')}
 				{:else}
-					{t('investments.beforeTaxNote')}
+					{t('investments.afterTaxNote')}
 				{/if}
 			</p>
 			{#if trailing}
 				<p class="mt-1 max-w-prose text-small text-ink-secondary">
 					{t('investments.last12MonthsPaidBefore')}
-					<Amount value={paid(trailing)} {currency} places={0} class="text-ink" />,
-					<Amount value={trailing.net} {currency} places={0} class="text-ink" />
-					{t('investments.last12MonthsAfterTax')}
+					<Amount
+						value={net(trailing)}
+						{currency}
+						places={0}
+						class="text-ink"
+					/>{#if approximate(trailing.tax) !== 0},
+						<Amount value={paid(trailing)} {currency} places={0} class="text-ink" />
+						{t('investments.last12MonthsBeforeTax')}{:else}.{/if}
 				</p>
 			{/if}
 		</div>
@@ -108,14 +119,14 @@ each holding, what paid the most first, opening its transactions.
 				<dd class="text-title text-ink"><Amount value={income.totals.interest} places={0} /></dd>
 			</div>
 			<div>
+				<dt class="text-ink-secondary">{t('investments.beforeTax')}</dt>
+				<dd class="text-title text-ink"><Amount value={beforeTax} places={0} /></dd>
+			</div>
+			<div>
 				<dt class="text-ink-secondary">{t('investments.taxWithheld')}</dt>
 				<dd class="text-title text-ink">
 					<Amount value={withheld(income.totals.tax)} places={0} />
 				</dd>
-			</div>
-			<div>
-				<dt class="text-ink-secondary">{t('investments.net')}</dt>
-				<dd class="text-title text-ink"><Amount value={income.totals.net} places={0} /></dd>
 			</div>
 		</dl>
 	</div>
@@ -243,10 +254,11 @@ each holding, what paid the most first, opening its transactions.
 		<ul class="rounded-panel bg-panel">
 			{#each income.holdings as holding (`${holding.key}/${holding.account ?? ''}/${holding.owner ?? ''}`)}
 				{@const logo = holding.symbol ? logos[holding.symbol] : undefined}
+				{@const title = payingName(holding)}
 				<li class="border-t border-line first:border-t-0">
 					<a
 						href={href(holding)}
-						class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 hover:bg-raised sm:grid-cols-[minmax(0,1fr)_7rem_7rem_7rem_7rem]"
+						class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 hover:bg-sunken sm:grid-cols-[minmax(0,1fr)_7rem_7rem_7rem_7rem] dark:hover:bg-raised"
 					>
 						<span class="flex min-w-0 items-center gap-3">
 							{#if withLogos}
@@ -254,18 +266,18 @@ each holding, what paid the most first, opening its transactions.
 									<img
 										src={logo}
 										alt=""
-										class="size-7 shrink-0 rounded-control bg-ink object-contain p-0.5"
+										class="size-7 shrink-0 rounded-control border border-line bg-panel object-contain p-0.5 dark:border-0 dark:bg-ink"
 									/>
 								{:else}
 									<span class="size-7 shrink-0" aria-hidden="true"></span>
 								{/if}
 							{/if}
 							<span class="min-w-0">
-								<span class="block truncate font-medium text-ink">{holding.name}</span>
+								<span class="block truncate font-medium text-ink">{title}</span>
 								<span class="flex gap-1.5 text-small text-ink-muted">
 									{#if holding.account}
 										<span class="truncate">{t('investments.unnamedPayments')}</span>
-									{:else if holding.name !== holding.key}
+									{:else if title !== holding.key}
 										<span class="truncate">{holding.key}</span>
 									{/if}
 									<span class="shrink-0 sm:hidden"

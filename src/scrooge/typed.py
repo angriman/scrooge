@@ -11,14 +11,119 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Literal
 
 from scrooge import classification, staging
-from scrooge.models import TypedHolding
+from scrooge.models import CERTIFICATE_SOURCES, TypedHolding
 from scrooge.staging import StagingError
 from scrooge.storage import money
+from scrooge.storage.money import from_nano
 
 TABS = ("Stocks", "ETFs")  # what an instrument not known yet may be typed as
 _CODE = 3  # letters in a currency code
+# Sources whose export states neither a balance nor what is held (`staging._TYPED_INTO`).
+_TYPED_INTO = frozenset({"schwab"})
+
+Typable = Literal["none", "balance", "both"]
+
+
+@dataclass(frozen=True, slots=True)
+class Figure:
+    """One balance or position typed by hand for an account."""
+
+    owner: str
+    account: str
+    day: date
+    what: Literal["balance", "position"]
+    currency: str
+    amount: Decimal | None = None
+    symbol: str | None = None
+    quantity: Decimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ManualAccount:
+    """An account fed only by typed figures (`accounts.source IS NULL`)."""
+
+    owner: str
+    account: str
+    closed: date | None
+
+
+def typable(source: str | None) -> Typable:
+    """What kind of figure may be typed into an account fed by `source` (None: typed-only)."""
+    if source is None or source in _TYPED_INTO:
+        return "both"
+    if source in CERTIFICATE_SOURCES:
+        return "balance"
+    return "none"
+
+
+def figures(
+    conn: sqlite3.Connection, owner: str | None = None
+) -> dict[tuple[str, str], tuple[Figure, ...]]:
+    """Every balance and position typed by hand for `owner` (everyone without one), grouped by
+    `(owner, account)` and ordered newest first."""
+    balances = conn.execute(
+        "SELECT o.name, a.name, b.date, b.amount_nano, a.currency "
+        "FROM balances b JOIN accounts a ON a.id = b.account_id "
+        "JOIN owners o ON o.id = a.owner_id "
+        "WHERE b.source = 'manual' AND o.name = coalesce(?, o.name)",
+        (owner,),
+    ).fetchall()
+    positions = conn.execute(
+        "SELECT o.name, a.name, p.date, i.symbol, p.quantity, i.currency "
+        "FROM positions p JOIN accounts a ON a.id = p.account_id "
+        "JOIN owners o ON o.id = a.owner_id "
+        "JOIN instruments i ON i.id = p.instrument_id "
+        "WHERE p.source = 'manual' AND o.name = coalesce(?, o.name)",
+        (owner,),
+    ).fetchall()
+    grouped: dict[tuple[str, str], list[Figure]] = {}
+    for who, account, on, amount_nano, code in balances:
+        grouped.setdefault((who, account), []).append(
+            Figure(
+                owner=who,
+                account=account,
+                day=date.fromisoformat(on),
+                what="balance",
+                currency=code,
+                amount=from_nano(amount_nano),
+            )
+        )
+    for who, account, on, symbol, qty, code in positions:
+        grouped.setdefault((who, account), []).append(
+            Figure(
+                owner=who,
+                account=account,
+                day=date.fromisoformat(on),
+                what="position",
+                currency=code,
+                symbol=symbol,
+                quantity=Decimal(qty),
+            )
+        )
+    return {
+        key: tuple(sorted(items, key=lambda f: (-f.day.toordinal(), f.what, f.symbol or "")))
+        for key, items in grouped.items()
+    }
+
+
+def manual_accounts(
+    conn: sqlite3.Connection, owner: str | None = None
+) -> tuple[ManualAccount, ...]:
+    """Every typed-only account (`accounts.source IS NULL`) of `owner`, or of everyone."""
+    rows = conn.execute(
+        "SELECT o.name, a.name, a.closed_on FROM accounts a "
+        "JOIN owners o ON o.id = a.owner_id "
+        "WHERE a.source IS NULL AND o.name = coalesce(?, o.name) "
+        "ORDER BY o.name, a.name",
+        (owner,),
+    ).fetchall()
+    return tuple(
+        ManualAccount(who, account, date.fromisoformat(closed) if closed else None)
+        for who, account, closed in rows
+    )
 
 
 @dataclass(frozen=True, slots=True)

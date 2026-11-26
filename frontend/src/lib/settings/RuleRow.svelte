@@ -1,59 +1,88 @@
 <!--
 @component
 One rule: what it looks for, what it gives, and how many committed rows it matches. Where the
-app can change it, it is edited in place, moved up or down in its file, or taken out.
+app can change it, it is edited in place, moved up or down in its file, moved between personal
+and shared rules, or taken out.
 -->
 <script lang="ts">
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash from '@lucide/svelte/icons/trash-2';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import CategorySelect from '#lib/import/CategorySelect.svelte';
-	import type { Headed, Rule } from '#lib/types.js';
-	import { changes, directionName, draftOf, matchesName, type Draft } from './rules.js';
+	import type { Headed, Rule, RulesFile } from '#lib/types.js';
+	import { changes, directionName, draftOf, fileTitle, matchesName, type Draft } from './rules.js';
 
 	interface Props {
 		rule: Rule;
 		leaves: Headed[];
+		targets: RulesFile[];
 		editable: boolean;
 		first: boolean;
 		last: boolean;
 		/** Each answers what went wrong, or null when it was done. */
 		onsave: (draft: Draft) => Promise<string | null>;
 		onmove: (by: -1 | 1) => Promise<string | null>;
+		onmoveto: (to: string) => Promise<string | null>;
 		onremove: () => Promise<string | null>;
 		/** Try its pattern (as being edited) on the committed rows. */
 		ontry: (match: string, direction: Rule['direction']) => void;
 	}
 
-	let { rule, leaves, editable, first, last, onsave, onmove, onremove, ontry }: Props = $props();
+	let {
+		rule,
+		leaves,
+		targets,
+		editable,
+		first,
+		last,
+		onsave,
+		onmove,
+		onmoveto,
+		onremove,
+		ontry
+	}: Props = $props();
 
-	let editing = $state(false);
+	let mode = $state<'edit' | 'move' | null>(null);
 	let draft = $state<Draft>({ match: '', category: '', direction: '' });
+	let destination = $state('');
 	let busy = $state(false);
 	let problem = $state<string | null>(null);
 
 	function edit() {
 		draft = draftOf(rule);
 		problem = null;
-		editing = true;
+		mode = 'edit';
+	}
+
+	function startMove() {
+		destination = targets.length === 1 ? targets[0].key : '';
+		problem = null;
+		mode = 'move';
 	}
 
 	async function act(change: () => Promise<string | null>) {
 		busy = true;
 		problem = await change();
 		busy = false;
-		if (!problem) editing = false;
+		if (!problem) mode = null;
 	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (!changes(rule, draft)) {
-			editing = false;
+			mode = null;
 			return;
 		}
 		await act(() => onsave(draft));
+	}
+
+	async function moveTo(event: SubmitEvent) {
+		event.preventDefault();
+		if (!destination) return;
+		await act(() => onmoveto(destination));
 	}
 
 	async function remove() {
@@ -69,7 +98,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 </script>
 
 <li class="py-2">
-	{#if editing}
+	{#if mode === 'edit'}
 		<form onsubmit={save} class="flex flex-wrap items-end gap-2">
 			<label class="flex min-w-0 flex-1 basis-60 flex-col gap-1 text-caption text-ink-secondary">
 				{t('settings.patternLabel')}
@@ -107,7 +136,7 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				</button>
 				<button
 					type="button"
-					onclick={() => (editing = false)}
+					onclick={() => (mode = null)}
 					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
 				>
 					{t('accounts.cancel')}
@@ -121,12 +150,46 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 				</button>
 			</div>
 		</form>
+	{:else if mode === 'move'}
+		<form onsubmit={moveTo} class="flex flex-wrap items-center gap-2">
+			<span class="min-w-0 truncate text-small text-ink-secondary" title={rule.match}>
+				{t('settings.moveRuleTo', { match: rule.match })}
+			</span>
+			<select
+				bind:value={destination}
+				aria-label={t('settings.moveRuleToAria', { match: rule.match })}
+				class={field}
+			>
+				{#if targets.length > 1}
+					<option value="">{t('settings.chooseRulePlace')}</option>
+				{/if}
+				{#each targets as target (target.key)}
+					<option value={target.key}>{fileTitle(target)}</option>
+				{/each}
+			</select>
+			<div class="flex gap-2">
+				<button
+					type="button"
+					onclick={() => (mode = null)}
+					class="h-8 rounded-control border border-line px-3 text-small text-ink-secondary hover:text-ink"
+				>
+					{t('accounts.cancel')}
+				</button>
+				<button
+					type="submit"
+					disabled={busy || !destination}
+					class="h-8 rounded-control bg-brand px-3 text-small font-medium text-on-brand hover:bg-brand-hover disabled:opacity-60"
+				>
+					{busy ? t('settings.saving') : t('settings.move')}
+				</button>
+			</div>
+		</form>
 	{:else}
-		<div class="flex items-center gap-3">
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 			<span class="w-6 shrink-0 text-right text-caption text-ink-muted tabular-nums"
 				>{rule.position}</span
 			>
-			<div class="min-w-0 flex-1">
+			<div class="min-w-0 flex-1 basis-48">
 				<p class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-body">
 					<code class="min-w-0 truncate font-mono text-small text-ink" title={rule.match}
 						>{rule.match}</code
@@ -148,56 +211,70 @@ app can change it, it is edited in place, moved up or down in its file, or taken
 					</p>
 				{/if}
 			</div>
-			<button
-				type="button"
-				class={icon}
-				aria-label={t('settings.tryRuleAria', { match: rule.match })}
-				title={t('settings.tryPatternTitle')}
-				onclick={() => ontry(rule.match, rule.direction)}
-			>
-				<span class="text-caption">{t('settings.try')}</span>
-			</button>
-			{#if editable && !rule.fixed}
+			<div class="ml-auto flex shrink-0 flex-wrap items-center gap-1">
 				<button
 					type="button"
-					class={icon}
-					aria-label={t('settings.editRuleAria', { match: rule.match })}
-					title={t('settings.edit')}
-					onclick={edit}
+					class="{icon} w-auto px-1.5"
+					aria-label={t('settings.tryRuleAria', { match: rule.match })}
+					title={t('settings.tryPatternTitle')}
+					onclick={() => ontry(rule.match, rule.direction)}
 				>
-					<Pencil class="size-4" aria-hidden="true" />
+					<span class="text-caption">{t('settings.try')}</span>
 				</button>
-				<button
-					type="button"
-					class={icon}
-					aria-label={t('settings.moveUpAria', { match: rule.match })}
-					title={t('settings.triedEarlierTitle')}
-					disabled={first || busy}
-					onclick={() => act(() => onmove(-1))}
-				>
-					<ArrowUp class="size-4" aria-hidden="true" />
-				</button>
-				<button
-					type="button"
-					class={icon}
-					aria-label={t('settings.moveDownAria', { match: rule.match })}
-					title={t('settings.triedLaterTitle')}
-					disabled={last || busy}
-					onclick={() => act(() => onmove(1))}
-				>
-					<ArrowDown class="size-4" aria-hidden="true" />
-				</button>
-				<button
-					type="button"
-					class={icon}
-					aria-label={t('settings.removeRuleAria', { match: rule.match })}
-					title={t('accounts.remove')}
-					disabled={busy}
-					onclick={remove}
-				>
-					<Trash class="size-4" aria-hidden="true" />
-				</button>
-			{/if}
+				{#if editable && !rule.fixed}
+					<button
+						type="button"
+						class={icon}
+						aria-label={t('settings.editRuleAria', { match: rule.match })}
+						title={t('settings.edit')}
+						onclick={edit}
+					>
+						<Pencil class="size-4" aria-hidden="true" />
+					</button>
+					{#if targets.length}
+						<button
+							type="button"
+							class={icon}
+							aria-label={t('settings.moveRuleAria', { match: rule.match })}
+							title={t('settings.moveRuleTitle')}
+							disabled={busy}
+							onclick={startMove}
+						>
+							<ArrowLeftRight class="size-4" aria-hidden="true" />
+						</button>
+					{/if}
+					<button
+						type="button"
+						class={icon}
+						aria-label={t('settings.moveUpAria', { match: rule.match })}
+						title={t('settings.triedEarlierTitle')}
+						disabled={first || busy}
+						onclick={() => act(() => onmove(-1))}
+					>
+						<ArrowUp class="size-4" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class={icon}
+						aria-label={t('settings.moveDownAria', { match: rule.match })}
+						title={t('settings.triedLaterTitle')}
+						disabled={last || busy}
+						onclick={() => act(() => onmove(1))}
+					>
+						<ArrowDown class="size-4" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class={icon}
+						aria-label={t('settings.removeRuleAria', { match: rule.match })}
+						title={t('accounts.remove')}
+						disabled={busy}
+						onclick={remove}
+					>
+						<Trash class="size-4" aria-hidden="true" />
+					</button>
+				{/if}
+			</div>
 		</div>
 	{/if}
 	{#if problem}<p class="mt-1 text-small text-loss" role="alert">{problem}</p>{/if}
