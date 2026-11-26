@@ -311,9 +311,24 @@ export interface StatementFile {
 	original: string | null;
 }
 
-/** An account a source feeds, with its statements. */
+/** What kind of figure may be typed into an account (`src/scrooge/typed.py`). */
+export type Typable = 'none' | 'balance' | 'both';
+
+/** One balance or position typed by hand for an account (`src/scrooge/typed.py`). */
+export interface TypedFigureItem {
+	account: string;
+	day: Day;
+	what: 'balance' | 'position';
+	currency: string;
+	amount: Amount | null;
+	symbol: string | null;
+	quantity: Amount | null;
+}
+
+/** An account a source feeds, or a typed-only account (`source: null`), with its statements and
+ * typed figures. */
 export interface StatementsAccount extends Account {
-	source: string;
+	source: string | null;
 	/** The last day staged beyond what is committed. */
 	staged: Day | null;
 	behind: boolean;
@@ -330,6 +345,10 @@ export interface StatementsAccount extends Account {
 	/** The accounts it is booked as elsewhere: a broker's one per currency, whose statements
 	 * it lists together; its own name alone otherwise. */
 	parts: string[];
+	/** Balances and positions typed by hand for this account (or its parts), newest first. */
+	typed: TypedFigureItem[];
+	/** What kind of figure may be typed into this account. */
+	typable: Typable;
 }
 
 /** What an account holds now by part, and its balance at the last month-ends. */

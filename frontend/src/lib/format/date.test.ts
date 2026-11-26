@@ -8,6 +8,7 @@ import {
 	month,
 	monthName,
 	monthOf,
+	shortMonthOf,
 	toDate,
 	weekday
 } from './date.js';
@@ -32,6 +33,9 @@ describe('days', () => {
 			2026, 9, 1, 0
 		]);
 		expect(monthOf(date)).toBe('Oct 2026');
+		expect(shortMonthOf(date)).toBe('Oct');
+		expect(shortMonthOf(toDate('2025-12-01'))).toBe('Dec');
+		expect(shortMonthOf(toDate('2026-01-01'))).toBe('Jan');
 		expect(dayOf(date)).toBe('1 Oct');
 	});
 
@@ -62,6 +66,8 @@ describe('a day in a list of days', () => {
 		expect(dayOfYear('2026-05-01', 'it')).toBe('1 Mag');
 		expect(month('2026-08-14', 'it')).toBe('Ago 2026');
 		expect(monthName('2026-10', 'it')).toBe('Ottobre 2026');
+		expect(shortMonthOf(toDate('2025-12-01'), 'it')).toBe('Dic');
+		expect(shortMonthOf(toDate('2026-01-01'), 'it')).toBe('Gen');
 		expect(weekday('2026-09-15', 2026, 'it')).toBe('Mar 15 Set');
 	});
 });

@@ -324,6 +324,8 @@ def _statements(request: Request) -> Response:
             held, checks = {}, ()
         # A broker's currencies are one account here, and judged as one (`together`).
         rows = together.rows(conn, asked.owner, held)
+        typed_by_account = typed.figures(conn, asked.owner)
+        manuals = typed.manual_accounts(conn, asked.owner)
 
     def listed(statement: months.Statement) -> wire.JSON:
         kept = originals.find(folder, statement.sha256, statement.filename)
@@ -338,10 +340,29 @@ def _statements(request: Request) -> Response:
             one.spans,
             [listed(s) for s in one.statements],
         )
-        return {**shown, "holds": wire.account_holds(one.held), "parts": list(one.parts)}
+        figs = sorted(
+            (f for part in one.parts for f in typed_by_account.get((one.line.owner, part), ())),
+            key=lambda f: (-f.day.toordinal(), f.what, f.account, f.symbol or ""),
+        )
+        return {
+            **shown,
+            "holds": wire.account_holds(one.held),
+            "parts": list(one.parts),
+            "typed": [wire.typed_figure(f) for f in figs],
+            "typable": typed.typable(one.line.source),
+        }
 
     lines = tuple(one.line for one in rows)
     accounts = [row(one, late) for one, late in zip(rows, months.behind(lines), strict=True)]
+    accounts.extend(
+        wire.manual_account(
+            manual,
+            held.get((manual.owner, manual.account)),
+            typed_by_account.get((manual.owner, manual.account), ()),
+        )
+        for manual in manuals
+    )
+    accounts.sort(key=lambda a: (str(a["owner"]), str(a["account"]), str(a["source"] or "")))
     return JSONResponse(
         {
             "currency": asked.currency,

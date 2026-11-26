@@ -40,6 +40,7 @@ from scrooge import (
     savings,
     settings,
     suggestions,
+    typed,
 )
 from scrooge.context import Context
 from scrooge.merchants import Merchants
@@ -434,6 +435,45 @@ def account_holds(held: holds.Holds | None) -> JSON | None:
         ],
         "securities": number(held.securities),
         "months": [{"day": day(m.day), "balance": number(m.balance)} for m in held.months],
+    }
+
+
+def typed_figure(figure: typed.Figure) -> JSON:
+    """One balance or position typed by hand for an account (`typed.Figure`)."""
+    return {
+        "account": figure.account,
+        "day": day(figure.day),
+        "what": figure.what,
+        "currency": figure.currency,
+        "amount": number(figure.amount),
+        "symbol": figure.symbol,
+        "quantity": number(figure.quantity),
+    }
+
+
+def manual_account(
+    found: typed.ManualAccount,
+    held: holds.Holds | None,
+    figures: Sequence[typed.Figure],
+) -> JSON:
+    """An account fed only by typed figures (no statements)."""
+    return {
+        "owner": found.owner,
+        "account": found.account,
+        "label": "",
+        "committed": None,
+        "source": None,
+        "staged": None,
+        "behind": False,
+        "closed": day(found.closed),
+        "monthly": False,
+        "balance": number(None if held is None else held.balance),
+        "spans": [],
+        "statements": [],
+        "holds": account_holds(held),
+        "parts": [found.account],
+        "typed": [typed_figure(figure) for figure in figures],
+        "typable": typed.typable(None),
     }
 
 
