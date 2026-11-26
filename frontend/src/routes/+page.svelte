@@ -58,7 +58,9 @@
 	const by = $derived<Breakdown>(askedBy === 'owner' && !data.people ? 'asset' : askedBy);
 	const monthParam = $derived(here().searchParams.get('month') ?? '');
 
-	let worthOverride = $state<{
+	// `$state.raw` keeps `loader` unproxied so `=== data.worthLoader` / `=== data.monthLoader`
+	// identity checks match.
+	let worthOverride = $state.raw<{
 		loader: WorthLoader;
 		by: Breakdown;
 		worth: NetWorth;
@@ -80,7 +82,7 @@
 	);
 	const series = $derived(activeWorth.series);
 
-	let monthOverride = $state<{
+	let monthOverride = $state.raw<{
 		loader: MonthLoader;
 		month: Month;
 		loading: boolean;

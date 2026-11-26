@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { error, redirect } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
 import type { Month, MonthRecap, NetWorth, Series } from '#lib/types.js';
@@ -436,5 +437,13 @@ describe('createLatestRunner', () => {
 		// No-ops after dispose().
 		runner.run('total');
 		expect(callbacks.onImmediate).not.toHaveBeenCalled();
+	});
+});
+
+describe('overview page override identity', () => {
+	it('stores worthOverride and monthOverride with $state.raw so loader identity checks match', () => {
+		const pageSource = readFileSync(new URL('../../routes/+page.svelte', import.meta.url), 'utf8');
+		expect(pageSource).toMatch(/let worthOverride = \$state\.raw</);
+		expect(pageSource).toMatch(/let monthOverride = \$state\.raw</);
 	});
 });
