@@ -786,7 +786,7 @@ export const it: Messages = {
 	'settings.pageTitle': 'Impostazioni · scrooge',
 	'settings.subpageTitle': '{section} · Impostazioni · scrooge',
 	'settings.title': 'Impostazioni',
-	'settings.subtitle': 'Categorie, regole, persone, valute, lingua e loghi.',
+	'settings.subtitle': 'Categorie, regole, persone, valute, lingua, loghi e aspetto.',
 	'settings.readOnlySuffix': ' Le modifiche sono disattivate in sola lettura.',
 	'settings.sectionsAria': 'Sezioni impostazioni',
 	'settings.sectionLabel': 'Sezione',
@@ -795,6 +795,16 @@ export const it: Messages = {
 	'settings.sectionPeople': 'Persone',
 	'settings.sectionCurrencies': 'Valute e lingua',
 	'settings.sectionLogos': 'Loghi',
+	'settings.sectionAppearance': 'Aspetto',
+	'settings.appearanceTitle': 'Tema',
+	'settings.appearanceNote':
+		'Scegli l’aspetto di scrooge in questo browser, oppure segui l’impostazione del dispositivo.',
+	'settings.themeLabel': 'Tema',
+	'settings.themeSystem': 'Sistema',
+	'settings.themeDark': 'Scuro',
+	'settings.themeLight': 'Chiaro',
+	'settings.themeHint':
+		'Salvato in questo browser. Sistema segue l’aspetto chiaro o scuro del dispositivo.',
 	'settings.peopleTitle': 'Persone',
 	'settings.peopleNote':
 		'Nomi e pattern controparte da scrooge.yaml, e a chi appartiene ciascun conto.',

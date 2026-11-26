@@ -46,7 +46,7 @@
 								<img
 									src={logoUrl}
 									alt=""
-									class="size-8 shrink-0 rounded-control bg-ink object-contain p-0.5"
+									class="size-8 shrink-0 rounded-control border border-line bg-panel object-contain p-0.5 dark:border-0 dark:bg-ink"
 								/>
 							{:else}
 								<span

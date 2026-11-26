@@ -180,7 +180,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 								: t('overview.showPart', { name: label })}
 							onclick={() => toggle(part.name)}
 							class={cn(
-								'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-raised',
+								'flex items-center gap-2 rounded-control px-2 py-1 text-small hover:bg-sunken dark:hover:bg-raised',
 								!shown && 'opacity-45'
 							)}
 						>

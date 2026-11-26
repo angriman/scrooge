@@ -156,7 +156,7 @@ securities), then its statements, newest first, each with the file it came from.
 							type="button"
 							aria-expanded={expanded}
 							onclick={() => (open = expanded ? null : key)}
-							class="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-raised md:grid-cols-[16rem_minmax(0,1fr)_14rem_auto]"
+							class="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-sunken md:grid-cols-[16rem_minmax(0,1fr)_14rem_auto] dark:hover:bg-raised"
 						>
 							<span class="min-w-0">
 								<span class="block truncate font-medium text-ink">{account.account}</span>
@@ -285,7 +285,7 @@ securities), then its statements, newest first, each with the file it came from.
 								<ul class="grid gap-1">
 									{#each account.statements as statement (statement.id)}
 										<li
-											class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 rounded-control px-2 py-2 hover:bg-raised sm:grid-cols-[14rem_minmax(0,1fr)_auto_auto]"
+											class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 rounded-control px-2 py-2 hover:bg-sunken sm:grid-cols-[14rem_minmax(0,1fr)_auto_auto] dark:hover:bg-raised"
 										>
 											<span class="text-body text-ink">{span(statement.first, statement.last)}</span
 											>

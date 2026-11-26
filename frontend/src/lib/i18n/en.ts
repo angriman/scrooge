@@ -774,7 +774,7 @@ export const en = {
 	'settings.pageTitle': 'Settings · scrooge',
 	'settings.subpageTitle': '{section} · Settings · scrooge',
 	'settings.title': 'Settings',
-	'settings.subtitle': 'Categories, rules, people, currencies, language and logos.',
+	'settings.subtitle': 'Categories, rules, people, currencies, language, logos and appearance.',
 	'settings.readOnlySuffix': ' Changes are disabled in read-only mode.',
 	'settings.sectionsAria': 'Settings sections',
 	'settings.sectionLabel': 'Section',
@@ -783,6 +783,16 @@ export const en = {
 	'settings.sectionPeople': 'People',
 	'settings.sectionCurrencies': 'Currencies and language',
 	'settings.sectionLogos': 'Logos',
+	'settings.sectionAppearance': 'Appearance',
+	'settings.appearanceTitle': 'Theme',
+	'settings.appearanceNote':
+		'Choose how scrooge looks in this browser, or follow your device’s setting.',
+	'settings.themeLabel': 'Theme',
+	'settings.themeSystem': 'System',
+	'settings.themeDark': 'Dark',
+	'settings.themeLight': 'Light',
+	'settings.themeHint':
+		'Saved in this browser. System follows your device’s light or dark appearance.',
 	'settings.peopleTitle': 'People',
 	'settings.peopleNote':
 		'Names and counterparty patterns from scrooge.yaml, and who owns each account.',

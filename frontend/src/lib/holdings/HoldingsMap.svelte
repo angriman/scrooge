@@ -63,7 +63,7 @@ much one of them weighs. A tile chosen opens that holding in the list.
 				currency,
 				share: percent(holding.share)
 			})}
-			class="absolute flex flex-col justify-start overflow-hidden rounded-control border-t-2 text-left transition-[filter] hover:brightness-125 focus-visible:z-10"
+			class="absolute flex flex-col justify-start overflow-hidden rounded-control border-t-2 text-left transition-[filter] hover:brightness-95 focus-visible:z-10 dark:hover:brightness-125"
 			style:left="{tile.x}px"
 			style:top="{tile.y}px"
 			style:width="{tile.w}px"

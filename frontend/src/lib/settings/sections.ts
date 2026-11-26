@@ -2,14 +2,16 @@
 
 import type { MessageKey } from '#lib/i18n/index.svelte.js';
 
-export type SettingsSectionKey = 'categories' | 'rules' | 'people' | 'currencies' | 'logos';
+export type SettingsSectionKey =
+	'categories' | 'rules' | 'people' | 'currencies' | 'logos' | 'appearance';
 
 export type SettingsPath =
 	| '/settings/categories'
 	| '/settings/rules'
 	| '/settings/people'
 	| '/settings/currencies'
-	| '/settings/logos';
+	| '/settings/logos'
+	| '/settings/appearance';
 
 export interface SettingsSection {
 	readonly key: SettingsSectionKey;
@@ -22,7 +24,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ key: 'rules', path: '/settings/rules', labelKey: 'settings.sectionRules' },
 	{ key: 'people', path: '/settings/people', labelKey: 'settings.sectionPeople' },
 	{ key: 'currencies', path: '/settings/currencies', labelKey: 'settings.sectionCurrencies' },
-	{ key: 'logos', path: '/settings/logos', labelKey: 'settings.sectionLogos' }
+	{ key: 'logos', path: '/settings/logos', labelKey: 'settings.sectionLogos' },
+	{ key: 'appearance', path: '/settings/appearance', labelKey: 'settings.sectionAppearance' }
 ];
 
 export const DEFAULT_SECTION: SettingsSectionKey = 'categories';

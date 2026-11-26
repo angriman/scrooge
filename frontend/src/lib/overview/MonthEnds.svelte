@@ -81,10 +81,10 @@ scrolls sideways, the months staying in sight.
 					</thead>
 					<tbody>
 						{#each shown.rows as row (row.month)}
-							<tr class="group hover:bg-raised">
+							<tr class="group hover:bg-sunken dark:hover:bg-raised">
 								<th
 									scope="row"
-									class="sticky left-0 z-10 border-b border-line bg-panel py-1.5 pr-4 pl-3 text-left font-normal whitespace-nowrap text-ink-secondary group-hover:bg-raised"
+									class="sticky left-0 z-10 border-b border-line bg-panel py-1.5 pr-4 pl-3 text-left font-normal whitespace-nowrap text-ink-secondary group-hover:bg-sunken dark:group-hover:bg-raised"
 								>
 									<span class="sm:hidden">{row.short}</span>
 									<span class="hidden sm:inline">{row.label}</span>
