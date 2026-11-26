@@ -203,6 +203,8 @@
 				heading={t('investments.noAccountsHeading')}
 				body={t('investments.noAccountsBody')}
 			/>
+		{:else}
+			<h1 class="sr-only">{t('nav.investments')}</h1>
 		{/if}
 	{:else}
 		<Returns performance={data.performance.performance} {range} {people} />
@@ -211,6 +213,8 @@
 	{#if !data.income.income?.through}
 		{#if !errors.length}
 			<EmptyState heading={t('overview.emptyHeading')} body={t('investments.incomeEmptyBody')} />
+		{:else}
+			<h1 class="sr-only">{t('nav.investments')}</h1>
 		{/if}
 	{:else}
 		<Income
@@ -226,6 +230,8 @@
 {:else if !held || !held.day}
 	{#if !errors.length}
 		<EmptyState heading={t('overview.emptyHeading')} body={t('investments.holdingsEmptyBody')} />
+	{:else}
+		<h1 class="sr-only">{t('nav.investments')}</h1>
 	{/if}
 {:else if !held.holdings.length}
 	<EmptyState

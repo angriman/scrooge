@@ -16,6 +16,7 @@ of securities alone.
 	import Panel from '#lib/ui/Panel.svelte';
 	import Share from '#lib/ui/Share.svelte';
 	import Swatch from '#lib/ui/Swatch.svelte';
+	import { allocationChartLabel } from './allocation.js';
 	import { moved } from './range.js';
 
 	interface Props {
@@ -45,6 +46,7 @@ of securities alone.
 
 	let context = $state<ChartState<Part>>();
 	const pointed = $derived(context?.tooltip.data ?? null);
+	const chartLabel = $derived(allocationChartLabel(held, named));
 </script>
 
 <Panel title={t('overview.allocationTitle')} note={t('overview.allocationNote')}>
@@ -61,6 +63,7 @@ of securities alone.
 				innerRadius={0.72}
 				padAngle={0.015}
 				cornerRadius={2}
+				props={{ svg: { 'aria-label': chartLabel } }}
 			>
 				{#snippet tooltip()}{/snippet}
 			</PieChart>

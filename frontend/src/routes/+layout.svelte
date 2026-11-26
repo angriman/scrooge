@@ -92,6 +92,12 @@
 </svelte:head>
 
 <div class="min-h-dvh">
+	<a
+		href="#content"
+		class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-control focus:bg-brand focus:px-3 focus:py-2 focus:text-small focus:font-medium focus:text-on-brand focus:shadow-float"
+	>
+		{t('nav.skipToContent')}
+	</a>
 	<header class="sticky top-0 z-40 border-b border-line bg-page">
 		<div
 			class="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-6"
@@ -194,7 +200,11 @@
 		</div>
 	</header>
 
-	<main class="mx-auto max-w-[1440px] px-4 py-6 sm:px-6">
+	<main
+		id="content"
+		tabindex="-1"
+		class="mx-auto max-w-[1440px] px-4 py-6 focus:outline-none sm:px-6"
+	>
 		{@render children()}
 	</main>
 </div>

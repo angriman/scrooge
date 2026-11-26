@@ -73,9 +73,9 @@ each holding, what paid the most first, opening its transactions.
 <section class="rounded-lead border border-line bg-panel px-5 py-5" aria-labelledby="paid">
 	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
 		<div>
-			<p id="paid" class="text-small text-ink-secondary">
+			<h1 id="paid" class="text-small text-ink-secondary">
 				{t('investments.paidLead', { range })}
-			</p>
+			</h1>
 			<p class="mt-1 text-hero font-medium tracking-tight text-ink">
 				<Amount value={total} {currency} places={0} />
 			</p>
