@@ -68,7 +68,7 @@ worth in each benchmark, and the same figures account by account.
 				fetchErrors = [problem];
 				return;
 			}
-			fetchErrors = answer.sent.errors ?? [];
+			fetchErrors = [...new Set(answer.sent.errors ?? [])];
 			await onfetched?.();
 		} finally {
 			fetching = false;
