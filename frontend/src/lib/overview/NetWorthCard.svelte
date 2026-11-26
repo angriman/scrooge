@@ -156,7 +156,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 	<!-- Net worth and how it moved, side by side: their names on one line, their figures on one
 	     baseline. On a phone, the one under the other. -->
 	<div
-		class="grid grid-cols-1 gap-x-10 px-5 pt-5 [grid-template-areas:'title'_'figure'_'when'_'span'_'moved'] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline sm:[grid-template-areas:'title_span'_'figure_moved'_'when_.']"
+		class="grid grid-cols-1 gap-x-10 px-5 pt-5 [grid-template-areas:'title'_'figure'_'when'_'span'_'moved'_'arrived'] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline sm:[grid-template-areas:'title_span'_'figure_moved'_'when_arrived']"
 	>
 		<h1 id="net-worth" class="truncate text-small text-ink-secondary [grid-area:title]">
 			{shownTitle}
@@ -179,18 +179,16 @@ headline and the legend. The chart can give way to a table of the month-ends.
 		<p class="mt-4 text-small text-ink-secondary [grid-area:span] sm:mt-0 sm:text-right">
 			{rangeLabel(range, series.first)}
 		</p>
-		<div class="mt-1 [grid-area:moved] sm:text-right">
-			<Performance
-				amount={change?.amount ?? null}
-				percent={change?.percent ?? null}
-				class="sm:justify-end"
-			/>
-			{#if leftOut}
-				<p class="mt-1 text-small text-ink-muted">
-					{t('overview.leavesOutArrived', { amount: money(leftOut, 0), currency })}
-				</p>
-			{/if}
-		</div>
+		<Performance
+			amount={change?.amount ?? null}
+			percent={change?.percent ?? null}
+			class="mt-1 [grid-area:moved] sm:justify-end sm:text-right"
+		/>
+		{#if leftOut}
+			<p class="mt-1 text-small text-ink-muted [grid-area:arrived] sm:text-right">
+				{t('overview.leavesOutArrived', { amount: money(leftOut, 0), currency })}
+			</p>
+		{/if}
 	</div>
 
 	<div class="mt-4 flex flex-wrap items-center justify-end gap-2 px-5">
@@ -238,7 +236,8 @@ headline and the legend. The chart can give way to a table of the month-ends.
 				bind:hovered
 				class="h-[clamp(220px,38vh,380px)] px-2 pt-2 pb-1"
 			/>
-			<div class="min-h-10 px-5 pb-3">
+			<!-- Reserve 2 rows of text-small/py-1 pills (2 * 1.625rem) + gap-y-1 (0.25rem) + pb-3 (0.75rem) = 4.25rem (min-h-17) so switching breakdowns or toggling pills does not jump the layout. -->
+			<div class="min-h-17 px-5 pb-3">
 				{#if series.parts.length}
 					<ul
 						class="flex flex-wrap items-center gap-x-1 gap-y-1"
@@ -276,7 +275,7 @@ headline and the legend. The chart can give way to a table of the month-ends.
 								<button
 									type="button"
 									onclick={() => (hidden = new Set())}
-									class="rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
+									class="flex items-center rounded-control px-2 py-1 text-small text-brand hover:text-brand-hover"
 								>
 									{t('overview.showAll')}
 								</button>
