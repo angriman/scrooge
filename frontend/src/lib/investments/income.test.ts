@@ -6,6 +6,7 @@ import {
 	isTrailing,
 	kindsOf,
 	monthLabel,
+	net,
 	paid,
 	stack,
 	trailingFrom,
@@ -42,16 +43,43 @@ const CASH: PayingHolding = {
 };
 
 describe('what investments paid', () => {
-	it('adds dividends and interest, before tax', () => {
+	it('adds dividends and interest, before and after tax', () => {
 		expect(paid({ dividends: '180.00', interest: '18.50', tax: '-13.50' })).toBe('198.50');
+		expect(net({ dividends: '180.00', interest: '18.50', tax: '-13.50' })).toBe('185.00');
+		expect(net({ dividends: '180.00', interest: '18.50', tax: '0.00' })).toBe('198.50');
+		expect(net({ dividends: '0.00', interest: '0.00', tax: '-5.00' })).toBe('-5.00');
+		expect(net({ dividends: '120', interest: '30', tax: '-20', net: '130' })).toBe('130');
 		expect(withheld('-13.50')).toBe('13.50');
 		expect(withheld('0.00')).toBe('0.00');
 	});
 
-	it('compares with the year before only when something was paid then', () => {
-		const now = { dividends: '150', interest: '0', tax: '0' };
-		expect(change(now, { dividends: '100', interest: '20', tax: '-15' })).toBe('25.0');
+	it('compares with the year before after tax, only when something was left then', () => {
+		const now = { dividends: '150', interest: '0', tax: '-15' };
+		// Net is 135 vs 105 (+28.6%), not gross 150 vs 120 (+25.0%).
+		expect(change(now, { dividends: '100', interest: '20', tax: '-15' })).toBe('28.6');
+		// Same gross with more tax withheld is a drop in net income.
+		expect(
+			change(
+				{ dividends: '100', interest: '0', tax: '-30' },
+				{ dividends: '100', interest: '0', tax: '-15' }
+			)
+		).toBe('-17.6');
+		// Uses API-provided net amounts directly when present.
+		expect(
+			change(
+				{ dividends: '150', interest: '0', tax: '-20', net: '130' },
+				{ dividends: '115', interest: '0', tax: '-15', net: '100' }
+			)
+		).toBe('30.0');
+		expect(
+			change(
+				{ dividends: '0', interest: '0', tax: '-10' },
+				{ dividends: '100', interest: '0', tax: '0' }
+			)
+		).toBe('-110.0');
 		expect(change(now, { dividends: '0', interest: '0', tax: '0' })).toBeNull();
+		expect(change(now, { dividends: '15', interest: '0', tax: '-15' })).toBeNull();
+		expect(change(now, { dividends: '0', interest: '0', tax: '-15' })).toBeNull();
 		expect(change(now, null)).toBeNull();
 	});
 
