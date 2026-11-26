@@ -26,16 +26,25 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
 
-from scrooge import categories, classification, patterns, query, rulesfile, staging, yamlfiles
+from scrooge import (
+    categories,
+    classification,
+    patterns,
+    query,
+    rulesfile,
+    staging,
+    together,
+    yamlfiles,
+)
 from scrooge.errors import ConfigError
 from scrooge.storage import db, store, taxonomy
 
@@ -83,6 +92,41 @@ class ListedCategory:
     parent: str | None  # the label of the top-level category of an expense
     built_in: bool
     rows: int  # committed rows that carry it
+
+
+@dataclass(frozen=True, slots=True)
+class ListedAccount:
+    """One account owned by a person: grouped like the accounts page, or a typed-only account."""
+
+    name: str
+    source: str | None  # extractor name, or None for typed-only accounts
+    label: str  # source label, or "" for typed-only accounts
+    parts: tuple[str, ...]  # booked account names; itself alone unless grouped
+    closed: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class ListedPerson:
+    """One person in the config or database, their counterparty patterns, and their accounts."""
+
+    name: str
+    patterns: tuple[str, ...]
+    accounts: tuple[ListedAccount, ...]
+    committed: int
+    staged: int
+
+
+_ASSET_BY_TYPE = {"etf": "ETFs", "stock": "Stocks", "fund": "Funds"}
+
+
+@dataclass(frozen=True, slots=True)
+class ListedLogo:
+    """One non-bill holding instrument that can wear a logo, deduplicated by symbol."""
+
+    symbol: str
+    name: str
+    asset: str  # ETFs | Stocks | Funds
+    currencies: tuple[str, ...]
 
 
 def rule_files(shared: Sequence[Path], people: Iterable[str], owner: str | None) -> list[RulesFile]:
@@ -613,3 +657,76 @@ def remove_category(conn: sqlite3.Connection, places: Places, *, name: str) -> N
                 raise SettingsError(msg)
             taxonomy.drop(conn, name)
             categories.drop(places.categories_file, name)
+
+
+def listed_people(
+    conn: sqlite3.Connection,
+    counterparties: Mapping[str, Sequence[re.Pattern[str] | str]] | None = None,
+) -> list[ListedPerson]:
+    """Every person named in the config or stored in the database, with their counterparty
+    patterns and the accounts they own (grouped broker currencies and typed-only accounts)."""
+    in_db = {person.name: person for person in query.people(conn)}
+    configured = counterparties or {}
+    names = list(dict.fromkeys([*configured, *sorted(in_db)]))
+    by_owner: dict[str, list[ListedAccount]] = defaultdict(list)
+    for row in together.rows(conn):
+        line = row.line
+        by_owner[line.owner].append(
+            ListedAccount(line.account, line.source, line.label, row.parts, line.closed)
+        )
+    typed_rows = conn.execute(
+        "SELECT o.name, a.name, a.closed_on FROM accounts a "
+        "JOIN owners o ON o.id = a.owner_id "
+        "WHERE a.source IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM statement_accounts s WHERE s.account_id = a.id) "
+        "ORDER BY o.name, a.name"
+    ).fetchall()
+    for owner, account_name, closed_on in typed_rows:
+        closed = date.fromisoformat(closed_on) if closed_on else None
+        by_owner[owner].append(ListedAccount(account_name, None, "", (account_name,), closed))
+    listed: list[ListedPerson] = []
+    for name in names:
+        accounts = sorted(
+            by_owner.get(name, ()),
+            key=lambda acct: (acct.closed is not None, acct.name, acct.source or ""),
+        )
+        person = in_db.get(name)
+        patterns_of = tuple(
+            p.pattern if isinstance(p, re.Pattern) else p for p in configured.get(name, ())
+        )
+        listed.append(
+            ListedPerson(
+                name=name,
+                patterns=patterns_of,
+                accounts=tuple(accounts),
+                committed=person.committed if person else 0,
+                staged=person.staged if person else 0,
+            )
+        )
+    return listed
+
+
+def listed_logos(conn: sqlite3.Connection) -> list[ListedLogo]:
+    """Every non-bill, non-bond instrument held, traded, or already carrying a logo,
+    deduplicated by symbol (since logos are keyed by symbol across currencies)."""
+    found = conn.execute(
+        "SELECT i.symbol, i.name, i.type, i.currency FROM instruments i "
+        "WHERE i.type NOT IN ('bill', 'bond') "
+        "AND (EXISTS (SELECT 1 FROM positions p WHERE p.instrument_id = i.id) "
+        "OR EXISTS (SELECT 1 FROM trades t WHERE t.instrument_id = i.id) "
+        "OR EXISTS (SELECT 1 FROM logos l WHERE l.symbol = i.symbol)) "
+        "ORDER BY i.symbol, i.currency"
+    ).fetchall()
+    grouped: dict[str, tuple[str, str, list[str]]] = {}
+    for symbol, name, kind, currency in found:
+        if symbol not in grouped:
+            grouped[symbol] = (name, _ASSET_BY_TYPE.get(kind, kind), [currency])
+        else:
+            prev_name, prev_asset, currencies = grouped[symbol]
+            currencies.append(currency)
+            grouped[symbol] = (prev_name or name, prev_asset, currencies)
+    items = [
+        ListedLogo(symbol, name, asset, tuple(currencies))
+        for symbol, (name, asset, currencies) in grouped.items()
+    ]
+    return sorted(items, key=lambda item: ((item.name or item.symbol).casefold(), item.symbol))

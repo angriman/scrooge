@@ -1,13 +1,7 @@
-import { get } from '#lib/api.js';
-import type { SettingsCategories, SettingsRules } from '#lib/types.js';
-import { pick } from '#lib/view.js';
+import { redirect } from '@sveltejs/kit';
+import { resolve } from '$app/paths';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ fetch, url, depends }) => {
-	depends('api:settings');
-	const [rules, categories] = await Promise.all([
-		get<SettingsRules>(fetch, '/api/settings/rules', pick(url, ['owner'])),
-		get<SettingsCategories>(fetch, '/api/settings/categories')
-	]);
-	return { rules, categories };
+export const load: PageLoad = ({ url }) => {
+	redirect(307, resolve('/settings/categories') + url.search);
 };

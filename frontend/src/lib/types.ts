@@ -944,6 +944,50 @@ export interface SettingsCategories {
 	errors: string[];
 }
 
+export interface ListedAccount {
+	name: string;
+	source: string | null;
+	label: string | null;
+	parts: string[];
+	closed: Day | null;
+}
+
+export interface ListedPerson {
+	name: string;
+	patterns: string[];
+	committed: number;
+	staged: number;
+	accounts: ListedAccount[];
+}
+
+export interface SettingsPeople {
+	people: ListedPerson[];
+	errors: string[];
+}
+
+export interface SettingsCurrencies {
+	currency: string;
+	currencies: string[];
+	table_currencies: string[];
+	language: Language;
+	languages: Language[];
+	errors: string[];
+}
+
+export interface ListedLogoInstrument {
+	symbol: string;
+	name: string;
+	asset: string;
+	currencies: string[];
+}
+
+export interface SettingsLogos {
+	instruments: ListedLogoInstrument[];
+	logos: Record<string, string>;
+	editable: boolean;
+	errors: string[];
+}
+
 /** What investing cost, above zero: a refund lowers it (src/scrooge/costs.py `Cost`). */
 export interface Cost {
 	commissions: Amount;
