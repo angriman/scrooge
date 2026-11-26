@@ -9,6 +9,7 @@ each holding, what paid the most first, opening its transactions.
 	import { resolve } from '$app/paths';
 	import { day } from '#lib/format/date.js';
 	import { approximate, short, signedPercent } from '#lib/format/number.js';
+	import { payingName } from '#lib/holdings/names.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import type { PayoutsReport } from '#lib/types.js';
 	import Amount from '#lib/ui/Amount.svelte';
@@ -243,6 +244,7 @@ each holding, what paid the most first, opening its transactions.
 		<ul class="rounded-panel bg-panel">
 			{#each income.holdings as holding (`${holding.key}/${holding.account ?? ''}/${holding.owner ?? ''}`)}
 				{@const logo = holding.symbol ? logos[holding.symbol] : undefined}
+				{@const title = payingName(holding)}
 				<li class="border-t border-line first:border-t-0">
 					<a
 						href={href(holding)}
@@ -261,11 +263,11 @@ each holding, what paid the most first, opening its transactions.
 								{/if}
 							{/if}
 							<span class="min-w-0">
-								<span class="block truncate font-medium text-ink">{holding.name}</span>
+								<span class="block truncate font-medium text-ink">{title}</span>
 								<span class="flex gap-1.5 text-small text-ink-muted">
 									{#if holding.account}
 										<span class="truncate">{t('investments.unnamedPayments')}</span>
-									{:else if holding.name !== holding.key}
+									{:else if title !== holding.key}
 										<span class="truncate">{holding.key}</span>
 									{/if}
 									<span class="shrink-0 sm:hidden"

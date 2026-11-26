@@ -209,7 +209,11 @@ export interface HeldInstrument {
 	symbol: string;
 	name: string;
 	asset: string;
+	/** Instrument kind as stored: `etf`, `stock`, `fund`, `bill` or `bond`. */
+	type: string;
 	currency: string;
+	/** When a bill or bond is repaid; null otherwise. */
+	maturity: Day | null;
 	value: Amount;
 	/** Of all securities, in percent to the tenth, shared out so that the holdings add up to
 	 * 100. */
@@ -657,6 +661,10 @@ export interface PayingHolding extends Payout {
 	name: string;
 	/** As the instruments (and the logos) have it; null when no instrument has it. */
 	symbol: string | null;
+	/** Instrument kind as stored (`etf`, `stock`, `fund`, `bill`, `bond`); null when none matches. */
+	type: string | null;
+	/** When a bill or bond is repaid; null otherwise. */
+	maturity: Day | null;
 	/** The account, for rows that name nothing; else null. */
 	account: string | null;
 	/** Whose the account is, when two people have an account of its name and it is named

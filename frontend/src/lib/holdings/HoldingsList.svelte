@@ -21,6 +21,7 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 	import { cn } from '#lib/ui/cn.js';
 	import HoldingReturns from './HoldingReturns.svelte';
 	import LogoControl from './LogoControl.svelte';
+	import { holdingName } from './names.js';
 	import { sortHoldings, sortOptions, yearOf, type Sort } from './returns.js';
 
 	interface Props {
@@ -90,6 +91,7 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 			{@const key = keyOf(holding)}
 			{@const expanded = open === key}
 			{@const color = assetColor(holding.asset)}
+			{@const title = holdingName(holding)}
 			<li id="holding-{key}" class="scroll-mt-20 border-t border-line first:border-t-0">
 				<button
 					type="button"
@@ -110,13 +112,11 @@ gained, in the instrument's currency; then what it returned over each range (`Ho
 							{/if}
 						{/if}
 						<span class="min-w-0">
-							<span class="block truncate font-medium text-ink"
-								>{holding.name || holding.symbol}</span
-							>
+							<span class="block truncate font-medium text-ink">{title}</span>
 							<span class="flex items-center gap-1.5 text-small text-ink-muted">
 								<Swatch {color} class="size-2 rounded-full" />
 								<span class="text-ink-secondary">{assetName(holding.asset)}</span>
-								{#if holding.name}<span class="truncate">{holding.symbol}</span>{/if}
+								{#if title !== holding.symbol}<span class="truncate">{holding.symbol}</span>{/if}
 								{#if holding.positions.length > 1}<span class="shrink-0"
 										>{t('holdings.inAccounts', { count: holding.positions.length })}</span
 									>{/if}

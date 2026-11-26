@@ -363,10 +363,13 @@ def test_what_is_held_is_sent_with_each_instrument_its_positions_and_its_spread(
     assert held["accounts"] == 3
     # Each instrument, largest first, with its positions account by account; its share to
     # the tenth the app shows, shared out of the exact values so that they add up to 100.
-    assert [(h["symbol"], h["share"], len(h["positions"])) for h in held["holdings"]] == [
-        ("912797ZZ1", "84.6", 1),
-        ("GADG", "7.7", 1),
-        ("WIDG", "7.7", 3),
+    assert [
+        (h["symbol"], h["type"], h["maturity"], h["share"], len(h["positions"]))
+        for h in held["holdings"]
+    ] == [
+        ("912797ZZ1", "bill", "2026-12-24", "84.6", 1),
+        ("GADG", "stock", None, "7.7", 1),
+        ("WIDG", "etf", None, "7.7", 3),
     ]
     widget = held["holdings"][2]["positions"]
     assert [(p["owner"], p["account"], p["value"]) for p in widget] == [

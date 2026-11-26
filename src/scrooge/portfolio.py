@@ -164,6 +164,8 @@ class Holding:
     # In `Portfolio.currency`; None when that of any of its positions is not known.
     cost: Decimal | None
     gain: Decimal | None
+    type: str = ""  # of the instrument: etf, stock, fund, bill or bond
+    maturity: date | None = None  # bills and bonds
 
     @property
     def return_percent(self) -> Decimal | None:
@@ -259,6 +261,8 @@ class Portfolio:
                     share=sum((shares[p] for p in parts), Decimal(0)),
                     cost=cost,
                     gain=None if cost is None else value - cost,
+                    type=parts[0].type,
+                    maturity=next((p.maturity for p in parts if p.maturity is not None), None),
                 )
             )
         return tuple(sorted(holdings, key=lambda h: (-h.value, h.symbol)))
