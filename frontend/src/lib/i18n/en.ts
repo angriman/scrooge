@@ -172,6 +172,7 @@ export const en = {
 	'overview.ofNetWorth': 'Of net worth',
 	'overview.returnedSubject': 'What the investments returned',
 	'overview.paidSubject': 'What the investments paid',
+	'overview.worthSubject': 'This net worth breakdown',
 	'overview.notKnownWhy': '{what} is not known: {why}',
 	'overview.investmentsTitle': 'Investments',
 	'overview.twr': 'Time-weighted return',
@@ -189,6 +190,7 @@ export const en = {
 
 	'monthSection.earlierMonth': 'Earlier month: {month}',
 	'monthSection.laterMonth': 'Later month: {month}',
+	'monthSection.monthSubject': 'This month',
 	'monthSection.soFar': 'So far, up to {date}',
 	'monthSection.oneMissing': 'The {account} statement is not in yet',
 	'monthSection.manyMissing': '{count} statements are not in yet',
