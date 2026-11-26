@@ -7,7 +7,7 @@ import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { day } from '#lib/format/date.js';
 import { approximate } from '#lib/format/number.js';
 import { t } from '#lib/i18n/index.svelte.js';
-import { withheld } from '#lib/investments/income.js';
+import { net, withheld } from '#lib/investments/income.js';
 import { DEFAULT_RANGE as RETURNS_RANGE, over } from '#lib/investments/performance.js';
 import type {
 	Amount,
@@ -98,7 +98,7 @@ export function incomeShown(shown: Loaded<InvestmentIncome>): IncomeShown {
 	const errors = [...new Set(shown.errors)];
 	if (!income) return { paid: null, errors };
 	const { trailing, currency } = income;
-	return { paid: { net: trailing.net, tax: taxWithheld(trailing), currency }, errors };
+	return { paid: { net: net(trailing), tax: taxWithheld(trailing), currency }, errors };
 }
 
 /** The query of the investments page's returns over `range`, for whom and in what currency

@@ -1,9 +1,10 @@
 <!--
 @component
-What investments paid over the range: dividends and interest in all, the tax withheld from them
-and what was left, against the same months a year before and, for another range, beside what
-the last twelve months paid; each month as a column, dividends below interest, before tax; and
-each holding, what paid the most first, opening its transactions.
+What investments paid over the range: what was left after the tax withheld, against the same
+months a year before and, for another range, beside what the last twelve months paid; with
+dividends, interest, what was paid before tax and the tax withheld beside it; each month as a
+column, dividends below interest, before tax; and each holding, what paid the most first,
+opening its transactions.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -21,6 +22,7 @@ each holding, what paid the most first, opening its transactions.
 		INTEREST_COLOR,
 		isTrailing,
 		monthLabel,
+		net,
 		paid,
 		stack,
 		transactionsOf,
@@ -39,7 +41,8 @@ each holding, what paid the most first, opening its transactions.
 	let { income, logos, range, owner }: Props = $props();
 
 	const currency = $derived(income.currency);
-	const total = $derived(paid(income.totals));
+	const total = $derived(net(income.totals));
+	const beforeTax = $derived(paid(income.totals));
 	const moved = $derived(change(income.totals, income.year_before));
 	const trailing = $derived(isTrailing(income) ? null : income.trailing);
 
@@ -86,15 +89,20 @@ each holding, what paid the most first, opening its transactions.
 					</span>
 					{t('investments.onYearBeforePct')}
 				{:else}
-					{t('investments.beforeTaxNote')}
+					{t('investments.afterTaxNote')}
 				{/if}
 			</p>
 			{#if trailing}
 				<p class="mt-1 max-w-prose text-small text-ink-secondary">
 					{t('investments.last12MonthsPaidBefore')}
-					<Amount value={paid(trailing)} {currency} places={0} class="text-ink" />,
-					<Amount value={trailing.net} {currency} places={0} class="text-ink" />
-					{t('investments.last12MonthsAfterTax')}
+					<Amount
+						value={net(trailing)}
+						{currency}
+						places={0}
+						class="text-ink"
+					/>{#if approximate(trailing.tax) !== 0},
+						<Amount value={paid(trailing)} {currency} places={0} class="text-ink" />
+						{t('investments.last12MonthsBeforeTax')}{:else}.{/if}
 				</p>
 			{/if}
 		</div>
@@ -108,14 +116,14 @@ each holding, what paid the most first, opening its transactions.
 				<dd class="text-title text-ink"><Amount value={income.totals.interest} places={0} /></dd>
 			</div>
 			<div>
+				<dt class="text-ink-secondary">{t('investments.beforeTax')}</dt>
+				<dd class="text-title text-ink"><Amount value={beforeTax} places={0} /></dd>
+			</div>
+			<div>
 				<dt class="text-ink-secondary">{t('investments.taxWithheld')}</dt>
 				<dd class="text-title text-ink">
 					<Amount value={withheld(income.totals.tax)} places={0} />
 				</dd>
-			</div>
-			<div>
-				<dt class="text-ink-secondary">{t('investments.net')}</dt>
-				<dd class="text-title text-ink"><Amount value={income.totals.net} places={0} /></dd>
 			</div>
 		</dl>
 	</div>
