@@ -16,7 +16,7 @@ import contextlib
 import secrets
 import sqlite3
 from collections.abc import Callable, Iterable
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import urlsplit
 
 import yaml
@@ -31,11 +31,13 @@ from scrooge import (
     analysis,
     attention,
     categories,
+    classification,
     closing,
     context,
     costs,
     holding_returns,
     holds,
+    marketdata,
     merchants,
     months,
     networth,
@@ -113,6 +115,8 @@ def _session(request: Request) -> Response:
             "signing": state.access is not None,
             # Whether a category chosen can be remembered as a rule for the next import.
             "rules": state.rules is not None,
+            # Whether missing closes, splits and exchange rates can be fetched from here.
+            "prices": state.price_source is not None and not state.read_only,
             # Whose figures can be typed (`/api/accounts/typed`): the people the config names,
             # none over a copy or without the import page.
             "typing": [] if state.imports is None else list(state.imports.people),
@@ -346,6 +350,7 @@ def _statements(request: Request) -> Response:
         {
             "currency": asked.currency,
             "covered": wire.day(months.covered(lines)),
+            "total": wire.number(together.total(rows)),
             "accounts": accounts,
             "checks": [wire.check(check) for check in checks],
             "errors": errors,
@@ -1008,8 +1013,8 @@ def _cashflow(request: Request) -> Response:
         first, last = asked.first, asked.last
         if first is None and last is None:
             first = _period_start(asked.range or "ytd", through, earliest)
-        elif first is not None and earliest is not None:
-            first = max(first, earliest)
+        elif earliest is not None and (last is None or last >= earliest):
+            first = earliest if first is None else max(first, earliest)
         shown = wire.unless_rate_missing(
             errors,
             lambda: report.run(
@@ -1052,8 +1057,8 @@ def _income(request: Request) -> Response:
         first = asked.first
         if first is None and asked.last is None:
             first = _period_start(asked.range, through, earliest)
-        elif first is not None and earliest is not None:
-            first = max(first, earliest)
+        elif earliest is not None and (asked.last is None or asked.last >= earliest):
+            first = earliest if first is None else max(first, earliest)
         shown = payouts.run(
             conn, first=first, last=asked.last, owner=asked.owner, currency=asked.currency
         )
@@ -1071,8 +1076,8 @@ def _income(request: Request) -> Response:
 def _performance(request: Request) -> Response:
     """What the investment accounts of `owner`, or of everyone, returned over `range` (the year
     to date when left out), in `currency`, beside the benchmarks of the config. Accounts with
-    a currency without a rate are left out, each such currency said in `errors`, and so is a
-    benchmark without the closes or the rate it needs."""
+    a currency without a rate are left out, each such currency said in `errors`; benchmarks
+    without the closes or the rate they need are named in `performance.missing_benchmarks`."""
     asked = forms.performance_view(_asked(request))
     if asked.errors:
         return _refused(asked.errors)
@@ -1090,8 +1095,50 @@ def _performance(request: Request) -> Response:
     errors = [wire.sentence(networth.MissingRateError(why)) for why in shown.missing]
     if shown.left_out:
         errors.append(f"Left out for want of a rate: {', '.join(shown.left_out)}.")
-    errors += [wire.sentence(Exception(why)) for why in shown.unbenchmarked]
     return JSONResponse({"performance": wire.performance_report(shown), "errors": errors})
+
+
+async def _fetch_prices(request: Request) -> Response:
+    """Fetch closes, splits and exchange rates not stored yet, up to yesterday, as `scrooge
+    prices` does."""
+    _writable(request, request.headers.get("x-token", ""))
+    state = request.app.state
+    if state.price_source is None:
+        raise HTTPException(404)
+
+    def fetch() -> marketdata.Refreshed:
+        typed_instruments = (
+            classification.load_instruments(state.imports.instruments) if state.imports else {}
+        )
+        symbols = {symbol: entry.price_symbol for symbol, entry in typed_instruments.items()}
+        now = state.clock()
+        through = now.date() - timedelta(days=1)
+        conn = db.connect(state.database)
+        try:
+            return marketdata.refresh(
+                conn,
+                state.price_source,
+                through=through,
+                now=now,
+                symbols=symbols,
+                currencies=networth.CURRENCIES,
+                benchmarks=state.benchmarks,
+            )
+        finally:
+            conn.close()
+
+    try:
+        refreshed = await run_in_threadpool(fetch)
+    except (ConfigError, yaml.YAMLError) as exc:
+        return JSONResponse({"errors": [wire.sentence(exc)]}, 409)
+    return JSONResponse(
+        {
+            "closes": refreshed.closes,
+            "rates": refreshed.rates,
+            "splits": refreshed.splits,
+            "errors": [wire.sentence(Exception(problem)) for problem in refreshed.problems],
+        }
+    )
 
 
 def _costs(request: Request) -> Response:
@@ -1252,6 +1299,7 @@ routes = [
     Route("/cashflow", _cashflow, name="api_cashflow"),
     Route("/income", _income, name="api_income"),
     Route("/performance", _performance, name="api_performance"),
+    Route("/prices", _fetch_prices, methods=["POST"], name="api_prices"),
     Route("/costs", _costs, name="api_costs"),
     Route("/recurring", _recurring, name="api_recurring"),
     Route("/import", _staged, name="api_staged"),

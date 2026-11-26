@@ -81,6 +81,8 @@ class Holding:
     paid: Paid
     count: int  # rows, tax withheld included
     last: date  # the last day it paid; the last day tax was withheld when it only had that
+    type: str | None = None  # of the instrument: etf, stock, fund, bill or bond; None if none
+    maturity: date | None = None  # bills and bonds
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,10 +168,11 @@ def run(
     start = first or analysis.add_months(end, -11)
     trailing_start = analysis.add_months(found.through, -11)
     if earliest is not None:
-        start = max(start, earliest)
+        if end >= earliest:
+            start = max(start, earliest)
         trailing_start = max(trailing_start, earliest)
     trailing = _sum(found.between(trailing_start, found.through)).paid()
-    if start > end:
+    if start > end or (earliest is not None and end < earliest):
         return Payouts(
             currency, start, end, NOTHING, None, trailing, (), (), found.through, missing
         )
@@ -200,21 +203,48 @@ def _sum(rows: Iterable[Converted]) -> _Sums:
     return sums
 
 
+@dataclass(frozen=True, slots=True)
+class _Instrument:
+    """What `instruments` knows of one symbol, for naming what paid."""
+
+    symbol: str
+    name: str
+    type: str
+    maturity: date | None
+
+
+def _instruments(conn: sqlite3.Connection) -> dict[str, _Instrument]:
+    """Symbol in capitals -> instrument metadata, preferring entries with a name or maturity."""
+    found: dict[str, _Instrument] = {}
+    for symbol, name, kind, maturity in conn.execute(
+        "SELECT symbol, name, type, maturity FROM instruments ORDER BY id"
+    ):
+        key = str(symbol).upper()
+        day = None if maturity is None else date.fromisoformat(str(maturity))
+        existing = found.get(key)
+        if existing is None:
+            found[key] = _Instrument(str(symbol), str(name), str(kind), day)
+        else:
+            found[key] = _Instrument(
+                str(symbol) if not existing.name and name else existing.symbol,
+                existing.name or str(name),
+                existing.type,
+                existing.maturity or day,
+            )
+    return found
+
+
 def named_instruments(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     """Symbol in capitals -> `(symbol, name)` as stored, preferring an entry with a name."""
-    named: dict[str, tuple[str, str]] = {}
-    for symbol, name in conn.execute("SELECT symbol, name FROM instruments ORDER BY id"):
-        if not named.get(symbol.upper(), ("", ""))[1]:
-            named[symbol.upper()] = (str(symbol), str(name))
-    return named
+    return {key: (inst.symbol, inst.name) for key, inst in _instruments(conn).items()}
 
 
 def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Holding, ...]:
     """The rows grouped by what paid them, what was paid the most first."""
-    named = named_instruments(conn)
+    instruments = _instruments(conn)
     groups: dict[tuple[str, str | None, str | None], _Sums] = {}
     for each in rows:
-        key = holding_of(each.row.counterparty, named)
+        key = holding_of(each.row.counterparty, instruments)
         where = (key, None, None) if key else (each.row.account, each.row.account, each.row.owner)
         groups.setdefault(where, _Sums()).add(each)
     owners: dict[str, set[str | None]] = {}  # an account's name -> the people who have one
@@ -223,7 +253,12 @@ def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Hold
             owners.setdefault(account, set()).add(owner)
     holdings = []
     for (key, account, owner), sums in groups.items():
-        symbol, name = named.get(key, (None, "")) if account is None else (None, "")
+        inst = instruments.get(key) if account is None else None
+        symbol, name, kind, maturity = (
+            (None, "", None, None)
+            if inst is None
+            else (inst.symbol, inst.name, inst.type, inst.maturity)
+        )
         shared = account is not None and len(owners[account]) > 1
         if shared:
             name = f"{account} ({owner})"
@@ -231,14 +266,23 @@ def _holdings(conn: sqlite3.Connection, rows: Iterable[Converted]) -> tuple[Hold
         whose = owner if shared else None
         holdings.append(
             Holding(
-                key, name or symbol or key, symbol, account, whose, sums.paid(), sums.count, last
+                key,
+                name or symbol or key,
+                symbol,
+                account,
+                whose,
+                sums.paid(),
+                sums.count,
+                last,
+                kind,
+                maturity,
             )
         )
     holdings.sort(key=lambda holding: (-holding.paid.paid, holding.name))
     return tuple(holdings)
 
 
-def holding_of(counterparty: str, named: Mapping[str, tuple[str, str]]) -> str:
+def holding_of(counterparty: str, named: Mapping[str, object]) -> str:
     """What a row's counterparty names, as its holding is keyed: in capitals with its spaces
     tidied, and without an ISIN in brackets after the symbol, unless only the ISIN is an
     instrument's symbol."""

@@ -10,6 +10,7 @@ import {
 	percent,
 	short,
 	shortSigned,
+	shortTick,
 	signed,
 	signedPercent
 } from './number.js';
@@ -77,6 +78,24 @@ describe('short', () => {
 		expect(short('999960')).toBe('1.0M');
 		expect(short('1250000')).toBe('1.3M');
 		expect(short('1234500000')).toBe('1’234.5M');
+	});
+});
+
+describe('shortTick', () => {
+	it('drops a trailing .0 on thousands and millions while keeping real tenths', () => {
+		expect(shortTick('0')).toBe('0');
+		expect(shortTick('-0')).toBe('0');
+		expect(shortTick('-0.4')).toBe('0');
+		expect(shortTick('850')).toBe('850');
+		expect(shortTick('999.5')).toBe('1k');
+		expect(shortTick('10000')).toBe('10k');
+		expect(shortTick('100000')).toBe('100k');
+		expect(shortTick('12500')).toBe('12.5k');
+		expect(shortTick('-10000')).toBe('−10k');
+		expect(shortTick('-12500')).toBe('−12.5k');
+		expect(shortTick('999960')).toBe('1M');
+		expect(shortTick('1000000')).toBe('1M');
+		expect(shortTick('1250000')).toBe('1.3M');
 	});
 });
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
@@ -54,6 +54,8 @@ class Holds:
     cash: tuple[Cash, ...]  # the largest first, in the currency asked for
     securities: Decimal | None  # what its securities are worth together; None: it holds none
     months: tuple[MonthEnd, ...]  # oldest first, from the first it held anything; at most MONTHS
+    # `balance` before rounding to the cent, so combined accounts and totals round once.
+    exact: Decimal | None = field(default=None, repr=False, compare=False)
 
 
 def ends(days: Sequence[date]) -> list[int]:
@@ -114,5 +116,6 @@ def of(
                 MonthEnd(day, value.quantize(_CENT))
                 for day, value in zip(days[start:], balances[start:], strict=True)
             ),
+            exact=balances[-1],
         )
     return found

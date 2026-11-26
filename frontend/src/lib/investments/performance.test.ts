@@ -6,11 +6,13 @@ import {
 	described,
 	direction,
 	instead,
+	missingBenchmarksNote,
 	mwrPer,
 	nearest,
 	over,
 	plot,
-	rangeOf
+	rangeOf,
+	twrSinceNote
 } from './performance.js';
 
 describe('the range', () => {
@@ -31,6 +33,26 @@ describe('the range', () => {
 	it('says where it starts when the history starts after it would', () => {
 		expect(over('1y', '2026-08-31', '2026-09-30')).toBe('since 31 Aug 2026');
 		expect(over('ytd', '2026-03-01', '2026-09-30')).toBe('since 1 Mar 2026');
+	});
+
+	it('uses the day the return starts counting when that is after the range’s first day', () => {
+		// Reproduces #143: Performance showed 'since 5 Jul 2026' while Overview showed 'since 31 Aug 2026'.
+		expect(over('1y', '2026-07-05', '2026-09-30', '2026-08-31')).toBe('since 31 Aug 2026');
+		expect(over('ytd', '2026-07-05', '2026-09-30', '2026-08-31')).toBe('since 31 Aug 2026');
+		expect(over('all', '2026-07-05', '2026-09-30', '2026-08-31')).toBe('since 31 Aug 2026');
+		expect(over('1y', '2025-10-01', '2026-09-30', '2026-03-03')).toBe('since 3 Mar 2026');
+		// Same day as range start keeps the normal range name.
+		expect(over('1y', '2025-10-01', '2026-09-30', '2025-10-01')).toBe('over the past year');
+		expect(over('1y', '2025-10-01', '2026-09-30', null)).toBe('over the past year');
+	});
+
+	it('notes the range start only when the time-weighted return counts from a later day', () => {
+		expect(twrSinceNote('2026-07-05', '2026-08-31')).toBe(
+			'The range starts on 5 Jul 2026; before 31 Aug 2026, next to nothing was invested.'
+		);
+		expect(twrSinceNote('2026-07-05', '2026-07-05')).toBeNull();
+		expect(twrSinceNote('2026-07-05', null)).toBeNull();
+		expect(twrSinceNote(null, '2026-08-31')).toBeNull();
 	});
 });
 
@@ -150,14 +172,39 @@ describe('the benchmarks', () => {
 		);
 	});
 
+	it('names missing benchmarks in one quiet note without terminal commands', () => {
+		expect(missingBenchmarksNote([])).toBeNull();
+		expect(missingBenchmarksNote(['VT'])).toBe('VT will show once its prices are fetched.');
+		expect(missingBenchmarksNote(['VT', 'VOO'])).toBe(
+			'VT and VOO will show once their prices are fetched.'
+		);
+		expect(missingBenchmarksNote(['VT', 'VOO', 'ACWI'])).toBe(
+			'VT, VOO and ACWI will show once their prices are fetched.'
+		);
+	});
+
 	it('localizes performance labels and captions in Italian', () => {
 		setLanguage('it');
 		try {
 			expect(over('ytd', '2026-01-01', '2026-09-30')).toBe('quest’anno');
+			expect(over('1y', '2026-07-05', '2026-09-30', '2026-08-31')).toBe('dal 31 Ago 2026');
+			expect(twrSinceNote('2026-07-05', '2026-08-31')).toBe(
+				'Il periodo inizia il 5 Lug 2026; prima del 31 Ago 2026 non risultavano capitali investiti rilevanti.'
+			);
 			expect(mwrPer({ mwr_a_year: true })).toBe('annuo');
 			expect(compared('10.00', [vt])).toBe('VT +12.3% nello stesso periodo');
 			expect(instead([vt, voo, { symbol: 'ACWI', return: '1' }])).toBe(
 				' Le linee VT, VOO e ACWI mostrano quanto varrebbe lo stesso capitale investito in ciascun indice negli stessi giorni.'
+			);
+			expect(missingBenchmarksNote([])).toBeNull();
+			expect(missingBenchmarksNote(['VT'])).toBe(
+				'VT apparirà non appena i suoi prezzi verranno scaricati.'
+			);
+			expect(missingBenchmarksNote(['VT', 'VOO'])).toBe(
+				'VT e VOO appariranno non appena i loro prezzi verranno scaricati.'
+			);
+			expect(missingBenchmarksNote(['VT', 'VOO', 'ACWI'])).toBe(
+				'VT, VOO e ACWI appariranno non appena i loro prezzi verranno scaricati.'
 			);
 		} finally {
 			setLanguage('en');

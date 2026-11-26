@@ -3,7 +3,7 @@
 
 import { month as monthOf } from '#lib/format/date.js';
 import { approximate, difference, negate, percentOf, sum } from '#lib/format/number.js';
-import type { PayingHolding, Payout, PayoutsReport, Person } from '#lib/types.js';
+import type { Amount, PayingHolding, Payout, PayoutsReport, Person } from '#lib/types.js';
 
 /** The colour of dividends and of interest: shades of the colour of a gain, as income wears
  * on the cash flow. */
@@ -15,17 +15,27 @@ export function paid(payout: Payout): string {
 	return sum([payout.dividends, payout.interest]);
 }
 
+/** What was paid, after the tax withheld: the headline figure of both the overview card and
+ * the income view. Uses the API's `net` when sent, else `dividends + interest + tax`. */
+export function net(payout: Payout & { net?: Amount }): Amount {
+	return payout.net ?? sum([payout.dividends, payout.interest, payout.tax]);
+}
+
 /** What was withheld, as a positive amount: the API sends tax as it is stored, negative. */
 export function withheld(tax: string): string {
 	return sum([negate(tax)]);
 }
 
-/** How much more (or less, below zero) was paid than in the same months a year before, in
- * percent; null when there is nothing to compare with, or nothing was paid then. */
-export function change(now: Payout, before: Payout | null): string | null {
+/** How much more (or less, below zero) was paid, after tax, than in the same months a year
+ * before, in percent; null when there is nothing to compare with, or nothing was left after
+ * tax then. */
+export function change(
+	now: Payout & { net?: Amount },
+	before: (Payout & { net?: Amount }) | null
+): string | null {
 	if (!before) return null;
-	const then = paid(before);
-	return percentOf(difference(paid(now), then), then, 1);
+	const then = net(before);
+	return percentOf(difference(net(now), then), then, 1);
 }
 
 /** What a column of the chart is called: `Mar`, of `2026-03`. */

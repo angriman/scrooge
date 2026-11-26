@@ -164,7 +164,7 @@ def test_a_pension_in_a_currency_without_a_rate_is_left_out_and_said_to_be(
     shown = pensions.run(conn, currency="EUR")
     assert shown.pensions == ()
     assert shown.left_out == ("Finpension 3a (Lukas)",)
-    assert shown.missing == ("no exchange rate is stored for EUR: run `scrooge prices`",)
+    assert shown.missing == ("no exchange rate is stored for EUR",)
     rate(conn, "EUR", date(2025, 9, 1), "0.5")  # two euros a franc, every day since
     [pension] = pensions.run(conn, currency="EUR").pensions
     assert (pension.value, pension.cash) == (D("4690.00"), D("290.00"))
